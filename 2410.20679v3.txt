@@ -1,0 +1,709 @@
+arXiv:2410.20679v3 [q-fin.ST] 26 Aug 2025 
+MCI-GRU: Stock Prediction Model Based on Multi-Head Cross-Attention and Improved GRU 
+Peng Zhua, Yuante Lia, Yifan Hua, Sheng Xiangb, Qinyuan Liua,*, Dawei Chenga, Yuqi Liangc 
+aDepartment of Computer Science and Technology, Tongji University, Shanghai, China bAustralian Artificial Intelligence Institute, University of Technology Sydney, Sydney, Australia cSeek Data Group, Emoney Inc., Shanghai, China 
+Abstract 
+As financial markets become increasingly complex and the era of big data unfolds, accurate stock prediction has become more critical. Although traditional time series models, such as GRU, have been widely applied to stock prediction, they still exhibit limitations in addressing the intricate nonlinear dynamics of markets, particularly in the flexible selection and effective utilization of key historical information. In recent years, emerging methods like Graph Neural Networks and Reinforcement Learning have shown significant potential in stock prediction. How­ever, these methods often demand high data quality and quantity, and they tend to exhibit instability when dealing with data sparsity and noise. Moreover, the training and inference processes for these models are typically complex and computationally expensive, limiting their broad deployment in practical applications. Existing approaches also generally struggle to capture unobservable latent market states effectively, such as market sentiment and expecta­tions, microstructural factors, and participant behavior patterns, leading to an inadequate understanding of market dynamics and subsequently impact prediction accuracy. To address these challenges, this paper proposes a stock prediction model, MCI-GRU, based on a multi-head cross-attention mechanism and an improved GRU. First, we enhance the GRU model by replacing the reset gate with an attention mechanism, thereby increasing the model’s flex­ibility in selecting and utilizing historical information. Second, we design a multi-head cross-attention mechanism for learning unobservable latent market state representations, which are further enriched through interactions with both temporal features and cross-sectional features. Finally, extensive experiments conducted on the CSI 300 and CSI 500 datasets from the Chinese stock market, as well as the NASDAQ 100 and S&P 500 datasets from the U.S. stock market, demonstrate that the proposed method outperforms the current state-of-the-art methods across multiple metrics. Furthermore, this approach has been successfully applied in the real-world operations of a fund manage­ment company, validating its effectiveness and practicality in actual financial environments. The code is available at https://github.com/WinstonLiyt/MCI-GRU. 
+Keywords: stock prediction, multi-head cross-attention, improved GRU, temporal features, cross-sectional features 
+1. Introduction 
+In recent years, with the advent of the big data era and the rapid development of the global economy, the complexity of financial markets [1] has significantly increased. This trend has posed unprecedented challenges to the volatility and unpredictability of stock markets [2]. Consequently, accurate stock prediction [3] has become critically important not only for investors and financial institutions, enabling them to formulate more robust investment strategies and risk management measures, but also for policymakers, who rely on these predictions for macroeconomic regulation and market oversight. Additionally, for academic researchers, stock prediction has emerged as a pivotal domain for uncovering market dynamics and behavioral patterns, thereby advancing the study of financial market theories and data-driven methodologies. These investigations not only extend the theoretical boundaries of financial economics but 
+*Corresponding author 
+Preprint submitted to Neurocomputing August 27, 2025 
+also provide new research directions and application scenarios for interdisciplinary fields such as machine learning and data science [4]. Therefore, the accuracy and efficacy of stock prediction have become focal points across multiple disciplines, further stimulating extensive exploration into innovative models and methods. 
+Time series models [5, 6], such as GRU and LSTM [7], have been widely utilized in stock prediction due to their significant advantages in capturing temporal dependencies within sequential data. However, these models exhibit limitations when addressing long-term dependencies in financial markets. Long-term trends and large-scale fluctua­tions are often obscured by noise, making it challenging for these models to extract valuable long-term dependency information from such noisy data effectively. Additionally, financial markets are characterized by a high degree of nonlinearity, with rapid shifts in market behavior driven by changes in investor sentiment, unexpected events, and other factors. These models often lack sufficient sensitivity and flexibility in handling such nonlinearity and abrupt events. Furthermore, they face challenges in the flexible selection and effective utilization of critical historical infor­mation. Given the vast and disorganized nature of data in financial markets, identifying the most relevant features for prediction has become a critical issue. 
+In recent years, the Transformer model [8] has demonstrated significant potential in capturing long-range depen­
+dencies and handling complex nonlinear features, owing to its architecture based on self-attention mechanisms [9]. Unlike traditional RNN models such as GRU and LSTM, the Transformer can simultaneously attend to all time steps within a sequence, making it particularly effective in extracting dependencies over extended time spans. Furthermore, the Transformer’s strong parallel processing capabilities enable it to efficiently manage large-scale data, which is especially crucial when dealing with vast and diverse stock data in financial markets. However, the application of Transformer models also presents several challenges. First, the large number of parameters in Transformer models leads to high computational costs, particularly when processing ultra-large-scale financial data, potentially limiting their application in resource-constrained environments. Additionally, while the Transformer is adept at capturing com­plex nonlinear relationships, its performance may be compromised when confronted with highly noisy financial data. Therefore, to fully harness the advantages of the Transformer, it is often necessary to incorporate more sophisticated preprocessing and feature selection methods to enhance its accuracy and efficiency in stock prediction tasks. 
+Artificial intelligence technologies’ rapid advancement [10], particularly in Graph Neural Networks (GNNs) [11, 12] and Reinforcement Learning (RL) [13], has introduced unprecedented potential for stock prediction. These technologies, through innovative algorithmic designs and deep learning models, promise to enhance the ability to capture the complex dynamics of financial markets. For example, methods that employ GNNs are able to precisely capture the complex and diverse interdependencies within financial data by modeling the relationships between stocks as graph structures. This approach not only uncovers deep connections that are difficult for traditional models to reveal but also more effectively reflects the nonlinear characteristics of the market. Meanwhile, methods based on RL progressively learn and optimize trading strategies by simulating continuous interaction with the market environment. This method is highly adaptive, enabling dynamic strategy adjustments to cope with the market’s rapidly changing conditions. However, despite the considerable promise of these emerging methodologies, they still face significant challenges in practical application. Firstly, these models often rely on large-scale, high-quality datasets, which are difficult to acquire or construct in real-world scenarios. When confronted with data sparsity and noise—common issues in financial markets—the predictive performance of these models can be severely compromised. Additionally, the computational complexity of these methods is high; the training process is not only time-consuming and resource-intensive but also demands substantial computational power, significantly limiting their widespread adoption in prac­tical financial applications. More critically, a fundamental limitation of current models lies in their inability to capture unobservable latent market states effectively. Factors such as market sentiment, investor expectations, microstructural elements, and participant behavior patterns play crucial roles in shaping market dynamics. However, the failure to ad­equately account for these latent factors often leads to a superficial understanding of the market, thereby constraining the predictive accuracy and practical utility of these models. 
+To address these challenges, this paper introduces a novel stock prediction model, MCI-GRU, which integrates a multi-head cross-attention mechanism and improved GRU architecture. First, by replacing the reset gate in the traditional GRU model with an attention mechanism, the MCI-GRU model significantly improves the flexibility in selecting and utilizing historical time series information. Second, MCI-GRU employs a Graph Attention Network (GAT) to extract cross-sectional features from stock data. Additionally, this paper introduces a multi-head cross-attention mechanism designed to capture latent, unobservable market states. The model’s expressive capability and ability to capture complex market dynamics are further enhanced by interacting these latent states with temporal and cross-sectional features. We conduct extensive experimental evaluations on several stock market datasets, including the CSI 300 and CSI 500 indices in China, as well as the NASDAQ 100 and S&P 500 indices in the United States. The experimental results demonstrate that the proposed MCI-GRU model outperforms existing state-of-the-art methods across multiple key performance metrics. Furthermore, the model has been successfully deployed in the operations of a leading fund management company, showcasing its practical applicability and effectiveness in real-world financial environments. In summary, the key contributions of this paper are as follows: 
+• 
+This paper improves the traditional GRU model by replacing the reset gate with an attention mechanism, en­abling the model to more flexibly select critical historical information, thereby enhancing the effectiveness of filtering and utilizing past sequence data. 
+
+• 
+We propose a multi-head cross-attention mechanism to learn representations of unobservable market latent states. These learned representations are then interactively integrated with both temporal and cross-sectional features, thereby enriching the model’s feature representation capacity. 
+
+• 
+We conduct empirical studies on stock market datasets from multiple countries, and the results demonstrate that the proposed method outperforms existing state-of-the-art approaches. Moreover, the method has been successfully deployed in practical applications on a fund company’s platform. 
+
+
+2. Related Work 
+Stock market prediction has been a long-standing challenge in the field of finance, commonly solutions include traditional and machine learning, deep and reinforcement learning, graph neural networks, and the latest methods. 
+2.1. Traditional Learning and Machine Learning Methods 
+Traditional approaches, including Autoregressive (AR) [14], ARIMA [15, 16], and Exponential Smoothing [17, 18], have been extensively employed in stock prediction, primarily for modeling linear trends. With advancements in computational technology, machine learning methods such as Hidden Markov Models(HMM) [19, 20], Support Vector Machines (SVM) [21, 22], K-Nearest Neighbor (KNN) [23, 24], Decision Trees [25], and Neural Networks [26, 27, 28], including Single Layer Perceptron (SLP) and MultiLayer Perceptron (MLP) [29, 30], have garnered significant attention for their ability to model complex patterns in stock data. For instance, [31] introduced a decision tree-based approach demonstrating the efficacy of Random Forests in short-term prediction and the superior long-term accuracy of J48 combined with Bagging. Similarly, [32] utilized high-order Hidden Markov Models with advanced parameters, including state transition probabilities dependent on multiple previous states and observation probabilities modeled as Gaussian mixtures. This method incorporated a state dimension reduction technique to simplify parameter estimation and decoding, alongside a dynamic trading strategy based on identified hidden states, validated on the CSI 300 and S&P 500 indices. Moreover, [33] integrated feature-weighted support vector machine (FWSVM) and feature-weighted k-nearest neighbor (FWKNN) techniques by calculating feature importance via information gain, which informed weight assignment in SVM classification and distance calculation in KNN. 
+While these advanced machine learning techniques have demonstrated their capacity to capture complex nonlinear interactions within stock data, challenges remain, including susceptibility to overfitting due to the low signal-to-noise ratio, high trading volumes, frequent trading, significant price volatility, and the multitude of influencing factors inherent in financial markets. 
+2.2. Deep Learning and Reinforcement Learning Methods 
+With the rapid advancement of deep learning, this technology has been extensively applied to stock prediction in financial markets, producing notable outcomes [34, 27]. Recurrent Neural Networks (RNNs) [35, 36, 37] have demonstrated exceptional capabilities in this field by effectively modeling long-term dependencies in time series data, utilizing inputs such as stock prices to forecast market trends. Recent studies have introduced sophisticated models aimed at further enhancing prediction accuracy. For instance, [38] proposed the StockNet model based on GRU, which incorporates an injection module to mitigate overfitting and a survey module for comprehensive stock anal­ysis. Furthermore, [39] integrated convolutional LSTM units with a sequence-to-sequence framework and attention mechanisms, employing variational methods and backward decoders to improve prediction accuracy and robustness. Similarly, [40] advanced the attention-based LSTM model by implementing adversarial training to enhance its gener­
+alization capability. 
+Deep learning models often demonstrate instability when confronted with extreme market fluctuations, such as those experienced during the 2008 financial crisis [41] and the 2019 COVID-19 pandemic [42]. In response, rein­forcement learning models [43] have gained prominence due to their adaptability and capacity for continuous learning. Reinforcement learning approaches in investment strategies can be broadly categorized into two types: value-based and policy-based [44, 45]. Value-based approaches involve learning a critique to estimate the expected outcomes of trading actions within the market. Common value-based approaches in investment strategies include Q-learning [46], Deep Q-learning [47, 48], Recurrent Reinforcement Learning [49, 50], and Sarsa [51, 52]. However, a major limita­tion of value-based approaches is the complexity of accurately approximating the market environment with a critic. As a result, policy-based approaches [53, 54] are often regarded as more suitable for financial markets. For example, [55] integrated deep attention networks with reinforcement learning, optimizing parameters through discrete agent actions to maximize the Sharpe ratio of investments. To further balance profit and risk, [56] introduced a multi-objective deep reinforcement learning (MODRL) approach for intraday trading of stock index futures, combining deep learning for feature extraction with reinforcement learning for decision-making. Despite their potential, reinforcement learning models face challenges, such as the requirement for large datasets and difficulties in model interpretability, which can hinder their practical application in financial markets. 
+2.3. Graph Neural Networks and Latest Methods 
+In recent years, Graph Neural Networks [57, 58, 59] have garnered significant attention in stock prediction due to their capacity to capture complex interdependencies within financial data. For instance, [60] proposed a hybrid model that integrates Recurrent Neural Networks with GNN, facilitating real-time predictions. Similarly, [61] in­troduced a hierarchical attention mechanism into GNN, thereby improving the model’s ability to analyze multi-level market dependencies and perform structured analyses of stock trends. To capture a stock’s intrinsic value more ac­curately, [62] developed a Higher-order Graph Attention Network (H-GAT), which differentiates itself by modeling complex subgraph structures involving more than two stocks and incorporating both technical and fundamental fac­tors. This approach contrasts with traditional GNNs, which typically consider only simple pairwise relationships, thus enhancing the model’s ability to reflect the intrinsic value of stocks. However, many graph-based models frequently overlook the diversity of stock price changes and the temporal dynamics inherent in these fluctuations, necessitating the development of more innovative graph-based approaches. For instance, [63] introduced a market-guided stock transformer that can dynamically simulate the instantaneous and cross-temporal correlations among stocks, leading to enhanced accuracy in stock trend predictions. Additionally, [64] successfully integrated long-term trends, short-term fluctuations, and sudden events into a cohesive graph-based framework, significantly surpassing traditional methods by accounting for the multi-scale nature of market dynamics. [65] proposed ECHO-GL, a model that leverages earn­ings call-derived relations and multimodal graph learning to predict stock movements and generate temporal price trajectories. [66] proposed the Multi-relational Dynamic Graph Neural Network (MDGNN), which integrates dis­
+crete dynamic graph modeling with Transformer-based temporal encoding to capture evolving stock relationships, demonstrating superior performance over state-of-the-art methods in stock movement prediction. [67] proposed the DANSMP model for stock movement prediction, which utilizes a Market Knowledge Graph comprising bi-typed entities and hybrid relations, combined with Dual Attention Networks to effectively capture momentum spillover sig­nals and enhance predictive accuracy. Despite their promising capabilities in stock prediction, GNNs exhibit several notable limitations. These models often struggle to effectively capture complex nonlinear relationships and account for anomalous market scenarios, which are crucial in financial forecasting. Moreover, GNN-based models tend to be sensitive to data sparsity and noise, which can undermine their robustness, especially in real-world financial datasets where missing or unreliable data is common. Additionally, certain graph-based approaches, such as those proposed by [65], [66], and [67], may face challenges in generalization due to their reliance on specific data structures and sophisticated attention mechanisms, which can lead to overfitting, particularly in environments with limited or im­balanced training data. These models, while effective in their respective domains, often struggle with scalability and flexibility when applied to diverse market conditions and broader datasets, limiting their applicability in more volatile or unpredictable markets. Thus, enhancing the robustness and generalizability of graph-based models remains a key area for improvement in stock movement prediction. 
+
+Figure 1: The architecture of the proposed model MCI-IGRU. The enhanced GRU model in Part (a) integrates an attention mechanism in place of the reset gate, greatly improving its ability to capture and learn from temporal patterns. Part (b) leverages attention mechanisms to identify and weigh relationships between stocks, effectively extracting cross-sectional features. Part (c) captures latent market conditions influencing stock behavior, allowing the model to learn and represent hidden, non-observable market states. In part (d), the final prediction process integrates these learned features, refining outcomes through optimized loss calculation for improved performance. 
+With the rapid advancements in Large Language Models (LLMs) [68, 69, 70], their application in stock prediction has garnered significant scholarly interest. LLMs, such as GPT-4, have demonstrated remarkable capabilities in nat­ural language understanding, making them highly suitable for financial sentiment analysis and predictive modeling. Research by [71] revealed a strong correlation between sentiment analysis generated by ChatGPT for news headlines and subsequent daily stock market returns, highlighting the potential of LLMs in capturing market sentiment and its impact on stock prices. This study underscores the utility of LLMs in extracting and quantifying sentiment from unstructured textual data, which can be critical for short-term stock forecasting. Moreover, the integration of LLMs with Graph Neural Networks has opened new avenues for enhancing stock prediction accuracy. For example, [72] employed ChatGPT to infer dynamic network structures from financial news, which were subsequently incorporated into a GNN for stock prediction. This approach not only leverages the linguistic prowess of LLMs in understanding and summarizing complex financial information but also capitalizes on the GNN’s ability to model intricate relation­ships between stocks. The resulting hybrid model demonstrated superior predictive performance, suggesting that the synergistic combination of LLMs and GNNs can effectively address the challenges of dynamic and interconnected financial markets. 
+3. Methodology 
+In this section, we give a detailed introduction to the MCI-GRU model proposed in this paper and the model structure is shown in Figure 1. The whole model is divided into four modules: Use Improved GRU to Capture Temporal Features (Part a), Use GAT to Capture Cross-sectional Features (Part b), Use Multi-head Cross-attention to Capture Latent State Features (Part c), Model Prediction and Loss Calculation Layer (Part d). Part(a) employs an enhanced GRU model that replaces the reset gate with an attention mechanism, significantly enhancing the model’s capacity to represent and learn from temporal data. Part(b) enhances the model by using attention mechanisms to capture and weigh the relationships between different stocks, thereby extracting cross-sectional features from the data. Part(c) captures hidden market conditions that affect stock behavior, enabling the model to learn and characterize latent, non-directly observable market state features. Part(d) refines the final predictions by integrating the learned features and calculating the loss to optimize model performance. In the following subsections, we first give the pre-definition and then introduce each module in detail. 
+3.1. Predefinition 
+We consider a collection of stocks denoted by the set S = {s1, s2, ··· , sN }, where each si represents an individual stock, and N is the total number of stocks within the dataset. For any stock si, the data associated with the t-th trading 
+o 
+open close high low volume , xturnover open close high low volume 
+day is represented by the vector xit = x , x , x , x , x , where x , x , x , x , x
+it it ititit it it it it itit 
+turnover 
+and xit correspond to the opening price, closing price, highest price, lowest price, trading volume, and turnover amount on day t, respectively. We let dx denote the number of features used to describe each stock on each day. The time series data for stock si over t days is encapsulated in the set xi = {xi1, xi2,..., xit}. Collectively, the dataset for all stocks is represented as X = {x1, x2,..., xN }. 
+3.2. Use Improved GRU to Capture Temporal Features 
+In time series prediction tasks, the GRU model has been widely employed due to its capability to capture temporal dependencies within sequential data effectively. However, traditional GRU models have certain limitations in captur­ing complex temporal relationships, particularly when dealing with long-term dependencies, where they may struggle to extract deeper features from the sequence. To address this, the present work utilizes an enhanced GRU model, incorporating an attention mechanism in place of the reset gate, thereby improving the model’s ability to represent and learn from temporal data. 
+3.2.1. Basic Structure of the GRU 
+In the classical GRU model, the hidden state ht is updated through two gating mechanisms: the update gate zt and the reset gate rt. The formulas are as follows: 
+zt = s(Wzxt + Uzht-1 + bz) 
+(1)
+rt = s(Wrxt + Urht-1 + br) 
+where xt . Rdx denotes the input of the stock at the current time step, ht-1 . Rdh represents the hidden state from the previous time step and dh represents the dimension of the hidden state. Wz . Rdh×dx , Uz . Rdh×dh , Wr . Rdh×dx and Ur . Rdh×dh are weight matrices. bz . Rdh and br . Rdh are bias terms, and s is the activation function, typically the sigmoid function. zt . Rdh and the reset gate rt . Rdh is employed to regulate the influence of the previous time step’s hidden state ht-1 when computing the candidate’s hidden state h˜t . Rdh at the current time step, as detailed by the following formula: 
+h˜t = tanh(Whxt + rt . (Uhht-1) + bh) (2) 
+where Wh . Rdh×dx , Uh . Rdh×dh are weight matrices. bh . Rdh is bias terms and . denotes element-wise multiplica­tion. Ultimately, the hidden state ht at the current time step is controlled by the update gate zt, as shown below: 
+ht = (1 - zt) . ht-1 + zt . h˜t (3) 
+In these equations, the reset gate rt determines how much the previous time step’s hidden state ht-1 is “reset” at the current time step. However, this mechanism exhibits certain limitations in capturing long-term dependencies. 
+3.2.2. Introduction of the Improved GRU 
+To overcome the aforementioned limitations, the proposed model introduces an attention mechanism to replace the traditional reset gate rt in GRU. The attention mechanism dynamically allocates weights to different time steps in the sequence, thereby capturing critical information within the time series data more precisely. Specifically, the traditional reset gate rt is replaced with an attention-based weight coefficient at, computed as follows: 
+at = Attention(ht-1, xt) (4) 
+where at . R is the attention weight vector. The core idea of the attention mechanism is to allocate attention weights by calculating the similarity between the query, key, and value. In this model, the hidden state ht-1 . Rdh from the previous time step is treated as the query, while the current time step’s input xt serves as both the key and value. Attention calculation includes three parts: Linear Transformations of Query, Key, and Value, Weighted Sum, and Attention Weight Calculation. The specific implementation and mathematical formula are as follows: 
+• Linear Transformations of Query, Key, and Value: First, the hidden state ht-1 and the input xt are linearly transformed into query, key, and value spaces respectively: 
+qt = Wqht-1, kt = Wkxt, vt = Wvxt (5) 
+where Wq . Rdq×dh , Wk . Rdk×dh and Wv . Rdv×dh are learnable linear transformation matrices. qt . Rdq and dq represent the dimensions of the query, which is used to calculate the attention weight. kt . Rdk and dk represents the dimensions of key. vt . Rdv and dv represents the dimension of value, which is usually the same as dq and dk, that is, dq = dk = dv. 
+• Attention Weight Calculation: The attention weights are obtained by computing the dot product similarity between the query and key: 
+qtk. 
+t
+at = so ftmax( v ) (6)dk 
+where dk is used to scale the dot product results to prevent numerical instability. 
+• Weighted Sum: The final reset gate value is derived from a weighted sum of the values, using the attention weights: 
+r ' = atvt (7)
+t 
+where the new r '. Rdv dynamically selects the most important parts of the current input xt and the previous 
+t hidden state ht-1, thereby enhancing the model’s ability to capture long-term dependencies. 
+3.2.3. Update of the Hidden State 
+The calculation of the update gate zt remains unchanged. With the new reset gate rt ' , the update formula for the GRU’s hidden state is adjusted as follows: 
+h˜' 
+= tanh(Whxt + r '. (Utht-1) + bh)
+tt 
+(8)ht = (1 - zt) . ht-1 + zt . h˜ t ' 
+where zt is the update gate. This updated hidden state calculation integrates the dynamic information selection capa­bility provided by the attention mechanism, allowing the model to better extract long-term dependency information and key features from the time series data. 
+3.2.4. Final Output 
+Through recursive computation over multiple time steps, the enhanced GRU model generates a final sequence of hidden states H = [h1, h2,..., ht], where each ht incorporates information from past time steps, with increased focus on important time steps due to the attention mechanism. For subsequent processing, the final hidden state ht is typically taken as the representation vector for the entire sequence, denoted as A1 . RN×dh . This output A1 is then used as input for further feature extraction and model learning in the next processing stage. 
+3.3. Use GAT to Capture Cross-sectional Features 
+The Graph Attention Network is a key component in the model architecture, responsible for extracting cross-sectional features from the data by capturing the relationships between different stocks. GAT extends the traditional Graph Convolutional Network by incorporating attention mechanisms, allowing the model to assign different levels of importance to different nodes (stocks) in the graph based on their relationships. 
+3.3.1. Input Representation 
+In this model, the input to the GAT layer is a matrix representing the features of all stocks at a specific time step. The input matrix has dimensions (N, dx), N is the number of stocks that represent the nodes in the graph, and dx is the dimensionality of the feature vector for each stock. This input representation is derived from the origin stock data. Hence, the GAT layer particularly focuses on capturing the cross-sectional dependencies between stocks. 
+3.3.2. Graph Construction 
+The graph in the GAT layer is constructed where each node represents a stock, and the edges between nodes represent the relationships between these stocks. The edges’ weights, or the relationships’ strengths, are determined by the historical correlations of the stocks’ returns over the past year. These correlations are typically computed using Pearson correlation or other statistical measures. We calculate the historical correlation of stock returns over the past year for any two stocks si and sj to determine the strength of their relationship. First, let ri(t ') and rj(t ') represent the returns of stocks si and sj at time t, where t ' = 1, 2,..., T denotes the number of trading days in the past year (e.g., 252 trading days per year). The returns are typically calculated using the log return formula: 
+close close 
+x - x
+it' i(t '-1)
+ri(t ' ) = (9)
+close xi(t '-1) 
+where ri(t ') represents the closing price of the stock si at time t ' . Next, we compute the Pearson correlation coefficient .(si, sj) between the return series of the two stocks, which measures their linear correlation. The Pearson correlation coefficient is given by the following formula: 
+T 
+=1(ri(t ') - r¯i)(rj(t ') - r¯j).(si, sj) = Tt ' T (10) t ' =1(ri(t ') - r¯i)2 t ' =1(rj(t ') - r¯j)2 
+where r¯i and r¯j represent the average returns of stocks si and sj over the past year. Based on this correlation coefficient .(si, sj), we assign an edge weight to represent the strength of the relationship between stocks si and sj. The weight wi, j is typically set to .(si, sj). To optimize the learning process, not all relationships are included in the graph. Instead, threshold-based filtering is applied using a parameter known as judgevalue. This parameter allows the model to retain only edges that represent significant relationships, effectively reducing noise and focusing the model on the most relevant connections. 
+3.3.3. Attention Mechanism in GAT 
+The core of the GAT layer lies in its attention mechanism, which dynamically computes the importance (attention coefficients) of each node’s neighbors when aggregating information. For each node i in the graph, the GAT layer performs the following operations: 
+• Linear Transformation: Each node’s feature vector xit is linearly transformed using a learnable weight matrix Wg: 
+hi ' = Wgxit (11) 
+where xit is the date of the stock si in time t, Wg . Rdg×dx , h ' i . Rdg is the transformed feature vector. dg is the dimension of the hidden layer. 
+• Attention Coefficients Calculation: The attention coefficients between stock i and its neighbor j are computed using the following equation: 
+= LeakyReLU(a.[hi '||h ' j]) (12)
+ei j 
+where a . R2dg is a learnable attention vector, || denotes concatenation, LeakyReLU is a non-linear activation function that introduces non-linearity to the attention computation. 
+• Normalization: The attention coefficients are then normalized across all neighbors of node i using the softmax function: 
+exp(eij)sij = P (13) 
+k.N(i) exp(eik) 
+where sij is the normalized attention score between stock i and stock j, Ni denotes the set of neighbors of the node i. 
+• Feature Aggregation: Finally, the node’s updated representation is computed as a weighted sum of its neighbors’ transformed features, weighted by the normalized attention coefficients: 
+X 
+hi '' = s( sijh ' j) (14) j.N(i) 
+where s is a non-linear activation function, typically ReLU. 
+3.3.4. Output of the GAT Layer 
+The final output of the GAT layer is a matrix A2 . RN×dg , where each row corresponds to the updated feature vector of stock, now enriched with information from its neighbors. This output captures the cross-sectional dependencies between stocks and serves as the input to the next stage of the model, where the market latent state learning layer further processes these features. 
+3.4. Use Multi-head Cross-attention to Capture Latent State Features 
+The Market Latent State Learning Layer is a crucial component of the model, designed to capture and represent the latent states of the market that are not directly observable from the raw data. This layer is specifically tailored to model the underlying market conditions that influence stock behavior, allowing the model to better understand and predict stock movements by leveraging these hidden states. 
+3.4.1. Initialization of Market Latent States 
+The process begins with the initialization of a set of learnable market latent state vectors. These vectors are meant to represent different latent market conditions or factors that could be driving stock prices. The initialization is as follows: 
+• 
+Number of Latent States (dr): The model initializes dr latent state vectors, where dr is a hyperparameter. This parameter determines the number of latent states, and it is typically adjusted based on the complexity of the modeled market. A larger dr allows the model to capture a wider variety of potential market factors, thereby enhancing its representational capacity. However, a dr that is too large could increase computational costs and introduce the risk of overfitting. Therefore, selecting an appropriate dr value is crucial, and it is usually obtained through cross-validation or experimental adjustments to achieve the best performance. In this paper, we set it to 16. 
+
+• 
+Latent State Dimension (di): The dimension of each latent state vector is di, which should match the dimension­ality of the stock features learned by the model in previous layers such as the GRU and GAT layers. Ensuring that di is consistent with the output dimensions of the earlier layers allows these latent state vectors to interact effectively with other layers. The choice of di typically depends on the needs of the model and the characteris­tics of the data. A larger di provides more representational power but may increase computational complexity. We set it to 32 In this paper. 
+
+
+The initialized latent state vectors are denoted as R1 . Rdh×di and R2 . Rdh×di , corresponding to the two main types of information processed by the model: time series information (from the improved GRU output A1 and cross-sectional information (from the GAT output A2. These two types of information play different roles in the model, ensuring that the model can fully capture the dynamic changes in the market. The dimensions of R1 and R2 are both (dr, di), ensuring their representational capacity and enabling effective interaction with subsequent network layers. 
+3.4.2. Multi-head Cross-Attention Mechanism 
+The core of the market latent state learning process involves a multi-head cross-attention mechanism. This mech­anism allows the latent state vectors to interact with the outputs from the Improved GRU and GAT layers, effectively absorbing the relevant information from these outputs and refining the latent state representations. 
+Multi-head Cross-Attention between R1 and A1: In the multi-head cross-attention mechanism, the interaction between A1 and R1 can be modeled through the cross-attention process, where A1 is used as the query and R1 is used as the key and value. Using A1 as the query and R1 as both the key and value follows the natural logic of information processing, where A1 guides the update of R1, allowing effective integration of time series information into the latent state. Using R1 as the query is logically flawed for two reasons: the information flow is reversed, as A1 should influence R1, and R1, being randomly initialized, lacks a clear objective as a query target. The goal is to refine R1 using A1, not the other way around. Here’s how the multi-head cross-attention mechanism operates between A1 and R1: 
+• Linear Transformations: For each attention head i, we compute the attention scores between A1(Query) and R1(Key and Value) as follows: 
+Qi = A1WiQ , Ki = R1WiK , Vi = R1WiV (15) 
+where A1 . RN×dh , R1 . Rdr×di and we set dh = di. For head i, WQ . Rdh×dh ' is the learnable weight matrix for 
+i queries, WK . Rdh×dh ' is the learnable weight matrix for keys, WV . Rdh×dh ' is the learnable weight matrix for 
+ii dh
+values. Qi . RN×dh ' , Ki . Rdr×dh ' and Vi . Rdr×dh ' . dh' = h' is the dimension of each attention head and h' is the number of attention heads. 
+• Scaled Dot-Product Attention: For each head i, we compute attention scores between the query A1 and the key R1 as follows: 
+QiK. headi = Attention(Qi, Ki, Vi) = softmax( v i )Vi (16)dh' 
+where QiK.. RN×dr gives the attention weights, v1 dh ' is the scaling factor to avoid overly large dot-product 
+i 
+values. The softmax function ensures that the attention weights sum to 1. 
+• Concatenation of Attention Heads: After computing attention for each of the h' heads, the outputs of all heads are concatenated: 
+B1 = MultiHead(A1, R1) = Concat(head1,..., headh' )WO (17) 
+where WO is a learnable matrix used to project the concatenated results into the output space. The final output after applying the multi-head cross-attention mechanism between A1 and R1 is B1 . RN×dh , which captures complex relationships between the two sets of features. 
+• Calculation and update process of R1: During the model training process, the update of R1 is achieved by calculating the gradient of the loss function with respect to R1 through backpropagation. First, the model generates predictions through a forward pass and calculates the loss between the predictions and the actual values. Common loss functions include Mean Squared Error. Through the backpropagation algorithm, we can compute the gradient of the loss function L with respect to R1, i.e., .. RL 1 . Since R1affects the output of subsequent layers, the gradient of the loss function is propagated back to R1 through the chain rule. During backpropagation, the gradients of the loss function with respect to Ki and Vi will propagate back to R1, and the gradient computation is as follows: 
+h'
+
+.L .L .Ki 
+= · 
+.R1 i=1 .Ki .R1 
+h' (18)
+
+.L .L .Vi 
+= · 
+.R1 i=1 .Vi .R1 
+In practice, the gradient is propagated through the keys (Ki) and values (Vi) of each attention head and finally aggregated back to R1. The gradient is computed based on the linear dependencies Ki = R1WK and Vi = R1WV .
+ii 
+Once the gradient of the loss function with respect to R1 is calculated, the model updates R1 using the gradient descent algorithm. The update rule is: 
+.L
+R1 = R1 - . · (19)
+.R1 
+where . is the learning rate, controlling the step size of the parameter update. Through this process, R1 is adjusted according to the gradient calculated by backpropagation, allowing it to more effectively represent the latent market states and capture the complex patterns in the data. 
+Multi-head Cross-Attention between R2 and A2: The second multi-head cross-attention operation is performed similarly, but this time between the latent state vectors R2 and the GAT output A2. By a similar method, we calculated B2 . RN×dg . 
+3.4.3. Integration of Market Latent States 
+After the multi-head cross-attention mechanisms have been applied, the outputs B1 and B2 are considered to be enriched latent state representations. These vectors now capture the essential time series and cross-sectional features of the market, making them powerful representations for subsequent tasks, such as predicting stock movements or identifying market regimes. 
+3.5. Model Prediction and Loss Calculation Layer 
+The Loss Calculation Layer is the final stage of the model and is responsible for synthesizing the outputs from pre­vious layers and generating predictions. This layer also defines how the model is trained by computing the difference between the predicted values and the ground truth, which is then minimized during the training process. 
+3.5.1. Input Composition 
+The inputs to the Loss Calculation Layer are the outputs from three key components of the model: the time-series representation A1, the cross-sectional representation A2, and the latent market state representations B1 and B2. Time-Series Representation A1 comes from the improved GRU layer, which captures time-series dependencies in the stock data. Cross-sectional representation A2 comes from the GAT layer, which models the relationships between stocks based on their inter-stock correlations. Latent Market State Representations B1 and B2 come from the Market Latent State Learning Layer, representing the hidden market factors learned from the time series and cross-sectional data. 
+To prepare for the final prediction, the model concatenates these outputs to form a comprehensive feature vector that integrates all relevant information. The concatenation can be expressed as: 
+Z = Concat(A1, A2, B1, B2) (20) 
+where Z . RN×dz is the combined feature vector that will be used for the final prediction, and dz = 2dh + 2dg depends on the individual dimensions of A1, A2, B1 and B2. 
+3.5.2. Final Prediction with GAT Layers 
+Once the feature vector Z is obtained, it is passed through additional GAT layers to make the final prediction. The purpose of these layers is to refine the concatenated features by considering the relationships between stocks (nodes) in a graph structure, as GAT layers are well-suited to modeling graph-structured data. The GAT layers in this part of the model function similarly to the earlier GAT layers, but they now operate on a more comprehensive set of features, combining both temporal and cross-sectional information, as well as the latent market state representations. The structure of the GAT layers can be described as follows: 
+• 
+Graph Construction: The graph’s structure is the same as in the earlier GAT layer. The nodes represent indi­vidual stocks, and the edges represent relationships between the stocks based on their historical correlations over the past year. These correlations are filtered using the judge value threshold, a tunable parameter that determines which relationships are included in the graph. 
+
+• 
+Attention Mechanism: The attention mechanism calculates the importance of each stock’s neighbors using the following equation: 
+
+
+e ' = LeakyReLU(a'.)[WzZi||WzZj]) (21)
+ij 
+×dz
+where Zi . Rdz and Zj . Rdz are the concatenated feature vectors of stock i and stock j, Wz . Rdz ' is 
+' 
+a learnable weight matrix, a is a learnable attention vector, || represents concatenation, dz ' is the size of the dimension.. The attention scores are then normalized across all neighboring stocks using a softmax function: 
+exp(e ' )
+' ij 
+s = P (22)
+ij ' 
+k.N'(i) exp(e )
+ik 
+where N' denotes the set of neighbors of the node i.
+i 
+• Feature Aggregation: The final output for each stock is computed as a weighted sum of its neighbors’ features, with the attention weights sij ' determining the contribution of each neighbor: 
+X 
+'' 
+Z = sijWzZj (23)
+i j.N'(i) 
+where Z '. Rdz ' effectively integrates information from neighboring stocks, leading to a refined feature repre­
+i 
+sentation that incorporates both temporal, cross-sectional, and latent market features. 
+• Dimensionality Reduction: Put the output Zi ' of the first GAT layer into the second GAT layer to reduce the dimension. The calculation method is the same as above, and the final output Z '' is obtained as the prediction 
+i 
+result of each stock. 
+Although both GATs are used, their roles differ. The first GAT focuses on extracting cross-sectional information, capturing static dependencies between stocks based on historical correlations, and generating A2. The second GAT, with input Z (a fusion of multiple features), handles multimodal information fusion, captures higher-order relation­ships, and refines features. It combines information from different sources, learns complex correlations like indirect and dynamic relationships, and performs dimensionality reduction for more compact and efficient feature representa­tions for final prediction. 
+3.5.3. Loss Function 
+After the final prediction is obtained from the GAT layers, the next step is to compute the loss, which measures the difference between the model’s predicted stock returns and the actual values. The choice of the loss function is critical, as it guides the model’s training process and influences its performance. In this model, we use mean squared error (MSE) for stock prediction tasks. It is defined as: 
+N
+X 
+'' 
+Loss = 1(Z - yi)2 (24)
+i
+N 
+i=1 
+where Zi '' is the predicted value for the stock i and yi is the actual value. During training, the model parameters are optimized to minimize the chosen loss function, leading to better predictive performance over time. We use Adam as a gradient-based optimization algorithm to update the model’s parameters. 
+4. Experiments 
+In this section, we will thoroughly discuss the experimental design, including the experimental setup, baseline models, results, parameter sensitivity analysis, ablation studies, and case analysis. The experimental setup section specifically covers the datasets, evaluation metrics, and model parameters. 
+Table 1: Details of the CSI 300, CSI 500, NASDAQ 100, and S&P 500 dataset. 
+Stock Market  CSI300  CSI500  
+Number of Stocks  285  450  
+Year Established  2005  2007  
+Industry Coverage  Broad Coverage  Broad Coverage  
+Market Cap Range  Large Cap  Mid & Small Cap  
+Representative Companies  ICBC, Vanke  Citic Bank, Shuanghui  
+Market  China A-Share  China A-Share  
+Calculation Method  Free-float Market Cap Weighted  Free-float Market Cap Weighted  
+Coverage Ratio  Covers 70% of China’s A-share market cap  Covers 85% of China’s A-share market cap  
+
+Stock Market  NASDAQ100  S&P500  
+Number of Stocks  99  498  
+Year Established  1985  1957  
+Industry Coverage  Primarily Tech  Broad Coverage  
+Market Cap Range  Large Cap  Large Cap  
+Representative Companies  Apple, Microsoft  Apple, Amazon  
+Market  US Stock Market  US Stock Market  
+Calculation Method  Free-float Market Cap Weighted  Free-float Market Cap Weighted  
+Coverage Ratio  Covers 90% of NASDAQ’s total market cap  Covers 80% of NYSE and NASDAQ total market cap  
+
+4.1. Experimental Setttings 
+4.1.1. Datasets 
+We employ four distinct stock market datasets to rigorously assess the robustness and generalizability of our model across varying market conditions, the details of the dataset are shown in Table 1. Our selection encompasses the Shanghai-Shenzhen CSI 3001 and CSI 5002 datasets, which provide comprehensive coverage of the Chinese market’s large-cap and mid-cap sectors, respectively. These datasets enable a detailed exploration of the dynamics within one of the world’s largest and most complex financial markets. In contrast, the S&P 5003 dataset represents 500 leading companies across the U.S. market, offering insights into a broad and diverse economic landscape. Additionally, the NASDAQ 1004 dataset highlights the top 100 non-financial firms listed on the NASDAQ, with a particular focus on the technology sector’s rapidly evolving dynamics. Collectively, these datasets provide a comprehensive view of different market behaviors and geographic regions, thereby supporting a robust evaluation of our model’s predictive capabilities across varied financial contexts. 
+We structure our datasets following a temporal sequence, dividing them into distinct phases for training (from January 1, 2018, to December 31, 2021), validation (from January 1, 2022, to December 31, 2022), and testing (from January 1, 2023, to December 31, 2023). In our forecasting approach, we employ features derived from the previous 60 trading days to predict stock return rankings over the next 21 trading days. This methodology closely mirrors the decision-making process in real-world trading scenarios. For the baseline analysis, we utilize data from the four aforementioned stock markets, concentrating on six key financial indicators: open price, close price, high price, low price, turnover, and volume. We commence by implementing procedures for outlier detection and normalization to ensure data integrity and reduce the impact of anomalous values. Following this, we calculate the daily return for each stock as the label during training, defined as the percentage change between the closing prices of consecutive trading days. 
+4.1.2. Evaluation Metrics 
+The trading strategy simulated by our model is outlined as follows: 
+1https://cn.investing.com/indices/csi300 2https://cn.investing.com/indices/china-securities-500-historical-data 3https://hk.finance.yahoo.com/quote/%5EGSPC/history/ 4https://hk.finance.yahoo.com/quote/%5EIXIC/history 
+• 
+At the close of trading day t, the model generates a prediction score for each stock, ranking them based on the expected rate of return. 
+
+• 
+At the opening of trading day t + 1, traders liquidate the stocks purchased on day t and acquire those ranked in the top-k for expected returns. 
+
+• 
+If a stock consistently ranks among the highest expected returns, it remains in the trader’s portfolio. 
+
+• 
+Transaction costs are excluded from consideration in this simulation. 
+
+
+In order to improve the reliability of the evaluation, we conduct ten training and predictions for each method and take the average result of the ten times as the final prediction result, and then trade the strategy. 
+The primary objective is to identify stocks with the highest returns and to evaluate the performance of both the baseline and our proposed model, we employ six key financial metrics: 
+• Annualized Rate of Return (ARR): This core metric aggregates the daily returns of selected stocks over a year, 
+t+1 
+T
+indicating the effectiveness of the investment strategy. It is computed as ARR = ( (1 + rt))252 - 1, where rt
+T 
+is the daily return and T is the total number of trading days in the year. 
+• Annualized Volatility (AVoL): This metric captures the annualized standard deviation of daily returns, repre­senting the risk associated with the strategy. It is calculated as AVoL = std( Pt - 1) *v 252, where Pt and Pt-1
+Pt-1 
+are the stock prices on day t and day t - 1, respectively. 
+• Maximum Drawdown (MDD): MDD measures the most substantial decline from a peak to a trough during the 
+(maxi.[1,t] Pi-Pt
+testing period, indicating the strategy’s potential risk of loss. It is computed as max ), where Pt is 
+maxi.[1,t] Pi
+t.[1,T] 
+the price of the stock at time t, and T is the length of the period. 
+• Annualized Sharpe Ratio (ASR): This metric evaluates the return per unit of volatility and is calculated as 
+ARR
+AS R = AVoL , reflecting the risk-adjusted performance of the strategy. 
+• Calmar Ratio (CR): CR assesses the return relative to the maximum drawdown, calculated as CR = ARR 
+|MDD| , 
+offering insight into the return-risk trade-off. 
+• Information Ratio (IR): This metric measures the excess return per unit of additional risk, further refining the 
+mean(rt-rf,t)
+assessment of the strategy’s risk-adjusted performance. It is calculated as IR = std(rt-rf,t) , where rt is the portfolio return at the time t and rf,t is the return of a benchmark or risk-free asset at the same time. 
+Together, these metrics form a comprehensive framework for evaluating both the performance and risk profile of the investment strategies. Higher values of ARR, ASR, CR, and IR, coupled with lower values of AVoL and MDD, signify superior performance. 
+4.1.3. Parameter Settings 
+We configure the time window t to include the historical stock data from the previous 10 days as the model’s input for training. The model architecture consists of four primary components, each designed to capture different patterns in financial time series. Each of these components contains its own set of parameters, as summarized in Table 2. 
+In the “Use Improved GRU to Capture Temporal Features” module, we incorporate an attention mechanism to replace the traditional reset gate in the GRU framework. This module consists of two layers: the first layer contains 32 neurons, and the second layer contains 10 neurons. The output of this module is represented as A1, which is responsible for extracting temporal dependencies from the stock data within the historical window. In the “Use GAT to Capture Cross-sectional Features” module, the architecture consists of two layers, each with tunable parameters. The number of attention heads is a key factor affecting the model’s expressive capability, and it was fine-tuned through experiments. We tested four values: 2, 4, 6, and 8, and ultimately chose 4. The initial GAT layer consists of 32 neurons and 4 attention heads, while the second GAT layer reduces the feature dimension to 4 neurons. The relationships between the stock nodes in the graph are defined based on the correlation of stock returns from the previous year. During training, a threshold value of judgevalue = 0.8 is used to filter stock pairs with significant correlations. The 
+Table 2: Experimental parameter summary table. 
+Module Name  Parameter Name  Value  
+Use Improved GRU to Capture Temporal Features  number of GRU layers number of neurons in the first layer number of neurons in the second layer  2 32 10  
+Use GAT to Capture Cross-sectional Features  number of GAT layers number of neurons in the first layer number of neurons in the second layer number of attention heads threshold for connecting stock nodes judgevalue  2 32 4 4 0.8  
+Use Multi-head Cross-attention to Capture Latent State Feature  number of latent states dr dimension of each latent state di  32 16  
+Model Prediction and Loss Calculation Layer  number of GAT layers number of neurons in the first layer  1 32  
+Training Process  batch size loss function optimizer learning rate  32 MSE adam 0.0002  
+
+judgevalue parameter was optimized through experimental tuning, testing values of 0.2, 0.4, 0.6, 0.8, and 1.0, with 0.8 being the final choice. The output of the GAT layer is represented as A2, which captures the structural dependencies inherent in the stock correlation graph. In the “Use Multi-head Cross-attention to Capture Latent State Feature” module, two learnable market latent state vectors, R1 . Rdh×di and R2 . Rdh×di , are initialized, both with dimensions (32, 16). The choice of the hyperparameters dr (number of latent states) and di(dimension of each latent state) is typically influenced by the complexity of the data and the task requirements. We optimized these parameters through grid search to balance computational efficiency and model expressiveness. We tested dr values of 8, 16, 24, 32, and 40, ultimately selecting 32. For di, we tested values of 4, 8, 12, 16, and 20, with 16 being chosen as the final value. The multi-head cross-attention mechanism involves interactions between R1 and A1, as well as R2 and A2, producing representation vectors B1 and B2. With 4 attention heads, the multi-head cross-attention mechanism encapsulates latent market states by leveraging temporal and structural features derived from the stock data. Finally, the “‘Model Prediction and Loss Calculation Layer” integrates the outputs A1, A2, B1, and B2. These outputs are concatenated and passed through one additional layers of GAT for final prediction. This final module is responsible for predicting future stock trends by merging both temporal and relational information. 
+The batch size of 32 is chosen based on experimental tuning. While 32 is a commonly used value and works well for most models, we acknowledge that it can influence the stability and efficiency of the training process. We selected 32 as a compromise, ensuring efficient utilization of computational resources while avoiding excessively large variance during training. Future research may further explore different batch sizes through experiments to optimize performance for specific tasks and datasets. For the loss function, we used Mean Squared Error (MSE), which is the most common choice for regression tasks, particularly when the target variable is continuous. We opted for MSE because it provides stable performance in most regression tasks and effectively measures the squared error of predictions. The Adam optimizer was chosen due to its strong performance across various deep learning tasks, particularly its adaptability in the optimization process, which allows for good convergence with minimal tuning. The initial learning rate of 0.0002 was determined through preliminary experiments, with smaller learning rates typically ensuring stable convergence. This value was selected based on its performance in our experiments but can be adjusted depending on the specific task at hand. For practical application, each trading day a virtual investment portfolio is constructed, comprising the top 10 stocks ranked by the model’s predicted returns. 
+4.2. Baseline Models 
+We conduct a comparative analysis between our proposed MCI-GRU model and a range of baseline models, which include prominent approaches in both traditional machine learning and deep learning for time series prediction, as well as reinforcement learning for portfolio management. 
+• 
+BLSW [73]: Implements a mean reversion trading strategy, which assumes that asset prices will revert to their historical average over time, making it particularly effective in markets with cyclical behavior. 
+
+• 
+Cross-Sectional Mean Reversion (CSM) [64]: Adopts a momentum-based approach by identifying assets that exhibit persistent price trends, and positioning trades in alignment with these trends, thereby capitalizing on short-term market movements. 
+
+• 
+LSTM [74]: A widely used recurrent neural network model for time series forecasting, which captures temporal dependencies through its memory cell mechanism. 
+
+• 
+ALSTM [75]: An enhanced version of LSTM, which incorporates dual attention mechanisms, one for adap­tively selecting relevant features and another for focusing on significant time steps, thereby improving prediction accuracy by concentrating on key information. 
+
+• 
+GRU [76]: A simplified variant of LSTM, using fewer gating mechanisms to streamline the learning process and improve computational efficiency while maintaining strong performance in sequence prediction tasks. 
+
+• 
+Transformer [77, 78]: Utilizes a multi-head self-attention mechanism to capture long-range dependencies in time series data, with the ability to process entire sequences in parallel, offering scalability and improved performance over recurrent architectures. 
+
+• 
+TRA [79]: Introduces a novel dynamic routing mechanism within the Transformer architecture, enabling the model to adaptively learn temporal patterns in stock prices, improving its ability to capture diverse market trends. 
+
+• 
+CTTS [80]: Combines convolutional neural networks (CNNs) with Transformer layers to capture both local feature patterns and global temporal dependencies in financial data, providing a hybrid approach to time series forecasting. 
+
+• 
+A2C [81]: A deep reinforcement learning method employing parallel actor-learners and asynchronous gradient descent for policy optimization, facilitating efficient exploration and exploitation in large action spaces. 
+
+• 
+DDPG [82]: A deterministic deep reinforcement learning algorithm that extends DQN by incorporating policy gradients, designed specifically for continuous action spaces, leveraging an off-policy actor-critic architecture for stable learning. 
+
+• 
+PPO [83]: Optimizes policies using a clipped surrogate objective, balancing policy exploration and stability through mini-batch updates, making it robust in volatile market environments. 
+
+• 
+TD3 [84]: Builds on DDPG by introducing three key innovations: twin Critic networks to reduce overestimation bias, delayed updates to the Actor-network for stability, and adding noise to the policy during training to improve exploration. 
+
+• 
+SAC [85]: An off-policy deep reinforcement learning approach that incorporates entropy regularization to en­courage exploration, optimizing a stochastic policy for continuous actions, with dual Critic networks to improve value estimation accuracy. 
+
+• 
+FactorVAE [86]: Integrates dynamic factor models with a variational autoencoder, enabling the prediction of cross-sectional stock returns by modeling latent factors that drive asset price movements. 
+
+• 
+AlphaStock [55]: A hybrid model that combines deep learning and reinforcement learning with a cross-asset attention mechanism to capture the intricate relationships between assets, enhancing stock prediction accuracy by exploiting interdependencies. 
+
+• 
+DeepPocket [87]: Merges graph neural networks, autoencoders, and reinforcement learning in a unified frame­
+work, focusing on managing financial portfolios by modeling the latent relationships between assets for dynamic decision-making. 
+
+
+Table 3: Comparing the experimental results of the models on CSI 300 and CSI 500 datasets. ARR measures the portfolio return rate of each predictive model, with higher values being better. AVol and MDD measure the investment risk of each predictive model, with lower absolute values being better. ASR, CR, and IR measure profits under unit risk, with higher values being better. 
+Datasets 
+CSI 300 
+CSI 500 
+Model ARR . AVol . MDD . ASR . CR . IR . MSE . MAE . 
+ARR . AVol . MDD . ASR . CR . IR . MSE . MAE . 
+BLSW  -0.076 0.113 -0.231 -0.670 -0.316 0.311 0.078 0.090  0.110 0.227 -0.155 0.485 0.710 0.446 0.033 0.064  
+CSM  -0.185 0.204 -0.293 -0.907 -0.631 -0.935 0.093 0.124  0.015 0.229 -0.179 0.066 0.084 0.001 0.049 0.098  
+LSTM  -0.214 0.175 -0.275 -1.361 -0.779 -1.492 0.108 0.142  -0.008 0.159 -0.172 -0.047 -0.044 -0.128 0.065 0.118  
+ALSTM  -0.216 0.164 -0.294 -1.314 -0.735 -1.461 0.112 0.148  0.016 0.162 -0.192 0.101 0.086 0.014 0.045 0.093  
+GRU  -0.229 0.156 -0.290 -1.469 -0.790 -1.631 0.123 0.155  -0.004 0.159 -0.193 -0.028 -0.023 -0.118 0.062 0.112  
+Transformer  -0.240 0.156 -0.281 -1.543 -0.855 -1.695 0.131 0.159  0.154 0.156 -0.135 0.986 1.143 0.867 0.025 0.053  
+TRA  -0.074 0.169 -0.222 -0.436 -0.332 -0.409 0.079 0.088  0.125 0.162 -0.145 0.776 0.866 0.657 0.030 0.062  
+CTTS  -0.193 0.206 -0.312 -0.937 -0.618 -0.907 0.095 0.129  -0.041 0.172 -0.239 -0.241 -0.173 -0.237 0.078 0.131  
+A2C  -0.207 0.092 -0.259 -2.255 -0.803 -2.490 0.099 0.137  -0.172 0.084 -0.208 -2.043 -0.826 -2.207 0.098 0.166  
+DDPG  -0.137 0.138 -0.240 -0.992 -0.568 -1.002 0.087 0.106  -0.128 0.082 -0.170 -1.563 -0.756 -1.639 0.088 0.145  
+PPO  -0.096 0.045 -0.120 -2.138 -0.800 -2.234 0.083 0.096  -0.032 0.015 -0.040 -2.041 -0.787 -2.075 0.073 0.127  
+TD3  -0.154 0.137 -0.252 -1.122 -0.610 -1.155 0.090 0.115  -0.123 0.135 -0.248 -0.912 -0.496 -0.909 0.085 0.139  
+SAC  -0.140 0.090 -0.207 -1.554 -0.676 -1.635 0.086 0.109  -0.167 0.081 -0.207 -2.057 -0.807 -2.219 0.095 0.158  
+FactorVAE  -0.048 0.134 -0.175 -0.335 -0.271 -0.348 0.071 0.085  0.006 0.127 -0.147 0.047 0.041 0.112 0.055 0.103  
+AlphaStock  -0.164 0.153 -0.245 -1.072 -0.669 -1.098 0.092 0.112  -0.017 0.148 -0.166 0.115 -0.102 -0.043 0.069 0.122  
+DeepPocket  -0.036 0.135 -0.175 -0.270 -0.207 -0.258 0.065 0.080  0.006 0.127 -0.148 0.050 0.043 0.115 0.056 0.104  
+DeepTrader  -0.122 0.147 -0.229 -0.828 -0.533 -0.876 0.084 0.102  0.055 0.168 -0.141 0.324 0.388 0.370 0.039 0.072  
+THGNN  -0.015 0.172 -0.152 -0.088 -0.100 -0.003 0.043 0.071  0.048 0.128 -0.141 0.375 0.340 0.432 0.045 0.078  
+VGNN  -0.037 0.163 -0.197 -0.227 -0.188 -0.201 0.061 0.082  0.111 0.166 -0.175 0.668 0.636 0.564 0.031 0.063  
+MASTER  0.102 0.151 -0.126 0.681 0.811 0.726 0.057 0.078  0.128 0.130 -0.098 0.989 1.308 0.997 0.028 0.057  
+CI-STHPAN  -0.078 0.167 -0.144 -0.466 -0.538 -0.355 0.075 0.092  0.021 0.151 -0.129 0.136 0.161 0.211 0.053 0.088  
+CL  -0.035 0.148 -0.183 -0.241 -0.195 -0.193 0.063 0.078  0.051 0.146 -0.128 0.351 0.401 0.390 0.041 0.075  
+MCI-GRU  0.352 0.226 -0.127 1.559 2.776 1.526 0.035 0.068  0.330 0.203 -0.198 1.626 1.663 1.382 0.022 0.051  
+
+• 
+DeepTrader [88]: Utilizes deep reinforcement learning with graph convolutional networks to model the inter­relationships between stocks, leveraging industry classifications and causal dependencies to capture both spatial and temporal market dynamics for effective portfolio management. 
+
+• 
+THGNN [61]: A sophisticated temporal-heterogeneous graph neural network that integrates dynamic company relationships with Transformer encoders, featuring a two-stage attention mechanism to enhance financial time series prediction by focusing on critical temporal and structural patterns. 
+
+• 
+VGNN [89]: A decoupled graph learning framework for vague graph learning in stock prediction, leveraging matrix/tensor fusion, hybrid attention, and message passing to outperform state-of-the-art methods. 
+
+• 
+MASTER [63]: A market-centric transformer model that dynamically simulates both instantaneous and cross-temporal correlations between stocks, enhancing trend forecast precision. 
+
+• 
+CISTHPAN [90]: A two-stage framework combining Transformer and HGAT-based pre-training with stock-ranking fine-tuning, designed to improve the accuracy of stock movement predictions. 
+
+• 
+CL [91]: A model combining textual and quantitative indicators for improved explainability in stock movement prediction, achieving state-of-the-art performance. 
+
+
+4.3. Experimental Results 
+In this section, we conduct a rigorous evaluation of the experimental results of our proposed model in comparison with several baseline models across different datasets, as illustrated in Tables 3 and 4. 
+On the CSI 300 dataset, traditional and deep learning models (including BLSW, CSM, LSTM, ALSTM, GRU, and Transformer) generally exhibit subpar performance, characterized by negative ARR values and low ASR, CR, and IR metrics. For example, although the Transformer model achieves the highest ARR among the traditional models, its ARR is still -0.240, with an MDD of -0.281, indicating significant risk exposure. In the case of the CSI 500 dataset, the performance shows slight improvement, with the Transformer model achieving an ARR of 0.154 and an ASR of 0.986. However, these values are still significantly lower than those offered by our proposed model. While reinforcement learning models (such as TRA, CTTS, A2C, DDPG, PPO, TD3, SAC, and FactorVAE) show marginal 
+Table 4: Comparing the experimental results of the models on S&P 500 and NASDAQ 100 datasets. 
+S&P 500 
+NASDAQ 100 
+BLSW  0.199 0.318 -0.223 0.626 0.892 0.774 0.068 0.094  0.368 0.339 -0.222 1.086 1.658 1.194 0.058 0.082  
+CSM  0.099 0.250 -0.139 0.396 0.712 0.584 0.125 0.173  0.116 0.242 -0.145 0.479 0.800 0.603 0.119 0.178  
+LSTM  0.142 0.162 -0.178 0.877 0.798 0.929 0.097 0.132  0.247 0.176 -0.128 1.403 1.930 1.386 0.085 0.129  
+ALSTM  0.191 0.161 -0.150 1.186 1.273 1.115 0.073 0.098  0.201 0.192 -0.183 1.047 1.098 1.032 0.084 0.147  
+GRU  0.124 0.169 -0.139 0.734 0.829 1.023 0.109 0.151  0.225 0.188 -0.165 1.197 1.364 1.160 0.089 0.138  
+Transformer  0.135 0.159 -0.140 0.852 0.968 0.908 0.103 0.145  0.268 0.175 -0.131 1.531 2.046 1.441 0.082 0.121  
+TRA  0.184 0.166 -0.158 1.114 1.172 1.106 0.079 0.104  0.267 0.181 -0.144 1.475 1.854 1.427 0.081 0.119  
+CTTS  0.154 0.161 -0.113 0.952 1.356 0.965 0.093 0.125  0.349 0.197 -0.193 1.769 1.808 1.610 0.071 0.102  
+A2C  0.160 0.126 -0.084 1.267 1.907 1.244 0.089 0.117  0.109 0.134 -0.114 0.816 0.957 0.844 0.126 0.182  
+DDPG  0.111 0.129 -0.091 0.864 1.223 0.887 0.121 0.165  0.130 0.156 -0.131 0.832 0.994 0.863 0.110 0.176  
+PPO  0.020 0.089 -0.067 0.220 0.291 0.263 0.159 0.212  0.148 0.118 -0.104 1.259 1.424 1.237 0.104 0.165  
+TD3  0.024 0.113 -0.105 0.209 0.225 0.264 0.151 0.201  0.181 0.155 -0.160 1.169 1.130 1.156 0.093 0.160  
+SAC  0.140 0.111 -0.069 1.263 2.011 1.242 0.099 0.136  0.162 0.139 -0.107 1.165 1.518 1.154 0.098 0.158  
+FactorVAE  0.160 0.142 -0.132 1.128 1.211 1.013 0.088 0.115  0.356 0.159 -0.119 2.234 2.995 1.907 0.063 0.089  
+AlphaStock  0.122 0.140 -0.126 0.871 0.968 0.892 0.112 0.157  0.372 0.178 -0.134 1.781 2.776 1.869 0.053 0.084  
+DeepPocket  0.165 0.142 -0.126 1.165 1.311 1.045 0.084 0.112  0.346 0.157 -0.116 2.197 2.971 1.882 0.061 0.098  
+DeepTrader  0.295 0.180 -0.181 1.635 1.628 1.425 0.049 0.082  0.716 0.248 -0.138 2.890 5.169 2.306 0.019 0.048  
+THGNN  0.271 0.141 -0.094 1.921 2.871 1.778 0.057 0.086  0.644 0.204 -0.146 3.147 3.414 2.543 0.026 0.057  
+VGNN  0.299 0.202 -0.169 1.473 1.767 1.406 0.045 0.076  0.616 0.181 -0.091 3.405 6.767 2.798 0.033 0.063  
+MASTER  0.335 0.171 -0.134 1.958 2.495 1.895 0.038 0.065  0.654 0.168 -0.076 3.876 8.534 3.183 0.023 0.052  
+CI-STHPAN  0.123 0.233 -0.254 0.527 0.485 0.632 0.114 0.159  0.454 0.208 -0.124 2.178 3.660 1.855 0.041 0.071  
+CL  0.308 0.189 -0.171 1.629 1.794 1.451 0.039 0.071  0.351 0.172 -0.122 2.041 2.877 1.821 0.066 0.093  
+MCI-GRU  0.456 0.179 -0.129 2.549 3.543 2.197 0.031 0.062  0.718 0.220 -0.118 3.257 6.091 2.609 0.015 0.039  
+
+improvements, their performance remains below that of our model. For instance, the PPO model has the lowest AVoL and MDD, indicating lower risk, but its ARR and IR metrics are still negative in both datasets, highlighting poor return potential. Graph-based models (including AlphaStock, DeepPocket, DeepTrader, THGNN, VGNN, MASTER, and CISTHPAN) show more promising results. For example, THGNN achieves an ARR of -0.015 on the CSI 300 and an ARR of 0.048 on the CSI 500. Among these graph-based models, VGNN demonstrates relatively good ARR values on both datasets, with -0.037 on the CSI 300 and 0.111 on the CSI 500, but its risk-adjusted return metrics (ASR, CR, IR) still require improvement. The MASTER model achieves a relatively high ARR of 0.102 on the CSI 300, along with relatively high ASR, CR, and IR, showing some potential, but its performance on the CSI 500 is comparatively mediocre. The CI-STHPAN model performs poorly on both datasets, with low ARR and high-risk metrics. The CL model performs poorly on the CSI 300 but shows some improvement on the CSI 500 with an ARR of 0.051, though its volatility is also relatively high. Despite their individual characteristics and performances, the performance of these graph-based models still falls short compared to our model. 
+Overall, the model performs better in the U.S. market than in the Chinese market based on the ARR metric. In particular, the NASDAQ 100 index shows high ARR values, with MCI-GRU reaching 0.718, reflecting strong growth in the U.S. tech market. In contrast, ARR values in the Chinese market are generally lower, and many traditional models yield negative ARR for the CSI 300 index. This discrepancy may stem from higher volatility, a more complex market structure, and investor behavior in China. Even the best-performing MCI-GRU achieves only 0.352 on the CSI 300 index, lower than in the U.S. The U.S. market exhibits relatively low volatility, particularly in the NASDAQ 100, where many models have aAVol below 0.2, indicating stability. Conversely, the Chinese market shows higher volatil­ity, likely due to its younger market environment and dominance of retail investors, which complicates prediction and risk management. Regarding MDD, the U.S. market typically shows smaller MDD values, reinforcing its stability, while the Chinese market experiences higher MDD, indicating greater downside risk. In terms of risk-adjusted met-rics—ASR, CR, and IR—the U.S. market shows higher values, driven by higher ARR and lower volatility, suggesting better risk-adjusted returns. The Chinese market has lower risk-adjusted returns, primarily due to lower ARR and higher volatility. The MCI-GRU model performs well across all four datasets, demonstrating robustness and adapt­ability in different market environments. In contrast, traditional and reinforcement learning models perform notably worse in the Chinese market, indicating they may be better suited for more mature, stable markets. 
+Additionally, as shown in Tables 3 and 4, there are significant differences in the performance of various mod­els in terms of Mean Squared Error (MSE) and Mean Absolute Error (MAE). Since this study focuses primarily on predicting daily stock returns, and the prediction errors are relatively small, the resulting MSE and MAE values are correspondingly modest. Although MAE and MSE are commonly used metrics for evaluating prediction accuracy, 
+Table 5: The parameter sensitivity results of parameter judge value in dataset CSI 300, CSI 500, S&P 500, and NASDAQ 100. 
+Datasets 
+CSI 300 
+CSI 500 
+0.6 
+0.102 0.187 -0.142 0.546 0.720 0.650 
+0.107 0.162 -0.186 0.660 0.577 0.639 
+0.7 
+0.235 0.183 -0.090 1.282 2.623 1.201 
+0.212 0.167 -0.170 1.267 1.245 1.217 
+0.8 
+0.352 0.226 -0.127 1.559 2.776 1.526 
+0.330 0.203 -0.198 1.626 1.663 1.382 
+0.9 
+0.284 0.241 -0.194 1.178 1.460 1.216 
+0.278 0.205 -0.197 1.356 1.415 1.199 
+Datasets 
+S&P 500 
+NASDAQ 100 
+0.6 
+0.286 0.162 -0.138 1.768 2.069 1.611 
+0.532 0.219 -0.118 2.429 4.509 2.068 
+0.7 
+0.358 0.171 -0.111 2.098 3.236 1.878 
+0.378 0.219 -0.128 1.727 2.946 1.592 
+0.8 
+0.456 0.179 -0.129 2.549 3.543 2.197 
+0.718 0.220 -0.118 3.257 6.091 2.609 
+0.9 
+0.415 0.183 -0.141 2.272 2.934 2.002 
+0.687 0.223 -0.091 3.087 7.516 2.504 
+there is some correlation between these metrics and investment return indicators (such as ARR, ASR, and IR). In general, models with higher accuracy are likely to yield better investment returns. However, it is important to note that lower MAE and MSE do not necessarily translate into higher investment returns, as returns are influenced by various factors, including trading strategies and risk control. Among all the models, MCI-GRU performs exception­ally well in terms of MAE and MSE, particularly on the NASDAQ 100 dataset, where its MAE and MSE are the lowest, indicating a clear advantage in prediction accuracy. Its excellent performance in investment return metrics further supports the correlation between higher prediction accuracy and better investment returns. In contrast, some traditional and reinforcement learning models perform relatively poorly in terms of MAE and MSE, which is con­sistent with their performance in investment return metrics, suggesting that these models may not effectively capture the dynamic fluctuations of the market. GNN-based models generally show better performance in terms of MAE and MSE, indicating that graph structural information helps improve prediction accuracy. Among these models, Deep-Trader, THGNN, VGNN, and MASTER perform well on both MAE and MSE, further demonstrating the importance of graph structures in capturing complex relationships in the stock market and enhancing prediction accuracy. 
+Our proposed model demonstrates a significant performance advantage, achieving the highest ARR (0.352 for CSI 300 and 0.330 for CSI 500) and exhibiting superior risk-adjusted returns, as indicated by the highest ASR (1.559 for CSI 300 and 1.626 for CSI 500), CR (2.776 for CSI 300 and 1.663 for CSI 500), and IR (1.526 for CSI 300 and 
+1.382 for CSI 500). Similar trends are observed in Table 4, which presents results from the S&P 500 and NASDAQ 100 datasets. Traditional models such as BLSW and CSM show moderate performance, with CSM reporting an ARR of 0.099 and an ASR of 0.396 on the S&P 500, while Transformer achieves an ARR of 0.135 and an ASR of 
+0.852. However, the inability of these models to effectively leverage relational data hampers their overall performance. Reinforcement learning models again demonstrate improvements, with SAC and FactorVAE achieving notable ASR values of 1.263 and 1.128, respectively, on the S&P 500. On the NASDAQ 100, FactorVAE achieves an ARR of 0.356 and the highest ASR (2.234) among reinforcement learning models. Graph-based models, particularly DeepTrader and THGNN, excel on these datasets. For example, DeepTrader achieves an ARR of 0.716 and an ASR of 2.890 on the NASDAQ 100, while THGNN records an ARR of 0.644 and an ASR of 3.147, demonstrating the effectiveness of incorporating relational information into financial models. The superiority of our MCI-GRU model is further evident, as it consistently outperforms all baseline models. It achieves the highest ARR (0.456 for S&P 500 and 0.718 for NASDAQ 100) and outstanding risk-adjusted returns, reflected in ASR values of 2.549 and 3.257, CR values of 3.543 and 6.091, and IR values of 2.197 and 2.609, respectively. These results underscore the model’s effectiveness in capturing both long-term and short-term dependencies within financial data. 
+The model integrates several complex components, including the improved GRU, GAT, and multi-head cross-attention mechanisms, which may lead to high computational costs. Specifically, the modified GRU replaces the reset gate in the traditional GRU, and its computational complexity is O(d · n), where d is the hidden state dimension and n is the number of time steps. The computational complexity of the Graph Attention Network (GAT) is O(|E|·d), where |E| is the number of edges in the graph and d is the feature dimension of each node. Since GAT requires calculating attention weights between nodes, its computational complexity is closely related to the sparsity of the graph and the 
+Table 6: The parameter sensitivity results of parameter label t in dataset CSI 300, CSI 500, S&P 500, and NASDAQ 100. 
+Datasets 
+CSI 300 
+CSI 500 
+2 
+0.107 0.174 -0.131 0.611 0.812 0.780 
+0.179 0.212 -0.221 0.845 0.809 0.745 
+5 
+0.352 0.226 -0.127 1.559 2.776 1.526 
+0.330 0.203 -0.198 1.626 1.663 1.382 
+8 
+0.319 0.220 -0.153 1.451 2.083 1.455 
+0.293 0.228 -0.197 1.286 1.487 1.228 
+Datasets 
+S&P 500 
+NASDAQ 100 
+2 
+0.315 0.167 -0.110 1.884 2.854 1.720 
+0.449 0.230 -0.126 1.951 3.568 1.778 
+5 
+0.456 0.179 -0.129 2.549 3.543 2.197 
+0.718 0.220 -0.118 3.257 6.091 2.609 
+8 
+0.400 0.177 -0.126 2.255 3.175 1.992 
+0.585 0.229 -0.117 2.549 5.002 2.154 
+number of nodes. Additionally, the multi-head cross-attention mechanism introduces a computational complexity of O(n·di 2) for each attention head, with a total complexity of O(h·n·di 2), where h is the number of attention heads and di is the dimension of each head. When the number of attention heads h or the dimension di is large, the computational cost can increase significantly. To address this challenge and improve the model’s computational efficiency, several optimization strategies can be employed. For instance, parameter sharing and low-rank approximation techniques can be used in both the GRU and multi-head cross-attention mechanisms to reduce the computational burden. Ad­ditionally, GAT’s graph structure can be optimized by exploiting sparsity, reducing unnecessary edges, or applying neighborhood sampling to lower the computational complexity. The multi-head attention mechanism can be acceler­ated by parallelizing the computation of attention heads, reducing overall computation time. Although the model has a high computational cost, its complexity can be effectively controlled through these optimization strategies. 
+In summary, the experimental results highlight the critical role of integrating relational data and temporal in­formation in stock prediction models. Our proposed model consistently surpasses traditional, deep learning, and reinforcement learning benchmarks across all datasets, achieving superior returns and enhanced risk-adjusted perfor­mance metrics. This comprehensive evaluation demonstrates the robustness and efficacy of our approach in capturing the intricate dynamics of financial markets. 
+4.4. Parameter Sensitivity 
+We conducte an in-depth analysis of the model’s sensitivity to key hyperparameters, including judge value (Ta­ble 5), label t (Table 6), his t (Table 7), hidden size (Table 8), gat heads (Table 9), and num hidden states (Table 10) across four benchmark datasets. This analysis is conducted to assess the robustness and stability of the model’s performance under varying parameter settings. The results demonstrate that the model maintains a high degree of consistency and effectiveness across a broad range of parameter values. 
+Judge Value Sensitivity:. The judge value parameter, which governs the threshold for filtering graph relationships, exhibits a stable performance profile across all datasets. Specifically, a judge value of 0.8 consistently yields the best results, with the model achieving an ARR of 0.352 and an IR of 1.526 on the CSI 300 dataset (Table 5). Performance gradually declines as the judge value increases beyond this threshold, suggesting that while the model is moderately sensitive to this parameter, it retains robust performance within an optimal range. 
+Label Time Sensitivity:. The label t parameter, which defines the forecast horizon, also demonstrates strong sta­bility across various datasets. A prediction horizon of 5 days consistently produces the best results, particularly on the NASDAQ 100 dataset, where the model achieves an ARR of 0.718 and an IR of 2.609 (Table 6). This indi­cates that the model effectively captures short to medium-term market trends. The marginal variation in performance across different forecast horizons further highlights the model’s adaptability and resilience in maintaining predictive accuracy. 
+History Length Sensitivity:. The his t parameter, as shown in Table 7, representing the number of historical days considered for prediction, reveals that the model is particularly stable when using a history length of 10 days. This 
+Table 7: The parameter sensitivity results of parameter his t in dataset CSI 300, CSI 500, S&P 500, and NASDAQ 100. 
+Datasets  CSI 300  CSI 500  
+6  0.162  0.216  -0.150 0.748  1.080  0.893  0.228  0.194  -0.186 1.175  1.224  1.087  
+8  0.272  0.210  -0.140 1.291  1.943  1.329  0.302  0.224  -0.167 1.353  1.808  1.229  
+10  0.352  0.226  -0.127 1.559  2.776  1.526  0.330  0.203  -0.198 1.626  1.663  1.382  
+12  0.280  0.215  -0.169 1.299  1.655  1.347  0.317  0.214  -0.109 1.477  2.910  1.376  
+14  0.251  0.193  -0.108 1.300  2.323  1.216  0.213  0.180  -0.135 1.184  1.580  1.106  
+Datasets  S&P 500  NASDAQ 100  
+6  0.273  0.172  -0.125 1.588  2.186  1.494  0.524  0.229  -0.099 2.283  5.283  1.986  
+8  0.363  0.174  -0.106 2.085  3.424  1.866  0.547  0.227  -0.106 2.406  5.162  2.066  
+10  0.456  0.179  -0.129 2.549  3.543  2.197  0.718  0.220  -0.118 3.257  6.091  2.609  
+12  0.406  0.181  -0.125 2.249  3.238  1.995  0.602  0.238  -0.115 2.529  5.248  2.131  
+14  0.367  0.175  -0.123 2.099  2.974  1.875  0.603  0.242  -0.103 2.496  5.845  2.100  
+
+Table 8: The parameter sensitivity results of parameter hidden size in dataset CSI 300, CSI 500, S&P 500, and NASDAQ 100. 
+Metrics ARR . AVol . MDD . ASR . CR . IR . 
+ARR . AVol . MDD . ASR . CR . IR . 
+Datasets  CSI 300  CSI 500  
+16  0.179  0.194  -0.126 0.924  1.423  1.023  0.271  0.203  -0.203 1.337  1.334  1.244  
+32  0.352  0.226  -0.127 1.559  2.776  1.526  0.330  0.203  -0.198 1.626  1.663  1.382  
+64  0.283  0.215  -0.193 1.320  1.467  1.233  0.300  0.213  -0.120 1.408  2.510  1.294  
+128  0.204  0.204  -0.210 0.999  0.970  1.102  0.179  0.197  -0.098 0.907  1.822  0.915  
+256  0.173  0.180  -0.102 0.963  1.692  1.001  0.192  0.218  -0.216 0.881  0.889  0.898  
+Datasets  S&P 500  NASDAQ 100  
+16  0.411  0.175  -0.127 2.352  3.246  2.059  0.491  0.223  -0.106 2.203  4.616  1.943  
+32  0.456  0.179  -0.129 2.549  3.543  2.197  0.718  0.220  -0.118 3.257  6.091  2.609  
+64  0.406  0.179  -0.134 2.263  3.023  1.995  0.603  0.242  -0.103 2.496  5.845  2.100  
+128  0.396  0.177  -0.104 2.231  3.793  1.974  0.511  0.226  -0.128 2.263  4.002  1.996  
+256  0.306  0.172  -0.149 1.781  2.058  1.644  0.655  0.252  -0.143 2.604  4.584  2.179  
+
+configuration consistently results in the highest ARR and IR across all datasets. The model’s ability to effectively utilize historical data without overfitting or underfitting, even as the history length varies, underscores its robustness in learning from past patterns. 
+Hidden Size Sensitivity:. The hidden size, which defines the dimensionality of the model’s internal representations, plays a significant role in shaping the model’s performance. Our analysis identifies a hidden size of 32 (Table 8) as the optimal configuration. The model’s performance remains stable across different hidden size values, demonstrating its capability to balance model complexity with predictive accuracy, and effectively handle the diverse characteristics of financial data. 
+GAT Heads Sensitivity:. The number of graph attention heads (gat heads) also significantly impacts the model’s ability to capture the complex dependencies in the data. Our experiments show that using 4 attention heads consistently results in the highest performance, with the model achieving an ARR of 0.352 and an IR of 1.526 on the CSI 300 dataset (Table 9). This stability across different settings of gat heads reflects the model’s robustness in learning the intricate relationships between financial assets. 
+Num Hidden States Sensitivity:. The number of hidden states (num hidden states) represents the market’s latent dynamics. From our experiments (Table 10), we find that using 4 or 8 hidden states yields the best performance across 
+Table 9: The parameter sensitivity results of parameter gat heads in dataset CSI 300, CSI 500, S&P 500, and NASDAQ 100. 
+Datasets 1 2 4 8  0.253 0.285 0.352 0.239  0.203 0.210 0.226 0.211  CSI 300 -0.110 1.250 -0.150 1.359 -0.127 1.559 -0.133 1.133  2.300 1.907 2.776 1.794  1.215 1.383 1.526 1.084  0.200 0.296 0.330 0.300  0.195 0.229 0.203 0.230  CSI 500 -0.201 1.023 -0.130 1.290 -0.198 1.626 -0.198 1.305  0.992 2.270 1.663 1.519  0.961 1.199 1.382 1.218  
+Datasets 1 2 4 8  0.322 0.385 0.456 0.440  0.181 0.183 0.179 0.162  S&P 500 -0.133 1.781 -0.147 2.102 -0.129 2.549 -0.116 2.718  2.414 2.623 3.543 3.807  1.640 1.876 2.197 2.345  0.686 0.666 0.718 0.588  0.235 0.239 0.220 0.226  NASDAQ 100 -0.115 2.918 -0.111 2.794 -0.118 3.257 -0.127 2.604  5.952 6.028 6.091 4.619  2.372 2.287 2.609 2.194  
+Table 10: The parameter sensitivity results of parameter num hidden states in dataset CSI 300, CSI 500, S&P 500, and NASDAQ 100. 
+
+
+Metrics ARR . AVol . MDD . ASR . CR . IR . 
+ARR . AVol . MDD . ASR . CR . IR . 
+Datasets 2 4 8 16  0.274 0.352 0.356 0.199  0.207 0.226 0.222 0.199  CSI 300 -0.114 1.320 -0.127 1.559 -0.125 1.603 -0.153 0.998  2.398 2.776 2.846 1.301  1.361 1.526 1.533 1.060  0.294 0.330 0.381 0.250  0.242 0.203 0.202 0.198  CSI 500 -0.256 1.215 -0.198 1.626 -0.108 1.888 -0.134 1.262  1.147 1.663 3.531 1.865  1.133 1.382 1.658 1.159  
+Datasets 2 4 8 16  0.420 0.456 0.435 0.341  0.176 0.179 0.232 0.182  S&P 500 -0.135 2.382 -0.129 2.549 -0.114 1.875 -0.139 1.876  3.120 3.543 3.803 2.461  2.084 2.197 1.686 1.704  0.618 0.718 0.506 0.523  0.235 0.220 0.229 0.226  NASDAQ 100 -0.107 2.629 -0.118 3.257 -0.112 2.210 -0.108 2.320  5.755 6.091 4.511 4.856  2.196 2.609 1.933 2.009  
+
+all datasets. Specifically, for the CSI 300 dataset, setting num hidden states to 8 results in the highest ARR of 
+0.356 and an IR of 1.533. Similarly, for the S&P 500 and NASDAQ 100 datasets, 4 hidden states lead to superior performance, with the model achieving an ARR of 0.456 and an IR of 2.197 on the S&P 500, and an ARR of 0.718 and an IR of 2.609 on the NASDAQ 100. This suggests that a moderate number of hidden states is optimal for capturing the underlying market structures, while too few or too many hidden states can result in a decline in performance, as seen with the configurations of 2 and 16 hidden states. 
+Overall Observations:. Across all evaluated parameters, the model consistently exhibits a high level of stability and resilience, with minimal performance fluctuations under varying settings. This robustness suggests that the model is well-regularized and capable of maintaining strong predictive accuracy across a wide range of hyperparameter config­urations. Such stability is critical in practical applications, where models are required to operate under varying market conditions and data distributions. The consistency of results across different datasets and parameter configurations further underscores the reliability and utility of the proposed model in financial forecasting tasks. 
+4.5. Ablation Study 
+In this section, we conduct a comprehensive ablation study to evaluate the individual contributions of various components of our model. The model is systematically divided into four distinct modules: Use Improved GRU to Capture Temporal Features (I), Use GAT to Capture Cross-sectional Features (II), Use Multi-head Cross-attention to Capture Latent State Features (III), Model Prediction and Loss Calculation Layer (IV). Detailed experimental results are presented in Tables 11 and 12. 
+The results presented in Tables 11 and 12 reveal several critical insights. First, the integration of the I and II resulted in a moderate improvement in performance metrics across all datasets, indicating that these components play a significant role in capturing both temporal and relational dependencies within the data. However, the addition of the III further amplified the model’s performance, suggesting that the incorporation of market-wide latent states provides a more comprehensive understanding of broader market dynamics. This enhancement underscores the importance of integrating diverse levels of information to effectively model complex financial relationships. 
+Table 11: The ablation study results in dataset CSI 300 and CSI 500. 
+
+Datasets  CSI 300  CSI 500  
+Model  ARR .  AVol .  MDD .  ASR .  CR .  IR .  ARR .  AVol .  MDD .  ASR .  CR .  IR .  
+I + II  0.076  0.172  -0.214  0.441  0.354  0.488  0.151  0.178  -0.169  0.850  0.891  0.984  
+I + II + III  0.155  0.166  -0.170  0.934  0.911  0.957  0.195  0.219  -0.156  0.890  1.247  0.882  
+I + II + IV  0.210  0.201  -0.183  1.039  1.145  1.113  0.222  0.191  -0.166  1.166  1.335  1.191  
+I + III  -0.069  0.160  -0.215  -0.435  -0.322  -0.428  0.090  0.160  -0.168  0.560  0.534  0.548  
+I + III + IV  0.110  0.239  -0.199  0.459  0.554  0.551  0.192  0.243  -0.197  0.793  0.976  0.807  
+II + III  0.151  0.178  -0.169  0.850  0.891  0.984  0.244  0.216  -0.154  1.129  1.580  1.046  
+II + III + IV  0.287  0.211  -0.115  1.360  2.498  1.390  0.244  0.200  -0.187  1.223  1.304  1.150  
+MCI-GRU  0.352  0.226  -0.127  1.559  2.776  1.526  0.330  0.203  -0.198  1.626  1.663  1.382  
+
+Table 12: The ablation study results in dataset NASDAQ 100 and S&P 500. 
+Datasets  S&P 500  NASDAQ 100  
+Model  ARR .  AVol .  MDD .  ASR .  CR .  IR .  ARR .  AVol .  MDD .  ASR .  CR .  IR .  
+I + II  0.305  0.179  -0.120  1.703  2.552  1.683  0.550  0.194  -0.101  2.841  5.461  2.483  
+I + II + III  0.338  0.194  -0.178  1.736  1.897  1.691  0.648  0.238  -0.112  2.721  5.807  2.248  
+I + II + IV  0.221  0.194  -0.155  1.143  1.428  1.240  0.444  0.195  -0.116  2.278  3.822  2.109  
+I + III  0.332  0.163  -0.121  2.040  2.736  1.803  0.342  0.194  -0.152  1.766  2.245  1.684  
+I + III + IV  0.212  0.156  -0.135  1.361  1.578  1.322  0.470  0.243  -0.152  1.933  3.095  1.728  
+II + III  0.390  0.176  -0.151  2.214  2.579  1.968  0.524  0.226  -0.109  2.320  4.771  2.026  
+II + III + IV  0.416  0.181  -0.157  2.296  2.647  2.018  0.564  0.235  -0.100  2.405  5.646  2.035  
+MCI-GRU  0.456  0.179  -0.129  2.549  3.543  2.197  0.718  0.220  -0.118  3.257  6.091  2.609  
+
+In comparing models that incorporate the loss calculation layer, the sub-model configurations (I+II+IV) and (I+III+IV) exhibited varying degrees of improvement, with a particularly notable enhancement in the CSI 300 and CSI 500 datasets. These results suggest that the inclusion of the loss calculation layer significantly refines the model’s predictions by further processing the concatenated feature vectors. Specifically, the configuration (II+III+IV) demon­strated substantial performance gains, particularly in ARR and ASR metrics, underscoring the effectiveness of com­bining the GAT layer, market hidden states, and an optimized loss calculation mechanism to boost predictive accuracy. 
+In conclusion, the ablation study demonstrates that the proposed model components are not only complementary but their integration substantially enhances predictive performance. This analysis underscores the critical importance of leveraging both temporal and relational information, in conjunction with latent market states, to achieve precise and reliable financial forecasting. 
+4.6. Case studies 
+This section offers a comprehensive explanation of the practical deployment of our model within EMoney Inc.’s real-world algorithmic trading platform, demonstrating its robust adaptability to dynamic financial environments. The model is trained on a monthly basis, generating daily predictions immediately after the close of each trading session. These predictions serve as the foundation for executing trading strategies in the initial half-hour of the next trading day. This early execution period leverages the model’s predictions to capitalize on short-term market movements. The strategies we implement are tailored specifically to the CSI 300, CSI 500 and CSI 1000 stock pools, with optimization processes designed to blend the distinct characteristics of both indices, enhancing the model’s overall effectiveness across diverse market conditions. 
+Figure 2 visualizes the performance of these strategies across different scenarios. In Figure 2(a), 2(b) and 2(c), the red curve illustrates the model’s absolute returns, which reflect the actual profitability of the trades based on our 
+
+(a) CSI 300 strategy backtest performance. 
+
+(b) 
+CSI 500 strategy backtest performance. 
+
+(c) 
+CSI 1000 strategy backtest performance. 
+
+
+
+Figure 2: The performance of the strategy backtest. 
+model’s predictions. In comparison, the blue curve shows the performance of the CSI 300, CSI 500, and CSI 1000 indices, representing the overall market return trends. The yellow curve denotes the excess returns, highlighting the model’s ability to generate returns beyond the market average. Throughout a one-year period, the results consistently demonstrate that the model’s strategies significantly outperform the market indices, showcasing its superior predictive power and strategic effectiveness. Moreover, the lower part of Figure 2(a), 2(b) and 2(c) provide an analysis of the excess return drawdown rate, a critical metric for assessing the model’s risk management capabilities. The drawdown rate measures the extent to which excess returns decline from their peak to their lowest point, reflecting the model’s ability to mitigate risk during market downturns. The model exhibits exceptional risk control, maintaining a consis­tently low drawdown rate, with the worst-case scenario showing a reduction of just about 5%. This low drawdown rate indicates that the model not only prioritizes return generation but also incorporates robust risk mitigation mechanisms, ensuring a balance between profit-seeking and risk aversion. This capability is particularly important in real-world trading environments where minimizing losses during periods of volatility is crucial for long-term success. 
+4.7. Limitations of the model 
+Although the proposed MCI-GRU model has demonstrated excellent performance in multiple experiments and has been successfully applied in a fund management company, we have not discussed its potential limitations in detail. 
+In terms of scalability, as the dataset size increases, the training time and computational resource consumption of the MCI-GRU model may grow, especially when dealing with a large number of stocks or multiple markets. While we have achieved good results on the Chinese and U.S. stock market datasets, the training and inference efficiency of the model may be impacted as the data scale expands. Future work will focus on improving scalability through methods such as optimizing computational graphs, model compression, or distributed training. 
+Regarding robustness to market volatility, although the model performs well on historical data, its robustness under extreme market fluctuations still needs further validation. In real-world applications, severe market volatility may lead to model prediction failure. Therefore, we plan to explore the model’s adaptability in different market environments and consider incorporating risk management mechanisms to enhance the model’s robustness to market volatility. 
+As for sensitivity to hyperparameter tuning, although we have selected appropriate hyperparameters in our ex­periments and validated the model’s robustness to some extent, MCI-GRU may still be highly sensitive to certain hyperparameters (such as learning rate, number of attention heads, etc.). To reduce this sensitivity, future research will explore adaptive hyperparameter tuning methods or use techniques like Bayesian optimization to further improve the model’s generalization ability. 
+5. Conclusion 
+In this paper, we present a novel stock prediction model, MCI-GRU, which integrates a multi-head cross-attention mechanism and the improved GRU architecture to address the challenges of capturing complex temporal and rela­tional dependencies in stock data. By replacing the reset gate in the traditional GRU with an attention mechanism, the model significantly improves its capacity to selectively utilize historical time series data. Additionally, the incorpo­ration of the GAT enables the extraction of cross-sectional features, while the multi-head cross-attention mechanism captures latent market states that influence stock behavior. Extensive experiments conducted on both Chinese and 
+U.S. stock market datasets demonstrate that MCI-GRU outperforms existing state-of-the-art methods across various performance metrics. Moreover, the model has been successfully implemented in a real-world fund management company, showcasing its practical applicability. 
+In the current work, we employed static graph methods to simplify the model implementation, focusing on static correlation feature extraction. However, dynamic graphs are more effective at capturing real-time market changes, especially in the dynamic financial market. Future research will introduce dynamic graph methods to improve feature extraction quality and enhance the model’s adaptability to market changes. Additionally, although MCI-GRU has per­formed well in several experiments and has been successfully applied in a fund management company, we recognize challenges in scalability, robustness to market volatility, and sensitivity to hyperparameters. Future work will explore methods such as optimizing computational graphs, distributed training, and adaptive hyperparameter tuning to further improve the model’s efficiency and robustness. 
+Acknowledgements 
+This work was supported in part by the National Key Research and Development Program of China under Grant 2022YFB4501704, the National Science Foundation of China under Grants 62222312, and the Shanghai Science and Technology Innovation Action Plan Project under Grant 22511100700 and 22YS1400600. 
+References 
+[1] J. Greenwood, B. D. Smith, Financial markets in development, and the development of financial markets, Journal of Economic Dynamics and Control (1997) 145–181. 
+[2] O. Bustos, A. Pomares-Quimbaya, Stock market movement forecast: A systematic review, Expert Systems with Applications (2020) 113464. 
+[3] R. Singh, S. Srivastava, Stock prediction using deep learning, Multimedia Tools and Applications (2017) 18569–18584. 
+[4] S. Raschka, J. Patterson, C. Nolet, Machine learning in python: Main developments and technology trends in data science, machine learning, and artificial intelligence, Information (2020) 193. 
+[5] Z. Liu, Z. Zhu, J. Gao, C. Xu, Forecast methods for time series data: a survey, Ieee Access (2021) 91896–91912. 
+[6] D. Cheng, Y. Liu, Z. Niu, L. Zhang, Modeling similarities among multi-dimensional financial time series, IEEE Access (2018) 43404–43413. 
+[7] Y. Gao, R. Wang, E. Zhou, Stock prediction based on optimized lstm and gru models, Scientific Programming (2021) 4055281. 
+[8] K. Han, A. Xiao, E. Wu, J. Guo, C. Xu, Y. Wang, Transformer in transformer, Advances in Neural Information Processing Systems (2021) 15908–15919. 
+[9] Y. Ding, M. Jia, Q. Miao, Y. Cao, A novel time–frequency transformer based on self–attention mechanism and its application in fault diagnosis of rolling bearings, Mechanical Systems and Signal Processing (2022) 108616. 
+[10] M. A. Goralski, T. K. Tan, Artificial intelligence and sustainable development, The International Journal of Management Education (2020) 100330. 
+[11] Z. Wu, S. Pan, F. Chen, G. Long, C. Zhang, S. Y. Philip, A comprehensive survey on graph neural networks, IEEE Transactions on Neural Networks and Learning Systems (2020) 4–24. 
+[12] L. Han, L. Wang, Z. Cheng, B. Wang, G. Yang, D. Cheng, X. Lin, Mitigating the tail effect in fraud detection by community enhanced multi-relation graph neural networks, IEEE Transactions on Knowledge and Data Engineering (2025) 1–13. 
+[13] T. M. Moerland, J. Broekens, A. Plaat, C. M. Jonker, et al., Model-based reinforcement learning: A survey, Foundations and Trends® in Machine Learning (2023) 1–118. 
+[14] L. Li, S. Leng, J. Yang, M. Yu, et al., Stock market autoregressive dynamics: a multinational comparative study with quantile regression, Mathematical Problems in Engineering (2016) 1–15. 
+[15] R. H. Shumway, D. S. Stoffer, R. H. Shumway, D. S. Stoffer, Arima models, Time Series Analysis and Its Applications: With R Examples (2017) 75–163. 
+[16] A. A. Ariyo, A. O. Adewumi, C. K. Ayo, Stock price prediction using the arima model, in: 2014 UKSim-AMSS 16th International Conference on Computer Modelling and Simulation, 2014, pp. 106–112. 
+[17] E. S. Gardner Jr, Exponential smoothing: The state of the art, Journal of Forecasting (1985) 1–28. 
+[18] E. De Faria, M. P. Albuquerque, J. Gonzalez, J. Cavalcante, M. P. Albuquerque, Predicting the brazilian stock market through neural networks and adaptive exponential smoothing methods, Expert Systems with Applications (2009) 12506–12509. 
+[19] M. Hassan, B. Nath, Stock market forecasting using hidden markov model: a new approach, in: International Conference on Intelligent Systems Design and Engineering Applications, 2005, pp. 192–196. 
+[20] B. H. Juang, L. R. Rabiner, Hidden markov models for speech recognition, Technometrics (1991) 251–272. 
+[21] W. Huang, Y. Nakamori, S.-Y. Wang, Forecasting stock market movement direction with support vector machine, Computers & operations research (2005) 2513–2522. 
+[22] K.-j. Kim, Financial time series forecasting using support vector machines, Neurocomputing (2003) 307–319. 
+[23] G. Guo, H. Wang, D. Bell, Y. Bi, K. Greer, Knn model-based approach in classification, in: On The Move to Meaningful Internet Systems 2003: CoopIS, DOA, and ODBASE: OTM Confederated International Conferences, CoopIS, DOA, and ODBASE 2003, 2003, pp. 986–996. 
+[24] K. Alkhatib, H. Najadat, I. Hmeidi, M. K. A. Shatnawi, Stock price prediction using k-nearest neighbor (knn) algorithm, International Journal of Business, Humanities and Technology (2013) 32–44. 
+[25] F. S. D. Nugroho, T. B. Adji, S. Fauziati, Decision support system for stock trading using multiple indicators decision tree, in: International Conference on Information Technology, Computer, and Electrical Engineering, 2014, pp. 291–296. 
+[26] T. Kimoto, K. Asakawa, M. Yoda, M. Takeoka, Stock market prediction system with modular neural networks, in: International Joint Conference on Neural Networks, 1990, pp. 1–6. 
+[27] G. Zhang, B. E. Patuwo, M. Y. Hu, Forecasting with artificial neural networks:: The state of the art, International Journal of Forecasting (1998) 35–62. 
+[28] M. Adya, F. Collopy, How effective are neural networks at forecasting and prediction? a review and evaluation, Journal of Forecasting (1998) 481–495. 
+[29] H. Pan, C. Tilakaratne, J. Yearwood, Predicting australian stock market index using neural networks exploiting dynamical swings and inter-market influences, Journal of Research and Practice in Information Technology (2005) 43–55. 
+[30] G. S. Atsalakis, K. P. Valavanis, Surveying stock market forecasting techniques–part ii: Soft computing methods, Expert Systems with Applications (2009) 5932–5941. 
+[31] R. A. Kamble, Short and long term stock trend prediction using decision tree, in: 2017 International Conference on Intelligent Computing and Control Systems, 2017, pp. 1371–1375. 
+[32] M. Zhang, X. Jiang, Z. Fang, Y. Zeng, K. Xu, High-order hidden markov model for trend prediction in financial time series, Physica A: Statistical Mechanics and its Applications (2019) 1–12. 
+[33] Y. Chen, Y. Hao, A feature weighted support vector machine and k-nearest neighbor algorithm for stock market indices prediction, Expert Systems with Applications (2017) 340–355. 
+[34] J. Patel, S. Shah, P. Thakkar, K. Kotecha, Predicting stock market index using fusion of machine learning techniques, Expert Systems with Applications (2015) 2162–2172. 
+[35] R. Akita, A. Yoshihara, T. Matsubara, K. Uehara, Deep learning for stock prediction using numerical and textual information, in: International Conference on Computer and Information Science, 2016, pp. 1–6. 
+[36] M. E. Karim, M. Foysal, S. Das, Stock price prediction using bi-lstm and gru-based hybrid deep learning approach, in: Proceedings of Third Doctoral Symposium on Computational Intelligence, 2022, pp. 701–711. 
+[37] D. M. Nelson, A. C. Pereira, R. A. De Oliveira, Stock market’s price movement prediction with lstm neural networks, in: International Joint Conference on Neural Networks, 2017, pp. 1419–1426. 
+[38] U. Gupta, V. Bhattacharjee, P. S. Bishnu, Stocknet—gru based stock index prediction, Expert Systems with Applications (2022) 117986. 
+[39] J. Wang, T. Sun, B. Liu, Y. Cao, H. Zhu, Clvsa: a convolutional lstm based variational sequence-to-sequence model with attention for predicting trends of financial markets, in: International Joint Conference on Artificial Intelligence, 2019, pp. 3705–3711. 
+[40] F. Feng, H. Chen, X. He, J. Ding, M. Sun, T.-S. Chua, Enhancing stock movement prediction with adversarial training., in: International Joint Conference on Neural Networks, 2019, pp. 5843–5849. 
+[41] R. E. Farmer, The stock market crash of 2008 caused the great recession: Theory and evidence, Journal of Economic Dynamics and Control (2012) 693–707. 
+[42] Q. He, J. Liu, S. Wang, J. Yu, The impact of covid-19 on stock markets, Economic and Political Studies (2020) 275–288. 
+[43] L. Han, N. Ding, G. Wang, D. Cheng, Y. Liang, Efficient continuous space policy optimization for high-frequency trading, in: ACM SIGKDD Conference on Knowledge Discovery and Data Mining, 2023, pp. 4112–4122. 
+[44] S. Sun, R. Wang, B. An, Reinforcement learning for quantitative trading, ACM Transactions on Intelligent Systems and Technology (2023) 1–29. 
+[45] H. Yang, X.-Y. Liu, S. Zhong, A. Walid, Deep reinforcement learning for automated stock trading: An ensemble strategy, in: Proceedings of the ACM International Conference on AI in Finance, 2020, pp. 1–8. 
+[46] R. Neuneier, Optimal asset allocation using adaptive dynamic programming, in: Proceedings of the International Conference on Neural Information Processing Systems, 1995, pp. 952–958. 
+[47] S. Carta, A. Ferreira, A. S. Podda, D. R. Recupero, A. Sanna, Multi-dqn: An ensemble of deep q-learning agents for stock market forecasting, Expert systems with Applications (2021) 113820. 
+[48] O. Jin, H. El-Saawy, Portfolio management using reinforcement learning, Stanford University (2016). 
+[49] Y. Deng, F. Bao, Y. Kong, Z. Ren, Q. Dai, Deep direct reinforcement learning for financial signal representation and trading, IEEE Transac­tions on Neural Networks and Learning Systems (2016) 653–664. 
+[50] Y. Ding, W. Liu, J. Bian, D. Zhang, T.-Y. Liu, Investor-imitator: A framework for trading knowledge extraction, in: ACM SIGKDD Interna­tional Conference on Knowledge Discovery & Data Mining, 2018, pp. 1310–1319. 
+[51] M. Corazza, A. Sangalli, Q-learning and sarsa: a comparison between two intelligent stochastic control approaches for financial trading, University Ca’Foscari of Venice, Dept. of Economics Research Paper Series No (2015) 1–23. 
+[52] R. A. de Oliveira, H. S. Ramos, D. H. Dalip, A. C. M. Pereira, A tabular sarsa-based stock market agent, in: Proceedings of the ACM International Conference on AI in Finance, 2020, pp. 1–8. 
+[53] K. Dab´erius, E. Granat, P. Karlsson, Deep execution-value and policy based reinforcement learning for trading and beating market bench­marks, Available at SSRN 3374766 (2019). 
+[54] Z. Jiang, J. Liang, Cryptocurrency portfolio management with deep reinforcement learning, in: Intelligent Systems Conference, 2017, pp. 905–913. 
+[55] J. Wang, Y. Zhang, K. Tang, J. Wu, Z. Xiong, Alphastock: A buying-winners-and-selling-losers investment strategy using interpretable deep reinforcement attention networks, in: ACM SIGKDD International Conference on Knowledge Discovery and Data Mining, KDD ’19, 2019, pp. 1900–1908. 
+[56] W. Si, J. Li, P. Ding, R. Rao, A multi-objective deep reinforcement learning approach for stock index future’s intraday trading, in: International Symposium on Computational Intelligence and Design, 2017, pp. 431–436. 
+[57] D. Cheng, Y. Zou, S. Xiang, C. Jiang, Graph neural networks for financial fraud detection: a review, Frontiers of Computer Science (2025) 1–15. 
+[58] J. Wang, S. Zhang, Y. Xiao, R. Song, A review on graph neural network methods in financial applications, Journal of Data Science (2022) 111–134. 
+[59] D. Cheng, F. Yang, S. Xiang, J. Liu, Financial time series forecasting with multi-modality graph neural network, Pattern Recognition (2022) 108218. 
+[60] W. Xu, W. Liu, C. Xu, J. Bian, J. Yin, T.-Y. Liu, Rest: Relational event-driven stock trend forecasting, in: Proceedings of the Web Conference, 2021, pp. 1–10. 
+[61] S. Xiang, D. Cheng, C. Shang, Y. Zhang, Y. Liang, Temporal and heterogeneous graph neural network for financial time series prediction, in: ACM International Conference on Information & Knowledge Management, 2022, pp. 3584–3593. 
+[62] Y. Qiao, Y. Xia, X. Li, Z. Li, Y. Ge, Higher-order graph attention network for stock selection with joint analysis, arXiv preprint arXiv:2306.15526 (2023). 
+[63] T. Li, Z. Liu, Y. Shen, X. Wang, H. Chen, S. Huang, Master: Market-guided stock transformer for stock price forecasting, in: Proceedings of the AAAI Conference on Artificial Intelligence, 2024, pp. 162–170. 
+[64] N. Jegadeesh, S. Titman, Cross-sectional and time-series determinants of momentum returns, The Review of Financial Studies (2002) 143– 157. 
+[65] M. Liu, M. Zhu, X. Wang, G. Ma, J. Yin, X. Zheng, Echo-gl: Earnings calls-driven heterogeneous graph learning for stock movement prediction, in: Proceedings of the AAAI Conference on Artificial Intelligence, 2024, pp. 13972–13980. 
+[66] H. Qian, H. Zhou, Q. Zhao, H. Chen, H. Yao, J. Wang, Z. Liu, F. Yu, Z. Zhang, J. Zhou, Mdgnn: Multi-relational dynamic graph neural network for comprehensive and dynamic stock investment prediction, in: Proceedings of the AAAI Conference on Artificial Intelligence, 2024, pp. 14642–14650. 
+[67] Y. Zhao, H. Du, Y. Liu, S. Wei, X. Chen, F. Zhuang, Q. Li, G. Kou, Stock movement prediction based on bi-typed hybrid-relational market knowledge graph via dual attention networks, IEEE Transactions on Knowledge and Data Engineering (2022) 8559–8571. 
+[68] J. Achiam, S. Adler, S. Agarwal, L. Ahmad, I. Akkaya, F. L. Aleman, D. Almeida, J. Altenschmidt, S. Altman, S. Anadkat, et al., Gpt-4 technical report, arXiv preprint arXiv:2303.08774 (2023). 
+[69] T. B. Brown, Language models are few-shot learners, arXiv preprint arXiv:2005.14165 (2020). 
+[70] H. Touvron, T. Lavril, G. Izacard, X. Martinet, M.-A. Lachaux, T. Lacroix, B. Rozi`ere, N. Goyal, E. Hambro, F. Azhar, et al., Llama: Open and efficient foundation language models, arXiv preprint arXiv:2302.13971 (2023). 
+[71] A. Lopez-Lira, Y. Tang, Can chatgpt forecast stock price movements? return predictability and large language models, arXiv preprint arXiv:2304.07619 (2023). 
+[72] Z. Chen, L. N. Zheng, C. Lu, J. Yuan, D. Zhu, Chatgpt informed graph neural network for stock movement prediction, arXiv preprint arXiv:2306.03763 (2023). 
+[73] S. Titman, N. Jegadeesh, Returns to buying winners and selling losers: Implications for stock market efficiency, Journal of Finance (1993) 65–91. 
+[74] D. M. Q. Nelson, A. C. M. Pereira, R. A. de Oliveira, Stock market’s price movement prediction with lstm neural networks, in: International Joint Conference on Neural Networks, 2017, pp. 1419–1426. 
+[75] Y. Qin, D. Song, H. Cheng, W. Cheng, G. Jiang, G. W. Cottrell, A dual-stage attention-based recurrent neural network for time series prediction, in: International Joint Conference on Artificial Intelligence, 2017, pp. 2627–2633. 
+[76] J. Chung, C. Gulcehre, K. Cho, Y. Bengio, Empirical evaluation of gated recurrent neural networks on sequence modeling, in: Conference on Neural Information Processing Systems, 2014, pp. 1–9. 
+[77] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, L. Kaiser, I. Polosukhin, Attention is all you need, in: Advances in Neural Information Processing Systems, 2017, pp. 1–11. 
+[78] Q. Ding, S. Wu, H. Sun, J. Guo, J. Guo, Hierarchical multi-scale gaussian transformer for stock movement prediction, in: International Joint Conference on Artificial Intelligence, 2020, pp. 4640–4646. 
+[79] H. Lin, D. Zhou, W. Liu, J. Bian, Learning multiple stock trading patterns with temporal routing adaptor and optimal transport, in: ACM SIGKDD International Conference on Knowledge Discovery and Data Mining, 2021, pp. 1017–1026. 
+[80] Z. Zeng, R. Kaur, S. Siddagangappa, S. Rahimi, T. Balch, M. Veloso, Financial time series forecasting using cnn and transformer, in: Proceedings of the AAAI Conference on Artificial Intelligence, 2023, pp. 1–4. 
+[81] V. Mnih, A. P. Badia, M. Mirza, A. Graves, T. Lillicrap, T. Harley, D. Silver, K. Kavukcuoglu, Asynchronous methods for deep reinforcement learning, in: International Conference on Machine Learning, 2016, pp. 1928–1937. 
+[82] T. P. Lillicrap, J. J. Hunt, A. Pritzel, N. Heess, T. Erez, Y. Tassa, D. Silver, D. Wierstra, Continuous control with deep reinforcement learning, arXiv preprint arXiv:1509.02971 (2015). 
+[83] J. Schulman, F. Wolski, P. Dhariwal, A. Radford, O. Klimov, Proximal policy optimization algorithms, arXiv preprint arXiv:1707.06347 (2017). 
+[84] S. Fujimoto, H. Hoof, D. Meger, Addressing function approximation error in actor-critic methods, in: International Conference on Machine Learning, 2018, pp. 1587–1596. 
+[85] T. Haarnoja, A. Zhou, K. Hartikainen, G. Tucker, S. Ha, J. Tan, V. Kumar, H. Zhu, A. Gupta, P. Abbeel, et al., Soft actor-critic algorithms and applications, arXiv e-prints (2018). 
+[86] Y. Duan, L. Wang, Q. Zhang, J. Li, Factorvae: A probabilistic dynamic factor model based on variational autoencoder for predicting cross-sectional stock returns, in: Proceedings of the AAAI Conference on Artificial Intelligence, 2022, pp. 4468–4476. 
+[87] F. Soleymani, E. Paquet, Deep graph convolutional reinforcement learning for financial portfolio management – deeppocket, Expert Systems with Applications (2021) 115–127. 
+[88] Z. Wang, B. Huang, S. Tu, K. Zhang, L. Xu, Deeptrader: A deep reinforcement learning approach for risk-return balanced portfolio manage­ment with market conditions embedding, in: Proceedings of the AAAI Conference on Artificial Intelligence, 2021, pp. 643–650. 
+[89] R. Xing, R. Cheng, J. Huang, Q. Li, J. Zhao, Learning to understand the vague graph for stock prediction with momentum spillovers, IEEE Transactions on Knowledge and Data Engineering (2023) 1698–1712. 
+[90] H. Xia, H. Ao, L. Li, Y. Liu, S. Liu, G. Ye, H. Chai, Ci-sthpan: Pre-trained attention network for stock selection with channel-independent spatio-temporal hypergraph, in: Proceedings of the AAAI Conference on Artificial Intelligence, 2024, pp. 9187–9195. 
+[91] K. Du, R. Mao, F. Xing, E. Cambria, Explainable stock price movement prediction using contrastive learning, in: ACM International Confer­ence on Information and Knowledge Management, 2024, pp. 529–537. 
+
