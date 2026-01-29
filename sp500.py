@@ -1652,12 +1652,12 @@ CONFIG = {
 
 # Date splits following paper methodology (Section 4.1.1)
 # Using 2017 as training start since our S&P 500 data starts from 2017
-TRAIN_START = '2017-01-01'
-TRAIN_END = '2021-12-31'
-VAL_START = '2022-01-01'
-VAL_END = '2022-12-31'
-TEST_START = '2023-01-01'
-TEST_END = '2023-12-31'
+TRAIN_START = '2019-01-01'
+TRAIN_END = '2023-12-31'
+VAL_START = '2024-01-01'
+VAL_END = '2024-12-31'
+TEST_START = '2025-01-01'
+TEST_END = '2025-12-31'
 
 # Output directory
 save_path = f'paper_style_output_{judge_value}_{label_t}_{his_t}/'

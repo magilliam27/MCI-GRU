@@ -163,7 +163,7 @@ def main():
     )
     parser.add_argument("--tickers", required=True, help="Path to ticker CSV.")
     parser.add_argument("--start", default="2017-01-01")
-    parser.add_argument("--end", default="2023-12-31")
+    parser.add_argument("--end", default="2025-12-31")
     parser.add_argument("--min-days", type=int, default=200)
     parser.add_argument("--out", default="sp500_yf_download.csv")
     args = parser.parse_args()
