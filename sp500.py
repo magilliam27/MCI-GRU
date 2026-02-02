@@ -61,6 +61,97 @@ def standardize_zscore(series):
     mean = series.mean()
     return (series - mean) / std
 
+
+def add_momentum_features(df):
+    """
+    Add momentum factors from the Goulding, Harvey, Mazzoleni paper 
+    "Momentum Turning Points" (SSRN-3489539).
+    
+    Paper methodology:
+    - Slow momentum: 12-month (252 trading days) trailing return
+    - Fast momentum: 1-month (21 trading days) trailing return
+    - Market cycles: Bull, Correction, Bear, Rebound based on slow/fast agreement
+    
+    Features added:
+        - slow_momentum: 252-day cumulative return (log return sum)
+        - fast_momentum: 21-day cumulative return (log return sum)
+        - slow_signal: +1 if slow_momentum >= 0, else -1
+        - fast_signal: +1 if fast_momentum >= 0, else -1
+        - momentum_blend: MED strategy signal = (slow_signal + fast_signal) / 2
+        - cycle_bull: 1 if Bull state (slow>=0 AND fast>=0), else 0
+        - cycle_correction: 1 if Correction state (slow>=0 AND fast<0), else 0
+        - cycle_bear: 1 if Bear state (slow<0 AND fast<0), else 0
+        
+    Note: cycle_rebound is omitted as it's linearly dependent on the other three.
+    
+    Args:
+        df: DataFrame with columns ['kdcode', 'dt', 'close', ...]
+        
+    Returns:
+        DataFrame with momentum features added
+    """
+    print("Computing momentum features from Momentum Turning Points paper...")
+    df = df.sort_values(['kdcode', 'dt']).copy()
+    
+    # Calculate daily log returns per stock (more stable for cumulative sums)
+    df['daily_return'] = df.groupby('kdcode')['close'].pct_change()
+    
+    # Fast momentum: 1-month (21 trading days) trailing return
+    # Using sum of returns as approximation of cumulative return
+    df['fast_momentum'] = df.groupby('kdcode')['daily_return'].transform(
+        lambda x: x.rolling(window=21, min_periods=21).sum()
+    )
+    
+    # Slow momentum: 12-month (252 trading days) trailing return
+    df['slow_momentum'] = df.groupby('kdcode')['daily_return'].transform(
+        lambda x: x.rolling(window=252, min_periods=252).sum()
+    )
+    
+    # Binary signals: +1 for positive/zero, -1 for negative
+    # Per paper: position = +1 if trailing return >= 0, else -1
+    df['slow_signal'] = np.where(df['slow_momentum'] >= 0, 1.0, -1.0)
+    df['fast_signal'] = np.where(df['fast_momentum'] >= 0, 1.0, -1.0)
+    
+    # Handle NaN values (first 252/21 days per stock won't have enough history)
+    # Fill with 0 (neutral signal) as per plan
+    df['slow_momentum'] = df['slow_momentum'].fillna(0)
+    df['fast_momentum'] = df['fast_momentum'].fillna(0)
+    df['slow_signal'] = df['slow_signal'].fillna(0)
+    df['fast_signal'] = df['fast_signal'].fillna(0)
+    
+    # MED: Intermediate-speed momentum (blend of slow and fast)
+    # Per paper: w_MED = 0.5 * w_SLOW + 0.5 * w_FAST
+    # Results in: -1, 0, or +1
+    df['momentum_blend'] = (df['slow_signal'] + df['fast_signal']) / 2
+    
+    # Market Cycle States (one-hot encoded for neural network input)
+    # Per paper Figure 4:
+    # - Bull: slow >= 0 AND fast >= 0 (both long)
+    # - Correction: slow >= 0 AND fast < 0 (turning point down)
+    # - Bear: slow < 0 AND fast < 0 (both short)
+    # - Rebound: slow < 0 AND fast >= 0 (turning point up)
+    
+    df['cycle_bull'] = ((df['slow_signal'] == 1) & (df['fast_signal'] == 1)).astype(float)
+    df['cycle_correction'] = ((df['slow_signal'] == 1) & (df['fast_signal'] == -1)).astype(float)
+    df['cycle_bear'] = ((df['slow_signal'] == -1) & (df['fast_signal'] == -1)).astype(float)
+    # Note: cycle_rebound is omitted (linearly dependent on other 3)
+    # cycle_rebound = (slow_signal == -1) & (fast_signal == 1)
+    
+    # For rows where signals are 0 (insufficient history), default to neutral
+    # Set all cycle indicators to 0 for these rows
+    neutral_mask = (df['slow_signal'] == 0) | (df['fast_signal'] == 0)
+    df.loc[neutral_mask, ['cycle_bull', 'cycle_correction', 'cycle_bear']] = 0
+    
+    # Drop the intermediate daily_return column
+    df = df.drop(columns=['daily_return'])
+    
+    print(f"  Added momentum features: slow_momentum, fast_momentum, slow_signal, fast_signal, momentum_blend")
+    print(f"  Added market cycle indicators: cycle_bull, cycle_correction, cycle_bear")
+    print(f"  Rows with valid slow momentum: {(df['slow_momentum'] != 0).sum()} / {len(df)}")
+    
+    return df
+
+
 def compute_training_stats(df, feature_cols, train_end_date):
     """
     Compute normalization statistics from training period only.
@@ -352,6 +443,9 @@ def fun_process_data_all(dts_one, filename, feature_cols, judge_value, label_t, 
     # Add Turnover feature (Close x Volume) per paper specification
     df_org['turnover'] = df_org['close'] * df_org['volume']
     
+    # Add momentum features from Momentum Turning Points paper
+    df_org = add_momentum_features(df_org)
+    
     # Fill NaN values first (before computing stats)
     df_features_grouped = df_org.groupby('dt')
     res = []
@@ -422,6 +516,9 @@ def prepare_data_paper_style(filename, feature_cols, his_t,
     
     # Add Turnover feature (Close x Volume) per paper specification
     df_org['turnover'] = df_org['close'] * df_org['volume']
+    
+    # Add momentum features from Momentum Turning Points paper
+    df_org = add_momentum_features(df_org)
     
     print(f"Data loaded: {len(df_org)} rows")
     print(f"Date range: {df_org['dt'].min()} to {df_org['dt'].max()}")
@@ -1175,6 +1272,96 @@ class ImprovedGRU(nn.Module):
         return layer_input[:, :, -1, :]
 
 
+class MultiScaleTemporalEncoder(nn.Module):
+    """
+    Multi-scale temporal encoder inspired by the Momentum Turning Points paper.
+    
+    The paper demonstrates that slow (12-month) and fast (1-month) momentum 
+    signals capture different but complementary information. This encoder
+    processes temporal features at multiple scales:
+    
+    1. Fast path: Standard ImprovedGRU on full sequence (captures recent patterns)
+    2. Slow path: Temporal aggregation via Conv1d, then GRU (captures longer-term trends)
+    
+    The outputs are combined to provide a richer temporal representation that
+    captures both fast-moving signals and slow-moving trends.
+    
+    Args:
+        input_size: Number of input features
+        hidden_sizes: List of hidden sizes for each GRU layer [32, 10]
+        slow_kernel: Kernel size for temporal convolution (default 5)
+        slow_stride: Stride for temporal downsampling (default 2)
+    """
+    
+    def __init__(self, input_size, hidden_sizes=[32, 10], slow_kernel=5, slow_stride=2):
+        super(MultiScaleTemporalEncoder, self).__init__()
+        
+        self.hidden_sizes = hidden_sizes
+        self.slow_kernel = slow_kernel
+        self.slow_stride = slow_stride
+        
+        # Fast path: standard ImprovedGRU on full sequence
+        # Captures short-term, fast-moving patterns (like 1-month momentum)
+        self.fast_gru = ImprovedGRU(input_size, hidden_sizes)
+        
+        # Slow path: temporal aggregation then GRU
+        # Captures longer-term, slow-moving patterns (like 12-month momentum)
+        # Conv1d aggregates nearby time steps before processing
+        self.slow_aggregator = nn.Conv1d(
+            in_channels=input_size, 
+            out_channels=input_size, 
+            kernel_size=slow_kernel, 
+            stride=slow_stride, 
+            padding=slow_kernel // 2
+        )
+        self.slow_gru = ImprovedGRU(input_size, hidden_sizes)
+        
+        # Combine both scales
+        # Concatenate fast and slow representations, project back to output size
+        self.combiner = nn.Linear(hidden_sizes[-1] * 2, hidden_sizes[-1])
+        self.output_size = hidden_sizes[-1]
+    
+    def forward(self, x):
+        """
+        Process temporal features at multiple scales.
+        
+        Args:
+            x: input sequence, shape (batch, num_stocks, seq_len, input_size)
+        
+        Returns:
+            output: combined multi-scale features, shape (batch, num_stocks, output_size)
+        """
+        batch_size, num_stocks, seq_len, input_size = x.shape
+        device = x.device
+        
+        # Fast path: process full sequence through ImprovedGRU
+        # Output: (batch, num_stocks, hidden_sizes[-1])
+        fast_out = self.fast_gru(x)
+        
+        # Slow path: aggregate temporally then process
+        # Reshape for Conv1d: (batch * num_stocks, input_size, seq_len)
+        x_reshaped = x.view(batch_size * num_stocks, seq_len, input_size)
+        x_reshaped = x_reshaped.transpose(1, 2)  # (B*N, input_size, seq_len)
+        
+        # Apply temporal aggregation
+        x_slow = self.slow_aggregator(x_reshaped)  # (B*N, input_size, seq_len')
+        
+        # Transpose back and reshape for GRU
+        x_slow = x_slow.transpose(1, 2)  # (B*N, seq_len', input_size)
+        seq_len_slow = x_slow.shape[1]
+        x_slow = x_slow.view(batch_size, num_stocks, seq_len_slow, input_size)
+        
+        # Process aggregated sequence through slow GRU
+        # Output: (batch, num_stocks, hidden_sizes[-1])
+        slow_out = self.slow_gru(x_slow)
+        
+        # Combine fast and slow representations
+        combined = torch.cat([fast_out, slow_out], dim=-1)  # (batch, num_stocks, hidden*2)
+        output = self.combiner(combined)  # (batch, num_stocks, hidden)
+        
+        return output
+
+
 class GATLayer(nn.Module):
     """
     Two-layer GAT for cross-sectional feature extraction.
@@ -1307,7 +1494,10 @@ class StockPredictionModel(nn.Module):
     MCI-GRU Model: Multi-head Cross-attention and Improved GRU for Stock Prediction.
     
     Architecture per paper:
-    1. Part A: Improved GRU for temporal features (two layers: [32, 10])
+    1. Part A: Multi-scale temporal encoder for temporal features
+       - Enhanced with multi-scale processing inspired by Momentum Turning Points paper
+       - Fast path: captures short-term patterns (like 1-month momentum)
+       - Slow path: captures longer-term trends (like 12-month momentum)
     2. Part B: GAT for cross-sectional features
     3. Part C: Multi-head cross-attention for latent market states
     4. Part D: Concatenate A1, A2, B1, B2 -> Prediction GAT
@@ -1321,13 +1511,22 @@ class StockPredictionModel(nn.Module):
         gat_heads=4,                 # Paper: 4 heads
         hidden_size_gat2=32,         # Paper: 32
         num_hidden_states=32,        # Paper: 32 latent vectors
-        cross_attn_heads=4           # Paper: 4 heads for cross-attention
+        cross_attn_heads=4,          # Paper: 4 heads for cross-attention
+        slow_kernel=5,               # Kernel size for slow temporal aggregation
+        slow_stride=2                # Stride for temporal downsampling
     ):
         super(StockPredictionModel, self).__init__()
         
-        # Part A: Improved GRU for temporal features
-        self.temporal_gru = ImprovedGRU(input_size, gru_hidden_sizes)
-        gru_output_size = self.temporal_gru.output_size  # 10 for paper config
+        # Part A: Multi-scale temporal encoder for temporal features
+        # Uses both fast (full sequence) and slow (downsampled) processing paths
+        # Inspired by Momentum Turning Points paper's slow/fast momentum distinction
+        self.temporal_encoder = MultiScaleTemporalEncoder(
+            input_size, 
+            hidden_sizes=gru_hidden_sizes,
+            slow_kernel=slow_kernel,
+            slow_stride=slow_stride
+        )
+        gru_output_size = self.temporal_encoder.output_size  # 10 for paper config
         
         # Part B: GAT for cross-sectional features
         self.gat_layer = GATLayer(hidden_size_gat1, output_gat1, input_size, output_gat1, gat_heads)
@@ -1369,10 +1568,11 @@ class StockPredictionModel(nn.Module):
         if num_stocks is None:
             num_stocks = x_time_series.shape[1]
         
-        # Part A: Temporal features via Improved GRU
+        # Part A: Temporal features via Multi-scale Temporal Encoder
         # Input: (batch, num_stocks, seq_len, input_size)
         # Output: (batch, num_stocks, gru_output_size)
-        A1_raw = self.temporal_gru(x_time_series)
+        # Multi-scale encoder processes both fast (full sequence) and slow (downsampled) paths
+        A1_raw = self.temporal_encoder(x_time_series)
         
         # Flatten to (batch * num_stocks, gru_output_size) to match batched graph structure
         A1_raw = A1_raw.reshape(batch_size * num_stocks, -1)
@@ -1483,7 +1683,9 @@ def create_model(input_size, config):
         gat_heads=config['gat_heads'],
         hidden_size_gat2=config['hidden_size_gat2'],
         num_hidden_states=config['num_hidden_states'],
-        cross_attn_heads=config['cross_attn_heads']
+        cross_attn_heads=config['cross_attn_heads'],
+        slow_kernel=config.get('slow_kernel', 5),
+        slow_stride=config.get('slow_stride', 2)
     )
 
 
@@ -1625,18 +1827,33 @@ def model_train_predict(num_models, num_epochs, save_path, model_dt, kdcode_last
 
 filename = 'sp500_yf_download.csv'
 
-# Paper uses 6 features: Open, High, Low, Close, Volume, Turnover
-feature_cols = ['close', 'open', 'high', 'low', 'volume', 'turnover']
+# Base features: Open, High, Low, Close, Volume, Turnover (6 features)
+base_features = ['close', 'open', 'high', 'low', 'volume', 'turnover']
+
+# Momentum features from Momentum Turning Points paper (8 features)
+# - slow_momentum: 252-day (12-month) cumulative return
+# - fast_momentum: 21-day (1-month) cumulative return
+# - slow_signal, fast_signal: Binary +1/-1 signals
+# - momentum_blend: MED signal (intermediate speed)
+# - cycle_bull, cycle_correction, cycle_bear: One-hot market cycle indicators
+momentum_features = [
+    'slow_momentum', 'fast_momentum',
+    'slow_signal', 'fast_signal', 'momentum_blend',
+    'cycle_bull', 'cycle_correction', 'cycle_bear'
+]
+
+# Combined feature set (14 features total)
+feature_cols = base_features + momentum_features
 num_features = len(feature_cols)
 
 # Paper hyperparameters (Table 2)
-judge_value = 0.7   # Correlation threshold for graph edges
+judge_value = 0.8   # Correlation threshold for graph edges
 label_t = 5         # Forward return period (days) - adjust based on paper
 his_t = 10          # Historical window size (10 days per paper Section 4.1.3)
 num_models = 10     # Paper uses 10 runs for averaging (Section 4.1.2)
 num_epochs = 100    # Maximum epochs with early stopping
 
-# Paper hyperparameters (Table 2)
+# Paper hyperparameters (Table 2) + Multi-scale encoder parameters
 CONFIG = {
     'gru_hidden_sizes': [32, 10],  # Two-layer GRU per paper
     'hidden_size_gat1': 32,        # Paper: 32
@@ -1648,6 +1865,9 @@ CONFIG = {
     'learning_rate': 0.0002,       # Paper: 0.0002
     'early_stopping_patience': 10, # Early stopping patience
     'batch_size': 32,              # Paper Table 2: batch_size = 32
+    # Multi-scale temporal encoder parameters (from Momentum Turning Points)
+    'slow_kernel': 5,              # Kernel size for slow temporal aggregation
+    'slow_stride': 2,              # Stride for temporal downsampling
 }
 
 # Date splits following paper methodology (Section 4.1.1)
@@ -1664,7 +1884,7 @@ save_path = f'paper_style_output_{judge_value}_{label_t}_{his_t}/'
 os.makedirs(save_path, exist_ok=True)
 
 print("=" * 80)
-print("MCI-GRU Training - Paper Methodology")
+print("MCI-GRU Training - Paper Methodology + Momentum Turning Points")
 print("=" * 80)
 print(f"Training period: {TRAIN_START} to {TRAIN_END}")
 print(f"Validation period: {VAL_START} to {VAL_END}")
@@ -1673,6 +1893,8 @@ print(f"Historical window (his_t): {his_t} days")
 print(f"Forward return period (label_t): {label_t} days")
 print(f"Number of model runs: {num_models}")
 print(f"Batch size: {CONFIG['batch_size']}")
+print(f"Total features: {num_features} ({len(base_features)} base + {len(momentum_features)} momentum)")
+print(f"Multi-scale encoder: slow_kernel={CONFIG['slow_kernel']}, slow_stride={CONFIG['slow_stride']}")
 print("=" * 80)
 
 # Step 1: Prepare data with fixed train/val/test split
