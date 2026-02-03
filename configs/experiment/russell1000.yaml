@@ -1,0 +1,8 @@
+# @package _global_
+# Experiment: Russell 1000 universe
+# Tests hypothesis: Model success can be replicated on larger stock universe
+
+defaults:
+  - override /data: russell1000
+
+experiment_name: russell1000

@@ -1,0 +1,8 @@
+# @package _global_
+# Experiment: Dynamic correlation updates every 6 months
+# Tests hypothesis: Stock correlations change over time, periodic updates may improve performance
+
+experiment_name: correlation_dynamic_6mo
+
+graph:
+  update_frequency_months: 6

@@ -1,0 +1,42 @@
+# Base configuration for MCI-GRU experiments
+# Override values via command line or by including experiment configs
+
+defaults:
+  - data: sp500
+  - features: with_momentum
+  - _self_
+
+# Model configuration
+model:
+  his_t: 10                    # Historical lookback (days)
+  label_t: 5                   # Forward return period (days)
+  gru_hidden_sizes: [32, 10]   # GRU hidden layer sizes
+  hidden_size_gat1: 32         # First GAT hidden size
+  output_gat1: 4               # First GAT output size
+  gat_heads: 4                 # Number of GAT attention heads
+  hidden_size_gat2: 32         # Second GAT hidden size
+  num_hidden_states: 32        # Number of latent state vectors
+  cross_attn_heads: 4          # Cross-attention heads
+  slow_kernel: 5               # Multi-scale temporal kernel size
+  slow_stride: 2               # Multi-scale temporal stride
+
+# Graph configuration
+graph:
+  judge_value: 0.8             # Correlation threshold for edges
+  update_frequency_months: 0   # 0 = static, 6 = update every 6 months
+  corr_lookback_days: 252      # Days for correlation computation
+
+# Training configuration
+training:
+  batch_size: 32
+  learning_rate: 0.0002
+  num_epochs: 100
+  num_models: 10               # Number of models for averaging
+  early_stopping_patience: 10
+  weight_decay: 0.0
+  gradient_clip: 0.0
+
+# Experiment metadata
+experiment_name: baseline
+output_dir: results
+seed: 42

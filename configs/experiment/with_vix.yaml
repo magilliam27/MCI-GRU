@@ -1,0 +1,12 @@
+# @package _global_
+# Experiment: Add VIX and volatility features
+# Tests hypothesis: VIX adds market-level context for idiosyncratic vs systemic risk
+
+defaults:
+  - override /features: full
+
+experiment_name: with_vix
+
+features:
+  include_vix: true
+  include_volatility: true

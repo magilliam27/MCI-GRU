@@ -1,0 +1,4 @@
+# @package _global_
+# Baseline experiment - matches original sp500.py configuration
+
+experiment_name: baseline

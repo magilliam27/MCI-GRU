@@ -1,0 +1,10 @@
+# @package _global_
+# Experiment: Buffered momentum encoding with no-trade zones
+# Tests hypothesis: Weak signals should be ignored, extreme signals may indicate mean reversion
+
+experiment_name: momentum_buffered
+
+features:
+  momentum_encoding: buffered
+  momentum_buffer_low: 0.1   # Bottom 10% = no trade
+  momentum_buffer_high: 0.9  # Top 10% = clipped

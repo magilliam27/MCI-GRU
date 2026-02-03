@@ -1,0 +1,18 @@
+# Base features only (no momentum)
+base_features:
+  - close
+  - open
+  - high
+  - low
+  - volume
+  - turnover
+include_momentum: false
+momentum_encoding: binary
+momentum_buffer_low: 0.1
+momentum_buffer_high: 0.9
+include_volatility: false
+include_vix: false
+include_rsi: false
+include_ma_features: false
+include_price_features: false
+include_volume_features: false

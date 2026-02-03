@@ -1,0 +1,23 @@
+# MCI-GRU Experiment Framework Dependencies
+
+# Core ML/DL
+torch>=2.0
+torch-geometric>=2.4
+numpy>=1.24
+pandas>=2.0
+scikit-learn>=1.3
+scipy>=1.11
+
+# Visualization
+matplotlib>=3.7
+tqdm>=4.65
+
+# Configuration & Experiment Management
+hydra-core>=1.3
+omegaconf>=2.3
+
+# Data Loading (optional - only needed for LSEG data)
+# refinitiv-data>=1.5
+
+# Date handling
+python-dateutil>=2.8

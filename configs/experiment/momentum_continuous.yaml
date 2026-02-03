@@ -1,0 +1,8 @@
+# @package _global_
+# Experiment: Continuous momentum encoding
+# Tests hypothesis: Momentum magnitude matters, not just direction
+
+experiment_name: momentum_continuous
+
+features:
+  momentum_encoding: continuous

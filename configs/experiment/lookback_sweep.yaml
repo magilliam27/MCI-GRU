@@ -1,0 +1,9 @@
+# @package _global_
+# Experiment: Sweep over different lookback periods
+# Use with --multirun: python run_experiment.py +experiment=lookback_sweep --multirun model.his_t=5,10,15,20,30
+
+experiment_name: lookback_sweep
+
+# Default to his_t=5, but this is meant to be overridden with --multirun
+model:
+  his_t: 5
