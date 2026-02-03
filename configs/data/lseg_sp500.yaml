@@ -1,7 +1,8 @@
-# S&P 500 data configuration
+# LSEG data source for S&P 500
+# Uses LSEG Workspace Data API
 universe: sp500
 source: lseg
-filename: sp500_data.csv  # Fallback CSV file if LSEG unavailable
+api_key: ${oc.env:LSEG_API_KEY}  # From environment variable
 train_start: "2019-01-01"
 train_end: "2023-12-31"
 val_start: "2024-01-01"

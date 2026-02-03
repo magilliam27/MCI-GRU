@@ -379,9 +379,14 @@ def compute_labels(
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def main(cfg: DictConfig):
     """Main entry point."""
-    # Hydra changes working directory, so we need to get absolute path for output
-    # Hydra manages the output directory automatically based on config
-    output_path = os.getcwd()  # Hydra sets this to the configured run directory
+    # Get Hydra's output directory (respects output_dir override from command line)
+    from hydra.core.hydra_config import HydraConfig
+    try:
+        hydra_cfg = HydraConfig.get()
+        output_path = hydra_cfg.runtime.output_dir
+    except:
+        # Fallback if Hydra config not available
+        output_path = os.getcwd()
     
     # Setup logging first
     logger = setup_logging(output_path, cfg.get('experiment_name', 'baseline'))
@@ -397,8 +402,9 @@ def main(cfg: DictConfig):
     # Convert to typed config
     config = dict_to_config(cfg)
     
-    # Override output_dir to use Hydra's managed directory
-    config.output_dir = output_path
+    # Use Hydra's managed output path (preserves user's output_dir setting)
+    # Don't override config.output_dir - it contains the base path
+    # output_path contains the full timestamped path
     
     # Set seed
     set_seed(config.seed)
@@ -466,6 +472,7 @@ def main(cfg: DictConfig):
         graph_builder=data['graph_builder'],
         df=data['df'],
         train_dates=data['train_dates'],
+        output_path=output_path,  # Pass Hydra's output path
     )
     
     # Summary

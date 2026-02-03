@@ -334,6 +334,7 @@ def train_multiple_models(
     graph_builder: Optional[GraphBuilder] = None,
     df: Optional[pd.DataFrame] = None,
     train_dates: Optional[List[str]] = None,
+    output_path: Optional[str] = None,
 ) -> Tuple[List[TrainingResult], np.ndarray]:
     """
     Train multiple models and average predictions.
@@ -351,11 +352,15 @@ def train_multiple_models(
         graph_builder: Optional graph builder
         df: DataFrame for dynamic graph updates
         train_dates: Training dates for dynamic updates
+        output_path: Optional output path override (for Hydra managed paths)
         
     Returns:
         Tuple of (list of training results, averaged predictions)
     """
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    
+    # Use provided output_path or fall back to config
+    base_output_path = output_path if output_path else config.get_output_path()
     
     all_results = []
     all_predictions = []
@@ -397,15 +402,15 @@ def train_multiple_models(
         predictions = trainer.predict(test_loader, kdcode_list, test_dates)
         all_predictions.append(predictions)
         
-        # Save individual predictions
-        pred_dir = os.path.join(config.get_output_path(), f'predictions_model_{model_id}')
+        # Save individual predictions using base_output_path
+        pred_dir = os.path.join(base_output_path, f'predictions_model_{model_id}')
         trainer.save_predictions(predictions, kdcode_list, test_dates, pred_dir)
     
     # Average predictions
     avg_predictions = np.mean(all_predictions, axis=0)
     
-    # Save averaged predictions
-    avg_pred_dir = os.path.join(config.get_output_path(), 'averaged_predictions')
+    # Save averaged predictions using base_output_path
+    avg_pred_dir = os.path.join(base_output_path, 'averaged_predictions')
     os.makedirs(avg_pred_dir, exist_ok=True)
     
     for idx, date in enumerate(test_dates):

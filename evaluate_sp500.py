@@ -69,9 +69,9 @@ warnings.filterwarnings('ignore')
 DEFAULT_CONFIG = {
     'top_k': 10,                    # Paper: k=10 stocks in portfolio
     'trading_days_per_year': 252,   # Standard trading days
-    'test_start': '2023-01-01',     # Paper Section 4.1.1
-    'test_end': '2023-12-31',       # Paper Section 4.1.1
-    'data_file': 'sp500_yf_download.csv',
+    'test_start': '2025-01-01',     # Updated to match training config
+    'test_end': '2025-12-31',       # Updated to match training config
+    'data_file': 'sp500_data.csv',  # Updated to match actual data file
     'label_t': 5,                   # Forward return period (days)
     # Transaction costs for retail investor
     'transaction_costs': {
