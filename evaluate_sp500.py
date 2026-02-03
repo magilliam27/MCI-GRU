@@ -53,6 +53,7 @@ Usage:
 
 import os
 import argparse
+import logging
 import numpy as np
 import pandas as pd
 from glob import glob
@@ -1282,6 +1283,234 @@ def save_results(results, output_path, num_tests=1, adjustment_method='bhy'):
     print(f"Results saved to {output_path}")
 
 
+def setup_backtest_output_dir(predictions_dir: str, suffix: str = "") -> str:
+    """
+    Create backtest output directory alongside predictions.
+    
+    Args:
+        predictions_dir: Path to averaged_predictions folder
+        suffix: Optional suffix for multiple backtests (e.g., "_with_costs")
+    
+    Returns:
+        Path to backtest output directory
+    """
+    # predictions_dir is typically: {output_dir}/{experiment_name}/{timestamp}/averaged_predictions
+    # We want: {output_dir}/{experiment_name}/{timestamp}/backtest{suffix}
+    
+    parent_dir = os.path.dirname(predictions_dir)
+    backtest_dir = os.path.join(parent_dir, f'backtest{suffix}')
+    os.makedirs(backtest_dir, exist_ok=True)
+    
+    return backtest_dir
+
+
+def save_backtest_results(
+    results: dict, 
+    backtest_dir: str,
+    sim_results: dict = None,
+    config: dict = None,
+    num_tests: int = 1,
+    adjustment_method: str = 'bhy'
+) -> str:
+    """
+    Save comprehensive backtest results in organized structure.
+    
+    Args:
+        results: Dictionary of metrics from evaluate()
+        backtest_dir: Directory to save results
+        sim_results: Raw simulation results (optional, for time series)
+        config: Configuration used (optional)
+        num_tests: Number of tests for multiple testing adjustment
+        adjustment_method: Adjustment method for multiple testing
+    
+    Returns:
+        Path to backtest directory
+    """
+    import json
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    print(f"\nSaving backtest results to: {backtest_dir}")
+    
+    # 1. Save main results CSV (with statistical adjustments)
+    results_file = os.path.join(backtest_dir, 'backtest_results.csv')
+    save_results(results, results_file, num_tests, adjustment_method)
+    
+    # 2. Save detailed metrics as JSON (easier to read)
+    metrics_file = os.path.join(backtest_dir, 'backtest_metrics.json')
+    with open(metrics_file, 'w') as f:
+        json.dump(results, f, indent=2, default=float)
+    print(f"  Metrics JSON: {metrics_file}")
+    
+    # 3. Save configuration
+    if config:
+        config_file = os.path.join(backtest_dir, 'backtest_config.json')
+        with open(config_file, 'w') as f:
+            # Convert any non-serializable objects
+            config_copy = {}
+            for k, v in config.items():
+                if isinstance(v, dict):
+                    config_copy[k] = {str(k2): v2 for k2, v2 in v.items()}
+                else:
+                    config_copy[k] = v
+            json.dump(config_copy, f, indent=2, default=str)
+        print(f"  Config: {config_file}")
+    
+    # 4. Save time series data (portfolio returns, cumulative performance)
+    if sim_results:
+        # Daily returns
+        returns_df = pd.DataFrame({
+            'date': sim_results['dates'],
+            'portfolio_return': sim_results['portfolio_returns'],
+            'benchmark_return': sim_results['benchmark_returns'],
+            'excess_return': sim_results['portfolio_returns'] - sim_results['benchmark_returns']
+        })
+        
+        if sim_results.get('transaction_costs_enabled', False):
+            returns_df['gross_portfolio_return'] = sim_results.get('gross_portfolio_returns', sim_results['portfolio_returns'])
+            returns_df['transaction_cost'] = returns_df['gross_portfolio_return'] - returns_df['portfolio_return']
+        
+        returns_file = os.path.join(backtest_dir, 'daily_returns.csv')
+        returns_df.to_csv(returns_file, index=False)
+        print(f"  Daily returns: {returns_file}")
+        
+        # Cumulative performance
+        cum_portfolio = np.cumprod(1 + sim_results['portfolio_returns'])
+        cum_benchmark = np.cumprod(1 + sim_results['benchmark_returns'])
+        
+        perf_df = pd.DataFrame({
+            'date': sim_results['dates'],
+            'portfolio_value': cum_portfolio,
+            'benchmark_value': cum_benchmark,
+            'relative_performance': cum_portfolio / cum_benchmark,
+            'portfolio_drawdown': (cum_portfolio / np.maximum.accumulate(cum_portfolio) - 1)
+        })
+        perf_file = os.path.join(backtest_dir, 'cumulative_performance.csv')
+        perf_df.to_csv(perf_file, index=False)
+        print(f"  Cumulative performance: {perf_file}")
+        
+        # Monthly aggregation for easier analysis
+        returns_df['date'] = pd.to_datetime(returns_df['date'])
+        returns_df['year_month'] = returns_df['date'].dt.to_period('M')
+        
+        monthly_stats = returns_df.groupby('year_month').agg({
+            'portfolio_return': ['sum', 'std', 'count'],
+            'benchmark_return': ['sum', 'std'],
+            'excess_return': ['sum', 'mean']
+        }).reset_index()
+        monthly_stats.columns = ['year_month', 'portfolio_return', 'portfolio_volatility', 'trading_days',
+                                 'benchmark_return', 'benchmark_volatility', 'excess_return', 'avg_excess_return']
+        monthly_file = os.path.join(backtest_dir, 'monthly_performance.csv')
+        monthly_stats.to_csv(monthly_file, index=False)
+        print(f"  Monthly performance: {monthly_file}")
+    
+    # 5. Create summary text file
+    summary_file = os.path.join(backtest_dir, 'summary.txt')
+    with open(summary_file, 'w') as f:
+        f.write("=" * 80 + "\n")
+        f.write("BACKTEST SUMMARY\n")
+        f.write("=" * 80 + "\n\n")
+        
+        if config:
+            f.write(f"Test Period: {config.get('test_start', 'N/A')} to {config.get('test_end', 'N/A')}\n")
+            f.write(f"Top-K Stocks: {config.get('top_k', 'N/A')}\n")
+            f.write(f"Label Period: {config.get('label_t', 'N/A')} days\n")
+            
+            if config.get('transaction_costs', {}).get('enabled', False):
+                tc = config['transaction_costs']
+                f.write(f"Transaction Costs: Enabled\n")
+                f.write(f"  Bid-Ask Spread: {tc.get('bid_ask_spread', 0) * 10000:.1f} bps\n")
+                f.write(f"  Slippage: {tc.get('slippage', 0) * 10000:.1f} bps\n")
+            else:
+                f.write(f"Transaction Costs: Disabled\n")
+            f.write("\n")
+        
+        f.write("Key Metrics:\n")
+        f.write("-" * 80 + "\n")
+        f.write(f"  ARR (Annualized Return):       {results.get('ARR', 0):.4f} ({results.get('ARR', 0)*100:.2f}%)\n")
+        f.write(f"  AVoL (Annualized Volatility):  {results.get('AVoL', 0):.4f} ({results.get('AVoL', 0)*100:.2f}%)\n")
+        f.write(f"  MDD (Maximum Drawdown):        {results.get('MDD', 0):.4f} ({results.get('MDD', 0)*100:.2f}%)\n")
+        f.write(f"  ASR (Annualized Sharpe):       {results.get('ASR', 0):.4f}\n")
+        f.write(f"  CR (Calmar Ratio):             {results.get('CR', 0):.4f}\n")
+        f.write(f"  IR (Information Ratio):        {results.get('IR', 0):.4f}\n")
+        f.write("\n")
+        
+        f.write("Prediction Metrics:\n")
+        f.write("-" * 80 + "\n")
+        f.write(f"  MSE (Mean Squared Error):      {results.get('MSE', 0):.6f}\n")
+        f.write(f"  MAE (Mean Absolute Error):     {results.get('MAE', 0):.6f}\n")
+        f.write("\n")
+        
+        if num_tests > 1:
+            f.write("Multiple Testing Adjustment:\n")
+            f.write("-" * 80 + "\n")
+            f.write(f"  Number of tests: {num_tests}\n")
+            f.write(f"  Adjustment method: {adjustment_method.upper()}\n")
+            
+            # Calculate adjustments
+            num_years = results['num_trading_days'] / 252
+            haircut_result = haircut_sharpe_ratio(
+                results['ASR'], num_years, num_tests,
+                method=adjustment_method, rank=1
+            )
+            f.write(f"  Original Sharpe: {results['ASR']:.4f}\n")
+            f.write(f"  Haircutted Sharpe: {haircut_result['haircutted_sharpe']:.4f}\n")
+            f.write(f"  Haircut: {haircut_result['haircut_pct']:.2f}%\n")
+            f.write(f"  Statistical Significance: {'Yes' if haircut_result['is_significant'] else 'No'} (p={haircut_result['adjusted_p_value']:.4f})\n")
+            f.write("\n")
+        
+        f.write("=" * 80 + "\n")
+        f.write(f"Generated: {timestamp}\n")
+    
+    print(f"  Summary: {summary_file}")
+    print(f"\n✓ All backtest outputs saved successfully!")
+    
+    return backtest_dir
+
+
+def setup_backtest_logging(backtest_dir: str) -> logging.Logger:
+    """
+    Setup logging for backtest evaluation.
+    
+    Args:
+        backtest_dir: Directory for backtest outputs
+        
+    Returns:
+        Configured logger
+    """
+    import logging
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = os.path.join(backtest_dir, f'backtest_{timestamp}.log')
+    
+    # Create logger
+    logger = logging.getLogger('backtest')
+    logger.setLevel(logging.INFO)
+    
+    # Remove existing handlers
+    logger.handlers = []
+    
+    # File handler
+    fh = logging.FileHandler(log_file)
+    fh.setLevel(logging.INFO)
+    
+    # Console handler
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO)
+    
+    # Formatter
+    formatter = logging.Formatter('%(asctime)s - %(message)s')
+    fh.setFormatter(formatter)
+    ch.setFormatter(formatter)
+    
+    logger.addHandler(fh)
+    logger.addHandler(ch)
+    
+    logger.info(f"Backtest logging initialized: {log_file}")
+    
+    return logger
+
+
 def plot_equity_curve(predictions_dir, stock_data, config, output_path=None):
     """
     Plot equity curve similar to paper Figure 2.
@@ -1544,6 +1773,20 @@ def main():
              'Represents execution price deviation for market orders.'
     )
     
+    # New arguments for enhanced output management
+    parser.add_argument(
+        '--auto_save',
+        action='store_true',
+        help='Automatically save all outputs in organized structure'
+    )
+    
+    parser.add_argument(
+        '--backtest_suffix',
+        type=str,
+        default='',
+        help='Suffix for backtest directory (e.g., "_with_costs" or "_tc")'
+    )
+    
     args = parser.parse_args()
     
     # Build config
@@ -1561,9 +1804,22 @@ def main():
         },
     }
     
+    # Setup output directory if auto_save is enabled
+    backtest_dir = None
+    logger = None
+    if args.auto_save:
+        backtest_dir = setup_backtest_output_dir(args.predictions_dir, args.backtest_suffix)
+        logger = setup_backtest_logging(backtest_dir)
+        logger.info("Starting backtest evaluation with auto-save")
+        logger.info(f"Predictions directory: {args.predictions_dir}")
+        logger.info(f"Backtest output directory: {backtest_dir}")
+    
     # Run evaluation
     if args.multi_model:
         # Multi-model evaluation (paper style: 10 runs averaged)
+        if logger:
+            logger.info(f"Running multi-model evaluation ({args.num_models} models)")
+        
         multi_results = evaluate_multiple_models(
             args.multi_model, 
             num_models=args.num_models,
@@ -1578,7 +1834,25 @@ def main():
                 adjustment_method=args.adjustment_method
             )
             
-            if args.output:
+            if args.auto_save and backtest_dir:
+                # Save comprehensive results
+                save_backtest_results(
+                    multi_results['averaged'],
+                    backtest_dir,
+                    config=config,
+                    num_tests=args.num_tests,
+                    adjustment_method=args.adjustment_method
+                )
+                
+                # Save individual model results
+                import json
+                for i, result in enumerate(multi_results['individual']):
+                    model_file = os.path.join(backtest_dir, f'model_{i}_results.json')
+                    with open(model_file, 'w') as f:
+                        json.dump(result, f, indent=2, default=float)
+                print(f"  Individual model results saved: {len(multi_results['individual'])} files")
+                
+            elif args.output:
                 save_results(
                     multi_results['averaged'], 
                     args.output,
@@ -1587,6 +1861,9 @@ def main():
                 )
     else:
         # Single evaluation
+        if logger:
+            logger.info("Running single model evaluation")
+        
         results = evaluate(args.predictions_dir, config)
         
         if results:
@@ -1597,7 +1874,49 @@ def main():
                 adjustment_method=args.adjustment_method
             )
             
-            if args.output:
+            if args.auto_save and backtest_dir:
+                # Load stock data for time series outputs
+                stock_data = load_stock_data(
+                    config['data_file'],
+                    config['test_start'],
+                    config['test_end']
+                )
+                
+                # Load predictions
+                predictions_df = load_predictions(args.predictions_dir)
+                stock_data = calculate_forward_returns(stock_data, label_t=config['label_t'])
+                
+                # Get full simulation results
+                sim_results = simulate_trading_strategy(
+                    predictions_df=predictions_df,
+                    stock_data_df=stock_data,
+                    top_k=config['top_k'],
+                    label_t=config['label_t'],
+                    transaction_costs=config['transaction_costs']
+                )
+                
+                # Save comprehensive results
+                save_backtest_results(
+                    results,
+                    backtest_dir,
+                    sim_results=sim_results,
+                    config=config,
+                    num_tests=args.num_tests,
+                    adjustment_method=args.adjustment_method
+                )
+                
+                # Generate and save plot
+                if args.plot or args.auto_save:
+                    plot_file = os.path.join(backtest_dir, 'equity_curve.png')
+                    plot_equity_curve(
+                        args.predictions_dir,
+                        stock_data,
+                        config,
+                        output_path=plot_file
+                    )
+                    print(f"  Equity curve: {plot_file}")
+                    
+            elif args.output:
                 save_results(
                     results, 
                     args.output,
@@ -1605,14 +1924,17 @@ def main():
                     adjustment_method=args.adjustment_method
                 )
             
-            if args.plot:
-                stock_data = load_stock_data(
-                    config['data_file'],
-                    config['test_start'],
-                    config['test_end']
-                )
-                plot_output = args.output.replace('.csv', '_equity.png') if args.output else None
-                plot_equity_curve(args.predictions_dir, stock_data, config, plot_output)
+                if args.plot:
+                    stock_data = load_stock_data(
+                        config['data_file'],
+                        config['test_start'],
+                        config['test_end']
+                    )
+                    plot_output = args.output.replace('.csv', '_equity.png') if args.output else None
+                    plot_equity_curve(args.predictions_dir, stock_data, config, plot_output)
+    
+    if logger:
+        logger.info("Backtest evaluation completed successfully")
 
 
 if __name__ == '__main__':

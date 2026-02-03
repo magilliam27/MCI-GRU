@@ -40,3 +40,13 @@ training:
 experiment_name: baseline
 output_dir: results
 seed: 42
+
+# Hydra configuration for output management
+hydra:
+  run:
+    dir: ${output_dir}/${experiment_name}/${now:%Y%m%d_%H%M%S}
+  sweep:
+    dir: ${output_dir}/${experiment_name}
+    subdir: run_${hydra.job.num}
+  job:
+    chdir: false  # Don't change working directory

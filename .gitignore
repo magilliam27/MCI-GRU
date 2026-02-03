@@ -1,2 +1,45 @@
 *.csv
 lseg_env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Training outputs
+results/
+outputs/
+models/
+*.pt
+*.pth
+*.log
+
+# Hydra
+.hydra/
+multirun/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Data files (keep structure, ignore large files)
+*.parquet
+*.feather
+*.h5
+*.hdf5
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

@@ -28,11 +28,13 @@ import os
 import gc
 import sys
 import random
+import logging
 import numpy as np
 import pandas as pd
 import torch
 from tqdm import tqdm
 from typing import Dict, Any, List, Optional
+from datetime import datetime
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -63,6 +65,42 @@ def set_seed(seed: int):
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+
+
+def setup_logging(output_dir: str, experiment_name: str) -> logging.Logger:
+    """
+    Setup logging to both file and console.
+    
+    Args:
+        output_dir: Base output directory
+        experiment_name: Name of the experiment
+        
+    Returns:
+        Configured logger
+    """
+    # Create logs directory
+    log_dir = output_dir
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # Create log file with timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = os.path.join(log_dir, f'training_{timestamp}.log')
+    
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler(sys.stdout)
+        ],
+        force=True  # Override any existing configuration
+    )
+    
+    logger = logging.getLogger(__name__)
+    logger.info(f"Logging initialized. Log file: {log_file}")
+    
+    return logger
 
 
 def dict_to_config(cfg: DictConfig) -> ExperimentConfig:
@@ -341,31 +379,39 @@ def compute_labels(
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def main(cfg: DictConfig):
     """Main entry point."""
-    print("=" * 80)
-    print("MCI-GRU Experiment Runner")
-    print("=" * 80)
+    # Hydra changes working directory, so we need to get absolute path for output
+    # Hydra manages the output directory automatically based on config
+    output_path = os.getcwd()  # Hydra sets this to the configured run directory
+    
+    # Setup logging first
+    logger = setup_logging(output_path, cfg.get('experiment_name', 'baseline'))
+    
+    logger.info("=" * 80)
+    logger.info("MCI-GRU Experiment Runner")
+    logger.info("=" * 80)
     
     # Print configuration
-    print("\nConfiguration:")
-    print(OmegaConf.to_yaml(cfg))
+    logger.info("\nConfiguration:")
+    logger.info("\n" + OmegaConf.to_yaml(cfg))
     
     # Convert to typed config
     config = dict_to_config(cfg)
     
+    # Override output_dir to use Hydra's managed directory
+    config.output_dir = output_path
+    
     # Set seed
     set_seed(config.seed)
-    print(f"\nRandom seed: {config.seed}")
-    
-    # Create output directory
-    output_path = config.get_output_path()
-    os.makedirs(output_path, exist_ok=True)
-    print(f"Output directory: {output_path}")
+    logger.info(f"\nRandom seed: {config.seed}")
+    logger.info(f"Output directory: {output_path}")
     
     # Save config
     config_path = os.path.join(output_path, 'config.yaml')
     OmegaConf.save(cfg, config_path)
+    logger.info(f"Configuration saved to: {config_path}")
     
     # Create feature engineer
+    logger.info("\nInitializing feature engineer...")
     feature_engineer = FeatureEngineer(
         include_momentum=config.features.include_momentum,
         momentum_encoding=config.features.momentum_encoding,
@@ -383,7 +429,7 @@ def main(cfg: DictConfig):
     data = prepare_data(config, feature_engineer)
     
     # Create data loaders
-    print("\nCreating data loaders...")
+    logger.info("\nCreating data loaders...")
     train_loader, val_loader, test_loader = create_data_loaders(
         stock_features_train=data['stock_features_train'],
         x_graph_train=data['x_graph_train'],
@@ -405,9 +451,9 @@ def main(cfg: DictConfig):
         return create_model(num_features, config.model.to_dict())
     
     # Train multiple models
-    print("\n" + "=" * 80)
-    print("Training")
-    print("=" * 80)
+    logger.info("\n" + "=" * 80)
+    logger.info("Training")
+    logger.info("=" * 80)
     
     results, avg_predictions = train_multiple_models(
         model_factory=model_factory,
@@ -423,15 +469,15 @@ def main(cfg: DictConfig):
     )
     
     # Summary
-    print("\n" + "=" * 80)
-    print("Experiment Complete")
-    print("=" * 80)
-    print(f"Experiment: {config.experiment_name}")
-    print(f"Models trained: {len(results)}")
-    print(f"Best validation losses: {[r.best_val_loss for r in results]}")
-    print(f"Mean best val loss: {np.mean([r.best_val_loss for r in results]):.6f}")
-    print(f"Results saved to: {output_path}")
-    print("=" * 80)
+    logger.info("\n" + "=" * 80)
+    logger.info("Experiment Complete")
+    logger.info("=" * 80)
+    logger.info(f"Experiment: {config.experiment_name}")
+    logger.info(f"Models trained: {len(results)}")
+    logger.info(f"Best validation losses: {[r.best_val_loss for r in results]}")
+    logger.info(f"Mean best val loss: {np.mean([r.best_val_loss for r in results]):.6f}")
+    logger.info(f"Results saved to: {output_path}")
+    logger.info("=" * 80)
 
 
 if __name__ == "__main__":
