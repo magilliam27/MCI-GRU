@@ -1,9 +1,26 @@
 """
 evaluate_sp500.py - Backtest and Evaluation Metrics for MCI-GRU Model
 
-Implements the exact testing methodology from paper:
+Implements FAIR backtesting methodology based on paper:
 "MCI-GRU: Stock Prediction Model Based on Multi-Head Cross-Attention and Improved GRU"
 (arXiv:2410.20679v3)
+
+**CRITICAL FAIRNESS CORRECTION (Feb 2026):**
+This implementation has been corrected to eliminate look-ahead bias in return calculation.
+Previous versions incorrectly measured returns from day t close to day t+1 close, which
+included unpredictable overnight gaps. The corrected version measures ONLY the tradeable
+intraday return from day t+1 open to day t+1 close.
+
+Trading Timeline (CORRECTED):
+1. Day t, 4:00 PM: Model generates predictions using data through close
+2. Day t+1, 9:30 AM: Execute trades at market open (EARLIEST possible action)
+3. Day t+1, 4:00 PM: Measure P&L at close
+4. Return captured: (close_t+1 - open_t+1) / open_t+1 [INTRADAY ONLY]
+
+What We CANNOT Capture:
+- Overnight gaps from day t close (4PM) to day t+1 open (9:30AM)
+- These gaps occur BEFORE we can act on predictions
+- Including them creates artificial performance inflation
 
 Paper Section 4.1.2 - Evaluation Metrics:
 - ARR (Annualized Rate of Return)
@@ -21,13 +38,14 @@ Multiple Testing Adjustment (Harvey & Liu, 2014):
 - Calculates t-statistics and adjusted p-values
 - "Haircuts" Sharpe Ratios based on number of tests tried
 
-Trading Strategy (Paper Section 4.1.2):
+Trading Strategy (Corrected):
 1. At close of day t, model generates prediction scores for each stock
 2. Rank stocks by predicted score (expected return)
 3. At open of day t+1, buy top-k stocks (paper uses k=10)
 4. Equal-weighted portfolio, daily rebalancing
-5. Optional transaction costs (bid-ask spread + slippage)
-6. Run 10 times and average results
+5. Measure INTRADAY return (open_t+1 to close_t+1) - NO overnight gaps
+6. Optional transaction costs (bid-ask spread + slippage)
+7. Run 10 times and average results
 
 Transaction Costs (Retail Investor Model):
 - Bid-ask spread: Cost of crossing the spread when buying (at ask) or selling (at bid)
@@ -621,32 +639,64 @@ def load_stock_data(filename, start_date=None, end_date=None):
 
 def calculate_forward_returns(df, label_t=5):
     """
-    Calculate forward returns (next label_t days).
+    Calculate forward returns with proper timing for fair backtesting.
     
-    Paper uses the return from day t+1 to day t+label_t.
+    Trading Timeline:
+    - Day t, 4:00 PM: Model generates predictions using data through close
+    - Day t+1, 9:30 AM: Execute trades at market open
+    - Day t+1, 4:00 PM: Measure P&L at close
+    
+    Critical: We can only capture returns from day t+1 open to day t+1 close,
+    NOT from day t close to day t+1 close (that includes unpredictable overnight gaps).
     
     Args:
-        df: DataFrame with stock data
-        label_t: Number of days for forward return
+        df: DataFrame with stock data (must have 'open' and 'close' columns)
+        label_t: Number of days for forward return (for MSE/MAE calculation)
     
     Returns:
-        DataFrame with forward returns added
+        DataFrame with multiple return columns:
+        - forward_return_{label_t}d: For model training/evaluation (close_t+label_t / close_t+1 - 1)
+        - next_day_return: DEPRECATED - Close-to-close (includes look-ahead bias)
+        - tradeable_return: CORRECT for backtesting - Intraday return (close / open - 1)
+        - overnight_gap: Gap from previous close to current open (for analysis)
     """
     print(f"Calculating {label_t}-day forward returns...")
     
     df = df.copy()
     df = df.sort_values(['kdcode', 'dt'])
     
-    # Calculate forward close price
+    # Calculate forward close prices (for MSE/MAE metrics during training)
     df['close_t1'] = df.groupby('kdcode')['close'].shift(-1)
     df[f'close_t{label_t}'] = df.groupby('kdcode')['close'].shift(-label_t)
     
     # Forward return = close_{t+label_t} / close_{t+1} - 1
-    # This matches the paper's label calculation
+    # This matches the paper's label calculation for model training
     df[f'forward_return_{label_t}d'] = df[f'close_t{label_t}'] / df['close_t1'] - 1
     
-    # Also calculate 1-day return for daily portfolio tracking
+    # DEPRECATED: Close-to-close return (WRONG for trading - includes look-ahead bias)
+    # Kept for backward compatibility but should NOT be used for backtest
     df['next_day_return'] = df['close_t1'] / df['close'] - 1
+    
+    # CORRECT: Tradeable intraday return (what you can actually capture)
+    # If prediction made at day t close, you trade at day t+1 open
+    # Return = (close_t+1 - open_t+1) / open_t+1
+    # This is represented as current day's intraday return
+    df['tradeable_return'] = (df['close'] - df['open']) / df['open']
+    df['tradeable_return'] = df['tradeable_return'].fillna(0)
+    
+    # Calculate overnight gap (for analysis - this is what we CANNOT predict/capture)
+    df['prev_close'] = df.groupby('kdcode')['close'].shift(1)
+    df['overnight_gap'] = (df['open'] - df['prev_close']) / df['prev_close']
+    df['overnight_gap'] = df['overnight_gap'].fillna(0)
+    
+    # For verification: total return should equal overnight_gap + tradeable_return (approximately)
+    df['total_return_check'] = (df['close'] - df['prev_close']) / df['prev_close']
+    
+    # Clean up temporary columns
+    df = df.drop(columns=['prev_close'], errors='ignore')
+    
+    print(f"  Added returns: forward_return_{label_t}d, tradeable_return, overnight_gap")
+    print(f"  WARNING: 'next_day_return' is deprecated (look-ahead bias) - use 'tradeable_return' for backtest")
     
     return df
 
@@ -809,13 +859,24 @@ def calculate_transaction_cost(turnover_info, bid_ask_spread, slippage):
 def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5,
                               transaction_costs=None):
     """
-    Simulate the paper's trading strategy with optional transaction costs.
+    Simulate trading strategy with FAIR timing (NO LOOK-AHEAD BIAS).
     
-    Paper methodology:
+    CRITICAL TIMING LOGIC:
+    1. Day t, 4:00 PM: Model generates predictions using data through close
+    2. Day t+1, 9:30 AM: Execute trades at market open (EARLIEST we can act)
+    3. Day t+1, 4:00 PM: Measure P&L at close
+    
+    Returns Captured:
+    - We measure returns from day t+1 OPEN to day t+1 CLOSE (intraday only)
+    - We DO NOT capture overnight gaps (day t close to day t+1 open)
+    - This is the only fair measurement since predictions at day t close
+      cannot predict the overnight move that happens BEFORE we can trade
+    
+    Paper methodology (adapted for fair timing):
     1. At close of day t, rank stocks by predicted score
-    2. At open of day t+1, buy top-k stocks
-    3. Equal-weighted portfolio
-    4. Hold for 1 day (daily rebalancing)
+    2. At open of day t+1, buy top-k stocks (equal-weighted)
+    3. Hold until close of day t+1 (daily rebalancing)
+    4. Measure intraday return: (close_t+1 - open_t+1) / open_t+1
     5. Optional transaction costs (bid-ask spread + slippage)
     
     Transaction Cost Model (for retail investors):
@@ -825,9 +886,9 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
     
     Args:
         predictions_df: DataFrame with predictions (kdcode, dt, score)
-        stock_data_df: DataFrame with stock data and returns
+        stock_data_df: DataFrame with stock data and returns (must have 'tradeable_return')
         top_k: Number of top stocks to select
-        label_t: Forward return period for accuracy metrics
+        label_t: Forward return period for accuracy metrics (MSE/MAE)
         transaction_costs: Dict with 'enabled', 'bid_ask_spread', 'slippage'
                           If None or not enabled, no costs applied
     
@@ -846,14 +907,24 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
     
     cost_status = "ENABLED" if tc_enabled else "DISABLED"
     print(f"\nSimulating trading strategy (top-{top_k} stocks)...")
+    print(f"  Return calculation: CORRECTED (uses tradeable_return = next-day intraday)")
     print(f"  Transaction costs: {cost_status}")
     if tc_enabled:
         print(f"    Bid-ask spread: {bid_ask_spread*10000:.1f} bps (round-trip)")
         print(f"    Slippage: {slippage*10000:.1f} bps (per trade)")
     
-    # Get unique prediction dates
+    # Get unique prediction dates and create date mapping
     pred_dates = sorted(predictions_df['dt'].unique())
-    print(f"  {len(pred_dates)} trading days")
+    all_stock_dates = sorted(stock_data_df['dt'].unique())
+    
+    print(f"  {len(pred_dates)} prediction dates")
+    
+    # Verify required columns
+    if 'tradeable_return' not in stock_data_df.columns:
+        raise ValueError(
+            "stock_data_df must have 'tradeable_return' column. "
+            "Run calculate_forward_returns() first!"
+        )
     
     # Tracking arrays
     gross_portfolio_returns = []  # Returns before transaction costs
@@ -871,33 +942,47 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
     # Track previous day's holdings for turnover calculation
     prev_holdings = None
     
-    for date in pred_dates:
-        # Get predictions for this date
-        day_preds = predictions_df[predictions_df['dt'] == date].copy()
+    # CRITICAL FIX: Process predictions with next-day returns
+    # Loop through predictions, but measure returns on the NEXT trading day
+    for i, pred_date in enumerate(pred_dates):
+        # Day t: Get predictions made at close
+        day_preds = predictions_df[predictions_df['dt'] == pred_date].copy()
         
         if len(day_preds) < top_k:
             continue
         
-        # Rank and select top-k stocks
+        # Rank and select top-k stocks based on prediction
         day_preds = day_preds.sort_values('score', ascending=False)
         top_stocks = day_preds.head(top_k)['kdcode'].tolist()
         curr_holdings = set(top_stocks)
         
-        # Get actual returns for these stocks
-        # We use next_day_return for daily portfolio tracking
-        day_stock_data = stock_data_df[stock_data_df['dt'] == date]
-        
-        if len(day_stock_data) == 0:
+        # CRITICAL: Find the NEXT trading day (day t+1) to measure returns
+        # We trade at day t+1 open and measure return to day t+1 close
+        try:
+            next_date_idx = all_stock_dates.index(pred_date) + 1
+            if next_date_idx >= len(all_stock_dates):
+                # No next day available (end of data)
+                continue
+            next_date = all_stock_dates[next_date_idx]
+        except (ValueError, IndexError):
+            # pred_date not in stock data or no next day
             continue
         
-        # Portfolio return (equal-weighted top-k) - GROSS return
-        top_k_returns = day_stock_data[
-            day_stock_data['kdcode'].isin(top_stocks)
-        ]['next_day_return'].dropna()
+        # Day t+1: Get actual returns (open to close of day t+1)
+        next_day_data = stock_data_df[stock_data_df['dt'] == next_date]
+        
+        if len(next_day_data) == 0:
+            continue
+        
+        # CORRECTED: Portfolio return using tradeable_return (intraday on day t+1)
+        # This is the return from day t+1 OPEN to day t+1 CLOSE
+        top_k_data = next_day_data[next_day_data['kdcode'].isin(top_stocks)]
+        top_k_returns = top_k_data['tradeable_return'].dropna()
         
         if len(top_k_returns) == 0:
             continue
         
+        # GROSS return (before transaction costs)
         gross_return = top_k_returns.mean()
         
         # Calculate turnover and transaction costs
@@ -919,15 +1004,15 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
         # NET return = GROSS return - transaction costs
         net_return = gross_return - transaction_cost
         
-        # Benchmark return (equal-weighted all stocks)
-        all_returns = day_stock_data['next_day_return'].dropna()
+        # Benchmark return (equal-weighted all stocks, same day intraday return)
+        all_returns = next_day_data['tradeable_return'].dropna()
         benchmark_return = all_returns.mean() if len(all_returns) > 0 else 0.0
         
         # Store results
         gross_portfolio_returns.append(gross_return)
         net_portfolio_returns.append(net_return)
         benchmark_returns.append(benchmark_return)
-        dates.append(date)
+        dates.append(next_date)  # Store the ACTUAL trading date (t+1)
         
         # Store turnover and cost metrics
         daily_turnover.append(turnover_info['one_way_turnover'])
@@ -937,13 +1022,14 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
         # Update holdings for next iteration
         prev_holdings = curr_holdings
         
-        # Collect predictions vs actuals for MSE/MAE
+        # Collect predictions vs actuals for MSE/MAE (use prediction date's forward returns)
+        pred_date_data = stock_data_df[stock_data_df['dt'] == pred_date]
         for _, row in day_preds.iterrows():
             kdcode = row['kdcode']
             score = row['score']
             
-            actual = day_stock_data[
-                day_stock_data['kdcode'] == kdcode
+            actual = pred_date_data[
+                pred_date_data['kdcode'] == kdcode
             ][f'forward_return_{label_t}d']
             
             if len(actual) > 0 and not pd.isna(actual.values[0]):
@@ -1129,6 +1215,13 @@ def print_results(results, model_name="MCI-GRU", num_tests=1, adjustment_method=
     print("\n" + "=" * 70)
     print(f"  EVALUATION RESULTS: {model_name}")
     print("=" * 70)
+    print()
+    print("  ✅ FAIR BACKTESTING METHODOLOGY:")
+    print("  " + "-" * 66)
+    print("  Returns measured: Next-day INTRADAY (open to close)")
+    print("  Overnight gaps: EXCLUDED (occur before trading)")
+    print("  Look-ahead bias: ELIMINATED")
+    print("  " + "-" * 66)
     print()
     
     # Calculate t-statistic and haircut if applicable
