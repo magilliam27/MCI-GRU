@@ -122,7 +122,7 @@ def run_training(
         sys.executable,
         'run_experiment.py',
         f'output_dir={output_dir}',
-        f'+data={experiment_name}',
+        f'data={experiment_name}',
         f'experiment_name={experiment_name}',
         f'training.num_epochs={num_epochs}',
         f'training.num_models={num_models}',
