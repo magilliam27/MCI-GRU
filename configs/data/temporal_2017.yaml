@@ -1,0 +1,11 @@
+# Temporal experiment: 2017 baseline
+# Train: 2017-2021 (5 years), Val: 2022, Test: 2023
+universe: sp500
+source: csv
+filename: sp500_yf_download.csv
+train_start: "2017-01-01"
+train_end: "2021-12-31"
+val_start: "2022-01-01"
+val_end: "2022-12-31"
+test_start: "2023-01-01"
+test_end: "2023-12-31"
