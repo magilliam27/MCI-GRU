@@ -2,8 +2,7 @@
 from mci_gru.data.lseg_loader import LSEGLoader
 
 datasets = {
-    'sp500': ('sp500', '2017-01-01', '2025-12-31'),
-    'russell1000': ('russell1000', '2017-01-01', '2025-12-31'),
+    'sp500': ('sp500', '2016-01-01', '2025-12-31'),
 }
 
 loader = LSEGLoader()
