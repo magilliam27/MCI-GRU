@@ -167,6 +167,8 @@ class TrainingConfig:
         early_stopping_patience: Epochs to wait before early stopping
         weight_decay: L2 regularization weight
         gradient_clip: Maximum gradient norm (0 = no clipping)
+        loss_type: Loss function (mse, ic, combined)
+        ic_loss_alpha: Weight for IC component when loss_type=combined (0 to 1)
     """
     batch_size: int = 32
     learning_rate: float = 0.0002
@@ -175,7 +177,11 @@ class TrainingConfig:
     early_stopping_patience: int = 10
     weight_decay: float = 0.0
     gradient_clip: float = 0.0
-    
+    loss_type: str = "mse"
+    ic_loss_alpha: float = 0.5
+
+    _VALID_LOSS_TYPES = ("mse", "ic", "combined")
+
     def __post_init__(self):
         """Validate parameters."""
         if self.batch_size <= 0:
@@ -186,6 +192,12 @@ class TrainingConfig:
             raise ValueError("num_epochs must be > 0")
         if self.num_models <= 0:
             raise ValueError("num_models must be > 0")
+        if self.loss_type not in self._VALID_LOSS_TYPES:
+            raise ValueError(
+                f"loss_type must be one of {self._VALID_LOSS_TYPES}, got {self.loss_type!r}"
+            )
+        if not 0 <= self.ic_loss_alpha <= 1:
+            raise ValueError(f"ic_loss_alpha must be in [0, 1], got {self.ic_loss_alpha}")
 
 
 @dataclass
@@ -249,6 +261,8 @@ class ExperimentConfig:
             'training.learning_rate': self.training.learning_rate,
             'training.num_epochs': self.training.num_epochs,
             'training.num_models': self.training.num_models,
+            'training.loss_type': self.training.loss_type,
+            'training.ic_loss_alpha': self.training.ic_loss_alpha,
         }
         return flat
 

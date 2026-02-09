@@ -35,6 +35,8 @@ training:
   early_stopping_patience: 10
   weight_decay: 0.0
   gradient_clip: 0.0
+  loss_type: mse               # mse, ic, or combined
+  ic_loss_alpha: 0.5           # Weight for IC component (only for combined)
 
 # Experiment metadata
 experiment_name: baseline

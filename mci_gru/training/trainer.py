@@ -21,6 +21,7 @@ from dataclasses import dataclass
 
 from mci_gru.config import ExperimentConfig, TrainingConfig
 from mci_gru.graph.builder import GraphBuilder
+from mci_gru.training.losses import ICLoss, CombinedMSEICLoss
 
 
 @dataclass
@@ -109,8 +110,13 @@ class Trainer:
             lr=training_cfg.learning_rate,
             weight_decay=training_cfg.weight_decay
         )
-        criterion = nn.MSELoss()
-        
+        if training_cfg.loss_type == "ic":
+            criterion = ICLoss()
+        elif training_cfg.loss_type == "combined":
+            criterion = CombinedMSEICLoss(alpha=training_cfg.ic_loss_alpha)
+        else:
+            criterion = nn.MSELoss()
+
         # Create output directory
         output_path = self.config.get_output_path()
         os.makedirs(output_path, exist_ok=True)
@@ -122,6 +128,9 @@ class Trainer:
         final_train_loss = 0.0
         
         print(f"Training on {self.device}...")
+        print(f"  Loss: {training_cfg.loss_type}" + (
+            f" (alpha={training_cfg.ic_loss_alpha})" if training_cfg.loss_type == "combined" else ""
+        ))
         print(f"  Max epochs: {training_cfg.num_epochs}")
         print(f"  Early stopping patience: {training_cfg.early_stopping_patience}")
         
