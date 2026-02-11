@@ -17,9 +17,10 @@ Portfolio Returns:
 - Formula: open_{T+2} / open_{T+1} - 1
 
 Benchmark Returns:
-- Uses close-to-close daily returns (standard S&P 500 methodology)
-- Formula: close_{T+1} / close_T - 1
-- Matches published S&P 500 performance figures
+- Uses open-to-open returns (same window as portfolio for fair comparison)
+- Formula: open_{T+2} / open_{T+1} - 1
+- Equal-weighted across all stocks (apples-to-apples with portfolio)
+- Note: This differs from published S&P 500 figures (cap-weighted, close-to-close)
 
 Look-Ahead Bias Prevention:
 - We do NOT claim returns from close_T to open_{T+1} (happens BEFORE we can trade)
@@ -661,8 +662,8 @@ def calculate_forward_returns(df, label_t=5):
     Returns:
         DataFrame with multiple return columns:
         - forward_return_{label_t}d: For model training/evaluation (close_t+label_t / close_t+1 - 1)
-        - open_to_open_return: For portfolio backtesting (open_{t+1} / open_t - 1)
-        - daily_return: For benchmark (close_t / close_{t-1} - 1, standard close-to-close)
+        - open_to_open_return: For BOTH portfolio AND benchmark backtesting (open_{t+1} / open_t - 1)
+        - daily_return: For reference only (close_t / close_{t-1} - 1, standard close-to-close)
         - tradeable_return: Intraday return (close / open - 1)
         - overnight_gap: Gap from previous close to current open (for analysis)
     """
@@ -701,10 +702,10 @@ def calculate_forward_returns(df, label_t=5):
     # Open-to-open return (for portfolio holding period)
     # This is the return from today's open to tomorrow's open
     # Captures: intraday (open to close) + overnight gap (close to next open)
-    # Used for portfolio returns when rebalancing daily at market open
+    # Used for BOTH portfolio AND benchmark returns (apples-to-apples comparison)
     df['next_open'] = df.groupby('kdcode')['open'].shift(-1)
     df['open_to_open_return'] = df['next_open'] / df['open'] - 1
-    df['open_to_open_return'] = df['open_to_open_return'].fillna(0)
+    # NaN values handled by dropna() in simulation - do NOT fillna(0)
     
     # Daily return (close-to-close) for benchmark calculation
     # This is the standard way S&P 500 returns are reported
@@ -715,8 +716,8 @@ def calculate_forward_returns(df, label_t=5):
     df = df.drop(columns=['prev_close', 'next_open'], errors='ignore')
     
     print(f"  Added returns: forward_return_{label_t}d, open_to_open_return, daily_return, overnight_gap")
-    print(f"  Portfolio uses 'open_to_open_return' (entry at open, exit at next open)")
-    print(f"  Benchmark uses 'daily_return' (close-to-close, standard S&P 500 methodology)")
+    print(f"  Portfolio & Benchmark use 'open_to_open_return' (same entry/exit window)")
+    print(f"  'daily_return' kept for reference (standard S&P 500 methodology)")
     
     return df
 
@@ -932,7 +933,7 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
     cost_status = "ENABLED" if tc_enabled else "DISABLED"
     print(f"\nSimulating trading strategy (top-{top_k} stocks)...")
     print(f"  Portfolio: open-to-open returns (entry at T+1 open, exit at T+2 open)")
-    print(f"  Benchmark: close-to-close returns (standard S&P 500 methodology)")
+    print(f"  Benchmark: open-to-open returns (equal-weighted, same window as portfolio)")
     print(f"  Transaction costs: {cost_status}")
     if tc_enabled:
         print(f"    Bid-ask spread: {bid_ask_spread*10000:.1f} bps (round-trip)")
@@ -1035,9 +1036,9 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
         # NET return = GROSS return - transaction costs
         net_return = gross_return - transaction_cost
         
-        # Benchmark return: close-to-close daily return (standard S&P 500 methodology)
-        # For day T+1, this is: close_{T+1} / close_T - 1
-        all_returns = entry_day_data['daily_return'].dropna()
+        # Benchmark return: open-to-open (same window as portfolio for apples-to-apples comparison)
+        # Equal-weighted across all stocks, measured over same period as portfolio
+        all_returns = entry_day_data['open_to_open_return'].dropna()
         benchmark_return = all_returns.mean() if len(all_returns) > 0 else 0.0
         
         # Store results
@@ -1251,7 +1252,7 @@ def print_results(results, model_name="MCI-GRU", num_tests=1, adjustment_method=
     print("  BACKTESTING METHODOLOGY:")
     print("  " + "-" * 66)
     print("  Portfolio: Open-to-open returns (entry T+1 open, exit T+2 open)")
-    print("  Benchmark: Close-to-close returns (standard S&P 500 methodology)")
+    print("  Benchmark: Open-to-open returns (equal-weighted, same window)")
     print("  Holding period: Intraday + overnight (realistic portfolio behavior)")
     print("  " + "-" * 66)
     print()
@@ -1360,6 +1361,8 @@ def print_results(results, model_name="MCI-GRU", num_tests=1, adjustment_method=
     print("  " + "-" * 66)
     print("  MCI-GRU: ARR=0.456, AVoL=0.179, MDD=-0.129, ASR=2.549, CR=3.543, IR=2.197")
     print("  (Paper excludes transaction costs)")
+    print("  NOTE: Paper's benchmark uses close-to-close returns; ours uses open-to-open")
+    print("        for apples-to-apples comparison. IR values may differ slightly.")
     print("  " + "-" * 66)
     print("=" * 70 + "\n")
 
