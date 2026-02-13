@@ -970,6 +970,10 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
     daily_costs = []
     daily_num_trades = []
     
+    # Portfolio tracking outputs (additive; no impact on return calculations)
+    daily_holdings_records = []
+    trade_records = []
+    
     # Track previous day's holdings for turnover calculation
     prev_holdings = None
     
@@ -986,6 +990,8 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
         day_preds = day_preds.sort_values('score', ascending=False)
         top_stocks = day_preds.head(top_k)['kdcode'].tolist()
         curr_holdings = set(top_stocks)
+        score_by_kdcode = dict(zip(day_preds['kdcode'], day_preds['score']))
+        rank_by_kdcode = {kdcode: rank for rank, kdcode in enumerate(top_stocks, start=1)}
         
         # Find the NEXT trading day (day T+1) - this is when we enter positions
         # We trade at day T+1 open and hold until day T+2 open (when we rebalance)
@@ -1017,8 +1023,50 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
         # GROSS return (before transaction costs)
         gross_return = top_k_returns.mean()
         
+        # Capture per-stock holdings and contributions for this trading day.
+        for kdcode in top_stocks:
+            stock_row = top_k_data[top_k_data['kdcode'] == kdcode]
+            if len(stock_row) == 0:
+                continue
+            
+            stock_return = stock_row['open_to_open_return'].iloc[0]
+            if pd.isna(stock_return):
+                continue
+            
+            daily_holdings_records.append({
+                'pred_date': pred_date,
+                'entry_date': entry_date,
+                'kdcode': kdcode,
+                'rank': rank_by_kdcode[kdcode],
+                'score': score_by_kdcode.get(kdcode, np.nan),
+                'weight': 1.0 / top_k,
+                'stock_return': stock_return,
+                'contribution': stock_return / top_k
+            })
+        
         # Calculate turnover and transaction costs
         turnover_info = calculate_turnover(prev_holdings, curr_holdings)
+        
+        # Capture trade journal entries (BUY/SELL events from turnover).
+        for kdcode in turnover_info['stocks_bought']:
+            trade_records.append({
+                'date': entry_date,
+                'pred_date': pred_date,
+                'kdcode': kdcode,
+                'action': 'BUY',
+                'score': score_by_kdcode.get(kdcode, np.nan),
+                'rank': rank_by_kdcode.get(kdcode, np.nan)
+            })
+        
+        for kdcode in turnover_info['stocks_sold']:
+            trade_records.append({
+                'date': entry_date,
+                'pred_date': pred_date,
+                'kdcode': kdcode,
+                'action': 'SELL',
+                'score': np.nan,
+                'rank': np.nan
+            })
         
         if tc_enabled:
             cost_info = calculate_transaction_cost(
@@ -1105,7 +1153,10 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
         'tc_settings': {
             'bid_ask_spread': bid_ask_spread,
             'slippage': slippage,
-        }
+        },
+        # Portfolio tracking outputs
+        'daily_holdings': daily_holdings_records,
+        'trade_records': trade_records,
     }
 
 
@@ -1432,6 +1483,56 @@ def setup_backtest_output_dir(predictions_dir: str, suffix: str = "") -> str:
     return backtest_dir
 
 
+def derive_portfolio_composition(holdings_df, trades_df):
+    """
+    Derive daily portfolio composition with position status.
+    
+    Status semantics:
+    - NEW: position appears in BUY trades for that entry date
+    - HELD: position remains from prior day
+    """
+    composition = holdings_df.copy()
+    
+    if len(trades_df) == 0:
+        composition['status'] = 'HELD'
+    else:
+        buys = trades_df[trades_df['action'] == 'BUY'][['date', 'kdcode']].copy()
+        buys['status'] = 'NEW'
+        
+        composition = composition.merge(
+            buys,
+            left_on=['entry_date', 'kdcode'],
+            right_on=['date', 'kdcode'],
+            how='left'
+        )
+        composition['status'] = composition['status'].fillna('HELD')
+    
+    return composition[['entry_date', 'kdcode', 'status', 'score', 'stock_return', 'rank']]
+
+
+def derive_holdings_summary(holdings_df):
+    """Aggregate per-stock holding statistics across the full backtest."""
+    summary = holdings_df.groupby('kdcode').agg({
+        'score': ['count', 'mean'],
+        'stock_return': ['mean', 'sum'],
+        'contribution': 'sum'
+    }).reset_index()
+    
+    summary.columns = [
+        'kdcode', 'times_held', 'avg_score',
+        'avg_return', 'total_return', 'total_contribution'
+    ]
+    
+    win_rate = holdings_df.groupby('kdcode')['stock_return'].apply(
+        lambda x: (x > 0).sum() / len(x)
+    ).reset_index(name='win_rate')
+    
+    summary = summary.merge(win_rate, on='kdcode', how='left')
+    summary = summary.sort_values('total_contribution', ascending=False)
+    
+    return summary
+
+
 def save_backtest_results(
     results: dict, 
     backtest_dir: str,
@@ -1531,6 +1632,47 @@ def save_backtest_results(
         monthly_file = os.path.join(backtest_dir, 'monthly_performance.csv')
         monthly_stats.to_csv(monthly_file, index=False)
         print(f"  Monthly performance: {monthly_file}")
+        
+        # 6. Save daily holdings log and derived portfolio analytics
+        holdings_records = sim_results.get('daily_holdings', [])
+        if len(holdings_records) > 0:
+            holdings_df = pd.DataFrame(holdings_records)
+            holdings_file = os.path.join(backtest_dir, 'daily_holdings.csv')
+            holdings_df.to_csv(holdings_file, index=False)
+            print(f"  Daily holdings: {holdings_file}")
+            
+            # 7. Save trade journal
+            trades_df = pd.DataFrame(sim_results.get('trade_records', []))
+            if len(trades_df) > 0:
+                trades_file = os.path.join(backtest_dir, 'trade_journal.csv')
+                trades_df.to_csv(trades_file, index=False)
+                print(f"  Trade journal: {trades_file}")
+            
+            # 8. Derive portfolio composition
+            composition_df = derive_portfolio_composition(holdings_df, trades_df)
+            composition_file = os.path.join(backtest_dir, 'portfolio_composition.csv')
+            composition_df.to_csv(composition_file, index=False)
+            print(f"  Portfolio composition: {composition_file}")
+            
+            # 9. Derive return attribution
+            attribution_df = holdings_df.copy()
+            daily_total_contribution = attribution_df.groupby('entry_date')['contribution'].transform('sum')
+            attribution_df['pct_of_portfolio_return'] = np.where(
+                daily_total_contribution != 0,
+                attribution_df['contribution'] / daily_total_contribution * 100,
+                0.0
+            )
+            attribution_file = os.path.join(backtest_dir, 'return_attribution.csv')
+            attribution_df[
+                ['entry_date', 'kdcode', 'stock_return', 'weight', 'contribution', 'pct_of_portfolio_return']
+            ].to_csv(attribution_file, index=False)
+            print(f"  Return attribution: {attribution_file}")
+            
+            # 10. Derive holdings summary statistics
+            summary_df = derive_holdings_summary(holdings_df)
+            summary_file_stats = os.path.join(backtest_dir, 'holdings_summary.csv')
+            summary_df.to_csv(summary_file_stats, index=False)
+            print(f"  Holdings summary: {summary_file_stats}")
     
     # 5. Create summary text file
     summary_file = os.path.join(backtest_dir, 'summary.txt')
