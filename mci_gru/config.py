@@ -173,12 +173,12 @@ class TrainingConfig:
         ic_loss_alpha: Weight for IC component when loss_type=combined (0 to 1)
     """
     batch_size: int = 32
-    learning_rate: float = 0.0002
+    learning_rate: float = 5e-5
     num_epochs: int = 100
     num_models: int = 10
     early_stopping_patience: int = 10
-    weight_decay: float = 0.0
-    gradient_clip: float = 0.0
+    weight_decay: float = 1e-3
+    gradient_clip: float = 1.0
     loss_type: str = "mse"
     ic_loss_alpha: float = 0.5
 

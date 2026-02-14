@@ -29,12 +29,12 @@ graph:
 # Training configuration
 training:
   batch_size: 32
-  learning_rate: 0.0002
+  learning_rate: 5e-5
   num_epochs: 100
   num_models: 10               # Number of models for averaging
   early_stopping_patience: 10
-  weight_decay: 0.0
-  gradient_clip: 0.0
+  weight_decay: 1e-3            # L2 regularization
+  gradient_clip: 1.0            # Max gradient norm
   loss_type: mse               # mse, ic, or combined
   ic_loss_alpha: 0.5           # Weight for IC component (only for combined)
 
