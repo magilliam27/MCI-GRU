@@ -1,4 +1,4 @@
-# Base features + momentum (default configuration)
+# Base + momentum + credit spreads (FRED IG/HY OAS)
 base_features:
   - close
   - open
@@ -12,7 +12,7 @@ momentum_buffer_low: 0.1
 momentum_buffer_high: 0.9
 include_volatility: false
 include_vix: false
-include_credit_spread: false
+include_credit_spread: true
 include_rsi: false
 include_ma_features: false
 include_price_features: false

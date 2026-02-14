@@ -154,9 +154,19 @@ def prepare_data(
         except Exception as e:
             print(f"Warning: Could not load VIX data: {e}")
             print("Continuing without VIX features")
-    
+
+    # Load credit spreads (FRED) if needed
+    credit_df = None
+    if config.features.include_credit_spread:
+        try:
+            credit_df = data_manager.load_credit_spreads()
+            print(f"Loaded credit spread data: {len(credit_df)} observations")
+        except Exception as e:
+            print(f"Warning: Could not load credit spread data: {e}")
+            print("Continuing without credit spread features")
+
     # Apply feature engineering
-    df = feature_engineer.transform(df, vix_df)
+    df = feature_engineer.transform(df, vix_df, credit_df)
     
     # Get feature columns
     feature_cols = feature_engineer.get_feature_columns()
@@ -425,6 +435,7 @@ def main(cfg: DictConfig):
         momentum_buffer_high=config.features.momentum_buffer_high,
         include_volatility=config.features.include_volatility,
         include_vix=config.features.include_vix,
+        include_credit_spread=config.features.include_credit_spread,
         include_rsi=config.features.include_rsi,
         include_ma_features=config.features.include_ma_features,
         include_price_features=config.features.include_price_features,

@@ -36,6 +36,7 @@ class DataManager:
         self.config = config
         self.df: Optional[pd.DataFrame] = None
         self.vix_df: Optional[pd.DataFrame] = None
+        self.credit_df: Optional[pd.DataFrame] = None
         self.kdcode_list: Optional[List[str]] = None
     
     def load(self) -> pd.DataFrame:
@@ -125,7 +126,28 @@ class DataManager:
                 raise FileNotFoundError(
                     f"VIX data not found. Create {vix_path} or use source='lseg'"
                 )
-    
+
+    def load_credit_spreads(self) -> pd.DataFrame:
+        """
+        Load credit spread data (IG/HY OAS) from FRED API.
+
+        Requires FRED_API_KEY environment variable. If the key is missing or
+        the fetch fails, raises an exception; the caller should catch and
+        soft-fail (e.g. continue without credit features).
+
+        Returns:
+            DataFrame with columns [dt, ig_spread, hy_spread]
+        """
+        from mci_gru.data.fred_loader import FREDLoader
+
+        loader = FREDLoader()
+        credit_df = loader.get_credit_spreads(
+            start=self.config.train_start,
+            end=self.config.test_end,
+        )
+        self.credit_df = credit_df
+        return credit_df
+
     def filter_complete_stocks(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
         """
         Filter to stocks with complete data across all periods.

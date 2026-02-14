@@ -59,6 +59,7 @@ class FeatureConfig:
         momentum_buffer_high: High buffer percentile for buffered encoding
         include_volatility: Whether to add volatility features
         include_vix: Whether to add VIX features
+        include_credit_spread: Whether to add credit spread features (IG/HY from FRED)
         include_rsi: Whether to add RSI features
         include_ma_features: Whether to add moving average features
         include_price_features: Whether to add derived price features
@@ -73,6 +74,7 @@ class FeatureConfig:
     momentum_buffer_high: float = 0.9
     include_volatility: bool = False
     include_vix: bool = False
+    include_credit_spread: bool = False
     include_rsi: bool = False
     include_ma_features: bool = False
     include_price_features: bool = False
@@ -248,6 +250,7 @@ class ExperimentConfig:
             # Features
             'features.momentum_encoding': self.features.momentum_encoding,
             'features.include_vix': self.features.include_vix,
+            'features.include_credit_spread': self.features.include_credit_spread,
             'features.include_volatility': self.features.include_volatility,
             # Graph
             'graph.judge_value': self.graph.judge_value,

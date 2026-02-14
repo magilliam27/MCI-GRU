@@ -31,6 +31,10 @@ from mci_gru.features.volatility import (
     add_rsi,
     add_moving_average_features,
 )
+from mci_gru.features.credit import (
+    CREDIT_FEATURES,
+    add_credit_features,
+)
 
 
 # Pre-defined feature sets
@@ -39,8 +43,9 @@ FEATURE_SETS = {
     'momentum': MOMENTUM_FEATURES,
     'volatility': VOLATILITY_FEATURES,
     'vix': VIX_FEATURES,
+    'credit': CREDIT_FEATURES,
     'base_momentum': BASE_FEATURES + MOMENTUM_FEATURES,
-    'full': BASE_FEATURES + MOMENTUM_FEATURES + VOLATILITY_FEATURES + VIX_FEATURES,
+    'full': BASE_FEATURES + MOMENTUM_FEATURES + VOLATILITY_FEATURES + VIX_FEATURES + CREDIT_FEATURES,
 }
 
 
@@ -49,23 +54,25 @@ def build_feature_list(
     include_momentum: bool = True,
     include_volatility: bool = False,
     include_vix: bool = False,
+    include_credit_spread: bool = False,
     additional_features: Optional[List[str]] = None
 ) -> List[str]:
     """
     Build feature column list based on configuration flags.
-    
+
     Args:
         include_base: Include base OHLCV features
         include_momentum: Include momentum features
         include_volatility: Include volatility features
         include_vix: Include VIX features
+        include_credit_spread: Include credit spread features (IG/HY from FRED)
         additional_features: Additional feature column names to include
-        
+
     Returns:
         List of feature column names
     """
     features = []
-    
+
     if include_base:
         features.extend(BASE_FEATURES)
     if include_momentum:
@@ -74,6 +81,8 @@ def build_feature_list(
         features.extend(VOLATILITY_FEATURES)
     if include_vix:
         features.extend(VIX_FEATURES)
+    if include_credit_spread:
+        features.extend(CREDIT_FEATURES)
     if additional_features:
         features.extend(additional_features)
     
@@ -103,6 +112,7 @@ class FeatureEngineer:
         momentum_buffer_high: float = 0.9,
         include_volatility: bool = False,
         include_vix: bool = False,
+        include_credit_spread: bool = False,
         include_rsi: bool = False,
         include_ma_features: bool = False,
         include_price_features: bool = False,
@@ -110,7 +120,7 @@ class FeatureEngineer:
     ):
         """
         Initialize feature engineer.
-        
+
         Args:
             include_momentum: Whether to add momentum features
             momentum_encoding: Type of momentum encoding
@@ -118,6 +128,7 @@ class FeatureEngineer:
             momentum_buffer_high: High buffer for buffered momentum
             include_volatility: Whether to add volatility features
             include_vix: Whether to add VIX features (requires vix_df in transform)
+            include_credit_spread: Whether to add credit spread features (requires credit_df in transform)
             include_rsi: Whether to add RSI features
             include_ma_features: Whether to add moving average features
             include_price_features: Whether to add derived price features
@@ -129,29 +140,36 @@ class FeatureEngineer:
         self.momentum_buffer_high = momentum_buffer_high
         self.include_volatility = include_volatility
         self.include_vix = include_vix
+        self.include_credit_spread = include_credit_spread
         self.include_rsi = include_rsi
         self.include_ma_features = include_ma_features
         self.include_price_features = include_price_features
         self.include_volume_features = include_volume_features
     
-    def transform(self, df: pd.DataFrame, vix_df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    def transform(
+        self,
+        df: pd.DataFrame,
+        vix_df: Optional[pd.DataFrame] = None,
+        credit_df: Optional[pd.DataFrame] = None,
+    ) -> pd.DataFrame:
         """
         Apply feature transformations to dataframe.
-        
+
         Args:
             df: Input dataframe with OHLCV columns
             vix_df: Optional VIX data for VIX features
-            
+            credit_df: Optional credit spread data for credit features (from FRED)
+
         Returns:
             DataFrame with features added
         """
         print("=" * 60)
         print("Feature Engineering Pipeline")
         print("=" * 60)
-        
+
         # Always add base features (turnover)
         df = add_base_features(df)
-        
+
         # Momentum features
         if self.include_momentum:
             if self.momentum_encoding == 'binary':
@@ -166,17 +184,26 @@ class FeatureEngineer:
                 )
             else:
                 raise ValueError(f"Unknown momentum encoding: {self.momentum_encoding}")
-        
+
         # Volatility features
         if self.include_volatility:
             df = add_volatility_features(df)
-        
+
         # VIX features
         if self.include_vix:
             if vix_df is None:
                 raise ValueError("include_vix=True but vix_df not provided")
             df = add_vix_features(df, vix_df)
-        
+
+        # Credit spread features (skipped if credit_df is None, e.g. FRED load failed)
+        if self.include_credit_spread:
+            if credit_df is not None:
+                df = add_credit_features(df, credit_df)
+            else:
+                # Soft-fail: add zero columns so feature_cols and downstream pipeline stay consistent
+                for col in CREDIT_FEATURES:
+                    df[col] = 0.0
+
         # RSI
         if self.include_rsi:
             df = add_rsi(df)
@@ -218,7 +245,10 @@ class FeatureEngineer:
         
         if self.include_vix:
             features.extend(VIX_FEATURES)
-        
+
+        if self.include_credit_spread:
+            features.extend(CREDIT_FEATURES)
+
         if self.include_rsi:
             features.extend(['rsi_14', 'rsi_normalized'])
         
@@ -252,6 +282,7 @@ def create_feature_engineer_from_config(config: Dict[str, Any]) -> FeatureEngine
         momentum_buffer_high=config.get('momentum_buffer_high', 0.9),
         include_volatility=config.get('include_volatility', False),
         include_vix=config.get('include_vix', False),
+        include_credit_spread=config.get('include_credit_spread', False),
         include_rsi=config.get('include_rsi', False),
         include_ma_features=config.get('include_ma_features', False),
         include_price_features=config.get('include_price_features', False),

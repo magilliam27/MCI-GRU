@@ -19,5 +19,8 @@ omegaconf>=2.3
 # Data Loading (optional - only needed for LSEG data)
 # refinitiv-data>=1.5
 
+# FRED API (optional - only needed for credit spread features; set FRED_API_KEY env var)
+fredapi>=0.5
+
 # Date handling
 python-dateutil>=2.8

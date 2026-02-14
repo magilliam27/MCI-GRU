@@ -12,6 +12,7 @@ momentum_buffer_low: 0.1
 momentum_buffer_high: 0.9
 include_volatility: true
 include_vix: true
+include_credit_spread: true
 include_rsi: true
 include_ma_features: true
 include_price_features: true
