@@ -15,17 +15,27 @@ import pandas as pd
 from typing import Tuple
 
 
-# Momentum feature columns (includes 5-day weekly momentum)
-MOMENTUM_FEATURES = [
-    'slow_momentum', 'fast_momentum', 'weekly_momentum',
-    'slow_signal', 'fast_signal', 'weekly_signal', 'momentum_blend',
+# Momentum feature columns
+MOMENTUM_BASE_FEATURES = [
+    'slow_momentum', 'fast_momentum',
+    'slow_signal', 'fast_signal', 'momentum_blend',
     'cycle_bull', 'cycle_correction', 'cycle_bear'
 ]
+MOMENTUM_WEEKLY_FEATURES = ['weekly_momentum', 'weekly_signal']
+MOMENTUM_FEATURES = MOMENTUM_BASE_FEATURES + MOMENTUM_WEEKLY_FEATURES
+
+
+def get_momentum_features(include_weekly_momentum: bool = True) -> list[str]:
+    """Return momentum feature columns with optional weekly terms."""
+    if include_weekly_momentum:
+        return list(MOMENTUM_FEATURES)
+    return list(MOMENTUM_BASE_FEATURES)
 
 
 def add_momentum_binary(df: pd.DataFrame, 
                         fast_window: int = 21,
-                        slow_window: int = 252) -> pd.DataFrame:
+                        slow_window: int = 252,
+                        include_weekly_momentum: bool = True) -> pd.DataFrame:
     """
     Add binary momentum features from the Momentum Turning Points paper.
     
@@ -68,23 +78,27 @@ def add_momentum_binary(df: pd.DataFrame,
         lambda x: x.rolling(window=slow_window, min_periods=slow_window).sum()
     )
     
-    # Weekly momentum: 5-day trailing return (last week's return)
-    df['weekly_momentum'] = df.groupby('kdcode')['_daily_return'].transform(
-        lambda x: x.rolling(window=5, min_periods=5).sum()
-    )
+    if include_weekly_momentum:
+        # Weekly momentum: 5-day trailing return (last week's return)
+        df['weekly_momentum'] = df.groupby('kdcode')['_daily_return'].transform(
+            lambda x: x.rolling(window=5, min_periods=5).sum()
+        )
     
     # Binary signals: +1 for positive/zero, -1 for negative
     df['slow_signal'] = np.where(df['slow_momentum'] >= 0, 1.0, -1.0)
     df['fast_signal'] = np.where(df['fast_momentum'] >= 0, 1.0, -1.0)
-    df['weekly_signal'] = np.where(df['weekly_momentum'] >= 0, 1.0, -1.0)
+    if include_weekly_momentum:
+        df['weekly_signal'] = np.where(df['weekly_momentum'] >= 0, 1.0, -1.0)
     
     # Handle NaN values (insufficient history) - fill with 0 (neutral)
     df['slow_momentum'] = df['slow_momentum'].fillna(0)
     df['fast_momentum'] = df['fast_momentum'].fillna(0)
-    df['weekly_momentum'] = df['weekly_momentum'].fillna(0)
+    if include_weekly_momentum:
+        df['weekly_momentum'] = df['weekly_momentum'].fillna(0)
     df['slow_signal'] = df['slow_signal'].fillna(0)
     df['fast_signal'] = df['fast_signal'].fillna(0)
-    df['weekly_signal'] = df['weekly_signal'].fillna(0)
+    if include_weekly_momentum:
+        df['weekly_signal'] = df['weekly_signal'].fillna(0)
     
     # MED: Intermediate-speed momentum (blend of slow and fast)
     df['momentum_blend'] = (df['slow_signal'] + df['fast_signal']) / 2
@@ -101,7 +115,7 @@ def add_momentum_binary(df: pd.DataFrame,
     # Clean up intermediate column
     df = df.drop(columns=['_daily_return'])
     
-    print(f"  Added momentum features: {MOMENTUM_FEATURES}")
+    print(f"  Added momentum features: {get_momentum_features(include_weekly_momentum)}")
     print(f"  Rows with valid slow momentum: {(df['slow_momentum'] != 0).sum()} / {len(df)}")
     
     return df
@@ -109,7 +123,8 @@ def add_momentum_binary(df: pd.DataFrame,
 
 def add_momentum_continuous(df: pd.DataFrame,
                             fast_window: int = 21,
-                            slow_window: int = 252) -> pd.DataFrame:
+                            slow_window: int = 252,
+                            include_weekly_momentum: bool = True) -> pd.DataFrame:
     """
     Add continuous momentum features (raw values, not binary signals).
     
@@ -145,14 +160,16 @@ def add_momentum_continuous(df: pd.DataFrame,
     df['slow_momentum'] = df.groupby('kdcode')['_daily_return'].transform(
         lambda x: x.rolling(window=slow_window, min_periods=slow_window).sum()
     )
-    df['weekly_momentum'] = df.groupby('kdcode')['_daily_return'].transform(
-        lambda x: x.rolling(window=5, min_periods=5).sum()
-    )
+    if include_weekly_momentum:
+        df['weekly_momentum'] = df.groupby('kdcode')['_daily_return'].transform(
+            lambda x: x.rolling(window=5, min_periods=5).sum()
+        )
     
     # Fill NaN with 0
     df['slow_momentum'] = df['slow_momentum'].fillna(0)
     df['fast_momentum'] = df['fast_momentum'].fillna(0)
-    df['weekly_momentum'] = df['weekly_momentum'].fillna(0)
+    if include_weekly_momentum:
+        df['weekly_momentum'] = df['weekly_momentum'].fillna(0)
     
     # Normalize signals per day (cross-sectional z-score)
     # This captures relative momentum vs other stocks on the same day
@@ -162,19 +179,22 @@ def add_momentum_continuous(df: pd.DataFrame,
     df['fast_signal'] = df.groupby('dt')['fast_momentum'].transform(
         lambda x: (x - x.mean()) / (x.std() + 1e-8)
     )
-    df['weekly_signal'] = df.groupby('dt')['weekly_momentum'].transform(
-        lambda x: (x - x.mean()) / (x.std() + 1e-8)
-    )
+    if include_weekly_momentum:
+        df['weekly_signal'] = df.groupby('dt')['weekly_momentum'].transform(
+            lambda x: (x - x.mean()) / (x.std() + 1e-8)
+        )
     
     # Clip to reasonable range
     df['slow_signal'] = df['slow_signal'].clip(-3, 3)
     df['fast_signal'] = df['fast_signal'].clip(-3, 3)
-    df['weekly_signal'] = df['weekly_signal'].clip(-3, 3)
+    if include_weekly_momentum:
+        df['weekly_signal'] = df['weekly_signal'].clip(-3, 3)
     
     # Fill any remaining NaN
     df['slow_signal'] = df['slow_signal'].fillna(0)
     df['fast_signal'] = df['fast_signal'].fillna(0)
-    df['weekly_signal'] = df['weekly_signal'].fillna(0)
+    if include_weekly_momentum:
+        df['weekly_signal'] = df['weekly_signal'].fillna(0)
     
     # Blend
     df['momentum_blend'] = (df['slow_signal'] + df['fast_signal']) / 2
@@ -198,7 +218,8 @@ def add_momentum_buffered(df: pd.DataFrame,
                           fast_window: int = 21,
                           slow_window: int = 252,
                           buffer_low: float = 0.1,
-                          buffer_high: float = 0.9) -> pd.DataFrame:
+                          buffer_high: float = 0.9,
+                          include_weekly_momentum: bool = True) -> pd.DataFrame:
     """
     Add buffered momentum features with no-trade zones.
     
@@ -240,14 +261,16 @@ def add_momentum_buffered(df: pd.DataFrame,
     df['slow_momentum'] = df.groupby('kdcode')['_daily_return'].transform(
         lambda x: x.rolling(window=slow_window, min_periods=slow_window).sum()
     )
-    df['weekly_momentum'] = df.groupby('kdcode')['_daily_return'].transform(
-        lambda x: x.rolling(window=5, min_periods=5).sum()
-    )
+    if include_weekly_momentum:
+        df['weekly_momentum'] = df.groupby('kdcode')['_daily_return'].transform(
+            lambda x: x.rolling(window=5, min_periods=5).sum()
+        )
     
     # Fill NaN with 0
     df['slow_momentum'] = df['slow_momentum'].fillna(0)
     df['fast_momentum'] = df['fast_momentum'].fillna(0)
-    df['weekly_momentum'] = df['weekly_momentum'].fillna(0)
+    if include_weekly_momentum:
+        df['weekly_momentum'] = df['weekly_momentum'].fillna(0)
     
     def compute_buffered_signal(group, col):
         """Compute buffered signal for a day's cross-section."""
@@ -285,9 +308,10 @@ def add_momentum_buffered(df: pd.DataFrame,
     df['fast_signal'] = df.groupby('dt', group_keys=False).apply(
         lambda g: compute_buffered_signal(g, 'fast_momentum')
     )
-    df['weekly_signal'] = df.groupby('dt', group_keys=False).apply(
-        lambda g: compute_buffered_signal(g, 'weekly_momentum')
-    )
+    if include_weekly_momentum:
+        df['weekly_signal'] = df.groupby('dt', group_keys=False).apply(
+            lambda g: compute_buffered_signal(g, 'weekly_momentum')
+        )
     
     # Blend
     df['momentum_blend'] = (df['slow_signal'] + df['fast_signal']) / 2

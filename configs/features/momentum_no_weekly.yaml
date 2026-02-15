@@ -1,4 +1,4 @@
-# Base features only (no momentum)
+# Base + momentum without weekly momentum (5d)
 base_features:
   - close
   - open
@@ -6,13 +6,14 @@ base_features:
   - low
   - volume
   - turnover
-include_momentum: false
+include_momentum: true
 include_weekly_momentum: false
 momentum_encoding: binary
 momentum_buffer_low: 0.1
 momentum_buffer_high: 0.9
 include_volatility: false
 include_vix: false
+include_credit_spread: false
 include_rsi: false
 include_ma_features: false
 include_price_features: false

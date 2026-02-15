@@ -19,6 +19,7 @@ from mci_gru.features.base import (
 )
 from mci_gru.features.momentum import (
     MOMENTUM_FEATURES,
+    get_momentum_features,
     add_momentum_binary,
     add_momentum_continuous,
     add_momentum_buffered,
@@ -52,6 +53,7 @@ FEATURE_SETS = {
 def build_feature_list(
     include_base: bool = True,
     include_momentum: bool = True,
+    include_weekly_momentum: bool = True,
     include_volatility: bool = False,
     include_vix: bool = False,
     include_credit_spread: bool = False,
@@ -63,6 +65,7 @@ def build_feature_list(
     Args:
         include_base: Include base OHLCV features
         include_momentum: Include momentum features
+        include_weekly_momentum: Include weekly momentum features (5-day return/signal)
         include_volatility: Include volatility features
         include_vix: Include VIX features
         include_credit_spread: Include credit spread features (IG/HY from FRED)
@@ -76,7 +79,7 @@ def build_feature_list(
     if include_base:
         features.extend(BASE_FEATURES)
     if include_momentum:
-        features.extend(MOMENTUM_FEATURES)
+        features.extend(get_momentum_features(include_weekly_momentum))
     if include_volatility:
         features.extend(VOLATILITY_FEATURES)
     if include_vix:
@@ -107,6 +110,7 @@ class FeatureEngineer:
     def __init__(
         self,
         include_momentum: bool = True,
+        include_weekly_momentum: bool = True,
         momentum_encoding: str = 'binary',  # 'binary', 'continuous', 'buffered'
         momentum_buffer_low: float = 0.1,
         momentum_buffer_high: float = 0.9,
@@ -123,6 +127,7 @@ class FeatureEngineer:
 
         Args:
             include_momentum: Whether to add momentum features
+            include_weekly_momentum: Whether to include weekly momentum terms (5-day return/signal)
             momentum_encoding: Type of momentum encoding
             momentum_buffer_low: Low buffer for buffered momentum
             momentum_buffer_high: High buffer for buffered momentum
@@ -135,6 +140,7 @@ class FeatureEngineer:
             include_volume_features: Whether to add volume features
         """
         self.include_momentum = include_momentum
+        self.include_weekly_momentum = include_weekly_momentum
         self.momentum_encoding = momentum_encoding
         self.momentum_buffer_low = momentum_buffer_low
         self.momentum_buffer_high = momentum_buffer_high
@@ -173,14 +179,21 @@ class FeatureEngineer:
         # Momentum features
         if self.include_momentum:
             if self.momentum_encoding == 'binary':
-                df = add_momentum_binary(df)
+                df = add_momentum_binary(
+                    df,
+                    include_weekly_momentum=self.include_weekly_momentum,
+                )
             elif self.momentum_encoding == 'continuous':
-                df = add_momentum_continuous(df)
+                df = add_momentum_continuous(
+                    df,
+                    include_weekly_momentum=self.include_weekly_momentum,
+                )
             elif self.momentum_encoding == 'buffered':
                 df = add_momentum_buffered(
                     df,
                     buffer_low=self.momentum_buffer_low,
-                    buffer_high=self.momentum_buffer_high
+                    buffer_high=self.momentum_buffer_high,
+                    include_weekly_momentum=self.include_weekly_momentum,
                 )
             else:
                 raise ValueError(f"Unknown momentum encoding: {self.momentum_encoding}")
@@ -236,7 +249,7 @@ class FeatureEngineer:
         features = list(BASE_FEATURES)
         
         if self.include_momentum:
-            features.extend(MOMENTUM_FEATURES)
+            features.extend(get_momentum_features(self.include_weekly_momentum))
             if self.momentum_encoding == 'buffered':
                 features.append('trade_signal')
         
@@ -277,6 +290,7 @@ def create_feature_engineer_from_config(config: Dict[str, Any]) -> FeatureEngine
     """
     return FeatureEngineer(
         include_momentum=config.get('include_momentum', True),
+        include_weekly_momentum=config.get('include_weekly_momentum', True),
         momentum_encoding=config.get('momentum_encoding', 'binary'),
         momentum_buffer_low=config.get('momentum_buffer_low', 0.1),
         momentum_buffer_high=config.get('momentum_buffer_high', 0.9),

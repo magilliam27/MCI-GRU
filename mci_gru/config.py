@@ -54,6 +54,7 @@ class FeatureConfig:
     Attributes:
         base_features: List of base OHLCV feature column names
         include_momentum: Whether to add momentum features
+        include_weekly_momentum: Whether to include weekly momentum features (5-day return/signal)
         momentum_encoding: Type of momentum encoding (binary, continuous, buffered)
         momentum_buffer_low: Low buffer percentile for buffered encoding
         momentum_buffer_high: High buffer percentile for buffered encoding
@@ -69,6 +70,7 @@ class FeatureConfig:
         default_factory=lambda: ['close', 'open', 'high', 'low', 'volume', 'turnover']
     )
     include_momentum: bool = True
+    include_weekly_momentum: bool = True
     momentum_encoding: str = "binary"  # binary, continuous, buffered
     momentum_buffer_low: float = 0.1
     momentum_buffer_high: float = 0.9
@@ -249,6 +251,7 @@ class ExperimentConfig:
             'data.test_end': self.data.test_end,
             # Features
             'features.momentum_encoding': self.features.momentum_encoding,
+            'features.include_weekly_momentum': self.features.include_weekly_momentum,
             'features.include_vix': self.features.include_vix,
             'features.include_credit_spread': self.features.include_credit_spread,
             'features.include_volatility': self.features.include_volatility,

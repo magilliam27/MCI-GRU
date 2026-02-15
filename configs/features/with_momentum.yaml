@@ -7,6 +7,7 @@ base_features:
   - volume
   - turnover
 include_momentum: true
+include_weekly_momentum: true
 momentum_encoding: binary
 momentum_buffer_low: 0.1
 momentum_buffer_high: 0.9

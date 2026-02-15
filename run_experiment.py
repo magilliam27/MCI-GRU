@@ -430,6 +430,7 @@ def main(cfg: DictConfig):
     logger.info("\nInitializing feature engineer...")
     feature_engineer = FeatureEngineer(
         include_momentum=config.features.include_momentum,
+        include_weekly_momentum=config.features.include_weekly_momentum,
         momentum_encoding=config.features.momentum_encoding,
         momentum_buffer_low=config.features.momentum_buffer_low,
         momentum_buffer_high=config.features.momentum_buffer_high,
