@@ -84,10 +84,23 @@ def add_credit_features(
     df = df.merge(credit_merge, on="dt", how="left")
 
     # Forward-fill missing (e.g. weekends/holidays in stock data)
+    # and log if we still needed fallback fills after merge.
+    missing_before = {
+        col: int(df[col].isna().sum())
+        for col in CREDIT_FEATURES
+        if col in df.columns
+    }
     for col in CREDIT_FEATURES:
         if col in df.columns:
             df[col] = df[col].ffill()
             df[col] = df[col].fillna(0)
+
+    total_missing_before = sum(missing_before.values())
+    if total_missing_before > 0:
+        print(
+            f"  WARNING: credit merge had {total_missing_before} missing values before fallback fill; "
+            "verify date alignment in credit_df vs stock data."
+        )
 
     print(f"  Added credit features: {CREDIT_FEATURES}")
     if "ig_spread" in df.columns and df["ig_spread"].notna().any():

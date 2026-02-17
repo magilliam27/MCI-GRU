@@ -64,17 +64,22 @@ class FREDLoader:
             Exception: On network/API errors (caller should catch and soft-fail).
         """
         fred = self._get_client()
-        observation_start = pd.Timestamp(start).strftime("%Y-%m-%d")
-        observation_end = pd.Timestamp(end).strftime("%Y-%m-%d")
+        # Pull a small pre-start buffer so a 1-day lag still has values on the
+        # first requested date (avoids dropping the first in-range day).
+        start_ts = pd.Timestamp(start)
+        end_ts = pd.Timestamp(end)
+        buffered_start = (start_ts - pd.Timedelta(days=7)).strftime("%Y-%m-%d")
+        observation_start = start_ts.strftime("%Y-%m-%d")
+        observation_end = end_ts.strftime("%Y-%m-%d")
 
         ig = fred.get_series(
             FRED_SERIES_IG,
-            observation_start=observation_start,
+            observation_start=buffered_start,
             observation_end=observation_end,
         )
         hy = fred.get_series(
             FRED_SERIES_HY,
-            observation_start=observation_start,
+            observation_start=buffered_start,
             observation_end=observation_end,
         )
 
@@ -93,9 +98,16 @@ class FREDLoader:
         # Backfill leading NaNs if any (first valid value propagated backward for merge)
         df = df.bfill()
 
-        # 1-day lag: value at T = spread from T-1 (avoid look-ahead bias)
+        # 1-day lag: value at T = spread from T-1 (avoid look-ahead bias).
+        # Keep buffered history during lagging, then slice back to requested range.
         df = df.shift(1)
+        df = df.loc[(df.index >= start_ts) & (df.index <= end_ts)]
         df = df.dropna(how="all")
+
+        if df.empty:
+            raise ValueError(
+                f"No lagged credit spread data available for requested range {observation_start} to {observation_end}."
+            )
 
         # dt as string for merging with stock data
         df = df.reset_index()
