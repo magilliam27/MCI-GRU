@@ -102,10 +102,10 @@ DEFAULT_CONFIG = {
         'bid_ask_spread': 0.0010,   # 10 bps round-trip (5 bps each side)
         'slippage': 0.0005,         # 5 bps per trade
     },
-    # Rank-drop entry gate: trade only if stock's rank fell >= min_rank_drop vs previous prediction day
+    # Rank-drop sell gate: only exit held stocks that worsened by >= min_rank_drop vs previous prediction day
     'rank_drop_gate': {
         'enabled': False,           # Disabled by default (backward compatibility)
-        'min_rank_drop': 10,        # Minimum rank worsening (current_rank - prev_rank) to be eligible
+        'min_rank_drop': 10,        # Minimum rank worsening (current_rank - prev_rank) to trigger exit
     },
 }
 
@@ -769,19 +769,21 @@ def load_predictions(predictions_dir):
 # - Slippage: Execution price deviation from expected price
 # Excludes market impact (negligible for retail-size trades)
 
-def calculate_turnover(prev_holdings, curr_holdings):
+def calculate_turnover(prev_holdings, curr_holdings, target_k=None):
     """
     Calculate portfolio turnover between two consecutive days.
     
     Turnover measures how much of the portfolio changes each day.
     For an equal-weighted portfolio with k stocks:
-    - If n stocks change, we sell n/k and buy n/k of the portfolio
-    - One-way turnover = n/k (fraction of portfolio traded on each side)
-    - Two-way turnover = 2n/k (total fraction traded, buys + sells)
+    - If n_sold are sold and n_bought are bought:
+    - One-way turnover = (n_sold + n_bought) / (2k)
+    - Two-way turnover = (n_sold + n_bought) / k
     
     Args:
         prev_holdings: Set of stock codes held on previous day
         curr_holdings: Set of stock codes held on current day
+        target_k: Optional fixed portfolio size used for turnover normalization.
+                  If None, uses current holding count (backward-compatible).
     
     Returns:
         Dictionary with:
@@ -802,18 +804,26 @@ def calculate_turnover(prev_holdings, curr_holdings):
     stocks_bought = curr_set - prev_set  # Stocks we enter
     stocks_held = prev_set & curr_set    # Stocks we keep
     
-    num_changes = len(stocks_sold)  # Same as len(stocks_bought) for equal-weighted
-    k = len(curr_set) if len(curr_set) > 0 else 1
-    
-    # One-way turnover: fraction of portfolio we trade on each side
-    one_way_turnover = num_changes / k
-    # Two-way turnover: total trading activity (sells + buys)
-    two_way_turnover = 2 * one_way_turnover
+    num_sold = len(stocks_sold)
+    num_bought = len(stocks_bought)
+    num_changes = max(num_sold, num_bought)
+    traded_names = num_sold + num_bought
+
+    k = int(target_k) if target_k is not None else len(curr_set)
+    k = max(k, 1)
+
+    # One-way turnover: average of sell/buy notional as a fraction of portfolio
+    one_way_turnover = traded_names / (2 * k)
+    # Two-way turnover: total traded notional fraction (sell + buy)
+    two_way_turnover = traded_names / k
     
     return {
         'stocks_sold': stocks_sold,
         'stocks_bought': stocks_bought,
         'stocks_held': stocks_held,
+        'num_sold': num_sold,
+        'num_bought': num_bought,
+        'num_trades': traded_names,
         'num_changes': num_changes,
         'one_way_turnover': one_way_turnover,
         'two_way_turnover': two_way_turnover,
@@ -914,10 +924,10 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
     - Slippage: Execution price deviation from expected price
     - Applied based on daily turnover (position changes)
     
-    Rank-drop gate (optional): When enabled, only stocks whose prediction rank
-    fell by at least min_rank_drop vs the previous prediction day are eligible.
-    Stocks not present on the previous prediction day are ineligible. If no
-    stocks are eligible, the day is skipped (no trade, no return recorded).
+    Rank-drop gate (optional): When enabled, this acts as a sell gate on held names.
+    A held stock is exited only if its rank worsens by at least min_rank_drop vs
+    the previous prediction day; otherwise it is kept. Vacated slots are refilled
+    from today's highest-ranked names until top_k holdings are restored.
     
     Args:
         predictions_df: DataFrame with predictions (kdcode, dt, score)
@@ -959,7 +969,7 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
     gate_status = "ENABLED" if gate_enabled else "DISABLED"
     print(f"  Rank-drop gate: {gate_status}")
     if gate_enabled:
-        print(f"    Min rank drop: {min_rank_drop} (stock must fall >= {min_rank_drop} ranks vs previous prediction day)")
+        print(f"    Min rank drop: {min_rank_drop} (held stock exits only if rank worsens by >= {min_rank_drop})")
     
     # Get unique prediction dates and create date mapping
     pred_dates = sorted(predictions_df['dt'].unique())
@@ -992,8 +1002,9 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
     daily_costs = []
     daily_num_trades = []
     
-    # Rank-drop gate: track days skipped and previous-date ranks (kdcode -> rank, 1-based)
+    # Rank-drop gate: track diagnostics and previous-date ranks (kdcode -> rank, 1-based)
     days_skipped_by_rank_gate = 0
+    days_with_gate_exits = 0
     prev_date_ranks = None  # dict kdcode -> rank from previous prediction date
     
     # Track previous day's holdings for turnover calculation
@@ -1014,32 +1025,50 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
         day_preds['_rank'] = np.arange(1, len(day_preds) + 1, dtype=int)
         current_ranks = day_preds.set_index('kdcode')['_rank'].to_dict()
         
-        # Apply rank-drop gate: eligible only if rank fell >= min_rank_drop vs previous date
-        if gate_enabled and prev_date_ranks is not None:
-            # Only stocks present on both dates can have a rank drop; others are ineligible
-            eligible_mask = []
-            for kdcode in day_preds['kdcode']:
-                prev_rank = prev_date_ranks.get(kdcode)
-                if prev_rank is None:
-                    eligible_mask.append(False)
-                    continue
-                curr_rank = current_ranks.get(kdcode)
-                if curr_rank is None:
-                    eligible_mask.append(False)
-                    continue
-                rank_drop = curr_rank - prev_rank  # positive = rank worsened
-                eligible_mask.append(rank_drop >= min_rank_drop)
-            day_preds['_eligible'] = eligible_mask
-            eligible_preds = day_preds[day_preds['_eligible']].copy()
+        # Build target holdings.
+        # Gate disabled -> preserve legacy behavior (daily top-k refresh).
+        if not gate_enabled:
+            top_stocks = day_preds.head(top_k)['kdcode'].tolist()
+        # Gate enabled -> only sell currently held names that worsen by >= min_rank_drop.
+        elif prev_holdings is None or prev_date_ranks is None:
+            # Initialize holdings on first valid gated day.
+            top_stocks = day_preds.head(top_k)['kdcode'].tolist()
         else:
-            eligible_preds = day_preds.copy()
-        
-        # Select top-k from eligible (by score desc); if gate on and no eligible, skip day
-        if len(eligible_preds) == 0:
+            current_held = [kd for kd in prev_holdings if kd in current_ranks]
+            survivors = []
+            gate_exits_today = 0
+
+            for kdcode in current_held:
+                prev_rank = prev_date_ranks.get(kdcode)
+                curr_rank = current_ranks.get(kdcode)
+
+                # If rank history is missing, keep the position to avoid forced churn.
+                if prev_rank is None or curr_rank is None:
+                    survivors.append(kdcode)
+                    continue
+
+                rank_drop = curr_rank - prev_rank  # positive = rank worsened
+                if rank_drop >= min_rank_drop:
+                    gate_exits_today += 1
+                    continue
+
+                survivors.append(kdcode)
+
+            if gate_exits_today > 0:
+                days_with_gate_exits += 1
+
+            survivor_set = set(survivors)
+            refill_candidates = [
+                kd for kd in day_preds['kdcode'].tolist()
+                if kd not in survivor_set
+            ]
+            slots_needed = max(0, top_k - len(survivors))
+            top_stocks = survivors + refill_candidates[:slots_needed]
+
+        if len(top_stocks) == 0:
             days_skipped_by_rank_gate += 1
             prev_date_ranks = current_ranks
             continue
-        top_stocks = eligible_preds.head(top_k)['kdcode'].tolist()
         curr_holdings = set(top_stocks)
         
         # Find the NEXT trading day (day T+1) - this is when we enter positions
@@ -1077,7 +1106,7 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
         gross_return = top_k_returns.mean()
         
         # Calculate turnover and transaction costs
-        turnover_info = calculate_turnover(prev_holdings, curr_holdings)
+        turnover_info = calculate_turnover(prev_holdings, curr_holdings, target_k=top_k)
         
         if tc_enabled:
             cost_info = calculate_transaction_cost(
@@ -1109,7 +1138,7 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
         # Store turnover and cost metrics
         daily_turnover.append(turnover_info['one_way_turnover'])
         daily_costs.append(transaction_cost)
-        daily_num_trades.append(turnover_info['num_changes'] * 2)  # buys + sells
+        daily_num_trades.append(turnover_info['num_trades'])
         
         # Update holdings for next iteration
         prev_holdings = curr_holdings
@@ -1131,7 +1160,8 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
     
     print(f"  Completed simulation: {len(dates)} valid trading days")
     if gate_enabled:
-        print(f"  Rank-drop gate: {days_skipped_by_rank_gate} days skipped (no eligible stocks)")
+        print(f"  Rank-drop gate: {days_with_gate_exits} days with exits triggered")
+        print(f"  Rank-drop gate: {days_skipped_by_rank_gate} days skipped (empty post-gate portfolio)")
     
     # Calculate transaction cost summary statistics
     total_tc = sum(daily_costs)
@@ -1171,6 +1201,7 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
         # Rank-drop gate diagnostics
         'rank_gate_enabled': gate_enabled,
         'min_rank_drop': min_rank_drop if gate_enabled else None,
+        'days_with_gate_exits': days_with_gate_exits if gate_enabled else 0,
         'days_skipped_by_rank_gate': days_skipped_by_rank_gate,
     }
 
@@ -1273,6 +1304,7 @@ def evaluate(predictions_dir, config=None):
         'end_date': dates[-1] if dates else None,
         'rank_gate_enabled': sim_results.get('rank_gate_enabled', False),
         'min_rank_drop': sim_results.get('min_rank_drop'),
+        'days_with_gate_exits': sim_results.get('days_with_gate_exits', 0),
         'days_skipped_by_rank_gate': sim_results.get('days_skipped_by_rank_gate', 0),
     }
     
@@ -1624,7 +1656,8 @@ def save_backtest_results(
                 f.write(f"Transaction Costs: Disabled\n")
             if results.get('rank_gate_enabled', False):
                 f.write(f"Rank-Drop Gate: Enabled (min_rank_drop={results.get('min_rank_drop', 'N/A')})\n")
-                f.write(f"  Days skipped (no eligible stocks): {results.get('days_skipped_by_rank_gate', 0)}\n")
+                f.write(f"  Days with gate-triggered exits: {results.get('days_with_gate_exits', 0)}\n")
+                f.write(f"  Days skipped (empty post-gate portfolio): {results.get('days_skipped_by_rank_gate', 0)}\n")
             else:
                 f.write(f"Rank-Drop Gate: Disabled\n")
             f.write("\n")
@@ -1993,18 +2026,18 @@ def main():
         help='Suffix for backtest directory (e.g., "_with_costs" or "_tc")'
     )
     
-    # Rank-drop entry gate (trade only if stock rank fell >= N vs previous prediction day)
+    # Rank-drop sell gate (exit held names only if rank worsens by >= N vs previous prediction day)
     parser.add_argument(
         '--enable_rank_drop_gate',
         action='store_true',
-        help='Enable rank-drop gate: only trade stocks whose prediction rank fell '
-             'by at least --min_rank_drop vs the previous prediction day'
+        help='Enable rank-drop sell gate: only exit held stocks whose prediction rank '
+             'worsened by at least --min_rank_drop vs the previous prediction day'
     )
     parser.add_argument(
         '--min_rank_drop',
         type=int,
         default=10,
-        help='Minimum rank drop (current_rank - prev_rank) for eligibility when gate enabled (default: 10)'
+        help='Minimum rank worsening (current_rank - prev_rank) required to exit a held stock (default: 10)'
     )
     
     args = parser.parse_args()
