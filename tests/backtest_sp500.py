@@ -102,6 +102,11 @@ DEFAULT_CONFIG = {
         'bid_ask_spread': 0.0010,   # 10 bps round-trip (5 bps each side)
         'slippage': 0.0005,         # 5 bps per trade
     },
+    # Rank-drop entry gate: trade only if stock's rank fell >= min_rank_drop vs previous prediction day
+    'rank_drop_gate': {
+        'enabled': False,           # Disabled by default (backward compatibility)
+        'min_rank_drop': 10,        # Minimum rank worsening (current_rank - prev_rank) to be eligible
+    },
 }
 
 
@@ -878,7 +883,7 @@ def calculate_transaction_cost(turnover_info, bid_ask_spread, slippage):
 # ============================================================================
 
 def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5,
-                              transaction_costs=None):
+                              transaction_costs=None, rank_drop_gate=None):
     """
     Simulate trading strategy with realistic timing and overnight holding.
     
@@ -909,6 +914,11 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
     - Slippage: Execution price deviation from expected price
     - Applied based on daily turnover (position changes)
     
+    Rank-drop gate (optional): When enabled, only stocks whose prediction rank
+    fell by at least min_rank_drop vs the previous prediction day are eligible.
+    Stocks not present on the previous prediction day are ineligible. If no
+    stocks are eligible, the day is skipped (no trade, no return recorded).
+    
     Args:
         predictions_df: DataFrame with predictions (kdcode, dt, score)
         stock_data_df: DataFrame with stock data and returns (must have 'open_to_open_return')
@@ -916,6 +926,7 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
         label_t: Forward return period for accuracy metrics (MSE/MAE)
         transaction_costs: Dict with 'enabled', 'bid_ask_spread', 'slippage'
                           If None or not enabled, no costs applied
+        rank_drop_gate: Dict with 'enabled' and 'min_rank_drop'. If None or not enabled, no gate.
     
     Returns:
         Dictionary with daily returns (gross and net), turnover stats, and related data
@@ -930,6 +941,13 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
         bid_ask_spread = transaction_costs.get('bid_ask_spread', 0.001)
         slippage = transaction_costs.get('slippage', 0.0005)
     
+    # Parse rank-drop gate settings
+    gate_enabled = False
+    min_rank_drop = 10
+    if rank_drop_gate and rank_drop_gate.get('enabled', False):
+        gate_enabled = True
+        min_rank_drop = rank_drop_gate.get('min_rank_drop', 10)
+    
     cost_status = "ENABLED" if tc_enabled else "DISABLED"
     print(f"\nSimulating trading strategy (top-{top_k} stocks)...")
     print(f"  Portfolio: open-to-open returns (entry at T+1 open, exit at T+2 open)")
@@ -938,6 +956,10 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
     if tc_enabled:
         print(f"    Bid-ask spread: {bid_ask_spread*10000:.1f} bps (round-trip)")
         print(f"    Slippage: {slippage*10000:.1f} bps (per trade)")
+    gate_status = "ENABLED" if gate_enabled else "DISABLED"
+    print(f"  Rank-drop gate: {gate_status}")
+    if gate_enabled:
+        print(f"    Min rank drop: {min_rank_drop} (stock must fall >= {min_rank_drop} ranks vs previous prediction day)")
     
     # Get unique prediction dates and create date mapping
     pred_dates = sorted(predictions_df['dt'].unique())
@@ -970,6 +992,10 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
     daily_costs = []
     daily_num_trades = []
     
+    # Rank-drop gate: track days skipped and previous-date ranks (kdcode -> rank, 1-based)
+    days_skipped_by_rank_gate = 0
+    prev_date_ranks = None  # dict kdcode -> rank from previous prediction date
+    
     # Track previous day's holdings for turnover calculation
     prev_holdings = None
     
@@ -980,11 +1006,40 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
         day_preds = predictions_df[predictions_df['dt'] == pred_date].copy()
         
         if len(day_preds) < top_k:
+            prev_date_ranks = None
             continue
         
-        # Rank and select top-k stocks based on prediction
-        day_preds = day_preds.sort_values('score', ascending=False)
-        top_stocks = day_preds.head(top_k)['kdcode'].tolist()
+        # Rank by score descending (best = rank 1)
+        day_preds = day_preds.sort_values('score', ascending=False).reset_index(drop=True)
+        day_preds['_rank'] = np.arange(1, len(day_preds) + 1, dtype=int)
+        current_ranks = day_preds.set_index('kdcode')['_rank'].to_dict()
+        
+        # Apply rank-drop gate: eligible only if rank fell >= min_rank_drop vs previous date
+        if gate_enabled and prev_date_ranks is not None:
+            # Only stocks present on both dates can have a rank drop; others are ineligible
+            eligible_mask = []
+            for kdcode in day_preds['kdcode']:
+                prev_rank = prev_date_ranks.get(kdcode)
+                if prev_rank is None:
+                    eligible_mask.append(False)
+                    continue
+                curr_rank = current_ranks.get(kdcode)
+                if curr_rank is None:
+                    eligible_mask.append(False)
+                    continue
+                rank_drop = curr_rank - prev_rank  # positive = rank worsened
+                eligible_mask.append(rank_drop >= min_rank_drop)
+            day_preds['_eligible'] = eligible_mask
+            eligible_preds = day_preds[day_preds['_eligible']].copy()
+        else:
+            eligible_preds = day_preds.copy()
+        
+        # Select top-k from eligible (by score desc); if gate on and no eligible, skip day
+        if len(eligible_preds) == 0:
+            days_skipped_by_rank_gate += 1
+            prev_date_ranks = current_ranks
+            continue
+        top_stocks = eligible_preds.head(top_k)['kdcode'].tolist()
         curr_holdings = set(top_stocks)
         
         # Find the NEXT trading day (day T+1) - this is when we enter positions
@@ -993,10 +1048,12 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
             entry_date_idx = all_stock_dates.index(pred_date) + 1
             if entry_date_idx >= len(all_stock_dates):
                 # No next day available (end of data)
+                prev_date_ranks = current_ranks
                 continue
             entry_date = all_stock_dates[entry_date_idx]
         except (ValueError, IndexError):
             # pred_date not in stock data or no next day
+            prev_date_ranks = current_ranks
             continue
         
         # Day T+1: Get data for entry day
@@ -1004,6 +1061,7 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
         entry_day_data = stock_data_df[stock_data_df['dt'] == entry_date]
         
         if len(entry_day_data) == 0:
+            prev_date_ranks = current_ranks
             continue
         
         # Portfolio return: open-to-open (entry at T+1 open, exit at T+2 open)
@@ -1012,6 +1070,7 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
         top_k_returns = top_k_data['open_to_open_return'].dropna()
         
         if len(top_k_returns) == 0:
+            prev_date_ranks = current_ranks
             continue
         
         # GROSS return (before transaction costs)
@@ -1054,6 +1113,7 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
         
         # Update holdings for next iteration
         prev_holdings = curr_holdings
+        prev_date_ranks = current_ranks
         
         # Collect predictions vs actuals for MSE/MAE (use prediction date's forward returns)
         pred_date_data = stock_data_df[stock_data_df['dt'] == pred_date]
@@ -1070,6 +1130,8 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
                 all_actuals.append(actual.values[0])
     
     print(f"  Completed simulation: {len(dates)} valid trading days")
+    if gate_enabled:
+        print(f"  Rank-drop gate: {days_skipped_by_rank_gate} days skipped (no eligible stocks)")
     
     # Calculate transaction cost summary statistics
     total_tc = sum(daily_costs)
@@ -1105,7 +1167,11 @@ def simulate_trading_strategy(predictions_df, stock_data_df, top_k=10, label_t=5
         'tc_settings': {
             'bid_ask_spread': bid_ask_spread,
             'slippage': slippage,
-        }
+        },
+        # Rank-drop gate diagnostics
+        'rank_gate_enabled': gate_enabled,
+        'min_rank_drop': min_rank_drop if gate_enabled else None,
+        'days_skipped_by_rank_gate': days_skipped_by_rank_gate,
     }
 
 
@@ -1147,6 +1213,7 @@ def evaluate(predictions_dir, config=None):
     
     # Get transaction cost settings (with fallback to defaults)
     tc_config = config.get('transaction_costs', DEFAULT_CONFIG['transaction_costs'])
+    rank_drop_config = config.get('rank_drop_gate', DEFAULT_CONFIG['rank_drop_gate'])
     
     # Simulate trading strategy
     sim_results = simulate_trading_strategy(
@@ -1154,7 +1221,8 @@ def evaluate(predictions_dir, config=None):
         stock_data_df=stock_data,
         top_k=config['top_k'],
         label_t=config['label_t'],
-        transaction_costs=tc_config
+        transaction_costs=tc_config,
+        rank_drop_gate=rank_drop_config
     )
     
     portfolio_returns = sim_results['portfolio_returns']
@@ -1203,6 +1271,9 @@ def evaluate(predictions_dir, config=None):
         'num_trading_days': len(dates),
         'start_date': dates[0] if dates else None,
         'end_date': dates[-1] if dates else None,
+        'rank_gate_enabled': sim_results.get('rank_gate_enabled', False),
+        'min_rank_drop': sim_results.get('min_rank_drop'),
+        'days_skipped_by_rank_gate': sim_results.get('days_skipped_by_rank_gate', 0),
     }
     
     # Add transaction cost metrics if enabled
@@ -1551,6 +1622,11 @@ def save_backtest_results(
                 f.write(f"  Slippage: {tc.get('slippage', 0) * 10000:.1f} bps\n")
             else:
                 f.write(f"Transaction Costs: Disabled\n")
+            if results.get('rank_gate_enabled', False):
+                f.write(f"Rank-Drop Gate: Enabled (min_rank_drop={results.get('min_rank_drop', 'N/A')})\n")
+                f.write(f"  Days skipped (no eligible stocks): {results.get('days_skipped_by_rank_gate', 0)}\n")
+            else:
+                f.write(f"Rank-Drop Gate: Disabled\n")
             f.write("\n")
         
         f.write("Key Metrics:\n")
@@ -1657,12 +1733,14 @@ def plot_equity_curve(predictions_dir, stock_data, config, output_path=None):
     # Get transaction cost settings
     tc_config = config.get('transaction_costs', DEFAULT_CONFIG['transaction_costs'])
     
+    rank_drop_config = config.get('rank_drop_gate', DEFAULT_CONFIG['rank_drop_gate'])
     sim_results = simulate_trading_strategy(
         predictions_df=predictions_df,
         stock_data_df=stock_data,
         top_k=config['top_k'],
         label_t=config['label_t'],
-        transaction_costs=tc_config
+        transaction_costs=tc_config,
+        rank_drop_gate=rank_drop_config
     )
     
     dates = pd.to_datetime(sim_results['dates'])
@@ -1915,6 +1993,20 @@ def main():
         help='Suffix for backtest directory (e.g., "_with_costs" or "_tc")'
     )
     
+    # Rank-drop entry gate (trade only if stock rank fell >= N vs previous prediction day)
+    parser.add_argument(
+        '--enable_rank_drop_gate',
+        action='store_true',
+        help='Enable rank-drop gate: only trade stocks whose prediction rank fell '
+             'by at least --min_rank_drop vs the previous prediction day'
+    )
+    parser.add_argument(
+        '--min_rank_drop',
+        type=int,
+        default=10,
+        help='Minimum rank drop (current_rank - prev_rank) for eligibility when gate enabled (default: 10)'
+    )
+    
     args = parser.parse_args()
     
     # Build config
@@ -1929,6 +2021,10 @@ def main():
             'enabled': args.transaction_costs,
             'bid_ask_spread': args.spread / 10000.0,  # Convert bps to decimal
             'slippage': args.slippage / 10000.0,      # Convert bps to decimal
+        },
+        'rank_drop_gate': {
+            'enabled': args.enable_rank_drop_gate,
+            'min_rank_drop': args.min_rank_drop,
         },
     }
     
@@ -2020,7 +2116,8 @@ def main():
                     stock_data_df=stock_data,
                     top_k=config['top_k'],
                     label_t=config['label_t'],
-                    transaction_costs=config['transaction_costs']
+                    transaction_costs=config['transaction_costs'],
+                    rank_drop_gate=config['rank_drop_gate']
                 )
                 
                 # Save comprehensive results

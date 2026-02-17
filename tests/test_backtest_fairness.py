@@ -110,13 +110,9 @@ def test_return_calculation():
     
     stock_data_df, predictions_df, expected = create_synthetic_test_data()
     
-    # Import the function
-    import sys
-    sys.path.insert(0, '.')
-    from evaluate_sp500 import calculate_forward_returns
-    
+    bp = _import_backtest()
     # Calculate returns
-    stock_data_df = calculate_forward_returns(stock_data_df, label_t=5)
+    stock_data_df = bp.calculate_forward_returns(stock_data_df, label_t=5)
     
     # Check that required columns exist
     required_cols = ['tradeable_return', 'overnight_gap', 'next_day_return']
@@ -155,22 +151,19 @@ def test_simulation_timing():
     
     stock_data_df, predictions_df, expected = create_synthetic_test_data()
     
-    # Import functions
-    import sys
-    sys.path.insert(0, '.')
-    from evaluate_sp500 import calculate_forward_returns, simulate_trading_strategy
-    
+    bp = _import_backtest()
     # Prepare data
-    stock_data_df = calculate_forward_returns(stock_data_df, label_t=5)
+    stock_data_df = bp.calculate_forward_returns(stock_data_df, label_t=5)
     
     # Run simulation
     try:
-        sim_results = simulate_trading_strategy(
+        sim_results = bp.simulate_trading_strategy(
             predictions_df=predictions_df,
             stock_data_df=stock_data_df,
             top_k=2,
             label_t=5,
-            transaction_costs=None
+            transaction_costs=None,
+            rank_drop_gate=None
         )
         
         # Check results
@@ -249,22 +242,19 @@ def test_prediction_date_mapping():
     ]
     predictions_df = pd.DataFrame(pred_data)
     
-    # Import functions
-    import sys
-    sys.path.insert(0, '.')
-    from evaluate_sp500 import calculate_forward_returns, simulate_trading_strategy
-    
+    bp = _import_backtest()
     # Prepare data
-    stock_data_df = calculate_forward_returns(stock_data_df, label_t=5)
+    stock_data_df = bp.calculate_forward_returns(stock_data_df, label_t=5)
     
     # Run simulation
     try:
-        sim_results = simulate_trading_strategy(
+        sim_results = bp.simulate_trading_strategy(
             predictions_df=predictions_df,
             stock_data_df=stock_data_df,
             top_k=2,
             label_t=5,
-            transaction_costs=None
+            transaction_costs=None,
+            rank_drop_gate=None
         )
         
         portfolio_returns = sim_results['portfolio_returns']
@@ -298,6 +288,122 @@ def test_prediction_date_mapping():
         import traceback
         traceback.print_exc()
         return False
+
+
+def _import_backtest():
+    """Import backtest module from tests directory (file is backtest_sp500.py)."""
+    _tests_dir = os.path.dirname(os.path.abspath(__file__))
+    if _tests_dir not in sys.path:
+        sys.path.insert(0, _tests_dir)
+    import backtest_sp500 as bp
+    return bp
+
+
+def test_rank_drop_gate_eligible():
+    """With rank-drop gate: stock that fell >= 10 ranks is eligible and can be selected."""
+    print("=" * 70)
+    print("TEST 4: Rank-Drop Gate - Eligible (rank fell >= 10)")
+    print("=" * 70)
+    bp = _import_backtest()
+    # 3 dates, 15 stocks. Day1: S0=rank1. Day2: S0=rank11 (10 stocks with higher score) -> rank_drop=10
+    dates = ['2025-01-01', '2025-01-02', '2025-01-03']
+    stocks = [f'S{i}' for i in range(15)]
+    data = []
+    for dt in dates:
+        for s in stocks:
+            data.append({
+                'kdcode': s, 'dt': dt, 'open': 100., 'high': 101., 'low': 99., 'close': 100., 'volume': 1e6
+            })
+    stock_df = pd.DataFrame(data)
+    stock_df = bp.calculate_forward_returns(stock_df, label_t=5)
+    preds = []
+    for dt in dates:
+        for r, s in enumerate(stocks):
+            if dt == '2025-01-01':
+                score = 1.0 - r * 0.01  # S0=1, S1=0.99, ... S14=0.86
+            elif dt == '2025-01-02':
+                # S0 at rank 11: give S1..S10 scores above S0, S0=0.0, rest below
+                if s == 'S0':
+                    score = 0.0
+                elif stocks.index(s) < 10:
+                    score = 0.5 - stocks.index(s) * 0.01  # S1=0.49 .. S10=0.41
+                else:
+                    score = -0.1 - stocks.index(s) * 0.01
+            else:
+                score = 1.0 - r * 0.01
+            preds.append({'kdcode': s, 'dt': dt, 'score': score})
+    pred_df = pd.DataFrame(preds)
+    gate = {'enabled': True, 'min_rank_drop': 10}
+    sim = bp.simulate_trading_strategy(
+        pred_df, stock_df, top_k=2, label_t=5, transaction_costs=None, rank_drop_gate=gate
+    )
+    assert sim['rank_gate_enabled'] is True
+    assert len(sim['portfolio_returns']) >= 1, "Should have at least one trading day when gate allows"
+    print("  ✓ Rank-drop gate enabled; simulation produced trading days when stock had rank drop >= 10")
+    print("  ✓ TEST 4 PASSED\n")
+    return True
+
+
+def test_rank_drop_gate_excluded():
+    """With rank-drop gate: when no stock fell >= 10 ranks, day is skipped."""
+    print("=" * 70)
+    print("TEST 5: Rank-Drop Gate - Excluded (rank fell < 10)")
+    print("=" * 70)
+    bp = _import_backtest()
+    dates = ['2025-01-01', '2025-01-02', '2025-01-03']
+    stocks = [f'S{i}' for i in range(12)]
+    data = []
+    for dt in dates:
+        for s in stocks:
+            data.append({
+                'kdcode': s, 'dt': dt, 'open': 100., 'high': 101., 'low': 99., 'close': 100., 'volume': 1e6
+            })
+    stock_df = pd.DataFrame(data)
+    stock_df = bp.calculate_forward_returns(stock_df, label_t=5)
+    # Same rank order both days -> rank_drop=0 for all; no one eligible on day2
+    preds = []
+    for dt in dates:
+        for r, s in enumerate(stocks):
+            score = 1.0 - r * 0.01
+            preds.append({'kdcode': s, 'dt': dt, 'score': score})
+    pred_df = pd.DataFrame(preds)
+    gate = {'enabled': True, 'min_rank_drop': 10}
+    sim = bp.simulate_trading_strategy(
+        pred_df, stock_df, top_k=2, label_t=5, transaction_costs=None, rank_drop_gate=gate
+    )
+    assert sim['rank_gate_enabled'] is True
+    assert sim['days_skipped_by_rank_gate'] >= 1, "Should skip at least one day when no stock has rank drop >= 10"
+    print("  ✓ Day skipped when no stock had rank drop >= 10")
+    print("  ✓ TEST 5 PASSED\n")
+    return True
+
+
+def test_rank_drop_gate_disabled_regression():
+    """With rank-drop gate disabled, behavior matches no-gate (same number of trading days as without gate)."""
+    print("=" * 70)
+    print("TEST 6: Rank-Drop Gate Disabled - Regression")
+    print("=" * 70)
+    bp = _import_backtest()
+    stock_data_df, predictions_df, _ = create_synthetic_test_data()
+    stock_data_df = bp.calculate_forward_returns(stock_data_df, label_t=5)
+    sim_no_gate = bp.simulate_trading_strategy(
+        predictions_df, stock_data_df, top_k=2, label_t=5, transaction_costs=None, rank_drop_gate=None
+    )
+    sim_gate_off = bp.simulate_trading_strategy(
+        predictions_df, stock_data_df, top_k=2, label_t=5, transaction_costs=None,
+        rank_drop_gate={'enabled': False, 'min_rank_drop': 10}
+    )
+    assert sim_no_gate['rank_gate_enabled'] is False
+    assert sim_gate_off['rank_gate_enabled'] is False
+    assert len(sim_no_gate['portfolio_returns']) == len(sim_gate_off['portfolio_returns']), \
+        "Disabled gate should give same number of trading days as no gate"
+    np.testing.assert_array_almost_equal(
+        sim_no_gate['portfolio_returns'], sim_gate_off['portfolio_returns'],
+        err_msg="Disabled gate should match no-gate returns"
+    )
+    print("  ✓ Disabled gate matches no-gate (same returns and days)")
+    print("  ✓ TEST 6 PASSED\n")
+    return True
 
 
 def main():
@@ -337,6 +443,36 @@ def main():
         import traceback
         traceback.print_exc()
         results.append(("Date Mapping", False))
+    
+    # Test 4: Rank-drop gate eligible
+    try:
+        passed = test_rank_drop_gate_eligible()
+        results.append(("Rank-Drop Gate Eligible", passed))
+    except Exception as e:
+        print(f"✗ TEST 4 FAILED: {e}\n")
+        import traceback
+        traceback.print_exc()
+        results.append(("Rank-Drop Gate Eligible", False))
+    
+    # Test 5: Rank-drop gate excluded / skip day
+    try:
+        passed = test_rank_drop_gate_excluded()
+        results.append(("Rank-Drop Gate Excluded", passed))
+    except Exception as e:
+        print(f"✗ TEST 5 FAILED: {e}\n")
+        import traceback
+        traceback.print_exc()
+        results.append(("Rank-Drop Gate Excluded", False))
+    
+    # Test 6: Rank-drop gate disabled regression
+    try:
+        passed = test_rank_drop_gate_disabled_regression()
+        results.append(("Rank-Drop Gate Disabled Regression", passed))
+    except Exception as e:
+        print(f"✗ TEST 6 FAILED: {e}\n")
+        import traceback
+        traceback.print_exc()
+        results.append(("Rank-Drop Gate Disabled Regression", False))
     
     # Summary
     print("=" * 70)
