@@ -1,7 +1,7 @@
 # Extended training period (10 years)
 universe: sp500
 source: csv
-filename: sp500_yf_download.csv
+filename: data/raw/market/sp500_yf_download.csv
 train_start: "2014-01-01"  # 10 years of training
 train_end: "2023-12-31"
 val_start: "2024-01-01"

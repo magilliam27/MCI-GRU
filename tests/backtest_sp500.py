@@ -94,7 +94,7 @@ DEFAULT_CONFIG = {
     'trading_days_per_year': 252,   # Standard trading days
     'test_start': '2025-01-01',     # Updated to match training config
     'test_end': '2025-12-31',       # Updated to match training config
-    'data_file': 'sp500_data.csv',  # Updated to match actual data file
+    'data_file': 'data/raw/market/sp500_data.csv',  # Updated to reorganized path
     'label_t': 5,                   # Forward return period (days)
     # Transaction costs for retail investor
     'transaction_costs': {
@@ -614,6 +614,22 @@ def haircut_sharpe_ratio(sharpe_ratio, num_years, num_tests, method='bhy',
 # DATA LOADING
 # ============================================================================
 
+def resolve_data_file(filename):
+    """Resolve data file from reorganized and legacy locations."""
+    if os.path.exists(filename):
+        return filename
+
+    basename = os.path.basename(filename)
+    candidates = [
+        os.path.join("data", "raw", "market", basename),
+        basename,
+    ]
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    raise FileNotFoundError(f"Could not find data file: {filename}")
+
+
 def load_stock_data(filename, start_date=None, end_date=None):
     """
     Load stock data from CSV file.
@@ -626,8 +642,9 @@ def load_stock_data(filename, start_date=None, end_date=None):
     Returns:
         DataFrame with stock data
     """
-    print(f"Loading stock data from {filename}...")
-    df = pd.read_csv(filename)
+    resolved_file = resolve_data_file(filename)
+    print(f"Loading stock data from {resolved_file}...")
+    df = pd.read_csv(resolved_file)
     
     # Ensure date format
     df['dt'] = pd.to_datetime(df['dt']).dt.strftime('%Y-%m-%d')
@@ -1909,7 +1926,7 @@ def main():
     parser.add_argument(
         '--data_file',
         type=str,
-        default='sp500_yf_download.csv',
+        default='data/raw/market/sp500_data.csv',
         help='Path to stock data CSV file'
     )
     
@@ -1923,15 +1940,15 @@ def main():
     parser.add_argument(
         '--test_start',
         type=str,
-        default='2023-01-01',
-        help='Test period start date (default: 2023-01-01)'
+        default='2025-01-01',
+        help='Test period start date (default: 2025-01-01)'
     )
     
     parser.add_argument(
         '--test_end',
         type=str,
-        default='2023-12-31',
-        help='Test period end date (default: 2023-12-31)'
+        default='2025-12-31',
+        help='Test period end date (default: 2025-12-31)'
     )
     
     parser.add_argument(

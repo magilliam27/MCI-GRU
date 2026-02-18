@@ -148,14 +148,18 @@ def main():
     args = parser.parse_args([] if "ipykernel" in sys.modules else None)
     ticker_path = args.tickers
     if not ticker_path:
-        default_path = "ticker.csv"
-        if not os.path.exists(default_path):
+        preferred_path = os.path.join("data", "raw", "reference", "ticker.csv")
+        legacy_path = "ticker.csv"
+        if os.path.exists(preferred_path):
+            ticker_path = preferred_path
+        elif os.path.exists(legacy_path):
+            ticker_path = legacy_path
+        else:
             parser.print_usage()
             raise ValueError(
-                "Missing --tickers argument and default 'ticker.csv' "
-                "not found in the current directory."
+                "Missing --tickers argument and no default ticker file found at "
+                "'data/raw/reference/ticker.csv' or 'ticker.csv'."
             )
-        ticker_path = default_path
 
     results = run_baselines(ticker_path, args.train_mean_lookback)
 

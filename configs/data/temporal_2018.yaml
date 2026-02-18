@@ -2,7 +2,7 @@
 # Train: 2018-2022 (5 years), Val: 2023, Test: 2024
 universe: sp500
 source: csv
-filename: sp500_data.csv
+filename: data/raw/market/sp500_data.csv
 train_start: "2018-01-01"
 train_end: "2022-12-31"
 val_start: "2023-01-01"

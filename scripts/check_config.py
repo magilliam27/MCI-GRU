@@ -125,8 +125,10 @@ def check_config():
         else:
             warnings.append("  ⚠  Could not verify backtest test_start")
             
-        if "'data_file': 'sp500_data.csv'" in content:
-            checks.append("  ✓ Backtest data_file matches actual file (sp500_data.csv)")
+        if "'data_file': 'data/raw/market/sp500_data.csv'" in content:
+            checks.append("  ✓ Backtest data_file matches reorganized path (data/raw/market/sp500_data.csv)")
+        elif "'data_file': 'sp500_data.csv'" in content:
+            checks.append("  ✓ Backtest data_file uses legacy root path (still supported)")
         elif "'data_file': 'sp500_yf_download.csv'" in content:
             errors.append("  ✗ Backtest data_file outdated (sp500_yf_download.csv)")
         else:
@@ -137,7 +139,14 @@ def check_config():
     
     # 5. Check for common data files
     print("\n5. Checking for data files...")
-    data_files = ['sp500_data.csv', 'sp500_yf_download.csv', 'russell1000_data.csv']
+    data_files = [
+        'data/raw/market/sp500_data.csv',
+        'data/raw/market/sp500_yf_download.csv',
+        'data/raw/market/russell1000_data.csv',
+        'sp500_data.csv',
+        'sp500_yf_download.csv',
+        'russell1000_data.csv',
+    ]
     found_data = False
     for df in data_files:
         if os.path.exists(df):
@@ -145,7 +154,7 @@ def check_config():
             found_data = True
             
     if not found_data:
-        warnings.append("  ⚠  No data files found in repository root")
+        warnings.append("  ⚠  No known data files found in reorganized or legacy locations")
         warnings.append("     Upload data files before running experiments")
     
     # Print summary

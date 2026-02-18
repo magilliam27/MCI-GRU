@@ -165,7 +165,7 @@ def main():
     parser.add_argument("--start", default="2017-01-01")
     parser.add_argument("--end", default="2025-12-31")
     parser.add_argument("--min-days", type=int, default=200)
-    parser.add_argument("--out", default="sp500_yf_download.csv")
+    parser.add_argument("--out", default="data/raw/market/sp500_yf_download.csv")
     args = parser.parse_args()
 
     tickers = load_tickers_from_csv(args.tickers)
@@ -177,6 +177,9 @@ def main():
     # Basic cleaning (no strict alignment needed)
     df = clean_dataset(df)
 
+    out_dir = os.path.dirname(args.out)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
     df.to_csv(args.out, index=False)
     print(f"\nSaved dataset to {args.out} ({len(df):,} rows)")
     if failed:

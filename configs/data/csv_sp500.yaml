@@ -2,7 +2,7 @@
 # Use this when LSEG is unavailable
 universe: sp500
 source: csv
-filename: sp500_data.csv
+filename: data/raw/market/sp500_data.csv
 train_start: "2019-01-01"
 train_end: "2023-12-31"
 val_start: "2024-01-01"

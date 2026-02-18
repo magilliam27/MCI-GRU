@@ -28,7 +28,7 @@ class DataConfig:
     """
     universe: str = "sp500"
     source: str = "csv"
-    filename: str = "sp500_yf_download.csv"
+    filename: str = "data/raw/market/sp500_data.csv"
     train_start: str = "2019-01-01"
     train_end: str = "2023-12-31"
     val_start: str = "2024-01-01"

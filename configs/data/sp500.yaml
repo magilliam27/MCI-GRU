@@ -1,7 +1,7 @@
 # S&P 500 data configuration
 universe: sp500
 source: lseg
-filename: sp500_data.csv  # Fallback CSV file if LSEG unavailable
+filename: data/raw/market/sp500_data.csv  # Fallback CSV file if LSEG unavailable
 train_start: "2019-01-01"
 train_end: "2023-12-31"
 val_start: "2024-01-01"

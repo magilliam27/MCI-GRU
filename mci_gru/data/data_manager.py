@@ -17,6 +17,7 @@ import torch
 from torch.utils.data import Dataset
 
 from mci_gru.config import DataConfig, FeatureConfig, ExperimentConfig
+from mci_gru.data.path_resolver import resolve_project_data_path
 
 
 class DataManager:
@@ -55,12 +56,10 @@ class DataManager:
     
     def _load_from_csv(self) -> pd.DataFrame:
         """Load data from CSV file."""
-        print(f"Loading data from {self.config.filename}...")
-        
-        if not os.path.exists(self.config.filename):
-            raise FileNotFoundError(f"Data file not found: {self.config.filename}")
-        
-        df = pd.read_csv(self.config.filename)
+        resolved_path = resolve_project_data_path(self.config.filename)
+        print(f"Loading data from {resolved_path}...")
+
+        df = pd.read_csv(resolved_path)
         
         print(f"  Loaded {len(df)} rows")
         print(f"  Date range: {df['dt'].min()} to {df['dt'].max()}")
@@ -117,15 +116,16 @@ class DataManager:
                 loader.disconnect()
         else:
             # Try to load from a VIX CSV file
-            vix_path = "vix_data.csv"
-            if os.path.exists(vix_path):
-                vix_df = pd.read_csv(vix_path)
-                self.vix_df = vix_df
-                return vix_df
-            else:
+            try:
+                vix_path = resolve_project_data_path("vix_data.csv")
+            except FileNotFoundError:
                 raise FileNotFoundError(
-                    f"VIX data not found. Create {vix_path} or use source='lseg'"
+                    "VIX data not found. Create vix_data.csv under data/raw/market "
+                    "or use source='lseg'"
                 )
+            vix_df = pd.read_csv(vix_path)
+            self.vix_df = vix_df
+            return vix_df
 
     def load_credit_spreads(self) -> pd.DataFrame:
         """
