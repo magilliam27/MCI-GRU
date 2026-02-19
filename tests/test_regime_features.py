@@ -114,3 +114,83 @@ def test_add_regime_features_broadcasts_without_row_change():
 def test_regime_input_contract_columns_present():
     regime_df = _make_regime_daily()
     assert set(["dt"] + REGIME_VARIABLES).issubset(set(regime_df.columns))
+
+
+def test_regime_csv_contract_required_columns():
+    """Canonical regime CSV must have dt + REGIME_VARIABLES; loader rejects missing columns."""
+    import tempfile
+    from mci_gru.data.data_manager import DataManager
+    from mci_gru.config import DataConfig
+
+    good = _make_regime_daily(periods=10)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        good.to_csv(f.name, index=False)
+        path = f.name
+    try:
+        config = DataConfig(
+            train_start="2000-01-01",
+            train_end="2000-01-10",
+            val_start="2000-01-11",
+            val_end="2000-01-12",
+            test_start="2000-01-13",
+            test_end="2000-01-15",
+        )
+        dm = DataManager(config)
+        out = dm.load_regime_inputs(regime_inputs_csv=path, regime_enforce_lag_days=0)
+        assert set(["dt"] + REGIME_VARIABLES).issubset(set(out.columns))
+        assert len(out) >= 1
+    finally:
+        import os
+        os.unlink(path)
+
+    bad = good.drop(columns=["regime_copper"])
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        bad.to_csv(f.name, index=False)
+        path_bad = f.name
+    try:
+        dm2 = DataManager(config)
+        try:
+            dm2.load_regime_inputs(regime_inputs_csv=path_bad, regime_enforce_lag_days=0)
+            assert False, "Expected ValueError for missing column"
+        except ValueError as e:
+            assert "regime_copper" in str(e) or "missing" in str(e).lower()
+    finally:
+        import os
+        os.unlink(path_bad)
+
+
+def test_regime_csv_lag_safety():
+    """With regime_enforce_lag_days=1, value at date T should reflect prior-day data (no look-ahead)."""
+    import tempfile
+    from mci_gru.data.data_manager import DataManager
+    from mci_gru.config import DataConfig
+
+    df = _make_regime_daily(start="2000-01-01", periods=5)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        df.to_csv(f.name, index=False)
+        path = f.name
+    try:
+        config = DataConfig(
+            train_start="2000-01-01",
+            train_end="2000-01-05",
+            val_start="2000-01-06",
+            val_end="2000-01-07",
+            test_start="2000-01-08",
+            test_end="2000-01-10",
+        )
+        dm = DataManager(config)
+        no_lag = dm.load_regime_inputs(regime_inputs_csv=path, regime_enforce_lag_days=0)
+        with_lag = dm.load_regime_inputs(regime_inputs_csv=path, regime_enforce_lag_days=1)
+        # With lag, row at index i should have regime values from no_lag row i-1
+        assert len(with_lag) == len(no_lag)
+        # First row with lag is NaN/ffill so skip; check second row
+        if len(no_lag) >= 2:
+            for col in REGIME_VARIABLES:
+                np.testing.assert_array_almost_equal(
+                    with_lag.iloc[1][col],
+                    no_lag.iloc[0][col],
+                    err_msg=f"Lag not applied for {col}",
+                )
+    finally:
+        import os
+        os.unlink(path)

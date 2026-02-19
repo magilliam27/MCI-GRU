@@ -19,6 +19,8 @@ class DataConfig:
         universe: Stock universe name (sp500, russell1000, msci_world)
         source: Data source type (csv, lseg)
         filename: Path to CSV file (used when source='csv')
+        experiment_mode: 'stock_level' (cross-sectional stocks) or 'index_level' (single index series; no survivorship bias)
+        index_filename: Path to index CSV with dt, close (used when experiment_mode='index_level'); if None, use FRED SP500
         train_start: Training period start date
         train_end: Training period end date
         val_start: Validation period start date
@@ -29,6 +31,8 @@ class DataConfig:
     universe: str = "sp500"
     source: str = "csv"
     filename: str = "data/raw/market/sp500_data.csv"
+    experiment_mode: str = "stock_level"
+    index_filename: Optional[str] = None
     train_start: str = "2019-01-01"
     train_end: str = "2023-12-31"
     val_start: str = "2024-01-01"
@@ -37,9 +41,10 @@ class DataConfig:
     test_end: str = "2025-12-31"
     
     def __post_init__(self):
-        """Validate date ordering."""
-        # Basic validation - dates should be in order
-        dates = [self.train_start, self.train_end, self.val_start, 
+        """Validate date ordering and experiment mode."""
+        if self.experiment_mode not in ("stock_level", "index_level"):
+            raise ValueError(f"experiment_mode must be 'stock_level' or 'index_level', got {self.experiment_mode!r}")
+        dates = [self.train_start, self.train_end, self.val_start,
                  self.val_end, self.test_start, self.test_end]
         for i in range(len(dates) - 1):
             if dates[i] > dates[i + 1]:
@@ -74,6 +79,8 @@ class FeatureConfig:
         regime_lseg_yield_10y_ric: LSEG RIC for 10Y yield fallback
         regime_lseg_yield_3m_ric: LSEG RIC for 3M yield fallback
         regime_lseg_oil_ric: LSEG RIC for oil fallback
+        regime_inputs_csv: Optional path to canonical regime CSV (if set, bypass live API for regime)
+        regime_enforce_lag_days: If regime_inputs_csv set, shift dates by this many days (0 or 1) to avoid look-ahead
         include_rsi: Whether to add RSI features
         include_ma_features: Whether to add moving average features
         include_price_features: Whether to add derived price features
@@ -103,6 +110,8 @@ class FeatureConfig:
     regime_lseg_yield_10y_ric: str = "US10YT=RR"
     regime_lseg_yield_3m_ric: str = "US3MT=RR"
     regime_lseg_oil_ric: str = "CLc1"
+    regime_inputs_csv: Optional[str] = None
+    regime_enforce_lag_days: int = 0
     include_rsi: bool = False
     include_ma_features: bool = False
     include_price_features: bool = False
@@ -123,6 +132,8 @@ class FeatureConfig:
             raise ValueError("regime_exclusion_months must be >= 0")
         if self.regime_min_history_months <= 0:
             raise ValueError("regime_min_history_months must be > 0")
+        if self.regime_enforce_lag_days < 0:
+            raise ValueError("regime_enforce_lag_days must be >= 0")
 
 
 @dataclass

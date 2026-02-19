@@ -127,12 +127,128 @@ def dict_to_config(cfg: DictConfig) -> ExperimentConfig:
     )
 
 
+def prepare_data_index_level(
+    config: ExperimentConfig,
+    feature_engineer: FeatureEngineer
+) -> Dict[str, Any]:
+    """
+    Prepare data for index-level experiment mode (single index series, no survivorship bias).
+
+    Loads index series (FRED or CSV), regime inputs, builds features, and returns
+    the same dict shape as prepare_data so the rest of the pipeline runs unchanged.
+    Uses a trivial graph (1 node, 0 edges).
+    """
+    print("=" * 80)
+    print("Preparing Data (index-level mode; no stock-level survivorship bias)")
+    print("=" * 80)
+
+    data_manager = DataManager(config.data)
+    df = data_manager.load_index_series()
+    kdcode_list = ["INDEX"]
+
+    vix_df = None
+    credit_df = None
+    regime_df = None
+    if config.features.include_global_regime:
+        try:
+            regime_df = data_manager.load_regime_inputs(
+                lseg_market_ric=config.features.regime_lseg_market_ric,
+                lseg_copper_ric=config.features.regime_lseg_copper_ric,
+                lseg_yield_10y_ric=config.features.regime_lseg_yield_10y_ric,
+                lseg_yield_3m_ric=config.features.regime_lseg_yield_3m_ric,
+                lseg_oil_ric=config.features.regime_lseg_oil_ric,
+                regime_inputs_csv=config.features.regime_inputs_csv or None,
+                regime_enforce_lag_days=config.features.regime_enforce_lag_days,
+            )
+            print(f"Loaded regime input data: {len(regime_df)} observations")
+        except Exception as e:
+            if config.features.regime_strict:
+                raise
+            print(f"Warning: Could not load regime input data: {e}")
+            print("Continuing with zero-filled regime features (soft-fail)")
+
+    df = feature_engineer.transform(df, vix_df, credit_df, regime_df)
+    feature_cols = feature_engineer.get_feature_columns()
+    print(f"Feature columns ({len(feature_cols)}): {feature_cols}")
+
+    for col in feature_cols:
+        if col in df.columns:
+            df[col] = df[col].fillna(0.0)
+    df = df.fillna(0.0)
+
+    train_start, train_end = config.data.train_start, config.data.train_end
+    val_start, val_end = config.data.val_start, config.data.val_end
+    test_start, test_end = config.data.test_start, config.data.test_end
+    date_mask = (df["dt"] >= train_start) & (df["dt"] <= test_end)
+    df_norm = df[date_mask].copy()
+    train_df = df_norm[(df_norm["dt"] >= train_start) & (df_norm["dt"] <= train_end)]
+    val_df = df_norm[(df_norm["dt"] >= val_start) & (df_norm["dt"] <= val_end)]
+    test_df = df_norm[(df_norm["dt"] >= test_start) & (df_norm["dt"] <= test_end)]
+
+    means = {}
+    stds = {}
+    for col in feature_cols:
+        if col in train_df.columns:
+            means[col] = train_df[col].mean()
+            stds[col] = train_df[col].std() or 1.0
+    for col in feature_cols:
+        if col in df_norm.columns:
+            df_norm[col] = np.clip(
+                df_norm[col],
+                means.get(col, 0) - 3 * stds.get(col, 1),
+                means.get(col, 0) + 3 * stds.get(col, 1),
+            )
+            df_norm[col] = (df_norm[col] - means.get(col, 0)) / stds.get(col, 1)
+
+    df_filtered = df_norm.copy()
+    his_t = config.model.his_t
+    train_dates = sorted(train_df["dt"].unique())
+    val_dates = sorted(val_df["dt"].unique())
+    test_dates = sorted(test_df["dt"].unique())
+    effective_train_days = len(train_dates) - his_t
+
+    stock_features = generate_time_series_features(df_filtered, kdcode_list, feature_cols, his_t)
+    stock_features_train = stock_features[:effective_train_days]
+    stock_features_val = stock_features[effective_train_days:effective_train_days + len(val_dates)]
+    stock_features_test = stock_features[effective_train_days + len(val_dates):]
+
+    x_graph_train = generate_graph_features(train_df, kdcode_list, feature_cols, train_dates[his_t:])
+    x_graph_val = generate_graph_features(val_df, kdcode_list, feature_cols, val_dates)
+    x_graph_test = generate_graph_features(test_df, kdcode_list, feature_cols, test_dates)
+
+    train_labels = compute_labels(df_filtered, kdcode_list, train_dates[his_t:], config.model.label_t)
+    val_labels = compute_labels(df_filtered, kdcode_list, val_dates, config.model.label_t)
+
+    edge_index = torch.empty(2, 0, dtype=torch.long)
+    edge_weight = torch.empty(0, dtype=torch.float32)
+
+    return {
+        "kdcode_list": kdcode_list,
+        "train_dates": train_dates[his_t:],
+        "val_dates": val_dates,
+        "test_dates": test_dates,
+        "stock_features_train": stock_features_train,
+        "stock_features_val": stock_features_val,
+        "stock_features_test": stock_features_test,
+        "x_graph_train": x_graph_train,
+        "x_graph_val": x_graph_val,
+        "x_graph_test": x_graph_test,
+        "train_labels": train_labels,
+        "val_labels": val_labels,
+        "edge_index": edge_index,
+        "edge_weight": edge_weight,
+        "feature_cols": feature_cols,
+        "graph_builder": None,
+        "df": df_filtered,
+    }
+
+
 def prepare_data(
     config: ExperimentConfig,
     feature_engineer: FeatureEngineer
 ) -> Dict[str, Any]:
     """
-    Load and prepare data for training.
+    Load and prepare data for training (stock-level cross-sectional).
     
     This function mirrors the data preparation logic from sp500.py
     but uses the modular components.
@@ -175,6 +291,8 @@ def prepare_data(
                 lseg_yield_10y_ric=config.features.regime_lseg_yield_10y_ric,
                 lseg_yield_3m_ric=config.features.regime_lseg_yield_3m_ric,
                 lseg_oil_ric=config.features.regime_lseg_oil_ric,
+                regime_inputs_csv=config.features.regime_inputs_csv or None,
+                regime_enforce_lag_days=config.features.regime_enforce_lag_days,
             )
             print(f"Loaded regime input data: {len(regime_df)} observations")
         except Exception as e:
@@ -469,8 +587,11 @@ def main(cfg: DictConfig):
         include_volume_features=config.features.include_volume_features,
     )
     
-    # Prepare data
-    data = prepare_data(config, feature_engineer)
+    # Prepare data (stock-level or index-level to avoid survivorship bias)
+    if config.data.experiment_mode == "index_level":
+        data = prepare_data_index_level(config, feature_engineer)
+    else:
+        data = prepare_data(config, feature_engineer)
     
     # Create data loaders
     logger.info("\nCreating data loaders...")

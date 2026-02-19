@@ -1,0 +1,13 @@
+# Index-level experiment (no stock-level survivorship bias)
+# Uses dated index/macro data only (FRED SP500 or index CSV)
+universe: sp500
+source: csv
+filename: data/raw/market/sp500_data.csv  # unused when experiment_mode=index_level
+experiment_mode: index_level
+# index_filename: null  # use FRED SP500; or set to path of index CSV with dt, close
+train_start: "2019-01-01"
+train_end: "2023-12-31"
+val_start: "2024-01-01"
+val_end: "2024-12-31"
+test_start: "2025-01-01"
+test_end: "2025-12-31"

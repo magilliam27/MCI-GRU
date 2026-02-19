@@ -54,7 +54,51 @@ class DataManager:
             return self._load_from_lseg()
         else:
             raise ValueError(f"Unknown data source: {self.config.source}")
-    
+
+    def load_index_series(self) -> pd.DataFrame:
+        """
+        Load a single index series for index-level experiment mode (no survivorship bias).
+
+        Uses index_filename CSV if set (columns: dt, close; optional open, high, low, volume),
+        otherwise FRED SP500 with 1-day lag. Returns DataFrame with kdcode='INDEX' and
+        standard OHLCV columns so feature pipeline can run unchanged.
+        """
+        start_ts = pd.Timestamp(self.config.train_start) - pd.Timedelta(days=365 * 2)
+        start = start_ts.strftime("%Y-%m-%d")
+        end = self.config.test_end
+
+        if self.config.index_filename:
+            resolved = resolve_project_data_path(self.config.index_filename)
+            df = pd.read_csv(resolved)
+            df["dt"] = pd.to_datetime(df["dt"]).dt.strftime("%Y-%m-%d")
+            if "close" not in df.columns:
+                raise ValueError(f"Index CSV must have 'close' column: {resolved}")
+            for col in ["open", "high", "low", "volume"]:
+                if col not in df.columns:
+                    df[col] = df["close"] if col in ("open", "high", "low") else 0.0
+            if "turnover" not in df.columns:
+                df["turnover"] = df["volume"] * df["close"]
+            df = df[["dt", "open", "high", "low", "close", "volume", "turnover"]]
+        else:
+            from mci_gru.data.fred_loader import FREDLoader, FRED_SERIES_SP500
+            fred = FREDLoader()
+            s = fred.get_series(FRED_SERIES_SP500, start, end, "close", lag_days=1)
+            df = s.copy()
+            df["open"] = df["close"]
+            df["high"] = df["close"]
+            df["low"] = df["close"]
+            df["volume"] = 0.0
+            df["turnover"] = 0.0
+            df = df[["dt", "open", "high", "low", "close", "volume", "turnover"]]
+
+        df["kdcode"] = "INDEX"
+        df = df[["kdcode", "dt", "open", "high", "low", "close", "volume", "turnover"]]
+        df = df.sort_values("dt").drop_duplicates(subset=["dt"], keep="last")
+        df = df[(df["dt"] >= start) & (df["dt"] <= end)]
+        self.df = df
+        self.kdcode_list = ["INDEX"]
+        return df
+
     def _load_from_csv(self) -> pd.DataFrame:
         """Load data from CSV file."""
         resolved_path = resolve_project_data_path(self.config.filename)
@@ -156,13 +200,42 @@ class DataManager:
         lseg_yield_10y_ric: str = "US10YT=RR",
         lseg_yield_3m_ric: str = "US3MT=RR",
         lseg_oil_ric: str = "CLc1",
+        regime_inputs_csv: Optional[str] = None,
+        regime_enforce_lag_days: int = 0,
     ) -> pd.DataFrame:
         """
         Load Phase-1 global regime input series with hybrid sourcing.
 
+        If regime_inputs_csv is set, load from that file (and optionally apply lag);
+        otherwise use FRED/LSEG APIs.
+
         Output columns:
             dt, regime_market, regime_yield_curve, regime_oil, regime_copper, regime_stock_bond_corr
         """
+        from mci_gru.features.regime import REGIME_VARIABLES
+
+        if regime_inputs_csv:
+            resolved = resolve_project_data_path(regime_inputs_csv)
+            base = pd.read_csv(resolved)
+            base["dt"] = pd.to_datetime(base["dt"])
+            base = base.sort_values("dt").drop_duplicates(subset=["dt"], keep="last")
+            required = {"dt"} | set(REGIME_VARIABLES)
+            missing = sorted(required - set(base.columns))
+            if missing:
+                raise ValueError(
+                    f"Regime CSV {regime_inputs_csv} is missing required columns: {missing}. "
+                    "See docs/REGIME_DATA_CONTRACT.md."
+                )
+            base = base[["dt"] + REGIME_VARIABLES].copy()
+            for col in REGIME_VARIABLES:
+                base[col] = pd.to_numeric(base[col], errors="coerce")
+            if regime_enforce_lag_days > 0:
+                base[REGIME_VARIABLES] = base[REGIME_VARIABLES].shift(regime_enforce_lag_days)
+            base[REGIME_VARIABLES] = base[REGIME_VARIABLES].ffill().bfill()
+            base["dt"] = base["dt"].dt.strftime("%Y-%m-%d")
+            self.regime_df = base
+            return base
+
         from mci_gru.data.fred_loader import (
             FREDLoader,
             FRED_SERIES_SP500,
