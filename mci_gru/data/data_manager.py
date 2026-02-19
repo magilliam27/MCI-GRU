@@ -185,9 +185,22 @@ class DataManager:
         """
         from mci_gru.data.fred_loader import FREDLoader
 
+        # Align credit history to the earliest loaded stock date when available.
+        # This avoids large pre-merge gaps (and zero fallback fills) when the
+        # stock CSV includes a pre-train buffer period (e.g., 2018 for 2019 train).
+        credit_start = self.config.train_start
+        if self.df is not None and "dt" in self.df.columns and len(self.df) > 0:
+            try:
+                earliest_stock_dt = pd.to_datetime(self.df["dt"], errors="coerce").dropna().min()
+                if pd.notna(earliest_stock_dt):
+                    credit_start = earliest_stock_dt.strftime("%Y-%m-%d")
+            except Exception:
+                # Fall back to configured train_start on unexpected date parsing issues.
+                credit_start = self.config.train_start
+
         loader = FREDLoader()
         credit_df = loader.get_credit_spreads(
-            start=self.config.train_start,
+            start=credit_start,
             end=self.config.test_end,
         )
         self.credit_df = credit_df
