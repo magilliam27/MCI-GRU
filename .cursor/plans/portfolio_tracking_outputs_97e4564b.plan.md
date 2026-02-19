@@ -1,260 +1,218 @@
 ---
-name: Portfolio tracking outputs
-overview: Add comprehensive per-stock position tracking to the backtest, including daily holdings, trade journal, return attribution, and holdings statistics—without changing any existing functionality or outputs.
+name: Portfolio tracking outputs (refreshed)
+overview: Add per-stock portfolio tracking outputs to the current backtest pipeline in tests/backtest_sp500.py, aligned with the existing fairness-timing logic (open-to-open), transaction-cost model, and rank-drop gate behavior, without changing existing metrics or outputs.
 todos:
-  - id: add-tracking-lists
-    content: Add daily_holdings_records and trade_records lists to simulate_trading_strategy()
-    status: pending
-  - id: collect-holdings-data
-    content: Collect per-stock holdings data in main simulation loop
-    status: pending
-  - id: collect-trade-data
-    content: Collect buy/sell events after turnover calculation
-    status: pending
-  - id: update-return-dict
-    content: Add daily_holdings and trade_records to simulate_trading_strategy() return dict
-    status: pending
-  - id: add-helper-functions
-    content: Add derive_portfolio_composition() and derive_holdings_summary() helper functions
-    status: pending
-  - id: update-save-function
-    content: Add new output sections to save_backtest_results() for all 5 new CSV files
-    status: pending
-  - id: test-implementation
-    content: Run backtest on small date range and verify all outputs are correct
-    status: pending
+  - id: map-current-backtest-flow
+    content: Confirm insertion points in simulate_trading_strategy() and save_backtest_results() under current architecture
+    status: completed
+  - id: add-simulation-tracking-collectors
+    content: Add daily_holdings_records and trade_records collectors in simulate_trading_strategy()
+    status: completed
+  - id: capture-per-day-holdings
+    content: Record per-stock holdings rows for each valid entry_date using open_to_open_return data already used by portfolio returns
+    status: completed
+  - id: capture-turnover-trades
+    content: Record BUY/SELL events from turnover_info after holdings are finalized and before prev_holdings is updated
+    status: completed
+  - id: extend-sim-return-payload
+    content: Return daily_holdings and trade_records from simulate_trading_strategy() without altering existing keys
+    status: completed
+  - id: add-derived-output-helpers
+    content: Add derive_portfolio_composition() and derive_holdings_summary() helper functions for CSV derivations
+    status: completed
+  - id: extend-auto-save-artifacts
+    content: Extend save_backtest_results() to write five additive portfolio-tracking CSV outputs
+    status: completed
+  - id: add-nonregression-tests
+    content: Add/extend tests for output integrity and verify no changes to existing core backtest artifacts
+    status: completed
+  - id: run-validation
+    content: Execute targeted fairness and output checks and confirm no look-ahead or behavior regression
+    status: completed
 isProject: false
 ---
 
-# Portfolio Tracking Outputs Implementation
+# Portfolio Tracking Outputs Implementation (Updated for Current Repo)
 
-## Overview
+## Why This Plan Was Updated
 
-Enhance `[tests/backtest_sp500.py](tests/backtest_sp500.py)` to capture and output detailed portfolio-level data, including which stocks are held each day, when trades occur, and how each stock contributes to returns.
+The previous plan targeted an older version of the backtest implementation. Since then, `tests/backtest_sp500.py` has materially changed:
 
-## Current State
+- Trading simulation now follows fairness-correct timing with `open_to_open_return`.
+- Transaction cost support is integrated (`calculate_turnover`, `calculate_transaction_cost`).
+- Rank-drop gate behavior is integrated (`rank_drop_gate`).
+- Auto-save output flow is centralized in `save_backtest_results()`.
 
-The `simulate_trading_strategy()` function (lines 880-1109) already computes:
+This refreshed plan preserves all of the above while adding portfolio tracking outputs as a purely additive capability.
 
-- `top_stocks` list and `curr_holdings` set (lines 987-988)
-- `turnover_info` with `stocks_bought`, `stocks_sold`, `stocks_held` (line 1021)
-- Per-stock returns in `top_k_returns` (line 1012)
+## Scope and Non-Goals
 
-But all per-stock detail is discarded. Only aggregate daily returns are saved.
+### In scope
 
-## Architecture
+- Add per-stock daily holdings logs from simulation internals.
+- Add explicit trade journal rows from turnover decisions.
+- Save 5 new CSV outputs under backtest auto-save directory.
+- Keep output generation deterministic and aligned with existing simulation dates.
+
+### Out of scope
+
+- No change to return formulas, timing rules, ranking logic, transaction-cost math, or rank-drop gating behavior.
+- No changes to existing output files (`backtest_results.csv`, `daily_returns.csv`, `monthly_performance.csv`, etc.).
+- No changes to model training, prediction generation, or data splitting.
+
+## Bias and Fairness Guardrails (Critical)
+
+To avoid introducing look-ahead bias:
+
+- Holdings rows must use only the same `entry_date` data already used for realized portfolio returns in simulation.
+- Trade records must come from `turnover_info` computed from current/previous holdings only.
+- No post-hoc relabeling using future ranks/prices.
+- Any derived attribution percentages must be computed within-day from already-realized contribution rows.
+
+To avoid survivorship-like distortions:
+
+- Do not backfill missing ticker-day values with future data.
+- If a stock has no valid return row for an entry date, skip that row consistently with existing return selection behavior.
+
+## Current Architecture (as of now)
 
 ```mermaid
 flowchart TD
-    SimLoop[simulate_trading_strategy loop]
-    SimLoop -->|collect| HoldingsData[daily_holdings_records]
-    SimLoop -->|collect| TradeData[trade_records]
-    
-    HoldingsData --> SaveFunc[save_backtest_results]
-    TradeData --> SaveFunc
-    
-    SaveFunc --> CSV1[daily_holdings.csv]
-    SaveFunc --> CSV2[trade_journal.csv]
-    SaveFunc --> CSV3[portfolio_composition.csv]
-    SaveFunc --> CSV4[return_attribution.csv]
-    SaveFunc --> CSV5[holdings_summary.csv]
-    
-    CSV1 -.derive.-> CSV3
-    CSV1 -.derive.-> CSV4
-    CSV1 -.derive.-> CSV5
+    A[simulate_trading_strategy] --> B[portfolio_returns + benchmark_returns]
+    A --> C[turnover + transaction cost diagnostics]
+    C --> D[save_backtest_results]
+    B --> D
+    D --> E[daily_returns.csv]
+    D --> F[cumulative_performance.csv]
+    D --> G[monthly_performance.csv]
+    D --> H[summary.txt]
+    D --> I[backtest_metrics.json]
 ```
 
 
 
-## Changes Required
+The new outputs will be attached to this existing flow, not replace it.
 
-### 1. Data Collection in `simulate_trading_strategy()`
+## Required Changes
 
-**Location:** Lines 960-1109
+### 1) Simulation data collection in `simulate_trading_strategy()`
 
-**Add tracking lists** after line 972:
+Add two collectors near existing tracking arrays:
 
-```python
-daily_holdings_records = []   # Per-stock-per-day details
-trade_records = []            # Buy/sell events
-```
+- `daily_holdings_records = []`
+- `trade_records = []`
 
-**Collect holdings data** after computing returns (around line 1018):
+For each valid simulated trading day:
 
-```python
-# After line 1018 (gross_return = top_k_returns.mean())
-# Capture per-stock holdings and returns
-for rank, kdcode in enumerate(top_stocks, start=1):
-    stock_data = top_k_data[top_k_data['kdcode'] == kdcode]
-    if len(stock_data) > 0:
-        stock_return = stock_data['open_to_open_return'].iloc[0]
-        score = day_preds[day_preds['kdcode'] == kdcode]['score'].iloc[0]
-        
-        daily_holdings_records.append({
-            'pred_date': pred_date,
-            'entry_date': entry_date,
-            'kdcode': kdcode,
-            'rank': rank,
-            'score': score,
-            'weight': 1.0 / top_k,
-            'stock_return': stock_return,
-            'contribution': stock_return / top_k
-        })
-```
+1. **Holdings capture**
+  After `top_k_data` is created and before final append/update steps, emit one row per held stock:
+  - `pred_date`
+  - `entry_date`
+  - `kdcode`
+  - `rank` (from `current_ranks`)
+  - `score` (from `day_preds`)
+  - `weight` (equal-weight, based on count of valid held rows)
+  - `stock_return` (`open_to_open_return`)
+  - `contribution` (`weight * stock_return`)
+  - Optional diagnostics safe to include: `rank_gate_enabled`, `min_rank_drop`, `transaction_costs_enabled`
+2. **Trade capture**
+  Immediately after turnover is computed (`turnover_info`), append:
+  - BUY rows for `stocks_bought`
+  - SELL rows for `stocks_sold`
+  - Fields: `date` (entry date), `pred_date`, `kdcode`, `action`, `rank`, `score`
+3. **Return payload extension**
+  Add keys to existing return dict:
+  - `daily_holdings`
+  - `trade_records`
 
-**Collect trade data** after turnover calculation (around line 1021):
+Do not rename or remove any existing keys in the returned dictionary.
 
-```python
-# After line 1021 (turnover_info = calculate_turnover(...))
-# Capture buy/sell events
-for kdcode in turnover_info['stocks_bought']:
-    score = day_preds[day_preds['kdcode'] == kdcode]['score'].iloc[0] if kdcode in day_preds['kdcode'].values else np.nan
-    trade_records.append({
-        'date': entry_date,
-        'pred_date': pred_date,
-        'kdcode': kdcode,
-        'action': 'BUY',
-        'score': score,
-        'rank': top_stocks.index(kdcode) + 1 if kdcode in top_stocks else np.nan
-    })
+### 2) Derived helper functions before `save_backtest_results()`
 
-for kdcode in turnover_info['stocks_sold']:
-    trade_records.append({
-        'date': entry_date,
-        'pred_date': pred_date,
-        'kdcode': kdcode,
-        'action': 'SELL'
-    })
-```
+Add lightweight helpers:
 
-**Add to return dict** at line 1087:
+1. `derive_portfolio_composition(holdings_df, trades_df)`
+  - Mark each holding row as `NEW` vs `HELD` using BUY events on the same `entry_date`.
+  - Output tidy columns for composition analytics.
+2. `derive_holdings_summary(holdings_df)`
+  - Aggregate by `kdcode`:
+    - `times_held`
+    - `avg_score`
+    - `avg_return`
+    - `total_contribution`
+    - `win_rate`
+  - Sort by `total_contribution` descending.
 
-```python
-return {
-    # ... existing keys ...
-    'daily_holdings': daily_holdings_records,
-    'trade_records': trade_records,
-}
-```
+Both helpers must be defensive against empty inputs.
 
-### 2. Output Generation in `save_backtest_results()`
+### 3) Extend `save_backtest_results()` auto-save section
 
-**Location:** Lines 1435-1596
+In the existing `if sim_results:` block, after current core CSV writes:
 
-**Add new section** after monthly performance save (around line 1533):
+1. Write `daily_holdings.csv` from `sim_results['daily_holdings']` if present and non-empty.
+2. Write `trade_journal.csv` from `sim_results['trade_records']` if present and non-empty.
+3. Build and write `portfolio_composition.csv` via helper.
+4. Build and write `return_attribution.csv` from holdings rows with within-day attribution percentage:
+  - `pct_of_portfolio_return = contribution / sum(contribution for same entry_date) * 100`
+5. Build and write `holdings_summary.csv` via helper.
 
-```python
-# 6. Save daily holdings log
-if sim_results and 'daily_holdings' in sim_results:
-    holdings_df = pd.DataFrame(sim_results['daily_holdings'])
-    if len(holdings_df) > 0:
-        holdings_file = os.path.join(backtest_dir, 'daily_holdings.csv')
-        holdings_df.to_csv(holdings_file, index=False)
-        print(f"  Daily holdings: {holdings_file}")
-        
-        # 7. Save trade journal
-        trades_df = pd.DataFrame(sim_results['trade_records'])
-        if len(trades_df) > 0:
-            trades_file = os.path.join(backtest_dir, 'trade_journal.csv')
-            trades_df.to_csv(trades_file, index=False)
-            print(f"  Trade journal: {trades_file}")
-        
-        # 8. Derive portfolio composition
-        composition_df = derive_portfolio_composition(holdings_df, trades_df)
-        comp_file = os.path.join(backtest_dir, 'portfolio_composition.csv')
-        composition_df.to_csv(comp_file, index=False)
-        print(f"  Portfolio composition: {comp_file}")
-        
-        # 9. Derive return attribution
-        holdings_df['pct_of_portfolio_return'] = (
-            holdings_df['contribution'] / 
-            holdings_df.groupby('entry_date')['contribution'].transform('sum') * 100
-        )
-        attribution_file = os.path.join(backtest_dir, 'return_attribution.csv')
-        holdings_df[['entry_date', 'kdcode', 'stock_return', 'weight', 
-                     'contribution', 'pct_of_portfolio_return']].to_csv(attribution_file, index=False)
-        print(f"  Return attribution: {attribution_file}")
-        
-        # 10. Derive holdings summary statistics
-        summary_df = derive_holdings_summary(holdings_df)
-        summary_file = os.path.join(backtest_dir, 'holdings_summary.csv')
-        summary_df.to_csv(summary_file, index=False)
-        print(f"  Holdings summary: {summary_file}")
-```
+All five files are additive and should not affect existing output writes.
 
-### 3. Helper Functions
+### 4) CLI / multi-model compatibility checks
 
-**Add before `save_backtest_results()`** (around line 1435):
+- Keep behavior unchanged for single-model and multi-model paths.
+- Since multi-model save path often omits `sim_results`, new files should only be written when simulation detail is provided.
+- No new mandatory CLI arguments.
 
-```python
-def derive_portfolio_composition(holdings_df, trades_df):
-    """Combine holdings with trade status (NEW/HELD/EXITED)."""
-    # Mark new positions
-    buys = trades_df[trades_df['action'] == 'BUY'][['date', 'kdcode']].copy()
-    buys['status'] = 'NEW'
-    
-    # Merge with holdings
-    comp = holdings_df.merge(
-        buys, 
-        left_on=['entry_date', 'kdcode'], 
-        right_on=['date', 'kdcode'], 
-        how='left'
-    )
-    comp['status'] = comp['status'].fillna('HELD')
-    
-    return comp[['entry_date', 'kdcode', 'status', 'score', 'stock_return', 'rank']]
+## File Targets
 
-def derive_holdings_summary(holdings_df):
-    """Aggregate per-stock statistics across entire backtest."""
-    summary = holdings_df.groupby('kdcode').agg({
-        'score': ['count', 'mean'],
-        'stock_return': ['mean', 'sum'],
-        'contribution': 'sum'
-    }).reset_index()
-    
-    summary.columns = ['kdcode', 'times_held', 'avg_score', 
-                       'avg_return', 'total_return', 'total_contribution']
-    
-    # Calculate win rate
-    win_rate = holdings_df.groupby('kdcode')['stock_return'].apply(
-        lambda x: (x > 0).sum() / len(x)
-    ).reset_index(name='win_rate')
-    
-    summary = summary.merge(win_rate, on='kdcode')
-    summary = summary.sort_values('total_contribution', ascending=False)
-    
-    return summary
-```
+- Primary implementation target: `tests/backtest_sp500.py`
+- Optional test expansion target: `tests/test_backtest_fairness.py` (or a dedicated output test module)
+- Optional docs touchpoint (if desired later): `docs/OUTPUT_MANAGEMENT.md`
 
-## New Output Files
+## New Output Files (Additive)
 
-After implementation, `save_backtest_results()` will produce 5 additional CSV files:
+1. `daily_holdings.csv`
+  - Per-stock-per-day holdings facts.
+2. `trade_journal.csv`
+  - BUY/SELL events inferred from turnover.
+3. `portfolio_composition.csv`
+  - Holdings rows with state labeling (`NEW` / `HELD`).
+4. `return_attribution.csv`
+  - Per-stock contribution and percent share of day portfolio return.
+5. `holdings_summary.csv`
+  - Cross-period per-stock aggregate statistics.
 
-1. **daily_holdings.csv** - Per-stock-per-day detail (pred_date, entry_date, kdcode, rank, score, weight, stock_return, contribution)
-2. **trade_journal.csv** - Buy/sell events (date, kdcode, action, score, rank)
-3. **portfolio_composition.csv** - Daily portfolio with status flags (entry_date, kdcode, status, score, stock_return, rank)
-4. **return_attribution.csv** - Per-stock contribution breakdown (entry_date, kdcode, stock_return, weight, contribution, pct_of_portfolio_return)
-5. **holdings_summary.csv** - Per-stock aggregate statistics (kdcode, times_held, avg_score, avg_return, total_contribution, win_rate)
+## Validation Strategy
 
-## Testing Strategy
+1. Run existing fairness tests first (baseline):
+  - `python tests/test_backtest_fairness.py`
+2. Run backtest with `--auto_save` on a short window and confirm new files appear.
+3. Validate shape checks:
+  - `daily_holdings.csv` row count ~= sum(valid held names per trading day)
+  - `trade_journal.csv` first day should generally be BUY-only when `prev_holdings is None`
+4. Validate accounting checks:
+  - For each `entry_date`, `sum(contribution)` should match gross portfolio return for that day (up to float tolerance and missing-row handling).
+5. Regression checks:
+  - Existing core outputs unchanged in schema and still generated.
+  - ARR/ASR/IR unchanged when compared against same commit/config before tracking additions.
 
-1. Run backtest on small date range (e.g., 10 days)
-2. Verify `daily_holdings.csv` matches expected number of rows (days × top_k)
-3. Verify `trade_journal.csv` shows first day as all BUYs
-4. Spot-check that contributions sum to portfolio return each day
-5. Verify no impact on existing outputs (daily_returns.csv, metrics, plots)
+## Risks and Mitigations
 
-## Impact Analysis
+- **Risk:** Inconsistent weights when fewer than top_k rows survive missing returns.  
+**Mitigation:** Derive weight from realized held-row count used in return mean, not fixed `1/top_k` blindly.
+- **Risk:** Hidden look-ahead via misaligned date joins in trade/holding enrichment.  
+**Mitigation:** Restrict joins to `entry_date`/`pred_date` and same-day predictions only.
+- **Risk:** Breaking downstream consumers expecting previous `sim_results` structure.  
+**Mitigation:** Only append keys; never remove/rename existing fields.
 
-**No breaking changes:**
+## Acceptance Criteria
 
-- Existing return calculation logic unchanged
-- Existing output files (daily_returns.csv, metrics, plots) unchanged
-- New outputs are purely additive
-- Backwards compatible with existing calling code
-
-**Performance:**
-
-- Minimal overhead (list appends in existing loop)
-- Memory: ~50 KB per 1000 trading days (negligible)
+- Backtest runs end-to-end with and without:
+  - transaction costs
+  - rank-drop gate
+  - auto-save
+- Five new CSV outputs generated when `sim_results` exists and contain non-empty, coherent data.
+- Existing metrics and output files remain intact and unchanged in behavior.
+- No new fairness issues introduced (no look-ahead contamination in new artifacts).
 

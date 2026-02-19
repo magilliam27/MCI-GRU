@@ -2,9 +2,9 @@
 Test script to verify backtest fairness fixes.
 
 This script creates synthetic data to test that:
-1. Overnight returns are NOT included in portfolio returns
-2. Only intraday returns are captured
-3. The timing logic correctly maps predictions to next-day returns
+1. Return columns are computed consistently
+2. Portfolio simulation follows open-to-open timing
+3. Prediction dates map correctly to realized holding windows
 """
 
 import pandas as pd
@@ -12,6 +12,7 @@ import numpy as np
 from datetime import datetime, timedelta
 import sys
 import os
+import tempfile
 
 # Set UTF-8 encoding for Windows console
 if sys.platform == 'win32':
@@ -87,16 +88,16 @@ def create_synthetic_test_data():
     
     predictions_df = pd.DataFrame(pred_data)
     
-    # Expected results:
-    # If we select top-2 stocks (AAPL, MSFT) based on predictions:
-    # - Both have intraday return of +0.5% each day
-    # - Average portfolio return per day = 0.5%
-    # - We should NOT capture the +1% overnight gap
+    # Expected results for current methodology:
+    # Portfolio return uses open-to-open on entry day:
+    # open_{t+2}/open_{t+1} - 1 = (1 + intraday) * (1 + overnight) - 1
+    # For top stocks: intraday=0.5%, overnight=1.0%
+    expected_open_to_open = (1.005 * 1.01) - 1.0  # 1.505%
     
     expected_results = {
-        'avg_daily_return': 0.005,  # 0.5% per day
-        'num_days': len(dates) - 1,  # Can't trade on last prediction
-        'should_not_include_overnight': 0.01  # Overnight gap we should NOT capture
+        'avg_daily_return': expected_open_to_open,
+        'num_days': len(dates) - 2,  # Need both entry day and next open for open-to-open
+        'intraday_only_return': 0.005,
     }
     
     return stock_data_df, predictions_df, expected_results
@@ -144,7 +145,7 @@ def test_return_calculation():
 
 
 def test_simulation_timing():
-    """Test that simulation uses correct timing (next-day intraday returns)."""
+    """Test that simulation uses correct timing (next-day open-to-open returns)."""
     print("=" * 70)
     print("TEST 2: Simulation Timing")
     print("=" * 70)
@@ -177,21 +178,17 @@ def test_simulation_timing():
         print(f"  Average daily return: {avg_return:.6f}")
         print(f"  Expected: {expected['avg_daily_return']:.6f}")
         
-        # Verify we're getting intraday returns only
+        # Verify open-to-open expectation
         tolerance = 0.001  # 0.1% tolerance
         assert abs(avg_return - expected['avg_daily_return']) < tolerance, \
             f"Average return mismatch! Got {avg_return}, expected {expected['avg_daily_return']}"
         
-        print(f"  ✓ Returns match intraday expectation (within {tolerance*100}%)")
+        print(f"  ✓ Returns match open-to-open expectation (within {tolerance*100}%)")
         
-        # Verify we're NOT getting close-to-close returns
-        close_to_close_return = expected['avg_daily_return'] + expected['should_not_include_overnight']
-        if abs(avg_return - close_to_close_return) < tolerance:
-            print(f"  ✗ ERROR: Still capturing overnight gaps!")
-            print(f"     Got {avg_return}, but that includes overnight gap")
-            return False
-        else:
-            print(f"  ✓ NOT capturing overnight gaps (correct!)")
+        # Verify we're not mistakenly using intraday-only returns
+        assert abs(avg_return - expected['intraday_only_return']) > tolerance, \
+            "Unexpected intraday-only behavior detected"
+        print("  ✓ Not using intraday-only returns")
         
         print("  ✓ TEST 2 PASSED\n")
         return True
@@ -204,7 +201,7 @@ def test_simulation_timing():
 
 
 def test_prediction_date_mapping():
-    """Test that predictions on day t use returns from day t+1."""
+    """Test that predictions on day t map to day t+1 entry open-to-open returns."""
     print("=" * 70)
     print("TEST 3: Prediction-to-Return Date Mapping")
     print("=" * 70)
@@ -213,12 +210,13 @@ def test_prediction_date_mapping():
     dates = ['2025-01-01', '2025-01-02', '2025-01-03']
     
     data = []
+    opens = [100.0, 102.0, 104.0]
     for i, date in enumerate(dates):
         for stock in ['AAPL', 'MSFT']:
-            # Each day has a unique intraday return pattern we can identify
+            # Distinct opens so open-to-open mapping is identifiable
             intraday_return_pct = (i + 1) * 0.01  # Day 0: 1%, Day 1: 2%, Day 2: 3%
             
-            open_price = 100.0
+            open_price = opens[i]
             close_price = open_price * (1 + intraday_return_pct)
             
             data.append({
@@ -263,21 +261,17 @@ def test_prediction_date_mapping():
         print(f"  Prediction dates: {predictions_df['dt'].unique().tolist()}")
         print(f"  Simulation dates (actual trading): {sim_dates}")
         
-        # Prediction on Jan 1 should use Jan 2 returns (2%)
-        # Prediction on Jan 2 should use Jan 3 returns (3%)
-        
-        if len(portfolio_returns) >= 2:
-            print(f"  Return for Jan 2 (from Jan 1 prediction): {portfolio_returns[0]:.4f}")
-            print(f"    Expected: 0.0200 (2%)")
-            assert abs(portfolio_returns[0] - 0.02) < 0.0001, "Date mapping error!"
-            
-            print(f"  Return for Jan 3 (from Jan 2 prediction): {portfolio_returns[1]:.4f}")
-            print(f"    Expected: 0.0300 (3%)")
-            assert abs(portfolio_returns[1] - 0.03) < 0.0001, "Date mapping error!"
-            
-            print("  ✓ Date mapping correct: predictions use NEXT day returns")
+        # With open-to-open holding windows and only 3 dates:
+        # - Prediction on Jan 1 maps to entry Jan 2 and realizes Jan2->Jan3 open-to-open return
+        # - Prediction on Jan 2 has no Jan4 open, so no second realizable return
+        if len(portfolio_returns) == 1:
+            expected_ret = opens[2] / opens[1] - 1.0
+            print(f"  Return for Jan 2 entry (from Jan 1 prediction): {portfolio_returns[0]:.6f}")
+            print(f"    Expected open-to-open: {expected_ret:.6f}")
+            assert abs(portfolio_returns[0] - expected_ret) < 0.0001, "Date mapping error!"
+            print("  ✓ Date mapping correct: predictions use next-day entry open-to-open window")
         else:
-            print(f"  ✗ ERROR: Expected 2 returns, got {len(portfolio_returns)}")
+            print(f"  ✗ ERROR: Expected 1 return, got {len(portfolio_returns)}")
             return False
         
         print("  ✓ TEST 3 PASSED\n")
@@ -345,7 +339,7 @@ def test_rank_drop_gate_eligible():
 
 
 def test_rank_drop_gate_excluded():
-    """With rank-drop gate: when no stock fell >= 10 ranks, day is skipped."""
+    """With rank-drop gate: when no stock fell >= 10 ranks, holdings persist."""
     print("=" * 70)
     print("TEST 5: Rank-Drop Gate - Excluded (rank fell < 10)")
     print("=" * 70)
@@ -372,8 +366,9 @@ def test_rank_drop_gate_excluded():
         pred_df, stock_df, top_k=2, label_t=5, transaction_costs=None, rank_drop_gate=gate
     )
     assert sim['rank_gate_enabled'] is True
-    assert sim['days_skipped_by_rank_gate'] >= 1, "Should skip at least one day when no stock has rank drop >= 10"
-    print("  ✓ Day skipped when no stock had rank drop >= 10")
+    assert sim['days_skipped_by_rank_gate'] == 0, "No skip expected when holdings persist"
+    assert len(sim['portfolio_returns']) >= 1, "Simulation should continue with persisted holdings"
+    print("  ✓ No day skipped when no stock had rank drop >= 10; holdings persisted")
     print("  ✓ TEST 5 PASSED\n")
     return True
 
@@ -403,6 +398,94 @@ def test_rank_drop_gate_disabled_regression():
     )
     print("  ✓ Disabled gate matches no-gate (same returns and days)")
     print("  ✓ TEST 6 PASSED\n")
+    return True
+
+
+def test_portfolio_tracking_outputs_nonregression():
+    """Validate additive portfolio tracking outputs and core output preservation."""
+    print("=" * 70)
+    print("TEST 7: Portfolio Tracking Outputs + Non-Regression")
+    print("=" * 70)
+    bp = _import_backtest()
+    
+    stock_data_df, predictions_df, _ = create_synthetic_test_data()
+    stock_data_df = bp.calculate_forward_returns(stock_data_df, label_t=5)
+    sim = bp.simulate_trading_strategy(
+        predictions_df=predictions_df,
+        stock_data_df=stock_data_df,
+        top_k=2,
+        label_t=5,
+        transaction_costs=None,
+        rank_drop_gate=None
+    )
+    
+    # 1) New keys exist and are populated
+    assert 'daily_holdings' in sim, "Missing daily_holdings in simulation payload"
+    assert 'trade_records' in sim, "Missing trade_records in simulation payload"
+    assert len(sim['daily_holdings']) > 0, "daily_holdings should not be empty"
+    assert len(sim['trade_records']) > 0, "trade_records should not be empty"
+    print("  ✓ Simulation payload includes daily_holdings and trade_records")
+    
+    # 2) Accounting check: sum(contribution) per date ~= gross portfolio return
+    holdings_df = pd.DataFrame(sim['daily_holdings'])
+    gross_by_date = pd.Series(sim['gross_portfolio_returns'], index=sim['dates'])
+    contrib_by_date = holdings_df.groupby('entry_date')['contribution'].sum()
+    aligned = contrib_by_date.reindex(gross_by_date.index)
+    max_err = float((aligned - gross_by_date).abs().max())
+    assert max_err < 1e-10, f"Contribution accounting mismatch (max_err={max_err})"
+    print("  ✓ Per-day contribution sums match gross portfolio return")
+    
+    # 3) Save outputs and verify additive files + existing core files
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        results_stub = {
+            'ARR': 0.1,
+            'AVoL': 0.2,
+            'MDD': -0.1,
+            'ASR': 0.5,
+            'CR': 1.0,
+            'IR': 0.1,
+            'MSE': 0.01,
+            'MAE': 0.02,
+            'num_trading_days': max(len(sim['dates']), 1),
+            'rank_gate_enabled': False,
+        }
+        bp.save_backtest_results(results_stub, tmp_dir, sim_results=sim, config=None)
+        
+        # Existing core files must remain available
+        core_files = [
+            'backtest_results.csv',
+            'backtest_metrics.json',
+            'daily_returns.csv',
+            'cumulative_performance.csv',
+            'monthly_performance.csv',
+            'summary.txt',
+        ]
+        for name in core_files:
+            path = os.path.join(tmp_dir, name)
+            assert os.path.exists(path), f"Missing core output file: {name}"
+        print("  ✓ Core backtest output files are preserved")
+        
+        # New additive files
+        new_files = [
+            'daily_holdings.csv',
+            'trade_journal.csv',
+            'portfolio_composition.csv',
+            'return_attribution.csv',
+            'holdings_summary.csv',
+        ]
+        for name in new_files:
+            path = os.path.join(tmp_dir, name)
+            assert os.path.exists(path), f"Missing new output file: {name}"
+        print("  ✓ All five additive portfolio tracking files are generated")
+        
+        # First trading day should have only BUY actions
+        trades_df = pd.read_csv(os.path.join(tmp_dir, 'trade_journal.csv'))
+        first_date = trades_df['date'].min()
+        first_day_actions = set(trades_df[trades_df['date'] == first_date]['action'].unique())
+        assert first_day_actions == {'BUY'}, f"Unexpected first-day actions: {first_day_actions}"
+        print("  ✓ First trade day contains BUY actions only")
+    
+    print("  ✓ TEST 7 PASSED\n")
     return True
 
 
@@ -473,6 +556,16 @@ def main():
         import traceback
         traceback.print_exc()
         results.append(("Rank-Drop Gate Disabled Regression", False))
+    
+    # Test 7: Portfolio tracking outputs + non-regression
+    try:
+        passed = test_portfolio_tracking_outputs_nonregression()
+        results.append(("Portfolio Tracking Outputs", passed))
+    except Exception as e:
+        print(f"✗ TEST 7 FAILED: {e}\n")
+        import traceback
+        traceback.print_exc()
+        results.append(("Portfolio Tracking Outputs", False))
     
     # Summary
     print("=" * 70)
