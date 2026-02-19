@@ -49,7 +49,9 @@ class Trainer:
         model: nn.Module,
         config: ExperimentConfig,
         graph_builder: Optional[GraphBuilder] = None,
-        device: Optional[torch.device] = None
+        device: Optional[torch.device] = None,
+        output_path: Optional[str] = None,
+        checkpoint_path: Optional[str] = None,
     ):
         """
         Initialize trainer.
@@ -59,10 +61,15 @@ class Trainer:
             config: Experiment configuration
             graph_builder: Optional graph builder for dynamic updates
             device: Device to train on (auto-detected if None)
+            output_path: Output directory override (e.g., Hydra timestamped run dir)
+            checkpoint_path: Full path for best-model checkpoint file
         """
         self.model = model
         self.config = config
         self.graph_builder = graph_builder
+        self.output_path = output_path if output_path else self.config.get_output_path()
+        self.checkpoint_path = checkpoint_path
+        self.last_best_model_path: Optional[str] = None
         
         if device is None:
             self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -118,9 +125,14 @@ class Trainer:
             criterion = nn.MSELoss()
 
         # Create output directory
-        output_path = self.config.get_output_path()
+        output_path = self.output_path
         os.makedirs(output_path, exist_ok=True)
-        best_model_path = os.path.join(output_path, 'best_model.pth')
+        best_model_path = (
+            self.checkpoint_path
+            if self.checkpoint_path
+            else os.path.join(output_path, 'best_model.pth')
+        )
+        os.makedirs(os.path.dirname(best_model_path), exist_ok=True)
         
         # Training loop
         self.best_val_loss = float('inf')
@@ -322,9 +334,16 @@ class Trainer:
                 df = pd.DataFrame(columns=['kdcode', 'dt', 'score'], data=data)
                 df.to_csv(os.path.join(output_dir, f'{date}.csv'), index=False)
     
-    def load_best_model(self):
+    def load_best_model(self, best_model_path: Optional[str] = None):
         """Load the best saved model."""
-        best_model_path = os.path.join(self.config.get_output_path(), 'best_model.pth')
+        if best_model_path is None:
+            if self.last_best_model_path is not None:
+                best_model_path = self.last_best_model_path
+            elif self.checkpoint_path is not None:
+                best_model_path = self.checkpoint_path
+            else:
+                best_model_path = os.path.join(self.output_path, 'best_model.pth')
+
         if os.path.exists(best_model_path):
             self.model.load_state_dict(torch.load(best_model_path, weights_only=True))
             print(f"Loaded best model from {best_model_path}")
@@ -370,6 +389,8 @@ def train_multiple_models(
     
     # Use provided output_path or fall back to config
     base_output_path = output_path if output_path else config.get_output_path()
+    checkpoint_dir = os.path.join(base_output_path, "checkpoints")
+    os.makedirs(checkpoint_dir, exist_ok=True)
     
     all_results = []
     all_predictions = []
@@ -387,11 +408,14 @@ def train_multiple_models(
         # Could add model_id to output path if needed
         
         # Create trainer
+        model_checkpoint_path = os.path.join(checkpoint_dir, f"model_{model_id}_best.pth")
         trainer = Trainer(
             model=model,
             config=model_config,
             graph_builder=graph_builder,
-            device=device
+            device=device,
+            output_path=base_output_path,
+            checkpoint_path=model_checkpoint_path,
         )
         
         # Train
@@ -407,7 +431,8 @@ def train_multiple_models(
         print(f"Model {model_id + 1} training complete. Best val loss: {result.best_val_loss:.6f}")
         
         # Load best model and run inference
-        trainer.load_best_model()
+        trainer.last_best_model_path = result.best_model_path
+        trainer.load_best_model(result.best_model_path)
         predictions = trainer.predict(test_loader, kdcode_list, test_dates)
         all_predictions.append(predictions)
         
