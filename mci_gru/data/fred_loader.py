@@ -13,6 +13,11 @@ import pandas as pd
 # FRED series IDs for credit spreads (daily, basis points)
 FRED_SERIES_IG = "BAMLC0A0CM"   # ICE BofA US Corporate Index OAS
 FRED_SERIES_HY = "BAMLH0A0HYM2"  # ICE BofA US High Yield Index OAS
+FRED_SERIES_SP500 = "SP500"
+FRED_SERIES_10Y = "DGS10"
+FRED_SERIES_3M = "DGS3MO"
+FRED_SERIES_OIL_WTI = "DCOILWTICO"
+FRED_SERIES_COPPER = "PCOPPUSDM"
 
 
 class FREDLoader:
@@ -115,3 +120,52 @@ class FREDLoader:
         df["dt"] = pd.to_datetime(df["dt"]).dt.strftime("%Y-%m-%d")
 
         return df[["dt", "ig_spread", "hy_spread"]]
+
+    def get_series(
+        self,
+        series_id: str,
+        start: str,
+        end: str,
+        value_name: str,
+        lag_days: int = 1,
+        buffer_days: int = 31,
+    ) -> pd.DataFrame:
+        """
+        Fetch a single FRED series with a point-in-time-safe lag.
+
+        Args:
+            series_id: FRED series identifier.
+            start: Start date (YYYY-MM-DD).
+            end: End date (YYYY-MM-DD).
+            value_name: Name for output value column.
+            lag_days: Number of calendar days to lag to avoid look-ahead.
+            buffer_days: Lookback buffer to preserve values after lagging.
+
+        Returns:
+            DataFrame with columns [dt, <value_name>], dt as YYYY-MM-DD.
+        """
+        fred = self._get_client()
+        start_ts = pd.Timestamp(start)
+        end_ts = pd.Timestamp(end)
+        buffered_start = (start_ts - pd.Timedelta(days=buffer_days)).strftime("%Y-%m-%d")
+
+        values = fred.get_series(
+            series_id,
+            observation_start=buffered_start,
+            observation_end=end_ts.strftime("%Y-%m-%d"),
+        )
+        df = pd.DataFrame({value_name: values}).sort_index()
+        df = df.replace(".", pd.NA).apply(pd.to_numeric, errors="coerce")
+        df = df.ffill().bfill()
+        if lag_days > 0:
+            df = df.shift(lag_days)
+
+        df = df.loc[(df.index >= start_ts) & (df.index <= end_ts)]
+        df = df.dropna(how="all")
+        if df.empty:
+            raise ValueError(f"No data available for FRED series {series_id} in range {start} to {end}")
+
+        df = df.reset_index()
+        df = df.rename(columns={df.columns[0]: "dt"})
+        df["dt"] = pd.to_datetime(df["dt"]).dt.strftime("%Y-%m-%d")
+        return df[["dt", value_name]]

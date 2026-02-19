@@ -165,8 +165,26 @@ def prepare_data(
             print(f"Warning: Could not load credit spread data: {e}")
             print("Continuing without credit spread features")
 
+    # Load global regime inputs (hybrid FRED + LSEG) if needed
+    regime_df = None
+    if config.features.include_global_regime:
+        try:
+            regime_df = data_manager.load_regime_inputs(
+                lseg_market_ric=config.features.regime_lseg_market_ric,
+                lseg_copper_ric=config.features.regime_lseg_copper_ric,
+                lseg_yield_10y_ric=config.features.regime_lseg_yield_10y_ric,
+                lseg_yield_3m_ric=config.features.regime_lseg_yield_3m_ric,
+                lseg_oil_ric=config.features.regime_lseg_oil_ric,
+            )
+            print(f"Loaded regime input data: {len(regime_df)} observations")
+        except Exception as e:
+            if config.features.regime_strict:
+                raise
+            print(f"Warning: Could not load regime input data: {e}")
+            print("Continuing with zero-filled regime features (soft-fail)")
+
     # Apply feature engineering
-    df = feature_engineer.transform(df, vix_df, credit_df)
+    df = feature_engineer.transform(df, vix_df, credit_df, regime_df)
     
     # Get feature columns
     feature_cols = feature_engineer.get_feature_columns()
@@ -437,6 +455,14 @@ def main(cfg: DictConfig):
         include_volatility=config.features.include_volatility,
         include_vix=config.features.include_vix,
         include_credit_spread=config.features.include_credit_spread,
+        include_global_regime=config.features.include_global_regime,
+        regime_change_months=config.features.regime_change_months,
+        regime_norm_months=config.features.regime_norm_months,
+        regime_clip_z=config.features.regime_clip_z,
+        regime_exclusion_months=config.features.regime_exclusion_months,
+        regime_similarity_quantile=config.features.regime_similarity_quantile,
+        regime_min_history_months=config.features.regime_min_history_months,
+        regime_strict=config.features.regime_strict,
         include_rsi=config.features.include_rsi,
         include_ma_features=config.features.include_ma_features,
         include_price_features=config.features.include_price_features,

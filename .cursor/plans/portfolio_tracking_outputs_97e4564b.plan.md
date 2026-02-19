@@ -184,7 +184,7 @@ if sim_results and 'daily_holdings' in sim_results:
 
 ### 3. Helper Functions
 
-**Add before `save_backtest_results()**` (around line 1435):
+**Add before `save_backtest_results()`** (around line 1435):
 
 ```python
 def derive_portfolio_composition(holdings_df, trades_df):

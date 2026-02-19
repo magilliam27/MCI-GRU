@@ -61,6 +61,19 @@ class FeatureConfig:
         include_volatility: Whether to add volatility features
         include_vix: Whether to add VIX features
         include_credit_spread: Whether to add credit spread features (IG/HY from FRED)
+        include_global_regime: Whether to add global scalar regime features
+        regime_change_months: Months for delta transform (default 12)
+        regime_norm_months: Rolling normalization window in months (default 120)
+        regime_clip_z: Clip bound for transformed values
+        regime_exclusion_months: Exclusion window before matching historical months
+        regime_similarity_quantile: Quantile size for similar/dissimilar buckets
+        regime_min_history_months: Minimum history required before emitting non-zero regime features
+        regime_strict: If true, fail run when regime loading fails; otherwise soft-fill zeros
+        regime_lseg_market_ric: LSEG RIC for market proxy (LSEG-primary, FRED fallback)
+        regime_lseg_copper_ric: LSEG RIC for copper proxy (LSEG-primary, FRED fallback)
+        regime_lseg_yield_10y_ric: LSEG RIC for 10Y yield fallback
+        regime_lseg_yield_3m_ric: LSEG RIC for 3M yield fallback
+        regime_lseg_oil_ric: LSEG RIC for oil fallback
         include_rsi: Whether to add RSI features
         include_ma_features: Whether to add moving average features
         include_price_features: Whether to add derived price features
@@ -77,6 +90,19 @@ class FeatureConfig:
     include_volatility: bool = False
     include_vix: bool = False
     include_credit_spread: bool = False
+    include_global_regime: bool = False
+    regime_change_months: int = 12
+    regime_norm_months: int = 120
+    regime_clip_z: float = 3.0
+    regime_exclusion_months: int = 1
+    regime_similarity_quantile: float = 0.2
+    regime_min_history_months: int = 24
+    regime_strict: bool = False
+    regime_lseg_market_ric: str = ".SPX"
+    regime_lseg_copper_ric: str = ".MXCOPPFE"
+    regime_lseg_yield_10y_ric: str = "US10YT=RR"
+    regime_lseg_yield_3m_ric: str = "US3MT=RR"
+    regime_lseg_oil_ric: str = "CLc1"
     include_rsi: bool = False
     include_ma_features: bool = False
     include_price_features: bool = False
@@ -87,6 +113,16 @@ class FeatureConfig:
         valid_encodings = ['binary', 'continuous', 'buffered']
         if self.momentum_encoding not in valid_encodings:
             raise ValueError(f"momentum_encoding must be one of {valid_encodings}")
+        if not (0 < self.regime_similarity_quantile < 0.5):
+            raise ValueError("regime_similarity_quantile must be in (0, 0.5)")
+        if self.regime_change_months <= 0:
+            raise ValueError("regime_change_months must be > 0")
+        if self.regime_norm_months <= 0:
+            raise ValueError("regime_norm_months must be > 0")
+        if self.regime_exclusion_months < 0:
+            raise ValueError("regime_exclusion_months must be >= 0")
+        if self.regime_min_history_months <= 0:
+            raise ValueError("regime_min_history_months must be > 0")
 
 
 @dataclass
@@ -254,6 +290,7 @@ class ExperimentConfig:
             'features.include_weekly_momentum': self.features.include_weekly_momentum,
             'features.include_vix': self.features.include_vix,
             'features.include_credit_spread': self.features.include_credit_spread,
+            'features.include_global_regime': self.features.include_global_regime,
             'features.include_volatility': self.features.include_volatility,
             # Graph
             'graph.judge_value': self.graph.judge_value,

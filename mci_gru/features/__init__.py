@@ -18,6 +18,10 @@ from mci_gru.features.volatility import (
     add_volatility_features,
     add_vix_features,
 )
+from mci_gru.features.regime import (
+    add_regime_features,
+    REGIME_FEATURES,
+)
 from mci_gru.features.registry import (
     FeatureEngineer,
     build_feature_list,
@@ -31,6 +35,8 @@ __all__ = [
     "add_momentum_buffered",
     "add_volatility_features",
     "add_vix_features",
+    "add_regime_features",
+    "REGIME_FEATURES",
     "FeatureEngineer",
     "build_feature_list",
     "FEATURE_SETS",

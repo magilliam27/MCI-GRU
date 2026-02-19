@@ -36,6 +36,10 @@ from mci_gru.features.credit import (
     CREDIT_FEATURES,
     add_credit_features,
 )
+from mci_gru.features.regime import (
+    REGIME_FEATURES,
+    add_regime_features,
+)
 
 
 # Pre-defined feature sets
@@ -45,8 +49,9 @@ FEATURE_SETS = {
     'volatility': VOLATILITY_FEATURES,
     'vix': VIX_FEATURES,
     'credit': CREDIT_FEATURES,
+    'regime': REGIME_FEATURES,
     'base_momentum': BASE_FEATURES + MOMENTUM_FEATURES,
-    'full': BASE_FEATURES + MOMENTUM_FEATURES + VOLATILITY_FEATURES + VIX_FEATURES + CREDIT_FEATURES,
+    'full': BASE_FEATURES + MOMENTUM_FEATURES + VOLATILITY_FEATURES + VIX_FEATURES + CREDIT_FEATURES + REGIME_FEATURES,
 }
 
 
@@ -57,6 +62,7 @@ def build_feature_list(
     include_volatility: bool = False,
     include_vix: bool = False,
     include_credit_spread: bool = False,
+    include_global_regime: bool = False,
     additional_features: Optional[List[str]] = None
 ) -> List[str]:
     """
@@ -69,6 +75,7 @@ def build_feature_list(
         include_volatility: Include volatility features
         include_vix: Include VIX features
         include_credit_spread: Include credit spread features (IG/HY from FRED)
+        include_global_regime: Include global scalar regime features
         additional_features: Additional feature column names to include
 
     Returns:
@@ -86,6 +93,8 @@ def build_feature_list(
         features.extend(VIX_FEATURES)
     if include_credit_spread:
         features.extend(CREDIT_FEATURES)
+    if include_global_regime:
+        features.extend(REGIME_FEATURES)
     if additional_features:
         features.extend(additional_features)
     
@@ -117,6 +126,14 @@ class FeatureEngineer:
         include_volatility: bool = False,
         include_vix: bool = False,
         include_credit_spread: bool = False,
+        include_global_regime: bool = False,
+        regime_change_months: int = 12,
+        regime_norm_months: int = 120,
+        regime_clip_z: float = 3.0,
+        regime_exclusion_months: int = 1,
+        regime_similarity_quantile: float = 0.2,
+        regime_min_history_months: int = 24,
+        regime_strict: bool = False,
         include_rsi: bool = False,
         include_ma_features: bool = False,
         include_price_features: bool = False,
@@ -134,6 +151,7 @@ class FeatureEngineer:
             include_volatility: Whether to add volatility features
             include_vix: Whether to add VIX features (requires vix_df in transform)
             include_credit_spread: Whether to add credit spread features (requires credit_df in transform)
+            include_global_regime: Whether to add global scalar regime features (requires regime_df in transform)
             include_rsi: Whether to add RSI features
             include_ma_features: Whether to add moving average features
             include_price_features: Whether to add derived price features
@@ -147,6 +165,14 @@ class FeatureEngineer:
         self.include_volatility = include_volatility
         self.include_vix = include_vix
         self.include_credit_spread = include_credit_spread
+        self.include_global_regime = include_global_regime
+        self.regime_change_months = regime_change_months
+        self.regime_norm_months = regime_norm_months
+        self.regime_clip_z = regime_clip_z
+        self.regime_exclusion_months = regime_exclusion_months
+        self.regime_similarity_quantile = regime_similarity_quantile
+        self.regime_min_history_months = regime_min_history_months
+        self.regime_strict = regime_strict
         self.include_rsi = include_rsi
         self.include_ma_features = include_ma_features
         self.include_price_features = include_price_features
@@ -157,6 +183,7 @@ class FeatureEngineer:
         df: pd.DataFrame,
         vix_df: Optional[pd.DataFrame] = None,
         credit_df: Optional[pd.DataFrame] = None,
+        regime_df: Optional[pd.DataFrame] = None,
     ) -> pd.DataFrame:
         """
         Apply feature transformations to dataframe.
@@ -165,6 +192,7 @@ class FeatureEngineer:
             df: Input dataframe with OHLCV columns
             vix_df: Optional VIX data for VIX features
             credit_df: Optional credit spread data for credit features (from FRED)
+            regime_df: Optional regime input data for global scalar regime features
 
         Returns:
             DataFrame with features added
@@ -217,6 +245,25 @@ class FeatureEngineer:
                 for col in CREDIT_FEATURES:
                     df[col] = 0.0
 
+        # Global scalar regime features
+        if self.include_global_regime:
+            if regime_df is not None:
+                df = add_regime_features(
+                    df=df,
+                    regime_df=regime_df,
+                    change_months=self.regime_change_months,
+                    norm_window_months=self.regime_norm_months,
+                    clip_z=self.regime_clip_z,
+                    exclusion_months=self.regime_exclusion_months,
+                    similarity_quantile=self.regime_similarity_quantile,
+                    min_history_months=self.regime_min_history_months,
+                )
+            elif self.regime_strict:
+                raise ValueError("include_global_regime=True but regime_df not provided and regime_strict=True")
+            else:
+                for col in REGIME_FEATURES:
+                    df[col] = 0.0
+
         # RSI
         if self.include_rsi:
             df = add_rsi(df)
@@ -261,6 +308,9 @@ class FeatureEngineer:
 
         if self.include_credit_spread:
             features.extend(CREDIT_FEATURES)
+        
+        if self.include_global_regime:
+            features.extend(REGIME_FEATURES)
 
         if self.include_rsi:
             features.extend(['rsi_14', 'rsi_normalized'])
@@ -297,6 +347,14 @@ def create_feature_engineer_from_config(config: Dict[str, Any]) -> FeatureEngine
         include_volatility=config.get('include_volatility', False),
         include_vix=config.get('include_vix', False),
         include_credit_spread=config.get('include_credit_spread', False),
+        include_global_regime=config.get('include_global_regime', False),
+        regime_change_months=config.get('regime_change_months', 12),
+        regime_norm_months=config.get('regime_norm_months', 120),
+        regime_clip_z=config.get('regime_clip_z', 3.0),
+        regime_exclusion_months=config.get('regime_exclusion_months', 1),
+        regime_similarity_quantile=config.get('regime_similarity_quantile', 0.2),
+        regime_min_history_months=config.get('regime_min_history_months', 24),
+        regime_strict=config.get('regime_strict', False),
         include_rsi=config.get('include_rsi', False),
         include_ma_features=config.get('include_ma_features', False),
         include_price_features=config.get('include_price_features', False),

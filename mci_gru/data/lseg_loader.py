@@ -473,6 +473,39 @@ class LSEGLoader:
         # All RIC options failed
         print("  Warning: Treasury yield data unavailable (no permission or data). Skipping.")
         return None
+
+    def get_series(self, ric: str, start: str, end: str, value_name: str) -> Optional[pd.DataFrame]:
+        """
+        Fetch a single LSEG time series and normalize to [dt, value_name].
+
+        Uses historical close as the proxy value. Returns None if unavailable.
+        """
+        self._ensure_connected()
+        try:
+            raw = self.rd.get_history(
+                universe=[ric],
+                start=start,
+                end=end,
+                interval='1D'
+            )
+            if raw is None or len(raw) == 0:
+                return None
+            shaped = self._reshape_to_standard_format(raw)
+            if "close" not in shaped.columns:
+                return None
+            series = shaped[["dt", "close"]].copy()
+            series = series.rename(columns={"close": value_name})
+            series[value_name] = pd.to_numeric(series[value_name], errors="coerce")
+            series = series.dropna(subset=[value_name])
+            if len(series) == 0:
+                return None
+            return series.sort_values("dt").drop_duplicates(subset=["dt"], keep="last")
+        except Exception as e:
+            if self._is_permission_error(e):
+                print(f"  No permission for {ric}, skipping.")
+                return None
+            print(f"  Error fetching series {ric}: {e}")
+            return None
     
     def fetch_universe_data(
         self,

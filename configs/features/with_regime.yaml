@@ -1,4 +1,4 @@
-# Base features + momentum (default configuration)
+# Base + momentum + global scalar regime
 base_features:
   - close
   - open
@@ -14,7 +14,7 @@ momentum_buffer_high: 0.9
 include_volatility: false
 include_vix: false
 include_credit_spread: false
-include_global_regime: false
+include_global_regime: true
 regime_change_months: 12
 regime_norm_months: 120
 regime_clip_z: 3.0
@@ -22,6 +22,11 @@ regime_exclusion_months: 1
 regime_similarity_quantile: 0.2
 regime_min_history_months: 24
 regime_strict: false
+regime_lseg_market_ric: .SPX
+regime_lseg_copper_ric: .MXCOPPFE
+regime_lseg_yield_10y_ric: US10YT=RR
+regime_lseg_yield_3m_ric: US3MT=RR
+regime_lseg_oil_ric: CLc1
 include_rsi: false
 include_ma_features: false
 include_price_features: false

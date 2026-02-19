@@ -38,6 +38,7 @@ class DataManager:
         self.df: Optional[pd.DataFrame] = None
         self.vix_df: Optional[pd.DataFrame] = None
         self.credit_df: Optional[pd.DataFrame] = None
+        self.regime_df: Optional[pd.DataFrame] = None
         self.kdcode_list: Optional[List[str]] = None
     
     def load(self) -> pd.DataFrame:
@@ -147,6 +148,142 @@ class DataManager:
         )
         self.credit_df = credit_df
         return credit_df
+
+    def load_regime_inputs(
+        self,
+        lseg_market_ric: str = ".SPX",
+        lseg_copper_ric: str = ".MXCOPPFE",
+        lseg_yield_10y_ric: str = "US10YT=RR",
+        lseg_yield_3m_ric: str = "US3MT=RR",
+        lseg_oil_ric: str = "CLc1",
+    ) -> pd.DataFrame:
+        """
+        Load Phase-1 global regime input series with hybrid sourcing.
+
+        Output columns:
+            dt, regime_market, regime_yield_curve, regime_oil, regime_copper, regime_stock_bond_corr
+        """
+        from mci_gru.data.fred_loader import (
+            FREDLoader,
+            FRED_SERIES_SP500,
+            FRED_SERIES_10Y,
+            FRED_SERIES_3M,
+            FRED_SERIES_OIL_WTI,
+            FRED_SERIES_COPPER,
+        )
+
+        start_ts = pd.Timestamp(self.config.train_start) - pd.Timedelta(days=365 * 15)
+        start = start_ts.strftime("%Y-%m-%d")
+        end = self.config.test_end
+
+        fred = None
+        try:
+            fred = FREDLoader()
+        except Exception:
+            fred = None
+
+        def try_fred(series_id: str, value_name: str):
+            if fred is None:
+                return None
+            try:
+                return fred.get_series(series_id, start, end, value_name, lag_days=1)
+            except Exception:
+                return None
+
+        # FRED-primary variables.
+        yield_10y = try_fred(FRED_SERIES_10Y, "yield_10y")
+        yield_3m = try_fred(FRED_SERIES_3M, "yield_3m")
+        oil = try_fred(FRED_SERIES_OIL_WTI, "regime_oil")
+
+        # FRED fallback candidates.
+        market_fallback = try_fred(FRED_SERIES_SP500, "regime_market")
+        copper_fallback = try_fred(FRED_SERIES_COPPER, "regime_copper")
+
+        market = None
+        copper = None
+        lseg_yield_10y = None
+        lseg_yield_3m = None
+        lseg_oil = None
+
+        if self.config.source == "lseg":
+            from mci_gru.data.lseg_loader import LSEGLoader
+
+            loader = LSEGLoader()
+            try:
+                loader.connect()
+                market = loader.get_series(lseg_market_ric, start, end, "regime_market")
+                copper = loader.get_series(lseg_copper_ric, start, end, "regime_copper")
+                if yield_10y is None:
+                    lseg_yield_10y = loader.get_series(lseg_yield_10y_ric, start, end, "yield_10y")
+                if yield_3m is None:
+                    lseg_yield_3m = loader.get_series(lseg_yield_3m_ric, start, end, "yield_3m")
+                if oil is None:
+                    lseg_oil = loader.get_series(lseg_oil_ric, start, end, "regime_oil")
+            finally:
+                loader.disconnect()
+
+        if yield_10y is None:
+            yield_10y = lseg_yield_10y
+        if yield_3m is None:
+            yield_3m = lseg_yield_3m
+        if oil is None:
+            oil = lseg_oil
+
+        if market is None:
+            market = market_fallback
+        if copper is None:
+            copper = copper_fallback
+
+        required_series = {
+            "yield_10y": yield_10y,
+            "yield_3m": yield_3m,
+            "regime_oil": oil,
+            "regime_market": market,
+            "regime_copper": copper,
+        }
+        missing = [name for name, value in required_series.items() if value is None or len(value) == 0]
+        if missing:
+            raise ValueError(
+                "Unable to load required regime input series. Missing: "
+                f"{missing}. Provide FRED_API_KEY and/or LSEG entitlements for configured RICs."
+            )
+
+        base = (
+            yield_10y.merge(yield_3m, on="dt", how="outer")
+            .merge(oil, on="dt", how="outer")
+            .merge(market, on="dt", how="outer")
+            .merge(copper, on="dt", how="outer")
+        )
+        base["dt"] = pd.to_datetime(base["dt"])
+        base = base.sort_values("dt").drop_duplicates(subset=["dt"], keep="last")
+
+        base["yield_10y"] = pd.to_numeric(base["yield_10y"], errors="coerce")
+        base["yield_3m"] = pd.to_numeric(base["yield_3m"], errors="coerce")
+        base["regime_yield_curve"] = base["yield_10y"] - base["yield_3m"]
+        base["regime_market"] = pd.to_numeric(base["regime_market"], errors="coerce")
+
+        # Stock-bond correlation proxy: rolling corr between market returns and yield-10y changes.
+        market_ret = base["regime_market"].pct_change()
+        yield_change = base["yield_10y"].diff()
+        base["regime_stock_bond_corr"] = market_ret.rolling(63, min_periods=21).corr(yield_change)
+
+        # Fill sparse macro holidays/weekends while preserving time direction.
+        for col in ["regime_market", "regime_yield_curve", "regime_oil", "regime_copper", "regime_stock_bond_corr"]:
+            base[col] = pd.to_numeric(base[col], errors="coerce").ffill().bfill()
+
+        base = base[
+            [
+                "dt",
+                "regime_market",
+                "regime_yield_curve",
+                "regime_oil",
+                "regime_copper",
+                "regime_stock_bond_corr",
+            ]
+        ].copy()
+        base["dt"] = base["dt"].dt.strftime("%Y-%m-%d")
+        self.regime_df = base
+        return base
 
     def filter_complete_stocks(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
         """
