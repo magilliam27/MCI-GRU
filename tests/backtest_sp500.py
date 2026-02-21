@@ -94,7 +94,7 @@ DEFAULT_CONFIG = {
     'trading_days_per_year': 252,   # Standard trading days
     'test_start': '2025-01-01',     # Updated to match training config
     'test_end': '2025-12-31',       # Updated to match training config
-    'data_file': 'data/raw/market/sp500_data.csv',  # Updated to reorganized path
+    'data_file': 'data/raw/market/SP50',  # Updated to reorganized path
     'label_t': 5,                   # Forward return period (days)
     # Transaction costs for retail investor
     'transaction_costs': {
