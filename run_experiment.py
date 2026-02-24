@@ -219,6 +219,11 @@ def prepare_data_index_level(
     train_labels = compute_labels(df_filtered, kdcode_list, train_dates[his_t:], config.model.label_t)
     val_labels = compute_labels(df_filtered, kdcode_list, val_dates, config.model.label_t)
 
+    if config.training.label_type == "rank":
+        print("Converting labels to cross-sectional rank percentiles...")
+        train_labels = _apply_rank_labels(train_labels)
+        val_labels = _apply_rank_labels(val_labels)
+
     edge_index = torch.empty(2, 0, dtype=torch.long)
     edge_weight = torch.empty(0, dtype=torch.float32)
 
@@ -389,7 +394,12 @@ def prepare_data(
     print("Computing labels...")
     train_labels = compute_labels(df, kdcode_list, train_dates[his_t:], config.model.label_t)
     val_labels = compute_labels(df, kdcode_list, val_dates, config.model.label_t)
-    
+
+    if config.training.label_type == "rank":
+        print("Converting labels to cross-sectional rank percentiles...")
+        train_labels = _apply_rank_labels(train_labels)
+        val_labels = _apply_rank_labels(val_labels)
+
     # Build graph
     print("Building correlation graph...")
     graph_builder = GraphBuilder(
@@ -490,6 +500,21 @@ def generate_graph_features(
                 x_graph[date_idx, stock_idx, :] = row[feature_cols].values.astype(np.float32)
     
     return x_graph
+
+
+def _apply_rank_labels(labels: np.ndarray) -> np.ndarray:
+    """Convert raw return labels to cross-sectional rank percentiles per day.
+
+    Each day's returns are ranked across stocks and divided by the number of
+    stocks to yield percentiles in (0, 1].  Only same-day information is used,
+    so this does **not** introduce look-ahead bias.
+    """
+    from scipy.stats import rankdata
+
+    ranked = np.empty_like(labels)
+    for i in range(labels.shape[0]):
+        ranked[i] = rankdata(labels[i]) / labels.shape[1]
+    return ranked.astype(np.float32)
 
 
 def compute_labels(

@@ -1,0 +1,15 @@
+# @package _global_
+# Hybrid configuration: combines the best from the paper, original code, and
+# refactored model.  Disables multi-scale (not in paper), enables self-
+# attention (from original code), keeps ELU, and uses rank-percentile labels.
+
+experiment_name: hybrid
+
+model:
+  use_multi_scale: false
+  use_self_attention: true
+  activation: elu
+  latent_init_scale: 0.02
+
+training:
+  label_type: rank

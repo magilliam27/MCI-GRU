@@ -1,0 +1,15 @@
+# @package _global_
+# Paper-faithful configuration: matches the paper's described architecture as
+# closely as possible.  No multi-scale encoder, no self-attention, ReLU
+# activation, raw return labels.
+
+experiment_name: paper_faithful
+
+model:
+  use_multi_scale: false
+  use_self_attention: false
+  activation: relu
+  latent_init_scale: 0.02
+
+training:
+  label_type: returns

@@ -164,7 +164,7 @@ class GraphConfig:
 class ModelConfig:
     """
     Model architecture configuration.
-    
+
     Attributes:
         his_t: Historical lookback period (days)
         label_t: Forward return period (days)
@@ -177,6 +177,10 @@ class ModelConfig:
         cross_attn_heads: Number of heads in cross-attention
         slow_kernel: Kernel size for slow temporal aggregation
         slow_stride: Stride for slow temporal downsampling
+        use_multi_scale: Use MultiScaleTemporalEncoder (True) or plain ImprovedGRU (False)
+        use_self_attention: Apply self-attention before final prediction GAT
+        activation: Activation function ("elu" or "relu")
+        latent_init_scale: Std for latent state initialisation (original code used 1.0)
     """
     his_t: int = 10
     label_t: int = 5
@@ -189,7 +193,18 @@ class ModelConfig:
     cross_attn_heads: int = 4
     slow_kernel: int = 5
     slow_stride: int = 2
-    
+    use_multi_scale: bool = True
+    use_self_attention: bool = True
+    activation: str = "elu"
+    latent_init_scale: float = 0.02
+
+    def __post_init__(self):
+        """Validate new fields."""
+        if self.activation not in ("elu", "relu"):
+            raise ValueError(f"activation must be 'elu' or 'relu', got {self.activation!r}")
+        if self.latent_init_scale <= 0:
+            raise ValueError("latent_init_scale must be > 0")
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for model creation."""
         return {
@@ -202,6 +217,10 @@ class ModelConfig:
             'cross_attn_heads': self.cross_attn_heads,
             'slow_kernel': self.slow_kernel,
             'slow_stride': self.slow_stride,
+            'use_multi_scale': self.use_multi_scale,
+            'use_self_attention': self.use_self_attention,
+            'activation': self.activation,
+            'latent_init_scale': self.latent_init_scale,
         }
 
 
@@ -209,7 +228,7 @@ class ModelConfig:
 class TrainingConfig:
     """
     Training configuration.
-    
+
     Attributes:
         batch_size: Training batch size
         learning_rate: Optimizer learning rate
@@ -220,6 +239,10 @@ class TrainingConfig:
         gradient_clip: Maximum gradient norm (0 = no clipping)
         loss_type: Loss function (mse, ic, combined)
         ic_loss_alpha: Weight for IC component when loss_type=combined (0 to 1)
+        label_type: Label representation -- "returns" for raw forward returns,
+                     "rank" for cross-sectional rank percentiles per day.
+                     Rank labels use only same-day information so they
+                     do not introduce look-ahead bias.
     """
     batch_size: int = 32
     learning_rate: float = 5e-5
@@ -230,8 +253,10 @@ class TrainingConfig:
     gradient_clip: float = 1.0
     loss_type: str = "mse"
     ic_loss_alpha: float = 0.5
+    label_type: str = "returns"
 
     _VALID_LOSS_TYPES = ("mse", "ic", "combined")
+    _VALID_LABEL_TYPES = ("returns", "rank")
 
     def __post_init__(self):
         """Validate parameters."""
@@ -249,6 +274,10 @@ class TrainingConfig:
             )
         if not 0 <= self.ic_loss_alpha <= 1:
             raise ValueError(f"ic_loss_alpha must be in [0, 1], got {self.ic_loss_alpha}")
+        if self.label_type not in self._VALID_LABEL_TYPES:
+            raise ValueError(
+                f"label_type must be one of {self._VALID_LABEL_TYPES}, got {self.label_type!r}"
+            )
 
 
 @dataclass

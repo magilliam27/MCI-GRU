@@ -12,6 +12,7 @@ from mci_gru.models.mci_gru import (
     AttentionResetGRUCell,
     GATLayer,
     GATLayer_1,
+    SelfAttention,
     MarketLatentStateLearner,
     create_model,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "AttentionResetGRUCell",
     "GATLayer",
     "GATLayer_1",
+    "SelfAttention",
     "MarketLatentStateLearner",
     "create_model",
 ]
