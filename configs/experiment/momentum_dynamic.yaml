@@ -1,11 +1,13 @@
 # @package _global_
 # Experiment: Cycle-aware dynamic momentum blend
-# Paper-aligned first pass: stay relatively slow after Corrections and faster after Rebounds
+# Estimates a_Co and a_Re from trailing state-conditioned returns with no look-ahead
 
 experiment_name: momentum_dynamic
 
 features:
   momentum_blend_mode: dynamic
-  momentum_blend_fast_weight: 0.5
   momentum_dynamic_correction_fast_weight: 0.15
   momentum_dynamic_rebound_fast_weight: 0.7
+  momentum_dynamic_lookback_periods: 0
+  momentum_dynamic_min_history: 252
+  momentum_dynamic_min_state_observations: 3
