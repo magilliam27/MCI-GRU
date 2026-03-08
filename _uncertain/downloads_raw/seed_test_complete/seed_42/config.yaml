@@ -1,0 +1,74 @@
+data:
+  universe: sp500
+  source: csv
+  filename: data/raw/market/sp500_2019_universe_data.csv
+  train_start: '2019-01-01'
+  train_end: '2023-12-31'
+  val_start: '2024-01-01'
+  val_end: '2024-12-31'
+  test_start: '2025-01-01'
+  test_end: '2025-12-31'
+features:
+  base_features:
+  - close
+  - open
+  - high
+  - low
+  - volume
+  - turnover
+  include_momentum: false
+  include_weekly_momentum: false
+  momentum_encoding: binary
+  momentum_buffer_low: 0.1
+  momentum_buffer_high: 0.9
+  include_volatility: false
+  include_vix: false
+  include_credit_spread: false
+  include_global_regime: false
+  regime_change_months: 12
+  regime_norm_months: 120
+  regime_clip_z: 3.0
+  regime_exclusion_months: 1
+  regime_similarity_quantile: 0.2
+  regime_min_history_months: 24
+  regime_strict: false
+  include_rsi: false
+  include_ma_features: false
+  include_price_features: false
+  include_volume_features: false
+model:
+  his_t: 10
+  label_t: 5
+  gru_hidden_sizes:
+  - 32
+  - 10
+  hidden_size_gat1: 32
+  output_gat1: 4
+  gat_heads: 4
+  hidden_size_gat2: 32
+  num_hidden_states: 32
+  cross_attn_heads: 4
+  slow_kernel: 5
+  slow_stride: 2
+  use_multi_scale: false
+  use_self_attention: false
+  activation: elu
+  latent_init_scale: 0.02
+graph:
+  judge_value: 0.8
+  update_frequency_months: 0
+  corr_lookback_days: 252
+training:
+  batch_size: 32
+  learning_rate: 5.0e-05
+  num_epochs: 15
+  num_models: 3
+  early_stopping_patience: 5
+  weight_decay: 0.001
+  gradient_clip: 1.0
+  loss_type: mse
+  ic_loss_alpha: 0.5
+  label_type: returns
+experiment_name: seedtest_s42
+output_dir: results
+seed: 42

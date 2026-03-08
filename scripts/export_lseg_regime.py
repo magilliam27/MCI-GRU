@@ -26,7 +26,7 @@ import pandas as pd
 def parse_args():
     p = argparse.ArgumentParser(description="Export LSEG-only regime series for Colab merge.")
     p.add_argument("--start", default="2016-01-01", help="Start date YYYY-MM-DD")
-    p.add_argument("--end", default="2025-12-31", help="End date YYYY-MM-DD")
+    p.add_argument("--end", default="2026-12-31", help="End date YYYY-MM-DD")
     p.add_argument(
         "--output-dir",
         default="data/raw/market",

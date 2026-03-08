@@ -45,6 +45,14 @@ UNIVERSES = [
         'end': '2025-12-31',
         'label': '2018',
     },
+    # ── Extended through 2026 for production / live-trading pipeline ──
+    {
+        'constituents_csv': 'data/raw/constituents/sp500_constituents_2019.csv',
+        'output_csv': 'data/raw/market/sp500_2019_universe_data_through_2026.csv',
+        'start': '2018-01-01',
+        'end': '2026-03-06',
+        'label': '2019_through_2026',
+    },
 ]
 
 # Skip universes that already have a saved output file
@@ -199,15 +207,21 @@ def process_universe(universe_config):
 
     # Check if output already exists
     if SKIP_EXISTING and os.path.exists(output_path):
-        existing = pd.read_csv(output_path, nrows=5)
         print(f"  SKIPPING - output file already exists ({output_path})")
         print(f"  Set SKIP_EXISTING = False to re-download.")
-        return None
+        return {
+            "status": "skipped",
+            "output_path": output_path,
+        }
 
     # Check constituent file exists
     if not os.path.exists(csv_path):
         print(f"  ERROR: Constituent file not found: {csv_path}")
-        return None
+        return {
+            "status": "failed",
+            "reason": f"Constituent file not found: {csv_path}",
+            "output_path": output_path,
+        }
 
     # Step 1: Load RICs
     rics = load_rics(csv_path)
@@ -219,7 +233,11 @@ def process_universe(universe_config):
 
     if not raw_batches:
         print(f"  ERROR: No data downloaded for {label}")
-        return None
+        return {
+            "status": "failed",
+            "reason": f"No data downloaded for {label}",
+            "output_path": output_path,
+        }
 
     # Step 3: Combine and reshape
     print(f"  Combining {len(raw_batches)} batches and reshaping...")
@@ -236,7 +254,12 @@ def process_universe(universe_config):
     print(f"    Sample:")
     print(final_df.head(3).to_string(index=False))
 
-    return final_df
+    return {
+        "status": "saved",
+        "output_path": output_path,
+        "rows": len(final_df),
+        "stocks": final_df["kdcode"].nunique(),
+    }
 
 
 # ============================================================
@@ -249,11 +272,15 @@ if __name__ == '__main__':
     results = {}
     for universe_config in UNIVERSES:
         try:
-            df = process_universe(universe_config)
-            results[universe_config['label']] = df
+            result = process_universe(universe_config)
+            results[universe_config['label']] = result
         except Exception as e:
             print(f"\n  FAILED for {universe_config['label']}: {e}")
-            results[universe_config['label']] = None
+            results[universe_config['label']] = {
+                "status": "failed",
+                "reason": str(e),
+                "output_path": universe_config.get("output_csv"),
+            }
 
     rd.close_session()
 
@@ -261,12 +288,14 @@ if __name__ == '__main__':
     print(f"\n{'=' * 70}")
     print(f"  SUMMARY")
     print(f"{'=' * 70}")
-    for label, df in results.items():
-        if df is not None:
-            print(f"  {label}: {len(df):>10,} rows, {df['kdcode'].nunique():>4} stocks")
+    for label, result in results.items():
+        status = result.get("status", "failed") if isinstance(result, dict) else "failed"
+        if status == "saved":
+            print(f"  {label}: {result['rows']:>10,} rows, {result['stocks']:>4} stocks")
+        elif status == "skipped":
+            print(f"  {label}: SKIPPED (already exists)")
         else:
-            skipped = os.path.exists(f"data/raw/market/sp500_{label}_universe_data.csv")
-            status = "SKIPPED (already exists)" if skipped else "FAILED"
-            print(f"  {label}: {status}")
+            reason = result.get("reason", "unknown error") if isinstance(result, dict) else "unknown error"
+            print(f"  {label}: FAILED ({reason})")
     print(f"{'=' * 70}")
     print("Done!")

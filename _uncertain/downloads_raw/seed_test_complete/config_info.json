@@ -1,0 +1,18 @@
+{
+  "features": "base (6 raw OHLCV+turnover, no momentum)",
+  "architecture": "paper_faithful (no multi-scale, no self-attention, elu, latent_init=0.02)",
+  "training": "num_models=3, num_epochs=15, early_stopping=5, batch_size=32, lr=5e-5",
+  "data": "sp500_2019_universe_data.csv, train=2019-2023, val=2024, test=2025",
+  "seeds": [
+    42,
+    73,
+    7,
+    123,
+    256,
+    1,
+    999,
+    314,
+    55,
+    88
+  ]
+}

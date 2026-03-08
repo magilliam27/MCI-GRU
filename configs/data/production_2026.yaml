@@ -1,0 +1,11 @@
+# Production data config — train through 2025, test on 2026 YTD
+# Uses the 2019-era constituent universe extended through 2026
+universe: sp500
+source: csv
+filename: data/raw/market/sp500_2019_universe_data_through_2026.csv
+train_start: "2019-01-01"
+train_end: "2025-06-30"
+val_start: "2025-07-01"
+val_end: "2025-12-31"
+test_start: "2026-01-01"
+test_end: "2026-12-31"
