@@ -1,0 +1,125 @@
+{
+  "date": "2026-03-06",
+  "holdings": [
+    {
+      "kdcode": "INTC.OQ",
+      "entry_date": "2026-03-06",
+      "entry_rank": 1,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "F.N",
+      "entry_date": "2026-03-06",
+      "entry_rank": 2,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "NVDA.OQ",
+      "entry_date": "2026-03-06",
+      "entry_rank": 3,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "T.N",
+      "entry_date": "2026-03-06",
+      "entry_rank": 4,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "PFE.N",
+      "entry_date": "2026-03-06",
+      "entry_rank": 5,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "WBD.OQ",
+      "entry_date": "2026-03-06",
+      "entry_rank": 6,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "CCL.N",
+      "entry_date": "2026-03-06",
+      "entry_rank": 7,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "PCG.N",
+      "entry_date": "2026-03-06",
+      "entry_rank": 8,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "TSLA.OQ",
+      "entry_date": "2026-03-06",
+      "entry_rank": 9,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "AAPL.OQ",
+      "entry_date": "2026-03-06",
+      "entry_rank": 10,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "VZ.N",
+      "entry_date": "2026-03-06",
+      "entry_rank": 11,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "AMZN.OQ",
+      "entry_date": "2026-03-06",
+      "entry_rank": 12,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "CSX.OQ",
+      "entry_date": "2026-03-06",
+      "entry_rank": 13,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "PSKY.OQ",
+      "entry_date": "2026-03-06",
+      "entry_rank": 14,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "LUV.N",
+      "entry_date": "2026-03-06",
+      "entry_rank": 15,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "NFLX.OQ",
+      "entry_date": "2026-03-06",
+      "entry_rank": 16,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "AES.N",
+      "entry_date": "2026-03-06",
+      "entry_rank": 17,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "KMI.N",
+      "entry_date": "2026-03-06",
+      "entry_rank": 18,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "BKR.OQ",
+      "entry_date": "2026-03-06",
+      "entry_rank": 19,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "FCX.N",
+      "entry_date": "2026-03-06",
+      "entry_rank": 20,
+      "weight": 0.05
+    }
+  ]
+}
