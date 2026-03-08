@@ -3,8 +3,11 @@ import pytest
 from omegaconf import OmegaConf
 
 from mci_gru.config import FeatureConfig, get_preset
-from mci_gru.features.registry import FeatureEngineer
-from mci_gru.features.momentum import add_momentum_binary
+from mci_gru.features.momentum import (
+    _estimate_dynamic_fast_weights_for_group,
+    _solve_dynamic_speed,
+    add_momentum_binary,
+)
 
 
 def _make_state_df() -> pd.DataFrame:
@@ -37,72 +40,16 @@ def _make_state_df() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _state_snapshot(df: pd.DataFrame) -> pd.DataFrame:
+def _state_snapshot(kwargs: dict) -> pd.DataFrame:
     """Return the first row with valid slow momentum for each stock."""
     out = add_momentum_binary(
         _make_state_df(),
         fast_window=1,
         slow_window=2,
         include_weekly_momentum=False,
-        **df,
+        **kwargs,
     )
     return out[out["dt"] == "2020-01-03"].set_index("kdcode").sort_index()
-
-
-def _make_long_history_df() -> pd.DataFrame:
-    """Build 252-day histories that hit each cycle under the live 21/252 windows."""
-    rows = []
-    end_date = pd.Timestamp("2020-12-31")
-    dates = pd.bdate_range(end_date - pd.offsets.BDay(252), end_date)
-    scenarios = {
-        "BULL": [0.0] * 231 + [0.01] * 21,
-        "CORRECTION": [0.002] * 231 + [-0.01] * 21,
-        "BEAR": [0.0] * 231 + [-0.01] * 21,
-        "REBOUND": [-0.002] * 231 + [0.01] * 21,
-    }
-    for kdcode, returns in scenarios.items():
-        close = 100.0
-        rows.append(
-            {
-                "kdcode": kdcode,
-                "dt": dates[0].strftime("%Y-%m-%d"),
-                "close": close,
-                "open": close,
-                "high": close,
-                "low": close,
-                "volume": 1_000_000,
-            }
-        )
-        for dt, daily_return in zip(dates[1:], returns):
-            close *= 1.0 + daily_return
-            rows.append(
-                {
-                    "kdcode": kdcode,
-                    "dt": dt.strftime("%Y-%m-%d"),
-                    "close": close,
-                    "open": close,
-                    "high": close,
-                    "low": close,
-                    "volume": 1_000_000,
-                }
-            )
-    return pd.DataFrame(rows)
-
-
-def test_dynamic_blend_uses_cycle_specific_weights():
-    snapshot = _state_snapshot(
-        {
-            "blend_mode": "dynamic",
-            "blend_fast_weight": 0.5,
-            "dynamic_correction_fast_weight": 0.15,
-            "dynamic_rebound_fast_weight": 0.70,
-        }
-    )
-
-    assert snapshot.loc["BULL", "momentum_blend"] == pytest.approx(1.0)
-    assert snapshot.loc["BEAR", "momentum_blend"] == pytest.approx(-1.0)
-    assert snapshot.loc["CORRECTION", "momentum_blend"] == pytest.approx(0.70)
-    assert snapshot.loc["REBOUND", "momentum_blend"] == pytest.approx(0.40)
 
 
 def test_static_blend_supports_custom_intermediate_speed():
@@ -110,8 +57,6 @@ def test_static_blend_supports_custom_intermediate_speed():
         {
             "blend_mode": "static",
             "blend_fast_weight": 0.25,
-            "dynamic_correction_fast_weight": 0.15,
-            "dynamic_rebound_fast_weight": 0.70,
         }
     )
 
@@ -121,51 +66,118 @@ def test_static_blend_supports_custom_intermediate_speed():
     assert snapshot.loc["REBOUND", "momentum_blend"] == pytest.approx(-0.50)
 
 
-def test_feature_config_validates_blend_controls_and_dynamic_preset():
+def test_binary_momentum_keeps_warmup_rows_neutral():
+    out = add_momentum_binary(
+        _make_state_df(),
+        fast_window=1,
+        slow_window=2,
+        blend_mode="static",
+        include_weekly_momentum=False,
+    )
+    first_rows = out[out["dt"] == "2020-01-01"]
+    second_rows = out[out["dt"] == "2020-01-02"]
+
+    assert (first_rows["slow_signal"] == 0.0).all()
+    assert (first_rows["fast_signal"] == 0.0).all()
+    assert (first_rows["momentum_blend"] == 0.0).all()
+    assert (first_rows[["cycle_bull", "cycle_correction", "cycle_bear"]] == 0.0).all().all()
+    assert (second_rows["slow_signal"] == 0.0).all()
+    assert (second_rows["momentum_blend"] == 0.0).all()
+    assert (second_rows[["cycle_bull", "cycle_correction", "cycle_bear"]] == 0.0).all().all()
+
+
+def test_dynamic_formula_matches_proposition_9():
+    index = pd.Index([0])
+    a_co, a_re = _solve_dynamic_speed(
+        mu_bu=pd.Series([0.04], index=index),
+        mu_be=pd.Series([-0.02], index=index),
+        mu_co=pd.Series([0.01], index=index),
+        mu_re=pd.Series([0.03], index=index),
+        second_bu=pd.Series([0.09], index=index),
+        second_be=pd.Series([0.16], index=index),
+        second_co=pd.Series([0.04], index=index),
+        second_re=pd.Series([0.09], index=index),
+        p_bu=pd.Series([0.40], index=index),
+        p_be=pd.Series([0.20], index=index),
+        fallback_correction_fast_weight=0.15,
+        fallback_rebound_fast_weight=0.70,
+        valid_correction_mask=pd.Series([True], index=index),
+        valid_rebound_mask=pd.Series([True], index=index),
+    )
+
+    assert a_co.iloc[0] == pytest.approx(0.275)
+    assert a_re.iloc[0] == pytest.approx(0.7666666667)
+
+
+def test_dynamic_estimator_uses_only_prior_observations():
+    group = pd.DataFrame(
+        {
+            "kdcode": ["AAA"] * 6,
+            "_daily_return": [0.00, 0.30, -0.20, 0.02, 0.15, 0.99],
+        }
+    )
+    slow_position = pd.Series([1.0, -1.0, 1.0, -1.0, 1.0, 1.0], index=group.index)
+    fast_position = pd.Series([1.0, -1.0, -1.0, 1.0, -1.0, 1.0], index=group.index)
+
+    weights_a = _estimate_dynamic_fast_weights_for_group(
+        group=group,
+        slow_position=slow_position,
+        fast_position=fast_position,
+        fallback_correction_fast_weight=0.15,
+        fallback_rebound_fast_weight=0.70,
+        lookback_periods=0,
+        min_history=1,
+        min_state_observations=1,
+    )
+
+    group_changed = group.copy()
+    group_changed.loc[5, "_daily_return"] = -0.99
+    weights_b = _estimate_dynamic_fast_weights_for_group(
+        group=group_changed,
+        slow_position=slow_position,
+        fast_position=fast_position,
+        fallback_correction_fast_weight=0.15,
+        fallback_rebound_fast_weight=0.70,
+        lookback_periods=0,
+        min_history=1,
+        min_state_observations=1,
+    )
+
+    # Weight at row 4 is applied using information available through row 4 only.
+    assert weights_a.iloc[4] == pytest.approx(weights_b.iloc[4])
+
+
+def test_feature_config_validates_dynamic_controls_and_yaml_merge():
     cfg = FeatureConfig(
         momentum_blend_mode="dynamic",
         momentum_dynamic_correction_fast_weight=0.15,
         momentum_dynamic_rebound_fast_weight=0.70,
+        momentum_dynamic_lookback_periods=0,
+        momentum_dynamic_min_history=252,
+        momentum_dynamic_min_state_observations=3,
     )
     assert cfg.momentum_blend_mode == "dynamic"
 
     preset = get_preset("momentum_dynamic")
     assert preset.features.momentum_blend_mode == "dynamic"
-    assert preset.features.momentum_dynamic_correction_fast_weight == pytest.approx(0.15)
-    assert preset.features.momentum_dynamic_rebound_fast_weight == pytest.approx(0.70)
+    assert preset.features.momentum_dynamic_lookback_periods == 0
+    assert preset.features.momentum_dynamic_min_history == 252
+    assert preset.features.momentum_dynamic_min_state_observations == 3
+
+    base = OmegaConf.load("configs/features/with_momentum.yaml")
+    override = OmegaConf.load("configs/experiment/momentum_dynamic.yaml")
+    merged = OmegaConf.merge({"features": base}, override)
+    merged_cfg = FeatureConfig(**OmegaConf.to_container(merged.features, resolve=True))
+
+    assert merged_cfg.momentum_blend_mode == "dynamic"
+    assert merged_cfg.momentum_dynamic_correction_fast_weight == pytest.approx(0.15)
+    assert merged_cfg.momentum_dynamic_rebound_fast_weight == pytest.approx(0.70)
+    assert merged_cfg.momentum_dynamic_lookback_periods == 0
+    assert merged_cfg.momentum_dynamic_min_history == 252
+    assert merged_cfg.momentum_dynamic_min_state_observations == 3
 
     with pytest.raises(ValueError):
         FeatureConfig(momentum_blend_mode="adaptive")
 
     with pytest.raises(ValueError):
-        FeatureConfig(momentum_blend_fast_weight=1.1)
-
-
-def test_feature_engineer_dynamic_mode_works_with_live_windows():
-    fe = FeatureEngineer(
-        include_momentum=True,
-        include_weekly_momentum=False,
-        momentum_encoding="binary",
-        momentum_blend_mode="dynamic",
-        momentum_dynamic_correction_fast_weight=0.15,
-        momentum_dynamic_rebound_fast_weight=0.70,
-    )
-    out = fe.transform(_make_long_history_df())
-    snapshot = out[out["dt"] == out["dt"].max()].set_index("kdcode").sort_index()
-
-    assert snapshot.loc["BULL", "momentum_blend"] == pytest.approx(1.0)
-    assert snapshot.loc["BEAR", "momentum_blend"] == pytest.approx(-1.0)
-    assert snapshot.loc["CORRECTION", "momentum_blend"] == pytest.approx(0.70)
-    assert snapshot.loc["REBOUND", "momentum_blend"] == pytest.approx(0.40)
-
-
-def test_hydra_dynamic_experiment_yaml_merges_into_feature_config():
-    base = OmegaConf.load("configs/features/with_momentum.yaml")
-    override = OmegaConf.load("configs/experiment/momentum_dynamic.yaml")
-    merged = OmegaConf.merge({"features": base}, override)
-    cfg = FeatureConfig(**OmegaConf.to_container(merged.features, resolve=True))
-
-    assert cfg.momentum_blend_mode == "dynamic"
-    assert cfg.momentum_blend_fast_weight == pytest.approx(0.5)
-    assert cfg.momentum_dynamic_correction_fast_weight == pytest.approx(0.15)
-    assert cfg.momentum_dynamic_rebound_fast_weight == pytest.approx(0.70)
+        FeatureConfig(momentum_dynamic_min_history=0)
