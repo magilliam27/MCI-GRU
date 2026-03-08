@@ -121,6 +121,10 @@ class FeatureEngineer:
         include_momentum: bool = True,
         include_weekly_momentum: bool = True,
         momentum_encoding: str = 'binary',  # 'binary', 'continuous', 'buffered'
+        momentum_blend_mode: str = 'static',  # 'static', 'dynamic'
+        momentum_blend_fast_weight: float = 0.5,
+        momentum_dynamic_correction_fast_weight: float = 0.15,
+        momentum_dynamic_rebound_fast_weight: float = 0.70,
         momentum_buffer_low: float = 0.1,
         momentum_buffer_high: float = 0.9,
         include_volatility: bool = False,
@@ -146,6 +150,10 @@ class FeatureEngineer:
             include_momentum: Whether to add momentum features
             include_weekly_momentum: Whether to include weekly momentum terms (5-day return/signal)
             momentum_encoding: Type of momentum encoding
+            momentum_blend_mode: Whether momentum_blend uses a fixed or cycle-aware FAST allocation
+            momentum_blend_fast_weight: FAST allocation for static blending and agreement states
+            momentum_dynamic_correction_fast_weight: FAST allocation after Correction states
+            momentum_dynamic_rebound_fast_weight: FAST allocation after Rebound states
             momentum_buffer_low: Low buffer for buffered momentum
             momentum_buffer_high: High buffer for buffered momentum
             include_volatility: Whether to add volatility features
@@ -160,6 +168,10 @@ class FeatureEngineer:
         self.include_momentum = include_momentum
         self.include_weekly_momentum = include_weekly_momentum
         self.momentum_encoding = momentum_encoding
+        self.momentum_blend_mode = momentum_blend_mode
+        self.momentum_blend_fast_weight = momentum_blend_fast_weight
+        self.momentum_dynamic_correction_fast_weight = momentum_dynamic_correction_fast_weight
+        self.momentum_dynamic_rebound_fast_weight = momentum_dynamic_rebound_fast_weight
         self.momentum_buffer_low = momentum_buffer_low
         self.momentum_buffer_high = momentum_buffer_high
         self.include_volatility = include_volatility
@@ -209,16 +221,28 @@ class FeatureEngineer:
             if self.momentum_encoding == 'binary':
                 df = add_momentum_binary(
                     df,
+                    blend_mode=self.momentum_blend_mode,
+                    blend_fast_weight=self.momentum_blend_fast_weight,
+                    dynamic_correction_fast_weight=self.momentum_dynamic_correction_fast_weight,
+                    dynamic_rebound_fast_weight=self.momentum_dynamic_rebound_fast_weight,
                     include_weekly_momentum=self.include_weekly_momentum,
                 )
             elif self.momentum_encoding == 'continuous':
                 df = add_momentum_continuous(
                     df,
+                    blend_mode=self.momentum_blend_mode,
+                    blend_fast_weight=self.momentum_blend_fast_weight,
+                    dynamic_correction_fast_weight=self.momentum_dynamic_correction_fast_weight,
+                    dynamic_rebound_fast_weight=self.momentum_dynamic_rebound_fast_weight,
                     include_weekly_momentum=self.include_weekly_momentum,
                 )
             elif self.momentum_encoding == 'buffered':
                 df = add_momentum_buffered(
                     df,
+                    blend_mode=self.momentum_blend_mode,
+                    blend_fast_weight=self.momentum_blend_fast_weight,
+                    dynamic_correction_fast_weight=self.momentum_dynamic_correction_fast_weight,
+                    dynamic_rebound_fast_weight=self.momentum_dynamic_rebound_fast_weight,
                     buffer_low=self.momentum_buffer_low,
                     buffer_high=self.momentum_buffer_high,
                     include_weekly_momentum=self.include_weekly_momentum,
@@ -342,6 +366,14 @@ def create_feature_engineer_from_config(config: Dict[str, Any]) -> FeatureEngine
         include_momentum=config.get('include_momentum', True),
         include_weekly_momentum=config.get('include_weekly_momentum', True),
         momentum_encoding=config.get('momentum_encoding', 'binary'),
+        momentum_blend_mode=config.get('momentum_blend_mode', 'static'),
+        momentum_blend_fast_weight=config.get('momentum_blend_fast_weight', 0.5),
+        momentum_dynamic_correction_fast_weight=config.get(
+            'momentum_dynamic_correction_fast_weight', 0.15
+        ),
+        momentum_dynamic_rebound_fast_weight=config.get(
+            'momentum_dynamic_rebound_fast_weight', 0.70
+        ),
         momentum_buffer_low=config.get('momentum_buffer_low', 0.1),
         momentum_buffer_high=config.get('momentum_buffer_high', 0.9),
         include_volatility=config.get('include_volatility', False),

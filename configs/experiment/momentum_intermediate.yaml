@@ -1,0 +1,9 @@
+# @package _global_
+# Experiment: Explicit intermediate-speed momentum blend
+# Uses the paper's equal-weight MED blend between SLOW and FAST
+
+experiment_name: momentum_intermediate
+
+features:
+  momentum_blend_mode: static
+  momentum_blend_fast_weight: 0.5

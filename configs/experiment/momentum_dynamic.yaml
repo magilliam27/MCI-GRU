@@ -1,0 +1,11 @@
+# @package _global_
+# Experiment: Cycle-aware dynamic momentum blend
+# Paper-aligned first pass: stay relatively slow after Corrections and faster after Rebounds
+
+experiment_name: momentum_dynamic
+
+features:
+  momentum_blend_mode: dynamic
+  momentum_blend_fast_weight: 0.5
+  momentum_dynamic_correction_fast_weight: 0.15
+  momentum_dynamic_rebound_fast_weight: 0.7

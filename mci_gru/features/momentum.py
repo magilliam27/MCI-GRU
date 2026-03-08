@@ -12,7 +12,6 @@ Three encoding variants are available:
 
 import numpy as np
 import pandas as pd
-from typing import Tuple
 
 
 # Momentum feature columns
@@ -23,6 +22,11 @@ MOMENTUM_BASE_FEATURES = [
 ]
 MOMENTUM_WEEKLY_FEATURES = ['weekly_momentum', 'weekly_signal']
 MOMENTUM_FEATURES = MOMENTUM_BASE_FEATURES + MOMENTUM_WEEKLY_FEATURES
+MOMENTUM_BLEND_MODES = ['static', 'dynamic']
+
+DEFAULT_BLEND_FAST_WEIGHT = 0.5
+DEFAULT_DYNAMIC_CORRECTION_FAST_WEIGHT = 0.15
+DEFAULT_DYNAMIC_REBOUND_FAST_WEIGHT = 0.70
 
 
 def get_momentum_features(include_weekly_momentum: bool = True) -> list[str]:
@@ -32,9 +36,61 @@ def get_momentum_features(include_weekly_momentum: bool = True) -> list[str]:
     return list(MOMENTUM_BASE_FEATURES)
 
 
+def _validate_fast_weight(name: str, value: float) -> None:
+    """Validate a blend weight expressed as the FAST allocation."""
+    if not 0.0 <= value <= 1.0:
+        raise ValueError(f"{name} must be in [0, 1], got {value}")
+
+
+def _blend_signals(
+    slow_signal: pd.Series,
+    fast_signal: pd.Series,
+    fast_weight: pd.Series | float,
+) -> pd.Series:
+    """Blend slow and fast signals using a FAST allocation weight."""
+    return (1.0 - fast_weight) * slow_signal + fast_weight * fast_signal
+
+
+def _compute_blend_weights(
+    slow_momentum: pd.Series,
+    fast_momentum: pd.Series,
+    blend_mode: str,
+    blend_fast_weight: float,
+    dynamic_correction_fast_weight: float,
+    dynamic_rebound_fast_weight: float,
+) -> pd.Series:
+    """Return per-row FAST allocation weights for static or cycle-aware blending."""
+    if blend_mode not in MOMENTUM_BLEND_MODES:
+        raise ValueError(
+            f"blend_mode must be one of {MOMENTUM_BLEND_MODES}, got {blend_mode!r}"
+        )
+
+    _validate_fast_weight("blend_fast_weight", blend_fast_weight)
+    _validate_fast_weight(
+        "dynamic_correction_fast_weight",
+        dynamic_correction_fast_weight,
+    )
+    _validate_fast_weight(
+        "dynamic_rebound_fast_weight",
+        dynamic_rebound_fast_weight,
+    )
+
+    weights = pd.Series(blend_fast_weight, index=slow_momentum.index, dtype=float)
+    if blend_mode == 'dynamic':
+        correction_mask = (slow_momentum >= 0) & (fast_momentum < 0)
+        rebound_mask = (slow_momentum < 0) & (fast_momentum >= 0)
+        weights.loc[correction_mask] = dynamic_correction_fast_weight
+        weights.loc[rebound_mask] = dynamic_rebound_fast_weight
+    return weights
+
+
 def add_momentum_binary(df: pd.DataFrame, 
                         fast_window: int = 21,
                         slow_window: int = 252,
+                        blend_mode: str = 'static',
+                        blend_fast_weight: float = DEFAULT_BLEND_FAST_WEIGHT,
+                        dynamic_correction_fast_weight: float = DEFAULT_DYNAMIC_CORRECTION_FAST_WEIGHT,
+                        dynamic_rebound_fast_weight: float = DEFAULT_DYNAMIC_REBOUND_FAST_WEIGHT,
                         include_weekly_momentum: bool = True) -> pd.DataFrame:
     """
     Add binary momentum features from the Momentum Turning Points paper.
@@ -49,7 +105,7 @@ def add_momentum_binary(df: pd.DataFrame,
         - fast_momentum: 21-day cumulative return
         - slow_signal: +1 if slow_momentum >= 0, else -1
         - fast_signal: +1 if fast_momentum >= 0, else -1
-        - momentum_blend: MED strategy signal = (slow_signal + fast_signal) / 2
+        - momentum_blend: Configurable intermediate/dynamic blend of slow and fast
         - cycle_bull: 1 if Bull state, else 0
         - cycle_correction: 1 if Correction state, else 0
         - cycle_bear: 1 if Bear state, else 0
@@ -58,6 +114,8 @@ def add_momentum_binary(df: pd.DataFrame,
         df: DataFrame with columns ['kdcode', 'dt', 'close', ...]
         fast_window: Window for fast momentum (default 21 days)
         slow_window: Window for slow momentum (default 252 days)
+        blend_mode: 'static' for a fixed blend, 'dynamic' for cycle-aware blending
+        blend_fast_weight: FAST allocation used for static blending and agreement states
         
     Returns:
         DataFrame with momentum features added
@@ -100,8 +158,21 @@ def add_momentum_binary(df: pd.DataFrame,
     if include_weekly_momentum:
         df['weekly_signal'] = df['weekly_signal'].fillna(0)
     
-    # MED: Intermediate-speed momentum (blend of slow and fast)
-    df['momentum_blend'] = (df['slow_signal'] + df['fast_signal']) / 2
+    blend_weights = _compute_blend_weights(
+        slow_momentum=df['slow_momentum'],
+        fast_momentum=df['fast_momentum'],
+        blend_mode=blend_mode,
+        blend_fast_weight=blend_fast_weight,
+        dynamic_correction_fast_weight=dynamic_correction_fast_weight,
+        dynamic_rebound_fast_weight=dynamic_rebound_fast_weight,
+    )
+
+    # Intermediate/dynamic momentum blend of slow and fast signals.
+    df['momentum_blend'] = _blend_signals(
+        df['slow_signal'],
+        df['fast_signal'],
+        blend_weights,
+    )
     
     # Market Cycle States (one-hot encoded)
     df['cycle_bull'] = ((df['slow_signal'] == 1) & (df['fast_signal'] == 1)).astype(float)
@@ -124,6 +195,10 @@ def add_momentum_binary(df: pd.DataFrame,
 def add_momentum_continuous(df: pd.DataFrame,
                             fast_window: int = 21,
                             slow_window: int = 252,
+                            blend_mode: str = 'static',
+                            blend_fast_weight: float = DEFAULT_BLEND_FAST_WEIGHT,
+                            dynamic_correction_fast_weight: float = DEFAULT_DYNAMIC_CORRECTION_FAST_WEIGHT,
+                            dynamic_rebound_fast_weight: float = DEFAULT_DYNAMIC_REBOUND_FAST_WEIGHT,
                             include_weekly_momentum: bool = True) -> pd.DataFrame:
     """
     Add continuous momentum features (raw values, not binary signals).
@@ -136,13 +211,15 @@ def add_momentum_continuous(df: pd.DataFrame,
         - fast_momentum: 21-day cumulative return (raw)
         - slow_signal: Normalized slow momentum (z-score per day)
         - fast_signal: Normalized fast momentum (z-score per day)
-        - momentum_blend: Average of normalized signals
+        - momentum_blend: Configurable intermediate/dynamic blend of normalized signals
         - cycle_bull, cycle_correction, cycle_bear: Same as binary
         
     Args:
         df: DataFrame with columns ['kdcode', 'dt', 'close', ...]
         fast_window: Window for fast momentum
         slow_window: Window for slow momentum
+        blend_mode: 'static' for a fixed blend, 'dynamic' for cycle-aware blending
+        blend_fast_weight: FAST allocation used for static blending and agreement states
         
     Returns:
         DataFrame with continuous momentum features
@@ -196,8 +273,20 @@ def add_momentum_continuous(df: pd.DataFrame,
     if include_weekly_momentum:
         df['weekly_signal'] = df['weekly_signal'].fillna(0)
     
-    # Blend
-    df['momentum_blend'] = (df['slow_signal'] + df['fast_signal']) / 2
+    blend_weights = _compute_blend_weights(
+        slow_momentum=df['slow_momentum'],
+        fast_momentum=df['fast_momentum'],
+        blend_mode=blend_mode,
+        blend_fast_weight=blend_fast_weight,
+        dynamic_correction_fast_weight=dynamic_correction_fast_weight,
+        dynamic_rebound_fast_weight=dynamic_rebound_fast_weight,
+    )
+
+    df['momentum_blend'] = _blend_signals(
+        df['slow_signal'],
+        df['fast_signal'],
+        blend_weights,
+    )
     
     # Cycle indicators (still binary based on sign)
     slow_pos = df['slow_momentum'] >= 0
@@ -219,6 +308,10 @@ def add_momentum_buffered(df: pd.DataFrame,
                           slow_window: int = 252,
                           buffer_low: float = 0.1,
                           buffer_high: float = 0.9,
+                          blend_mode: str = 'static',
+                          blend_fast_weight: float = DEFAULT_BLEND_FAST_WEIGHT,
+                          dynamic_correction_fast_weight: float = DEFAULT_DYNAMIC_CORRECTION_FAST_WEIGHT,
+                          dynamic_rebound_fast_weight: float = DEFAULT_DYNAMIC_REBOUND_FAST_WEIGHT,
                           include_weekly_momentum: bool = True) -> pd.DataFrame:
     """
     Add buffered momentum features with no-trade zones.
@@ -234,7 +327,7 @@ def add_momentum_buffered(df: pd.DataFrame,
     Features added:
         - slow_momentum, fast_momentum: Raw values
         - slow_signal, fast_signal: Buffered signals
-        - momentum_blend: Average of buffered signals
+        - momentum_blend: Configurable intermediate/dynamic blend of buffered signals
         - cycle_*: Same as binary
         - trade_signal: -1, 0, or 1 indicating trade direction
         
@@ -244,6 +337,8 @@ def add_momentum_buffered(df: pd.DataFrame,
         slow_window: Window for slow momentum
         buffer_low: Percentile below which signal is 0 (default 0.1 = 10th percentile)
         buffer_high: Percentile above which signal is clipped (default 0.9 = 90th percentile)
+        blend_mode: 'static' for a fixed blend, 'dynamic' for cycle-aware blending
+        blend_fast_weight: FAST allocation used for static blending and agreement states
         
     Returns:
         DataFrame with buffered momentum features
@@ -313,8 +408,20 @@ def add_momentum_buffered(df: pd.DataFrame,
             lambda g: compute_buffered_signal(g, 'weekly_momentum')
         )
     
-    # Blend
-    df['momentum_blend'] = (df['slow_signal'] + df['fast_signal']) / 2
+    blend_weights = _compute_blend_weights(
+        slow_momentum=df['slow_momentum'],
+        fast_momentum=df['fast_momentum'],
+        blend_mode=blend_mode,
+        blend_fast_weight=blend_fast_weight,
+        dynamic_correction_fast_weight=dynamic_correction_fast_weight,
+        dynamic_rebound_fast_weight=dynamic_rebound_fast_weight,
+    )
+
+    df['momentum_blend'] = _blend_signals(
+        df['slow_signal'],
+        df['fast_signal'],
+        blend_weights,
+    )
     
     # Trade signal: simplified -1, 0, 1
     df['trade_signal'] = np.where(
