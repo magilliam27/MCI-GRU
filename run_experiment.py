@@ -27,6 +27,7 @@ Usage:
 import os
 import gc
 import sys
+import json
 import random
 import logging
 import numpy as np
@@ -245,6 +246,8 @@ def prepare_data_index_level(
         "feature_cols": feature_cols,
         "graph_builder": None,
         "df": df_filtered,
+        "norm_means": means,
+        "norm_stds": stds,
     }
 
 
@@ -429,6 +432,8 @@ def prepare_data(
         'feature_cols': feature_cols,
         'graph_builder': graph_builder,
         'df': df,  # Keep for dynamic graph updates
+        'norm_means': means,
+        'norm_stds': stds,
     }
 
 
@@ -618,6 +623,30 @@ def main(cfg: DictConfig):
     else:
         data = prepare_data(config, feature_engineer)
     
+    # Save run metadata for standalone inference (paper trading pipeline)
+    metadata = {
+        'norm_means': {k: float(v) for k, v in data['norm_means'].items()},
+        'norm_stds': {k: float(v) for k, v in data['norm_stds'].items()},
+        'feature_cols': data['feature_cols'],
+        'kdcode_list': data['kdcode_list'],
+        'his_t': config.model.his_t,
+        'label_t': config.model.label_t,
+        'seed': config.seed,
+        'train_end': config.data.train_end,
+        'data_file': config.data.filename,
+    }
+    metadata_path = os.path.join(output_path, 'run_metadata.json')
+    with open(metadata_path, 'w') as f:
+        json.dump(metadata, f, indent=2)
+    logger.info(f"Run metadata saved to: {metadata_path}")
+
+    graph_data_path = os.path.join(output_path, 'graph_data.pt')
+    torch.save({
+        'edge_index': data['edge_index'],
+        'edge_weight': data['edge_weight'],
+    }, graph_data_path)
+    logger.info(f"Graph data saved to: {graph_data_path}")
+
     # Create data loaders
     logger.info("\nCreating data loaders...")
     train_loader, val_loader, test_loader = create_data_loaders(
