@@ -147,6 +147,42 @@ def test_dynamic_estimator_uses_only_prior_observations():
     assert weights_a.iloc[4] == pytest.approx(weights_b.iloc[4])
 
 
+def test_dynamic_estimator_activates_after_sufficient_history():
+    group = pd.DataFrame(
+        {
+            "kdcode": ["AAA"] * 16,
+            # forward_return at row t is _daily_return at row t+1
+            "_daily_return": [
+                0.00,
+                0.04, -0.02, 0.01, 0.03,
+                0.04, -0.02, 0.01, 0.03,
+                0.04, -0.02, 0.01, 0.03,
+                0.04, -0.02, 0.01,
+            ],
+        }
+    )
+    slow_position = pd.Series([1.0, -1.0, 1.0, -1.0] * 4, index=group.index)
+    fast_position = pd.Series([1.0, -1.0, -1.0, 1.0] * 4, index=group.index)
+
+    weights = _estimate_dynamic_fast_weights_for_group(
+        group=group,
+        slow_position=slow_position,
+        fast_position=fast_position,
+        fallback_correction_fast_weight=0.15,
+        fallback_rebound_fast_weight=0.70,
+        lookback_periods=0,
+        min_history=4,
+        min_state_observations=3,
+    )
+
+    # By the 4th Correction/Rebound observation there is enough prior history
+    # for the paper-style estimator, so weights should move off the fallbacks.
+    # In this synthetic setup, the Correction estimate clips to 0.0 and the
+    # Rebound estimate lands at 0.611111..., both distinct from 0.15 / 0.70.
+    assert weights.iloc[14] == pytest.approx(0.0)
+    assert weights.iloc[15] == pytest.approx(0.6111111111)
+
+
 def test_feature_config_validates_dynamic_controls_and_yaml_merge():
     cfg = FeatureConfig(
         momentum_blend_mode="dynamic",

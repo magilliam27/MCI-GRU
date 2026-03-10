@@ -93,10 +93,10 @@ def _window_history(series: pd.Series, lookback_periods: int) -> pd.Series:
 
     A lookback of 0 means use all prior observations (expanding history).
     """
-    history = series.shift(1, fill_value=0.0)
+    history = series.shift(1).fillna(0.0)
     if lookback_periods <= 0:
-        return history
-    return history - history.shift(lookback_periods, fill_value=0.0)
+        return history.cumsum()
+    return history.rolling(window=lookback_periods, min_periods=1).sum()
 
 
 def _solve_dynamic_speed(
