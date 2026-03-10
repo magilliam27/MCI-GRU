@@ -544,7 +544,7 @@ def add_momentum_buffered(df: pd.DataFrame,
             if rank < buffer_low:
                 signals[i] = 0.0
             elif rank > buffer_high:
-                signals[i] = 1.0
+                signals[i] = 0.0
             else:
                 signals[i] = (rank - buffer_low) / (buffer_high - buffer_low) * 2 - 1
 
