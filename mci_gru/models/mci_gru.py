@@ -237,46 +237,36 @@ def _make_activation(name: str) -> nn.Module:
     raise ValueError(f"Unsupported activation: {name!r}. Choose 'elu' or 'relu'.")
 
 
-class GATLayer(nn.Module):
+class GATBlock(nn.Module):
+    """Two-layer Graph Attention block.
+
+    Layer 1: multi-head GAT (in_channels → hidden × heads, concatenated)
+    Layer 2: single-head GAT (hidden × heads → out_channels)
+
+    Used twice in the MCI-GRU architecture: once for cross-sectional feature
+    extraction (Part B) and once for the final prediction head (Part D).
+    The former ``GATLayer`` and ``GATLayer_1`` were near-identical classes
+    that only differed in parameter naming — this unified class replaces both.
     """
-    Two-layer GAT for cross-sectional feature extraction.
-    Activation is configurable (default ELU).
-    """
-    def __init__(self, hidden_size_gat1: int, output_gat1: int, 
-                 in_channels: int, out_channels: int, heads: int = 1,
-                 activation: str = "elu"):
-        super(GATLayer, self).__init__()
-        self.gat1 = GATConv(in_channels, hidden_size_gat1, heads=heads, concat=True, edge_dim=1)
-        self.gat2 = GATConv(hidden_size_gat1 * heads, output_gat1, heads=1, concat=False, edge_dim=1)
+
+    def __init__(self, in_channels: int, hidden: int, out_channels: int,
+                 heads: int = 1, activation: str = "elu"):
+        super().__init__()
+        self.gat1 = GATConv(in_channels, hidden, heads=heads, concat=True, edge_dim=1)
+        self.gat2 = GATConv(hidden * heads, out_channels, heads=1, concat=False, edge_dim=1)
         self.act = _make_activation(activation)
 
-    def forward(self, x: torch.Tensor, edge_index: torch.Tensor, 
+    def forward(self, x: torch.Tensor, edge_index: torch.Tensor,
                 edge_weight: torch.Tensor) -> torch.Tensor:
         x = self.gat1(x, edge_index, edge_weight)
         x = self.act(x)
         x = self.gat2(x, edge_index, edge_weight)
         return x
-    
 
-class GATLayer_1(nn.Module):
-    """
-    Final prediction GAT layer.
-    Activation is configurable (default ELU).
-    """
-    def __init__(self, hidden_size_gat2: int, in_channels: int, 
-                 out_channels: int, heads: int = 1,
-                 activation: str = "elu"):
-        super(GATLayer_1, self).__init__()
-        self.gat1 = GATConv(in_channels, hidden_size_gat2, heads=heads, concat=True, edge_dim=1)
-        self.gat2 = GATConv(hidden_size_gat2 * heads, out_channels, heads=1, concat=False, edge_dim=1)
-        self.act = _make_activation(activation)
 
-    def forward(self, x: torch.Tensor, edge_index: torch.Tensor, 
-                edge_weight: torch.Tensor) -> torch.Tensor:
-        x = self.gat1(x, edge_index, edge_weight)
-        x = self.act(x)
-        x = self.gat2(x, edge_index, edge_weight)
-        return x 
+# Backward-compatible aliases so existing checkpoints and imports keep working.
+GATLayer = GATBlock
+GATLayer_1 = GATBlock
 
 
 class SelfAttention(nn.Module):
@@ -459,9 +449,9 @@ class StockPredictionModel(nn.Module):
         gru_output_size = self.temporal_encoder.output_size
         
         # Part B: GAT for cross-sectional features
-        self.gat_layer = GATLayer(
-            hidden_size_gat1, output_gat1, input_size, output_gat1,
-            gat_heads, activation=activation,
+        self.gat_layer = GATBlock(
+            in_channels=input_size, hidden=hidden_size_gat1,
+            out_channels=output_gat1, heads=gat_heads, activation=activation,
         )
         
         # Projection layers to align dimensions for cross-attention
@@ -486,8 +476,9 @@ class StockPredictionModel(nn.Module):
         else:
             self.self_attention = None
 
-        self.final_gat = GATLayer_1(
-            hidden_size_gat2, concat_size, 1, gat_heads, activation=activation,
+        self.final_gat = GATBlock(
+            in_channels=concat_size, hidden=hidden_size_gat2,
+            out_channels=1, heads=gat_heads, activation=activation,
         )
         self.output_act = _make_activation(activation)
         

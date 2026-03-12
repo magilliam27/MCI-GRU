@@ -10,8 +10,9 @@ from mci_gru.models.mci_gru import (
     ImprovedGRU,
     MultiScaleTemporalEncoder,
     AttentionResetGRUCell,
-    GATLayer,
-    GATLayer_1,
+    GATBlock,
+    GATLayer,      # backward-compatible alias for GATBlock
+    GATLayer_1,    # backward-compatible alias for GATBlock
     SelfAttention,
     MarketLatentStateLearner,
     create_model,
@@ -22,6 +23,7 @@ __all__ = [
     "ImprovedGRU",
     "MultiScaleTemporalEncoder",
     "AttentionResetGRUCell",
+    "GATBlock",
     "GATLayer",
     "GATLayer_1",
     "SelfAttention",
