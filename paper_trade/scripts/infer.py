@@ -63,6 +63,23 @@ def build_feature_engineer(features_cfg: dict) -> FeatureEngineer:
         include_momentum=features_cfg.get("include_momentum", True),
         include_weekly_momentum=features_cfg.get("include_weekly_momentum", False),
         momentum_encoding=features_cfg.get("momentum_encoding", "binary"),
+        momentum_blend_mode=features_cfg.get("momentum_blend_mode", "static"),
+        momentum_blend_fast_weight=features_cfg.get("momentum_blend_fast_weight", 0.5),
+        momentum_dynamic_correction_fast_weight=features_cfg.get(
+            "momentum_dynamic_correction_fast_weight", 0.15
+        ),
+        momentum_dynamic_rebound_fast_weight=features_cfg.get(
+            "momentum_dynamic_rebound_fast_weight", 0.70
+        ),
+        momentum_dynamic_lookback_periods=features_cfg.get(
+            "momentum_dynamic_lookback_periods", 0
+        ),
+        momentum_dynamic_min_history=features_cfg.get(
+            "momentum_dynamic_min_history", 252
+        ),
+        momentum_dynamic_min_state_observations=features_cfg.get(
+            "momentum_dynamic_min_state_observations", 3
+        ),
         momentum_buffer_low=features_cfg.get("momentum_buffer_low", 0.1),
         momentum_buffer_high=features_cfg.get("momentum_buffer_high", 0.9),
         include_volatility=features_cfg.get("include_volatility", False),
