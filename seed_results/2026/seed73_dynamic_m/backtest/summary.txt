@@ -1,0 +1,28 @@
+================================================================================
+BACKTEST SUMMARY
+================================================================================
+
+Test Period: 2025-01-01 to 2025-12-31
+Top-K Stocks: 20
+Label Period: 5 days
+Transaction Costs: Enabled
+  Bid-Ask Spread: 5.0 bps
+  Slippage: 0.0 bps
+Rank-Drop Gate: Disabled
+
+Key Metrics:
+--------------------------------------------------------------------------------
+  ARR (Annualized Return):       0.3326 (33.26%)
+  AVoL (Annualized Volatility):  0.2420 (24.20%)
+  MDD (Maximum Drawdown):        -0.1565 (-15.65%)
+  ASR (Annualized Sharpe):       1.3744
+  CR (Calmar Ratio):             2.1248
+  IR (Information Ratio):        0.1074
+
+Prediction Metrics:
+--------------------------------------------------------------------------------
+  MSE (Mean Squared Error):      0.250520
+  MAE (Mean Absolute Error):     0.498737
+
+================================================================================
+Generated: 20260310_224915

@@ -3,4 +3,7 @@ Current state
 - Portfolio and trading - Hold top 20 stocks, use a rank drop gate of 30 ranks, with a bid ask spread TC of 5 
 
 Next steps 
-- Set up paper trading to study how model performs 
+- Set up paper trading to study how model performs - Done
+
+3/9
+- 

@@ -29,6 +29,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 DEFAULT_CSV = "data/raw/market/sp500_2019_universe_data_through_2026.csv"
 DEFAULT_STATE_DIR = "paper_trade/state"
 DEFAULT_RESULTS_DIR = "paper_trade/results"
+BENCHMARK_TICKER = "SPY.P"
 
 SLIPPAGE_BPS = 5
 BID_ASK_BPS = 5
@@ -175,28 +176,22 @@ def compute_benchmark_return(
     open_prices: pd.DataFrame,
     return_date: str,
     prev_date: str,
-    kdcodes: list,
 ) -> float:
     """
-    Compute equal-weighted universe benchmark return (open-to-open).
-    Uses all stocks in the universe for an apples-to-apples comparison.
+    Compute SPY open-to-open return as the benchmark.
     """
-    prev_prices = open_prices[open_prices["dt"] == prev_date].set_index("kdcode")["open"]
-    curr_prices = open_prices[open_prices["dt"] == return_date].set_index("kdcode")["open"]
+    prev = open_prices[
+        (open_prices["dt"] == prev_date)
+        & (open_prices["kdcode"] == BENCHMARK_TICKER)
+    ]["open"]
+    curr = open_prices[
+        (open_prices["dt"] == return_date)
+        & (open_prices["kdcode"] == BENCHMARK_TICKER)
+    ]["open"]
 
-    common = prev_prices.index.intersection(curr_prices.index)
-    if len(common) == 0:
+    if prev.empty or curr.empty or prev.iloc[0] == 0:
         return np.nan
-
-    prev = prev_prices[common]
-    curr = curr_prices[common]
-
-    mask = (prev > 0) & prev.notna() & curr.notna()
-    if mask.sum() == 0:
-        return np.nan
-
-    returns = (curr[mask] / prev[mask]) - 1.0
-    return float(returns.mean())
+    return float((curr.iloc[0] / prev.iloc[0]) - 1.0)
 
 
 def update_performance_csv(
@@ -387,6 +382,8 @@ def main():
     if prev_positions and prev_positions.get("positions"):
         prev_kdcodes = [p["kdcode"] for p in prev_positions["positions"]]
         all_kdcodes = list(set(all_kdcodes + prev_kdcodes))
+    if BENCHMARK_TICKER not in all_kdcodes:
+        all_kdcodes.append(BENCHMARK_TICKER)
 
     dates_needed = [d for d in [yesterday, today] if d is not None]
     open_prices = load_open_prices(str(csv_path), dates_needed, all_kdcodes)
@@ -415,7 +412,7 @@ def main():
             portfolio_return = returns_data["portfolio_return"]
 
             benchmark_return = compute_benchmark_return(
-                open_prices, today, yesterday, all_kdcodes,
+                open_prices, today, yesterday,
             )
 
             prev_held = set(p["kdcode"] for p in prev_positions.get("positions", []))

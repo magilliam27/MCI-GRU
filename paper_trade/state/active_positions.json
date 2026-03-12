@@ -1,125 +1,126 @@
 {
-  "date": "2026-03-11",
-  "holdings": [
+  "fill_date": "2026-03-11",
+  "decision_date": "2026-03-11",
+  "positions": [
     {
       "kdcode": "INTC.OQ",
+      "weight": 0.05,
       "entry_date": "2026-03-06",
-      "entry_rank": 1,
-      "weight": 0.05
+      "fill_price": null
     },
     {
       "kdcode": "F.N",
+      "weight": 0.05,
       "entry_date": "2026-03-06",
-      "entry_rank": 3,
-      "weight": 0.05
+      "fill_price": null
     },
     {
       "kdcode": "NVDA.OQ",
+      "weight": 0.05,
       "entry_date": "2026-03-06",
-      "entry_rank": 2,
-      "weight": 0.05
+      "fill_price": null
     },
     {
       "kdcode": "T.N",
+      "weight": 0.05,
       "entry_date": "2026-03-06",
-      "entry_rank": 4,
-      "weight": 0.05
+      "fill_price": null
     },
     {
       "kdcode": "PFE.N",
+      "weight": 0.05,
       "entry_date": "2026-03-06",
-      "entry_rank": 7,
-      "weight": 0.05
+      "fill_price": null
     },
     {
       "kdcode": "WBD.OQ",
+      "weight": 0.05,
       "entry_date": "2026-03-06",
-      "entry_rank": 5,
-      "weight": 0.05
+      "fill_price": null
     },
     {
       "kdcode": "CCL.N",
+      "weight": 0.05,
       "entry_date": "2026-03-06",
-      "entry_rank": 11,
-      "weight": 0.05
+      "fill_price": null
     },
     {
       "kdcode": "PCG.N",
+      "weight": 0.05,
       "entry_date": "2026-03-06",
-      "entry_rank": 6,
-      "weight": 0.05
+      "fill_price": null
     },
     {
       "kdcode": "TSLA.OQ",
+      "weight": 0.05,
       "entry_date": "2026-03-06",
-      "entry_rank": 8,
-      "weight": 0.05
+      "fill_price": null
     },
     {
       "kdcode": "VZ.N",
+      "weight": 0.05,
       "entry_date": "2026-03-06",
-      "entry_rank": 9,
-      "weight": 0.05
+      "fill_price": null
     },
     {
       "kdcode": "LUV.N",
+      "weight": 0.05,
       "entry_date": "2026-03-06",
-      "entry_rank": 17,
-      "weight": 0.05
+      "fill_price": null
     },
     {
       "kdcode": "NFLX.OQ",
+      "weight": 0.05,
       "entry_date": "2026-03-06",
-      "entry_rank": 12,
-      "weight": 0.05
+      "fill_price": null
     },
     {
       "kdcode": "AES.N",
+      "weight": 0.05,
       "entry_date": "2026-03-06",
-      "entry_rank": 28,
-      "weight": 0.05
+      "fill_price": null
     },
     {
       "kdcode": "KMI.N",
+      "weight": 0.05,
       "entry_date": "2026-03-06",
-      "entry_rank": 13,
-      "weight": 0.05
+      "fill_price": null
     },
     {
       "kdcode": "FCX.N",
+      "weight": 0.05,
       "entry_date": "2026-03-06",
-      "entry_rank": 33,
-      "weight": 0.05
+      "fill_price": null
     },
     {
       "kdcode": "HPE.N",
+      "weight": 0.05,
       "entry_date": "2026-03-10",
-      "entry_rank": 15,
-      "weight": 0.05
+      "fill_price": null
     },
     {
       "kdcode": "OXY.N",
+      "weight": 0.05,
       "entry_date": "2026-03-10",
-      "entry_rank": 14,
-      "weight": 0.05
+      "fill_price": null
     },
     {
       "kdcode": "VTRS.OQ",
+      "weight": 0.05,
       "entry_date": "2026-03-11",
-      "entry_rank": 10,
-      "weight": 0.05
+      "fill_price": 14.04
     },
     {
       "kdcode": "DOW.N",
+      "weight": 0.05,
       "entry_date": "2026-03-11",
-      "entry_rank": 16,
-      "weight": 0.05
+      "fill_price": 33.95
     },
     {
       "kdcode": "EXC.OQ",
+      "weight": 0.05,
       "entry_date": "2026-03-11",
-      "entry_rank": 18,
-      "weight": 0.05
+      "fill_price": 48.85
     }
   ]
 }
