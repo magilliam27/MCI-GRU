@@ -13,6 +13,7 @@ from datetime import datetime
 from tqdm import tqdm
 
 from mci_gru.data.universes import UNIVERSES, get_universe_info, get_chain_ric
+from mci_gru.data.reshape import COLUMN_MAPPING, reshape_lseg_to_standard
 
 
 class LSEGLoader:
@@ -197,119 +198,41 @@ class LSEGLoader:
         return df
     
     def _reshape_to_standard_format(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Reshape Refinitiv MultiIndex data to flat [kdcode, dt, OHLCV] format.
+
+        For MultiIndex DataFrames (the common case with multi-instrument
+        requests) this delegates to the shared ``reshape_lseg_to_standard``.
+        Single-level DataFrames (rare, single-instrument) are handled inline.
         """
-        Reshape Refinitiv data to standard format.
-        
-        Refinitiv get_history() returns data in MultiIndex format:
-        - Index: Date (datetime)
-        - Columns: MultiIndex with (Instrument, Field)
-        
-        This normalizes to: [kdcode, dt, open, high, low, close, volume]
-        
-        Based on official LSEG example:
-        https://github.com/LSEG-API-Samples/Example.DataLibrary.Python/blob/lseg-data-examples/Examples/1-Access/EX-1.01.02-GetHistory.ipynb
-        """
-        # Column name mapping from LSEG field names to standard OHLCV
-        # Based on official LSEG API documentation and examples
-        column_mapping = {
-            # Official LSEG daily summary field names (from EX-1.01.02-GetHistory.ipynb)
-            'MKT_OPEN': 'open',
-            'MKT_HIGH': 'high',
-            'MKT_LOW': 'low',
-            'TRDPRC_1': 'close',
-            'ACVOL_UNS': 'volume',
-            # Alternative field names that may appear
-            'OPEN_PRC': 'open',
-            'HIGH_1': 'high',
-            'LOW_1': 'low',
-            'HST_CLOSE': 'close',
-            # Simple variants
-            'OPEN': 'open',
-            'HIGH': 'high',
-            'LOW': 'low',
-            'CLOSE': 'close',
-            'VOLUME': 'volume',
-            'Open': 'open',
-            'High': 'high',
-            'Low': 'low',
-            'Close': 'close',
-            'Volume': 'volume',
-        }
-        
-        records = []
-        
-        # Check if we have MultiIndex columns (typical for multi-instrument requests)
         if isinstance(df.columns, pd.MultiIndex):
-            # Get unique instruments from the first level of columns
-            instruments = df.columns.get_level_values(0).unique().tolist()
-            
-            for instrument in instruments:
-                # Skip if this is not actually an instrument column
-                if instrument in ['Date', 'Instrument', 'index']:
-                    continue
-                
-                try:
-                    # Extract data for this instrument
-                    instrument_data = df[instrument].copy()
-                    
-                    # Rename columns using mapping
-                    instrument_data = instrument_data.rename(columns=column_mapping)
-                    
-                    # Add instrument identifier
-                    instrument_data['kdcode'] = instrument
-                    
-                    # Add date from index
-                    instrument_data['dt'] = df.index
-                    
-                    records.append(instrument_data)
-                except KeyError:
-                    continue
-            
-            if records:
-                df = pd.concat(records, ignore_index=True)
-            else:
-                raise ValueError("No valid instrument data found in DataFrame")
-        else:
-            # Single-level columns (single instrument or already flat)
-            df = df.reset_index()
-            
-            # Rename columns
-            df = df.rename(columns=column_mapping)
-            
-            # Handle instrument/date columns
-            if 'Instrument' in df.columns:
-                df = df.rename(columns={'Instrument': 'kdcode'})
-            if 'Date' in df.columns:
-                df = df.rename(columns={'Date': 'dt'})
-            elif 'index' in df.columns:
-                df = df.rename(columns={'index': 'dt'})
-        
-        # Convert date to string format
-        if 'dt' in df.columns:
-            df['dt'] = pd.to_datetime(df['dt']).dt.strftime('%Y-%m-%d')
-        
-        # Select only the columns we need
-        required_cols = ['kdcode', 'dt', 'open', 'high', 'low', 'close', 'volume']
-        available_cols = [c for c in required_cols if c in df.columns]
-        df = df[available_cols]
-        
-        # Drop rows where ALL OHLCV values are NaN (empty rows)
-        ohlcv_cols = [c for c in ['open', 'high', 'low', 'close', 'volume'] if c in df.columns]
-        if ohlcv_cols:
-            df = df.dropna(subset=ohlcv_cols, how='all')
-        
-        # Drop rows where close price is NaN (essential for trading data)
-        if 'close' in df.columns:
-            df = df.dropna(subset=['close'])
-        
-        # Remove duplicates - keep first valid row per (stock, date)
-        if 'kdcode' in df.columns and 'dt' in df.columns:
-            df = df.drop_duplicates(subset=['kdcode', 'dt'], keep='first')
-        
-        # Sort by stock and date
-        if 'kdcode' in df.columns and 'dt' in df.columns:
-            df = df.sort_values(['kdcode', 'dt']).reset_index(drop=True)
-        
+            return reshape_lseg_to_standard(df)
+
+        # Fallback for single-level columns (single instrument or already flat)
+        df = df.reset_index()
+        df = df.rename(columns=COLUMN_MAPPING)
+
+        if "Instrument" in df.columns:
+            df = df.rename(columns={"Instrument": "kdcode"})
+        if "Date" in df.columns:
+            df = df.rename(columns={"Date": "dt"})
+        elif "index" in df.columns:
+            df = df.rename(columns={"index": "dt"})
+
+        if "dt" in df.columns:
+            df["dt"] = pd.to_datetime(df["dt"]).dt.strftime("%Y-%m-%d")
+
+        required_cols = ["kdcode", "dt", "open", "high", "low", "close", "volume"]
+        df = df[[c for c in required_cols if c in df.columns]]
+
+        ohlcv = [c for c in ["open", "high", "low", "close", "volume"] if c in df.columns]
+        if ohlcv:
+            df = df.dropna(subset=ohlcv, how="all")
+        if "close" in df.columns:
+            df = df.dropna(subset=["close"])
+        if "kdcode" in df.columns and "dt" in df.columns:
+            df = df.drop_duplicates(subset=["kdcode", "dt"], keep="first")
+            df = df.sort_values(["kdcode", "dt"]).reset_index(drop=True)
+
         return df
     
     def _ric_to_ticker(self, ric: str) -> str:
