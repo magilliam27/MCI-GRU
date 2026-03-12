@@ -1,8 +1,12 @@
 """
 Model architectures for MCI-GRU experiments.
 
-Modules:
-- mci_gru: Main MCI-GRU model and components
+Components (all in mci_gru.models.mci_gru):
+- AttentionResetGRUCell / ImprovedGRU / MultiScaleTemporalEncoder: temporal encoding
+- GATBlock: unified two-layer Graph Attention block (replaces GATLayer, GATLayer_1)
+- SelfAttention: optional cross-stock feature mixing
+- MarketLatentStateLearner: multi-head cross-attention for latent market states
+- StockPredictionModel: full model combining all components
 """
 
 from mci_gru.models.mci_gru import (

@@ -2,10 +2,13 @@
 Data loading, management, and preprocessing for MCI-GRU experiments.
 
 Modules:
-- data_manager: Unified data interface and data loaders
-- preprocessing: Tensor construction and label computation
+- data_manager: Unified data interface, data loaders, and DataLoader creation
+- preprocessing: Tensor construction (time series, graph features) and label computation
+- reshape: Shared LSEG MultiIndex-to-flat-OHLCV transformation
 - lseg_loader: LSEG/Refinitiv data fetching
-- universes: Stock universe definitions
+- fred_loader: FRED API loader for credit spreads and macro series
+- path_resolver: Project-aware data file path resolution
+- universes: Stock universe definitions (S&P 500, Russell 1000, etc.)
 """
 
 from mci_gru.data.universes import UNIVERSES, get_universe_info
