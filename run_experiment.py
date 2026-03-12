@@ -25,22 +25,18 @@ Usage:
 """
 
 import os
-import gc
 import sys
 import json
 import random
 import logging
+
 import numpy as np
-import pandas as pd
 import torch
-from tqdm import tqdm
-from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
-# Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from mci_gru.config import (
@@ -51,18 +47,11 @@ from mci_gru.config import (
     ModelConfig,
     TrainingConfig,
 )
-from mci_gru.data.data_manager import DataManager, create_data_loaders
-from mci_gru.data.preprocessing import (
-    generate_time_series_features,
-    generate_graph_features,
-    compute_labels,
-    apply_rank_labels,
-)
+from mci_gru.data.data_manager import create_data_loaders
 from mci_gru.features import FeatureEngineer
-from mci_gru.graph import GraphBuilder
-from mci_gru.models import create_model, StockPredictionModel
-from mci_gru.training import Trainer, train_multiple_models
-from mci_gru.training.metrics import evaluate_predictions, print_metrics
+from mci_gru.models import create_model
+from mci_gru.pipeline import prepare_data, prepare_data_index_level
+from mci_gru.training import train_multiple_models
 
 
 def set_seed(seed: int):
@@ -132,315 +121,6 @@ def dict_to_config(cfg: DictConfig) -> ExperimentConfig:
         output_dir=cfg_dict.get('output_dir', 'results'),
         seed=cfg_dict.get('seed', 42),
     )
-
-
-def prepare_data_index_level(
-    config: ExperimentConfig,
-    feature_engineer: FeatureEngineer
-) -> Dict[str, Any]:
-    """
-    Prepare data for index-level experiment mode (single index series, no survivorship bias).
-
-    Loads index series (FRED or CSV), regime inputs, builds features, and returns
-    the same dict shape as prepare_data so the rest of the pipeline runs unchanged.
-    Uses a trivial graph (1 node, 0 edges).
-    """
-    print("=" * 80)
-    print("Preparing Data (index-level mode; no stock-level survivorship bias)")
-    print("=" * 80)
-
-    data_manager = DataManager(config.data)
-    df = data_manager.load_index_series()
-    kdcode_list = ["INDEX"]
-
-    vix_df = None
-    credit_df = None
-    regime_df = None
-    if config.features.include_global_regime:
-        try:
-            regime_df = data_manager.load_regime_inputs(
-                lseg_market_ric=config.features.regime_lseg_market_ric,
-                lseg_copper_ric=config.features.regime_lseg_copper_ric,
-                lseg_yield_10y_ric=config.features.regime_lseg_yield_10y_ric,
-                lseg_yield_3m_ric=config.features.regime_lseg_yield_3m_ric,
-                lseg_oil_ric=config.features.regime_lseg_oil_ric,
-                regime_inputs_csv=config.features.regime_inputs_csv or None,
-                regime_enforce_lag_days=config.features.regime_enforce_lag_days,
-            )
-            print(f"Loaded regime input data: {len(regime_df)} observations")
-        except Exception as e:
-            if config.features.regime_strict:
-                raise
-            print(f"Warning: Could not load regime input data: {e}")
-            print("Continuing with zero-filled regime features (soft-fail)")
-
-    df = feature_engineer.transform(df, vix_df, credit_df, regime_df)
-    feature_cols = feature_engineer.get_feature_columns()
-    print(f"Feature columns ({len(feature_cols)}): {feature_cols}")
-
-    for col in feature_cols:
-        if col in df.columns:
-            df[col] = df[col].fillna(0.0)
-    df = df.fillna(0.0)
-
-    train_start, train_end = config.data.train_start, config.data.train_end
-    val_start, val_end = config.data.val_start, config.data.val_end
-    test_start, test_end = config.data.test_start, config.data.test_end
-    date_mask = (df["dt"] >= train_start) & (df["dt"] <= test_end)
-    df_norm = df[date_mask].copy()
-    train_df = df_norm[(df_norm["dt"] >= train_start) & (df_norm["dt"] <= train_end)]
-    val_df = df_norm[(df_norm["dt"] >= val_start) & (df_norm["dt"] <= val_end)]
-    test_df = df_norm[(df_norm["dt"] >= test_start) & (df_norm["dt"] <= test_end)]
-
-    means = {}
-    stds = {}
-    for col in feature_cols:
-        if col in train_df.columns:
-            means[col] = train_df[col].mean()
-            stds[col] = train_df[col].std() or 1.0
-    for col in feature_cols:
-        if col in df_norm.columns:
-            df_norm[col] = np.clip(
-                df_norm[col],
-                means.get(col, 0) - 3 * stds.get(col, 1),
-                means.get(col, 0) + 3 * stds.get(col, 1),
-            )
-            df_norm[col] = (df_norm[col] - means.get(col, 0)) / stds.get(col, 1)
-
-    df_filtered = df_norm.copy()
-    his_t = config.model.his_t
-    train_dates = sorted(train_df["dt"].unique())
-    val_dates = sorted(val_df["dt"].unique())
-    test_dates = sorted(test_df["dt"].unique())
-    effective_train_days = len(train_dates) - his_t
-
-    stock_features = generate_time_series_features(df_filtered, kdcode_list, feature_cols, his_t)
-    stock_features_train = stock_features[:effective_train_days]
-    stock_features_val = stock_features[effective_train_days:effective_train_days + len(val_dates)]
-    stock_features_test = stock_features[effective_train_days + len(val_dates):]
-
-    x_graph_train = generate_graph_features(train_df, kdcode_list, feature_cols, train_dates[his_t:])
-    x_graph_val = generate_graph_features(val_df, kdcode_list, feature_cols, val_dates)
-    x_graph_test = generate_graph_features(test_df, kdcode_list, feature_cols, test_dates)
-
-    train_labels = compute_labels(df_filtered, kdcode_list, train_dates[his_t:], config.model.label_t)
-    val_labels = compute_labels(df_filtered, kdcode_list, val_dates, config.model.label_t)
-
-    if config.training.label_type == "rank":
-        print("Converting labels to cross-sectional rank percentiles...")
-        train_labels = apply_rank_labels(train_labels)
-        val_labels = apply_rank_labels(val_labels)
-
-    edge_index = torch.empty(2, 0, dtype=torch.long)
-    edge_weight = torch.empty(0, dtype=torch.float32)
-
-    return {
-        "kdcode_list": kdcode_list,
-        "train_dates": train_dates[his_t:],
-        "val_dates": val_dates,
-        "test_dates": test_dates,
-        "stock_features_train": stock_features_train,
-        "stock_features_val": stock_features_val,
-        "stock_features_test": stock_features_test,
-        "x_graph_train": x_graph_train,
-        "x_graph_val": x_graph_val,
-        "x_graph_test": x_graph_test,
-        "train_labels": train_labels,
-        "val_labels": val_labels,
-        "edge_index": edge_index,
-        "edge_weight": edge_weight,
-        "feature_cols": feature_cols,
-        "graph_builder": None,
-        "df": df_filtered,
-        "norm_means": means,
-        "norm_stds": stds,
-    }
-
-
-def prepare_data(
-    config: ExperimentConfig,
-    feature_engineer: FeatureEngineer
-) -> Dict[str, Any]:
-    """
-    Load and prepare data for training (stock-level cross-sectional).
-    
-    This function mirrors the data preparation logic from sp500.py
-    but uses the modular components.
-    """
-    print("=" * 80)
-    print("Preparing Data")
-    print("=" * 80)
-    
-    # Load data
-    data_manager = DataManager(config.data)
-    df = data_manager.load()
-    
-    # Load VIX if needed
-    vix_df = None
-    if config.features.include_vix:
-        try:
-            vix_df = data_manager.load_vix()
-            print(f"Loaded VIX data: {len(vix_df)} observations")
-        except Exception as e:
-            print(f"Warning: Could not load VIX data: {e}")
-            print("Continuing without VIX features")
-
-    # Load credit spreads (FRED) if needed
-    credit_df = None
-    if config.features.include_credit_spread:
-        try:
-            credit_df = data_manager.load_credit_spreads()
-            print(f"Loaded credit spread data: {len(credit_df)} observations")
-        except Exception as e:
-            print(f"Warning: Could not load credit spread data: {e}")
-            print("Continuing without credit spread features")
-
-    # Load global regime inputs (hybrid FRED + LSEG) if needed
-    regime_df = None
-    if config.features.include_global_regime:
-        try:
-            regime_df = data_manager.load_regime_inputs(
-                lseg_market_ric=config.features.regime_lseg_market_ric,
-                lseg_copper_ric=config.features.regime_lseg_copper_ric,
-                lseg_yield_10y_ric=config.features.regime_lseg_yield_10y_ric,
-                lseg_yield_3m_ric=config.features.regime_lseg_yield_3m_ric,
-                lseg_oil_ric=config.features.regime_lseg_oil_ric,
-                regime_inputs_csv=config.features.regime_inputs_csv or None,
-                regime_enforce_lag_days=config.features.regime_enforce_lag_days,
-            )
-            print(f"Loaded regime input data: {len(regime_df)} observations")
-        except Exception as e:
-            if config.features.regime_strict:
-                raise
-            print(f"Warning: Could not load regime input data: {e}")
-            print("Continuing with zero-filled regime features (soft-fail)")
-
-    # Apply feature engineering
-    df = feature_engineer.transform(df, vix_df, credit_df, regime_df)
-    
-    # Get feature columns
-    feature_cols = feature_engineer.get_feature_columns()
-    print(f"Feature columns ({len(feature_cols)}): {feature_cols}")
-    
-    # Fill NaN values per day (mean imputation)
-    print("Filling NaN values...")
-    df_features_grouped = df.groupby('dt')
-    res = []
-    for dt in df_features_grouped.groups:
-        df_day = df_features_grouped.get_group(dt).copy()
-        for column in feature_cols:
-            if column in df_day.columns:
-                mean_val = df_day[column].mean()
-                df_day[column] = df_day[column].fillna(mean_val)
-        df_day = df_day.fillna(0.0)
-        res.append(df_day)
-    df_filled = pd.concat(res)
-    del res
-    gc.collect()
-    
-    # Compute normalization statistics from training period
-    print(f"Computing normalization statistics from training period...")
-    train_df = df_filled[df_filled['dt'] <= config.data.train_end]
-    means = {}
-    stds = {}
-    for col in feature_cols:
-        if col in train_df.columns:
-            means[col] = train_df[col].mean()
-            stds[col] = train_df[col].std()
-            if stds[col] == 0:
-                stds[col] = 1.0
-    
-    # Apply normalization
-    df_norm = df_filled.copy()
-    for col in feature_cols:
-        if col in df_norm.columns:
-            mean = means[col]
-            std = stds[col]
-            # 3-sigma clipping
-            max_range = mean + 3 * std
-            min_range = mean - 3 * std
-            df_norm[col] = np.clip(df_norm[col], min_range, max_range)
-            # Z-score
-            df_norm[col] = (df_norm[col] - mean) / std
-    
-    del df_filled
-    gc.collect()
-    
-    # Filter to complete stocks
-    df_filtered, kdcode_list = data_manager.filter_complete_stocks(df_norm)
-    
-    # Split by period
-    train_df, val_df, test_df = data_manager.split_by_period(df_filtered)
-    
-    train_dates = sorted(train_df['dt'].unique())
-    val_dates = sorted(val_df['dt'].unique())
-    test_dates = sorted(test_df['dt'].unique())
-    
-    # Generate time series features
-    print("Generating time series features...")
-    his_t = config.model.his_t
-    
-    # This is a simplified version - in production you'd use the full
-    # generate_time_series_features_paper function from sp500.py
-    stock_features = generate_time_series_features(
-        df_filtered, kdcode_list, feature_cols, his_t
-    )
-    
-    # Split features by period
-    effective_train_days = len(train_dates) - his_t
-    
-    stock_features_train = stock_features[:effective_train_days]
-    stock_features_val = stock_features[effective_train_days:effective_train_days + len(val_dates)]
-    stock_features_test = stock_features[effective_train_days + len(val_dates):]
-    
-    # Generate graph features
-    print("Generating graph features...")
-    x_graph_train = generate_graph_features(train_df, kdcode_list, feature_cols, train_dates[his_t:])
-    x_graph_val = generate_graph_features(val_df, kdcode_list, feature_cols, val_dates)
-    x_graph_test = generate_graph_features(test_df, kdcode_list, feature_cols, test_dates)
-    
-    # Compute labels
-    print("Computing labels...")
-    train_labels = compute_labels(df, kdcode_list, train_dates[his_t:], config.model.label_t)
-    val_labels = compute_labels(df, kdcode_list, val_dates, config.model.label_t)
-
-    if config.training.label_type == "rank":
-        print("Converting labels to cross-sectional rank percentiles...")
-        train_labels = apply_rank_labels(train_labels)
-        val_labels = apply_rank_labels(val_labels)
-
-    # Build graph
-    print("Building correlation graph...")
-    graph_builder = GraphBuilder(
-        judge_value=config.graph.judge_value,
-        update_frequency_months=config.graph.update_frequency_months,
-        corr_lookback_days=config.graph.corr_lookback_days
-    )
-    edge_index, edge_weight = graph_builder.build_graph(
-        df, kdcode_list, config.data.train_start
-    )
-    
-    return {
-        'kdcode_list': kdcode_list,
-        'train_dates': train_dates[his_t:],
-        'val_dates': val_dates,
-        'test_dates': test_dates,
-        'stock_features_train': stock_features_train,
-        'stock_features_val': stock_features_val,
-        'stock_features_test': stock_features_test,
-        'x_graph_train': x_graph_train,
-        'x_graph_val': x_graph_val,
-        'x_graph_test': x_graph_test,
-        'train_labels': train_labels,
-        'val_labels': val_labels,
-        'edge_index': edge_index,
-        'edge_weight': edge_weight,
-        'feature_cols': feature_cols,
-        'graph_builder': graph_builder,
-        'df': df,  # Keep for dynamic graph updates
-        'norm_means': means,
-        'norm_stds': stds,
-    }
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
