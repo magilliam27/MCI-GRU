@@ -6,7 +6,9 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 
-import mci_gru_sp500 as mci
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'archive'))
+import mci_gru_sp500 as mci  # legacy monolith, archived
 
 
 def collect_targets(samples):
