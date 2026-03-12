@@ -483,37 +483,8 @@ def main(cfg: DictConfig):
     OmegaConf.save(cfg, config_path)
     logger.info(f"Configuration saved to: {config_path}")
     
-    # Create feature engineer
     logger.info("\nInitializing feature engineer...")
-    feature_engineer = FeatureEngineer(
-        include_momentum=config.features.include_momentum,
-        include_weekly_momentum=config.features.include_weekly_momentum,
-        momentum_encoding=config.features.momentum_encoding,
-        momentum_blend_mode=config.features.momentum_blend_mode,
-        momentum_blend_fast_weight=config.features.momentum_blend_fast_weight,
-        momentum_dynamic_correction_fast_weight=config.features.momentum_dynamic_correction_fast_weight,
-        momentum_dynamic_rebound_fast_weight=config.features.momentum_dynamic_rebound_fast_weight,
-        momentum_dynamic_lookback_periods=config.features.momentum_dynamic_lookback_periods,
-        momentum_dynamic_min_history=config.features.momentum_dynamic_min_history,
-        momentum_dynamic_min_state_observations=config.features.momentum_dynamic_min_state_observations,
-        momentum_buffer_low=config.features.momentum_buffer_low,
-        momentum_buffer_high=config.features.momentum_buffer_high,
-        include_volatility=config.features.include_volatility,
-        include_vix=config.features.include_vix,
-        include_credit_spread=config.features.include_credit_spread,
-        include_global_regime=config.features.include_global_regime,
-        regime_change_months=config.features.regime_change_months,
-        regime_norm_months=config.features.regime_norm_months,
-        regime_clip_z=config.features.regime_clip_z,
-        regime_exclusion_months=config.features.regime_exclusion_months,
-        regime_similarity_quantile=config.features.regime_similarity_quantile,
-        regime_min_history_months=config.features.regime_min_history_months,
-        regime_strict=config.features.regime_strict,
-        include_rsi=config.features.include_rsi,
-        include_ma_features=config.features.include_ma_features,
-        include_price_features=config.features.include_price_features,
-        include_volume_features=config.features.include_volume_features,
-    )
+    feature_engineer = FeatureEngineer(config.features)
     
     # Prepare data (stock-level or index-level to avoid survivorship bias)
     if config.data.experiment_mode == "index_level":
