@@ -9,6 +9,13 @@ base_features:
 include_momentum: true
 include_weekly_momentum: true
 momentum_encoding: binary
+momentum_blend_mode: static
+momentum_blend_fast_weight: 0.5
+momentum_dynamic_correction_fast_weight: 0.15
+momentum_dynamic_rebound_fast_weight: 0.7
+momentum_dynamic_lookback_periods: 0
+momentum_dynamic_min_history: 252
+momentum_dynamic_min_state_observations: 3
 momentum_buffer_low: 0.1
 momentum_buffer_high: 0.9
 include_volatility: false

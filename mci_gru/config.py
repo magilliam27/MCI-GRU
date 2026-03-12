@@ -61,6 +61,13 @@ class FeatureConfig:
         include_momentum: Whether to add momentum features
         include_weekly_momentum: Whether to include weekly momentum features (5-day return/signal)
         momentum_encoding: Type of momentum encoding (binary, continuous, buffered)
+        momentum_blend_mode: Blend mode for momentum_blend (static or dynamic)
+        momentum_blend_fast_weight: FAST allocation for static intermediate-speed blending
+        momentum_dynamic_correction_fast_weight: Fallback FAST allocation for Correction when DYN is not estimable
+        momentum_dynamic_rebound_fast_weight: Fallback FAST allocation for Rebound when DYN is not estimable
+        momentum_dynamic_lookback_periods: Prior periods used by DYN (0 = expanding history)
+        momentum_dynamic_min_history: Minimum prior observations before DYN estimation activates
+        momentum_dynamic_min_state_observations: Minimum prior observations required per state
         momentum_buffer_low: Low buffer percentile for buffered encoding
         momentum_buffer_high: High buffer percentile for buffered encoding
         include_volatility: Whether to add volatility features
@@ -92,6 +99,13 @@ class FeatureConfig:
     include_momentum: bool = True
     include_weekly_momentum: bool = True
     momentum_encoding: str = "binary"  # binary, continuous, buffered
+    momentum_blend_mode: str = "static"  # static, dynamic
+    momentum_blend_fast_weight: float = 0.5
+    momentum_dynamic_correction_fast_weight: float = 0.15
+    momentum_dynamic_rebound_fast_weight: float = 0.70
+    momentum_dynamic_lookback_periods: int = 0
+    momentum_dynamic_min_history: int = 252
+    momentum_dynamic_min_state_observations: int = 3
     momentum_buffer_low: float = 0.1
     momentum_buffer_high: float = 0.9
     include_volatility: bool = False
@@ -120,8 +134,30 @@ class FeatureConfig:
     def __post_init__(self):
         """Validate momentum encoding."""
         valid_encodings = ['binary', 'continuous', 'buffered']
+        valid_blend_modes = ['static', 'dynamic']
         if self.momentum_encoding not in valid_encodings:
             raise ValueError(f"momentum_encoding must be one of {valid_encodings}")
+        if self.momentum_blend_mode not in valid_blend_modes:
+            raise ValueError(f"momentum_blend_mode must be one of {valid_blend_modes}")
+        for name, value in [
+            ("momentum_blend_fast_weight", self.momentum_blend_fast_weight),
+            (
+                "momentum_dynamic_correction_fast_weight",
+                self.momentum_dynamic_correction_fast_weight,
+            ),
+            (
+                "momentum_dynamic_rebound_fast_weight",
+                self.momentum_dynamic_rebound_fast_weight,
+            ),
+        ]:
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(f"{name} must be in [0, 1], got {value}")
+        if self.momentum_dynamic_lookback_periods < 0:
+            raise ValueError("momentum_dynamic_lookback_periods must be >= 0")
+        if self.momentum_dynamic_min_history <= 0:
+            raise ValueError("momentum_dynamic_min_history must be > 0")
+        if self.momentum_dynamic_min_state_observations <= 0:
+            raise ValueError("momentum_dynamic_min_state_observations must be > 0")
         if not (0 < self.regime_similarity_quantile < 0.5):
             raise ValueError("regime_similarity_quantile must be in (0, 0.5)")
         if self.regime_change_months <= 0:
@@ -326,7 +362,15 @@ class ExperimentConfig:
             'data.test_start': self.data.test_start,
             'data.test_end': self.data.test_end,
             # Features
+            'features.include_momentum': self.features.include_momentum,
             'features.momentum_encoding': self.features.momentum_encoding,
+            'features.momentum_blend_mode': self.features.momentum_blend_mode,
+            'features.momentum_blend_fast_weight': self.features.momentum_blend_fast_weight,
+            'features.momentum_dynamic_correction_fast_weight': self.features.momentum_dynamic_correction_fast_weight,
+            'features.momentum_dynamic_rebound_fast_weight': self.features.momentum_dynamic_rebound_fast_weight,
+            'features.momentum_dynamic_lookback_periods': self.features.momentum_dynamic_lookback_periods,
+            'features.momentum_dynamic_min_history': self.features.momentum_dynamic_min_history,
+            'features.momentum_dynamic_min_state_observations': self.features.momentum_dynamic_min_state_observations,
             'features.include_weekly_momentum': self.features.include_weekly_momentum,
             'features.include_vix': self.features.include_vix,
             'features.include_credit_spread': self.features.include_credit_spread,
@@ -387,6 +431,18 @@ EXPERIMENT_PRESETS = {
     'momentum_continuous': ExperimentConfig(
         features=FeatureConfig(momentum_encoding='continuous'),
         experiment_name='momentum_continuous'
+    ),
+
+    'momentum_dynamic': ExperimentConfig(
+        features=FeatureConfig(
+            momentum_blend_mode='dynamic',
+            momentum_dynamic_correction_fast_weight=0.15,
+            momentum_dynamic_rebound_fast_weight=0.70,
+            momentum_dynamic_lookback_periods=0,
+            momentum_dynamic_min_history=252,
+            momentum_dynamic_min_state_observations=3,
+        ),
+        experiment_name='momentum_dynamic'
     ),
 }
 
