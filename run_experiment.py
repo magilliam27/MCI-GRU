@@ -52,6 +52,12 @@ from mci_gru.config import (
     TrainingConfig,
 )
 from mci_gru.data.data_manager import DataManager, create_data_loaders
+from mci_gru.data.preprocessing import (
+    generate_time_series_features,
+    generate_graph_features,
+    compute_labels,
+    apply_rank_labels,
+)
 from mci_gru.features import FeatureEngineer
 from mci_gru.graph import GraphBuilder
 from mci_gru.models import create_model, StockPredictionModel
@@ -222,8 +228,8 @@ def prepare_data_index_level(
 
     if config.training.label_type == "rank":
         print("Converting labels to cross-sectional rank percentiles...")
-        train_labels = _apply_rank_labels(train_labels)
-        val_labels = _apply_rank_labels(val_labels)
+        train_labels = apply_rank_labels(train_labels)
+        val_labels = apply_rank_labels(val_labels)
 
     edge_index = torch.empty(2, 0, dtype=torch.long)
     edge_weight = torch.empty(0, dtype=torch.float32)
@@ -400,8 +406,8 @@ def prepare_data(
 
     if config.training.label_type == "rank":
         print("Converting labels to cross-sectional rank percentiles...")
-        train_labels = _apply_rank_labels(train_labels)
-        val_labels = _apply_rank_labels(val_labels)
+        train_labels = apply_rank_labels(train_labels)
+        val_labels = apply_rank_labels(val_labels)
 
     # Build graph
     print("Building correlation graph...")
@@ -435,121 +441,6 @@ def prepare_data(
         'norm_means': means,
         'norm_stds': stds,
     }
-
-
-def generate_time_series_features(
-    df: pd.DataFrame,
-    kdcode_list: List[str],
-    feature_cols: List[str],
-    his_t: int
-) -> np.ndarray:
-    """
-    Generate time series features for all stocks.
-    
-    Returns array of shape (num_usable_days, num_stocks, his_t, num_features)
-    """
-    all_dates = sorted(df['dt'].unique())
-    num_stocks = len(kdcode_list)
-    num_features = len(feature_cols)
-    num_usable_days = len(all_dates) - his_t
-    
-    print(f"  Allocating feature array: ({num_usable_days}, {num_stocks}, {his_t}, {num_features})")
-    
-    # Pre-allocate array
-    stock_features = np.zeros((num_usable_days, num_stocks, his_t, num_features), dtype=np.float32)
-    
-    # Build lookup
-    stock_to_idx = {stock: idx for idx, stock in enumerate(kdcode_list)}
-    date_to_idx = {date: idx for idx, date in enumerate(all_dates)}
-    
-    # Build pivot data
-    df_subset = df[df['kdcode'].isin(kdcode_list)][['kdcode', 'dt'] + feature_cols].copy()
-    pivot_data = np.zeros((len(all_dates), num_stocks, num_features), dtype=np.float32)
-    
-    for _, row in tqdm(df_subset.iterrows(), total=len(df_subset), desc="  Building pivot"):
-        kdcode = row['kdcode']
-        dt = row['dt']
-        if kdcode in stock_to_idx and dt in date_to_idx:
-            stock_idx = stock_to_idx[kdcode]
-            date_idx = date_to_idx[dt]
-            pivot_data[date_idx, stock_idx, :] = row[feature_cols].values.astype(np.float32)
-    
-    # Generate sliding windows
-    for day_offset in tqdm(range(num_usable_days), desc="  Processing days"):
-        stock_features[day_offset, :, :, :] = pivot_data[day_offset:day_offset + his_t, :, :].transpose(1, 0, 2)
-    
-    return stock_features
-
-
-def generate_graph_features(
-    df: pd.DataFrame,
-    kdcode_list: List[str],
-    feature_cols: List[str],
-    dates: List[str]
-) -> np.ndarray:
-    """Generate graph node features for each day."""
-    num_dates = len(dates)
-    num_stocks = len(kdcode_list)
-    num_features = len(feature_cols)
-    
-    x_graph = np.zeros((num_dates, num_stocks, num_features), dtype=np.float32)
-    stock_to_idx = {stock: idx for idx, stock in enumerate(kdcode_list)}
-    
-    df_subset = df[df['dt'].isin(dates) & df['kdcode'].isin(kdcode_list)]
-    
-    for date_idx, date in enumerate(dates):
-        df_day = df_subset[df_subset['dt'] == date]
-        for _, row in df_day.iterrows():
-            stock_idx = stock_to_idx.get(row['kdcode'])
-            if stock_idx is not None:
-                x_graph[date_idx, stock_idx, :] = row[feature_cols].values.astype(np.float32)
-    
-    return x_graph
-
-
-def _apply_rank_labels(labels: np.ndarray) -> np.ndarray:
-    """Convert raw return labels to cross-sectional rank percentiles per day.
-
-    Each day's returns are ranked across stocks and divided by the number of
-    stocks to yield percentiles in (0, 1].  Only same-day information is used,
-    so this does **not** introduce look-ahead bias.
-    """
-    from scipy.stats import rankdata
-
-    ranked = np.empty_like(labels)
-    for i in range(labels.shape[0]):
-        ranked[i] = rankdata(labels[i]) / labels.shape[1]
-    return ranked.astype(np.float32)
-
-
-def compute_labels(
-    df: pd.DataFrame,
-    kdcode_list: List[str],
-    dates: List[str],
-    label_t: int
-) -> np.ndarray:
-    """Compute forward return labels."""
-    df_subset = df[df['kdcode'].isin(kdcode_list)].copy()
-    df_subset = df_subset.sort_values(['kdcode', 'dt'])
-    
-    # Compute forward returns
-    df_subset['future_close'] = df_subset.groupby('kdcode')['close'].shift(-label_t)
-    df_subset['next_close'] = df_subset.groupby('kdcode')['close'].shift(-1)
-    df_subset['forward_return'] = df_subset['future_close'] / df_subset['next_close'] - 1
-    
-    # Pivot
-    df_subset = df_subset[df_subset['dt'].isin(dates)]
-    pivot = df_subset.pivot_table(index='dt', columns='kdcode', values='forward_return')
-    pivot = pivot.reindex(index=dates, columns=kdcode_list)
-    
-    # Fill NaN
-    for date in dates:
-        if date in pivot.index:
-            row_mean = pivot.loc[date].mean()
-            pivot.loc[date] = pivot.loc[date].fillna(row_mean)
-    pivot = pivot.fillna(0)
-    
-    return pivot.values.astype(np.float32)
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
