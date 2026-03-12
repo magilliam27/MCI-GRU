@@ -1,8 +1,13 @@
 # Backtest Fairness Audit
 
-**Date:** February 4, 2026  
-**Reviewed Files:** evaluate_sp500.py, run_experiment.py, trainer.py, data_manager.py  
-**Overall Assessment:** ⚠️ **CRITICAL ISSUES FOUND** - Backtest has look-ahead bias
+> **Note (March 2026):** This audit references `evaluate_sp500.py`, which has
+> since been refactored into `tests/backtest_sp500.py`. The findings and line
+> references apply to the codebase as it existed at audit time. Some issues
+> documented here may have been addressed in subsequent commits.
+
+**Date:** February 4, 2026
+**Reviewed Files:** evaluate_sp500.py, run_experiment.py, trainer.py, data_manager.py
+**Overall Assessment:** CRITICAL ISSUES FOUND - Backtest has look-ahead bias
 
 ---
 
