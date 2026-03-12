@@ -55,7 +55,6 @@ from mci_gru.training import train_multiple_models
 
 
 def set_seed(seed: int):
-    """Set random seeds for reproducibility."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -64,25 +63,9 @@ def set_seed(seed: int):
 
 
 def setup_logging(output_dir: str, experiment_name: str) -> logging.Logger:
-    """
-    Setup logging to both file and console.
-    
-    Args:
-        output_dir: Base output directory
-        experiment_name: Name of the experiment
-        
-    Returns:
-        Configured logger
-    """
-    # Create logs directory
-    log_dir = output_dir
-    os.makedirs(log_dir, exist_ok=True)
-    
-    # Create log file with timestamp
+    os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = os.path.join(log_dir, f'training_{timestamp}.log')
-    
-    # Configure logging
+    log_file = os.path.join(output_dir, f'training_{timestamp}.log')
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
@@ -100,11 +83,7 @@ def setup_logging(output_dir: str, experiment_name: str) -> logging.Logger:
 
 
 def dict_to_config(cfg: DictConfig) -> ExperimentConfig:
-    """Convert Hydra DictConfig to ExperimentConfig dataclass."""
-    # Convert to plain dict
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
-    
-    # Create sub-configs
     data_cfg = DataConfig(**cfg_dict.get('data', {}))
     feature_cfg = FeatureConfig(**cfg_dict.get('features', {}))
     graph_cfg = GraphConfig(**cfg_dict.get('graph', {}))
@@ -125,40 +104,24 @@ def dict_to_config(cfg: DictConfig) -> ExperimentConfig:
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def main(cfg: DictConfig):
-    """Main entry point."""
-    # Get Hydra's output directory (respects output_dir override from command line)
     from hydra.core.hydra_config import HydraConfig
     try:
         hydra_cfg = HydraConfig.get()
         output_path = hydra_cfg.runtime.output_dir
     except:
-        # Fallback if Hydra config not available
         output_path = os.getcwd()
     
-    # Setup logging first
     logger = setup_logging(output_path, cfg.get('experiment_name', 'baseline'))
     
     logger.info("=" * 80)
     logger.info("MCI-GRU Experiment Runner")
     logger.info("=" * 80)
-    
-    # Print configuration
     logger.info("\nConfiguration:")
     logger.info("\n" + OmegaConf.to_yaml(cfg))
-    
-    # Convert to typed config
     config = dict_to_config(cfg)
-    
-    # Use Hydra's managed output path (preserves user's output_dir setting)
-    # Don't override config.output_dir - it contains the base path
-    # output_path contains the full timestamped path
-    
-    # Set seed
     set_seed(config.seed)
     logger.info(f"\nRandom seed: {config.seed}")
     logger.info(f"Output directory: {output_path}")
-    
-    # Save config
     config_path = os.path.join(output_path, 'config.yaml')
     OmegaConf.save(cfg, config_path)
     logger.info(f"Configuration saved to: {config_path}")
@@ -166,13 +129,11 @@ def main(cfg: DictConfig):
     logger.info("\nInitializing feature engineer...")
     feature_engineer = FeatureEngineer(config.features)
     
-    # Prepare data (stock-level or index-level to avoid survivorship bias)
     if config.data.experiment_mode == "index_level":
         data = prepare_data_index_level(config, feature_engineer)
     else:
         data = prepare_data(config, feature_engineer)
     
-    # Save run metadata for standalone inference (paper trading pipeline)
     metadata = {
         'norm_means': {k: float(v) for k, v in data['norm_means'].items()},
         'norm_stds': {k: float(v) for k, v in data['norm_stds'].items()},
@@ -196,7 +157,6 @@ def main(cfg: DictConfig):
     }, graph_data_path)
     logger.info(f"Graph data saved to: {graph_data_path}")
 
-    # Create data loaders
     logger.info("\nCreating data loaders...")
     train_loader, val_loader, test_loader = create_data_loaders(
         stock_features_train=data['stock_features_train'],
@@ -212,13 +172,11 @@ def main(cfg: DictConfig):
         batch_size=config.training.batch_size
     )
     
-    # Model factory
     num_features = len(data['feature_cols'])
     
     def model_factory():
         return create_model(num_features, config.model.to_dict())
     
-    # Train multiple models
     logger.info("\n" + "=" * 80)
     logger.info("Training")
     logger.info("=" * 80)
@@ -234,10 +192,9 @@ def main(cfg: DictConfig):
         graph_builder=data['graph_builder'],
         df=data['df'],
         train_dates=data['train_dates'],
-        output_path=output_path,  # Pass Hydra's output path
+        output_path=output_path,
     )
     
-    # Summary
     logger.info("\n" + "=" * 80)
     logger.info("Experiment Complete")
     logger.info("=" * 80)

@@ -1,9 +1,4 @@
-"""
-Credit spread feature engineering for MCI-GRU.
-
-Market-wide IG/HY option-adjusted spreads merged from FRED (via fred_loader).
-Broadcast to all stocks by merge on dt, following the VIX pattern.
-"""
+"""Credit spread features: IG/HY OAS from FRED, broadcast to all stocks by dt."""
 
 import pandas as pd
 
@@ -27,41 +22,15 @@ def add_credit_features(
     credit_df: pd.DataFrame,
     zscore_window: int = CREDIT_ZSCORE_WINDOW,
 ) -> pd.DataFrame:
-    """
-    Merge credit spread data and add derived features.
-
-    Credit spreads are market-level; the same values are replicated for all
-    stocks on each date (merge on dt).
-
-    Features added:
-        - ig_spread: Investment grade OAS (basis points)
-        - hy_spread: High yield OAS (basis points)
-        - ig_spread_change: Daily pct change in IG OAS
-        - hy_spread_change: Daily pct change in HY OAS
-        - ig_spread_zscore: Rolling z-score of IG spread
-        - hy_spread_zscore: Rolling z-score of HY spread
-        - credit_spread_diff: HY - IG (risk premium / risk appetite)
-
-    Args:
-        df: DataFrame with stock data (must have 'dt' column)
-        credit_df: DataFrame with columns [dt, ig_spread, hy_spread]
-        zscore_window: Rolling window for z-score (default 63 days)
-
-    Returns:
-        DataFrame with credit features merged
-    """
     print("Merging credit spread features...")
     df = df.copy()
     credit = credit_df.copy()
 
-    # Normalize dt for merging
     if "dt" not in credit.columns and credit.index.name in ("dt", "Date", "date"):
         credit = credit.reset_index()
         credit = credit.rename(columns={credit.columns[0]: "dt"})
     credit["dt"] = pd.to_datetime(credit["dt"]).dt.strftime("%Y-%m-%d")
     credit = credit.sort_values("dt")
-
-    # Derived features on the credit series
     credit["ig_spread_change"] = credit["ig_spread"].pct_change().fillna(0)
     credit["hy_spread_change"] = credit["hy_spread"].pct_change().fillna(0)
     ig_std = credit["ig_spread"].rolling(zscore_window, min_periods=1).std()
@@ -78,13 +47,9 @@ def add_credit_features(
 
     merge_cols = ["dt"] + CREDIT_FEATURES
     credit_merge = credit[merge_cols]
-
-    # Merge with stock data (same credit values for all stocks on each date)
     df["dt"] = pd.to_datetime(df["dt"]).dt.strftime("%Y-%m-%d")
     df = df.merge(credit_merge, on="dt", how="left")
 
-    # Forward-fill missing (e.g. weekends/holidays in stock data)
-    # and log if we still needed fallback fills after merge.
     missing_before = {
         col: int(df[col].isna().sum())
         for col in CREDIT_FEATURES

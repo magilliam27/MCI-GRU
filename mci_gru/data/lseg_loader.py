@@ -27,23 +27,15 @@ class LSEGLoader:
     """
     
     def __init__(self, session_type: str = "desktop"):
-        """
-        Initialize LSEG loader.
-        
-        Args:
-            session_type: Type of Refinitiv session ('desktop' or 'platform')
-        """
         self.session_type = session_type
         self.rd = None
         self.connected = False
         
     def connect(self) -> bool:
         """
-        Connect to Refinitiv Workspace.
-        
         Returns:
             True if connection successful
-            
+
         Raises:
             ImportError: If refinitiv-data not installed
             RuntimeError: If connection fails
@@ -69,7 +61,6 @@ class LSEGLoader:
             )
     
     def disconnect(self):
-        """Disconnect from Refinitiv."""
         if self.connected and self.rd is not None:
             try:
                 self.rd.close_session()
@@ -79,7 +70,6 @@ class LSEGLoader:
             print("Disconnected from Refinitiv")
     
     def _ensure_connected(self):
-        """Ensure we have an active connection."""
         if not self.connected:
             raise RuntimeError("Not connected to Refinitiv. Call connect() first.")
     
@@ -101,7 +91,6 @@ class LSEGLoader:
         print(f"Fetching constituents for {info['name']} ({chain_ric})...")
         
         try:
-            # Fetch constituent list
             constituents = self.rd.get_data(
                 universe=[chain_ric],
                 fields=['TR.RIC', 'TR.CommonName']
@@ -162,7 +151,7 @@ class LSEGLoader:
             batch_rics = rics[i:i + batch_size]
             
             try:
-                # Don't pass 'fields' for interday data - API returns default OHLCV
+                # Note: Do not pass 'fields' for interday data - API returns default OHLCV
                 df = self.rd.get_history(
                     universe=batch_rics,
                     start=start,
@@ -176,20 +165,15 @@ class LSEGLoader:
             except Exception as e:
                 print(f"  Warning: Error fetching batch {i//batch_size + 1}: {e}")
             
-            # Rate limiting
             if i + batch_size < len(rics):
                 time.sleep(delay_between_batches)
         
         if not all_data:
             raise ValueError("No data fetched")
         
-        # Combine all batches
         combined = pd.concat(all_data)
-        
-        # Reshape to standard format
         df = self._reshape_to_standard_format(combined)
         
-        # Optionally convert RICs to simple ticker symbols
         if convert_ric_to_ticker and 'kdcode' in df.columns:
             df['kdcode'] = df['kdcode'].apply(self._ric_to_ticker)
         
@@ -297,24 +281,21 @@ class LSEGLoader:
                 )
                 
                 if df is None or len(df) == 0:
-                    continue  # Try next RIC
+                    continue
                 
-                # Reshape
                 df = df.reset_index()
                 df = df.rename(columns={'Date': 'dt', 'CLOSE': 'vix', 'Close': 'vix'})
                 df['dt'] = pd.to_datetime(df['dt']).dt.strftime('%Y-%m-%d')
                 
-                # Keep only needed columns
                 if 'vix' in df.columns:
                     df = df[['dt', 'vix']]
                 else:
-                    # Handle single column case - take first non-date column as vix
                     cols = [c for c in df.columns if c != 'dt']
                     if cols:
                         df = df.rename(columns={cols[0]: 'vix'})
                         df = df[['dt', 'vix']]
                     else:
-                        continue  # Try next RIC
+                        continue
                 
                 print(f"  Fetched {len(df)} VIX observations (using {ric})")
                 return df
@@ -323,11 +304,9 @@ class LSEGLoader:
                 if self._is_permission_error(e):
                     print(f"  No permission for {ric}, trying alternatives...")
                     continue
-                # For other errors, log and try next RIC
                 print(f"  Error with {ric}: {e}")
                 continue
         
-        # All RICs failed
         print("  Warning: VIX data unavailable (no permission or data). Skipping.")
         return None
     
@@ -364,21 +343,17 @@ class LSEGLoader:
                 )
                 
                 if df is None or len(df) == 0:
-                    continue  # Try next RIC set
+                    continue
                 
-                # Reshape - handle multi-column format
                 df = df.reset_index()
                 
-                # Rename based on structure
                 if isinstance(df.columns, pd.MultiIndex):
                     df.columns = ['_'.join(col).strip() if isinstance(col, tuple) else col 
                                   for col in df.columns]
                 
-                # Standardize
                 df = df.rename(columns={'Date': 'dt'})
                 df['dt'] = pd.to_datetime(df['dt']).dt.strftime('%Y-%m-%d')
                 
-                # Compute yield curve (10Y - 2Y)
                 if 'yield_10y' in df.columns and 'yield_2y' in df.columns:
                     df['yield_curve'] = df['yield_10y'] - df['yield_2y']
                 
@@ -389,11 +364,9 @@ class LSEGLoader:
                 if self._is_permission_error(e):
                     print(f"  No permission for {rics}, trying alternatives...")
                     continue
-                # For other errors, log and try next RIC set
                 print(f"  Error with {rics}: {e}")
                 continue
         
-        # All RIC options failed
         print("  Warning: Treasury yield data unavailable (no permission or data). Skipping.")
         return None
 
@@ -460,16 +433,12 @@ class LSEGLoader:
         
         print(f"Fetching complete data for {universe}...")
         
-        # Get constituents
         rics = self.get_universe_constituents(universe)
-        
-        # Fetch historical data
         df = self.get_historical_prices(
             rics, start, end, 
             convert_ric_to_ticker=convert_ric_to_ticker
         )
         
-        # Merge VIX if requested
         if include_vix:
             vix_df = self.get_vix(start, end)
             if vix_df is not None and len(vix_df) > 0:
@@ -477,11 +446,9 @@ class LSEGLoader:
                 # Use ffill() instead of deprecated fillna(method='ffill')
                 df['vix'] = df['vix'].ffill().fillna(20)
             else:
-                # VIX data unavailable - use default value
                 print("  Using default VIX value (20) since data unavailable")
                 df['vix'] = 20.0
         
-        # Cache if path provided
         if cache_path:
             df.to_csv(cache_path, index=False)
             print(f"  Cached data to {cache_path}")
@@ -489,7 +456,6 @@ class LSEGLoader:
         return df
 
 
-# Convenience function
 def load_from_lseg(
     universe: str,
     start: str,
@@ -498,8 +464,6 @@ def load_from_lseg(
     convert_ric_to_ticker: bool = False
 ) -> pd.DataFrame:
     """
-    Convenience function to load data from LSEG.
-    
     Args:
         universe: Universe name
         start: Start date
@@ -507,7 +471,7 @@ def load_from_lseg(
         include_vix: Whether to include VIX
         convert_ric_to_ticker: If True, convert RICs like 'AAPL.O' to 
                                simple tickers like 'AAPL'
-        
+
     Returns:
         DataFrame with stock data
     """
