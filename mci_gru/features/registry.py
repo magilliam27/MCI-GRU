@@ -1,15 +1,20 @@
 """
 Feature registry and composition for MCI-GRU.
 
-This module provides:
+Provides:
 - FEATURE_SETS: Pre-defined feature set configurations
-- FeatureEngineer: Class for applying feature transformations
-- build_feature_list: Helper to build feature column list from config
+- FeatureEngineer: Pipeline that applies feature transformations
+- build_feature_list: Helper to build feature column list from flags
 """
 
+from __future__ import annotations
+
 import pandas as pd
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
 from dataclasses import dataclass
+
+if TYPE_CHECKING:
+    from mci_gru.config import FeatureConfig
 
 from mci_gru.features.base import (
     BASE_FEATURES,
@@ -110,18 +115,25 @@ def build_feature_list(
 
 
 class FeatureEngineer:
+    """Feature engineering pipeline for MCI-GRU.
+
+    Preferred usage — pass a ``FeatureConfig`` dataclass::
+
+        engineer = FeatureEngineer(config.features)
+
+    Legacy usage with individual kwargs is still supported for backward
+    compatibility but is discouraged for new code.
     """
-    Feature engineering pipeline for MCI-GRU.
-    
-    Applies feature transformations based on configuration.
-    """
-    
+
     def __init__(
         self,
+        config: "FeatureConfig | None" = None,
+        *,
+        # Legacy kwargs — used only when *config* is None.
         include_momentum: bool = True,
         include_weekly_momentum: bool = True,
-        momentum_encoding: str = 'binary',  # 'binary', 'continuous', 'buffered'
-        momentum_blend_mode: str = 'static',  # 'static', 'dynamic'
+        momentum_encoding: str = 'binary',
+        momentum_blend_mode: str = 'static',
         momentum_blend_fast_weight: float = 0.5,
         momentum_dynamic_correction_fast_weight: float = 0.15,
         momentum_dynamic_rebound_fast_weight: float = 0.70,
@@ -146,58 +158,64 @@ class FeatureEngineer:
         include_price_features: bool = False,
         include_volume_features: bool = False,
     ):
-        """
-        Initialize feature engineer.
-
-        Args:
-            include_momentum: Whether to add momentum features
-            include_weekly_momentum: Whether to include weekly momentum terms (5-day return/signal)
-            momentum_encoding: Type of momentum encoding
-            momentum_blend_mode: Whether momentum_blend uses a fixed speed or paper-style DYN estimator
-            momentum_blend_fast_weight: Static speed parameter a for intermediate-speed blending
-            momentum_dynamic_correction_fast_weight: Fallback FAST allocation for Correction when DYN is not estimable
-            momentum_dynamic_rebound_fast_weight: Fallback FAST allocation for Rebound when DYN is not estimable
-            momentum_dynamic_lookback_periods: Prior periods used by DYN (0 = expanding history)
-            momentum_dynamic_min_history: Minimum prior observations before DYN estimation activates
-            momentum_dynamic_min_state_observations: Minimum prior observations required per state
-            momentum_buffer_low: Low buffer for buffered momentum
-            momentum_buffer_high: High buffer for buffered momentum
-            include_volatility: Whether to add volatility features
-            include_vix: Whether to add VIX features (requires vix_df in transform)
-            include_credit_spread: Whether to add credit spread features (requires credit_df in transform)
-            include_global_regime: Whether to add global scalar regime features (requires regime_df in transform)
-            include_rsi: Whether to add RSI features
-            include_ma_features: Whether to add moving average features
-            include_price_features: Whether to add derived price features
-            include_volume_features: Whether to add volume features
-        """
-        self.include_momentum = include_momentum
-        self.include_weekly_momentum = include_weekly_momentum
-        self.momentum_encoding = momentum_encoding
-        self.momentum_blend_mode = momentum_blend_mode
-        self.momentum_blend_fast_weight = momentum_blend_fast_weight
-        self.momentum_dynamic_correction_fast_weight = momentum_dynamic_correction_fast_weight
-        self.momentum_dynamic_rebound_fast_weight = momentum_dynamic_rebound_fast_weight
-        self.momentum_dynamic_lookback_periods = momentum_dynamic_lookback_periods
-        self.momentum_dynamic_min_history = momentum_dynamic_min_history
-        self.momentum_dynamic_min_state_observations = momentum_dynamic_min_state_observations
-        self.momentum_buffer_low = momentum_buffer_low
-        self.momentum_buffer_high = momentum_buffer_high
-        self.include_volatility = include_volatility
-        self.include_vix = include_vix
-        self.include_credit_spread = include_credit_spread
-        self.include_global_regime = include_global_regime
-        self.regime_change_months = regime_change_months
-        self.regime_norm_months = regime_norm_months
-        self.regime_clip_z = regime_clip_z
-        self.regime_exclusion_months = regime_exclusion_months
-        self.regime_similarity_quantile = regime_similarity_quantile
-        self.regime_min_history_months = regime_min_history_months
-        self.regime_strict = regime_strict
-        self.include_rsi = include_rsi
-        self.include_ma_features = include_ma_features
-        self.include_price_features = include_price_features
-        self.include_volume_features = include_volume_features
+        if config is not None:
+            # Pull every attribute from the dataclass — single source of truth.
+            self.include_momentum = config.include_momentum
+            self.include_weekly_momentum = config.include_weekly_momentum
+            self.momentum_encoding = config.momentum_encoding
+            self.momentum_blend_mode = config.momentum_blend_mode
+            self.momentum_blend_fast_weight = config.momentum_blend_fast_weight
+            self.momentum_dynamic_correction_fast_weight = config.momentum_dynamic_correction_fast_weight
+            self.momentum_dynamic_rebound_fast_weight = config.momentum_dynamic_rebound_fast_weight
+            self.momentum_dynamic_lookback_periods = config.momentum_dynamic_lookback_periods
+            self.momentum_dynamic_min_history = config.momentum_dynamic_min_history
+            self.momentum_dynamic_min_state_observations = config.momentum_dynamic_min_state_observations
+            self.momentum_buffer_low = config.momentum_buffer_low
+            self.momentum_buffer_high = config.momentum_buffer_high
+            self.include_volatility = config.include_volatility
+            self.include_vix = config.include_vix
+            self.include_credit_spread = config.include_credit_spread
+            self.include_global_regime = config.include_global_regime
+            self.regime_change_months = config.regime_change_months
+            self.regime_norm_months = config.regime_norm_months
+            self.regime_clip_z = config.regime_clip_z
+            self.regime_exclusion_months = config.regime_exclusion_months
+            self.regime_similarity_quantile = config.regime_similarity_quantile
+            self.regime_min_history_months = config.regime_min_history_months
+            self.regime_strict = config.regime_strict
+            self.include_rsi = config.include_rsi
+            self.include_ma_features = config.include_ma_features
+            self.include_price_features = config.include_price_features
+            self.include_volume_features = config.include_volume_features
+        else:
+            # Legacy path: accept individual kwargs.
+            self.include_momentum = include_momentum
+            self.include_weekly_momentum = include_weekly_momentum
+            self.momentum_encoding = momentum_encoding
+            self.momentum_blend_mode = momentum_blend_mode
+            self.momentum_blend_fast_weight = momentum_blend_fast_weight
+            self.momentum_dynamic_correction_fast_weight = momentum_dynamic_correction_fast_weight
+            self.momentum_dynamic_rebound_fast_weight = momentum_dynamic_rebound_fast_weight
+            self.momentum_dynamic_lookback_periods = momentum_dynamic_lookback_periods
+            self.momentum_dynamic_min_history = momentum_dynamic_min_history
+            self.momentum_dynamic_min_state_observations = momentum_dynamic_min_state_observations
+            self.momentum_buffer_low = momentum_buffer_low
+            self.momentum_buffer_high = momentum_buffer_high
+            self.include_volatility = include_volatility
+            self.include_vix = include_vix
+            self.include_credit_spread = include_credit_spread
+            self.include_global_regime = include_global_regime
+            self.regime_change_months = regime_change_months
+            self.regime_norm_months = regime_norm_months
+            self.regime_clip_z = regime_clip_z
+            self.regime_exclusion_months = regime_exclusion_months
+            self.regime_similarity_quantile = regime_similarity_quantile
+            self.regime_min_history_months = regime_min_history_months
+            self.regime_strict = regime_strict
+            self.include_rsi = include_rsi
+            self.include_ma_features = include_ma_features
+            self.include_price_features = include_price_features
+            self.include_volume_features = include_volume_features
     
     def transform(
         self,
@@ -369,49 +387,11 @@ class FeatureEngineer:
         return features
 
 
-# Factory function for creating feature engineer from config
 def create_feature_engineer_from_config(config: Dict[str, Any]) -> FeatureEngineer:
+    """Create FeatureEngineer from a plain dictionary.
+
+    .. deprecated::
+        Prefer ``FeatureEngineer(FeatureConfig(**config_dict))`` directly.
     """
-    Create FeatureEngineer from configuration dictionary.
-    
-    Args:
-        config: Configuration dict with feature settings
-        
-    Returns:
-        Configured FeatureEngineer instance
-    """
-    return FeatureEngineer(
-        include_momentum=config.get('include_momentum', True),
-        include_weekly_momentum=config.get('include_weekly_momentum', True),
-        momentum_encoding=config.get('momentum_encoding', 'binary'),
-        momentum_blend_mode=config.get('momentum_blend_mode', 'static'),
-        momentum_blend_fast_weight=config.get('momentum_blend_fast_weight', 0.5),
-        momentum_dynamic_correction_fast_weight=config.get(
-            'momentum_dynamic_correction_fast_weight', 0.15
-        ),
-        momentum_dynamic_rebound_fast_weight=config.get(
-            'momentum_dynamic_rebound_fast_weight', 0.70
-        ),
-        momentum_dynamic_lookback_periods=config.get('momentum_dynamic_lookback_periods', 0),
-        momentum_dynamic_min_history=config.get('momentum_dynamic_min_history', 252),
-        momentum_dynamic_min_state_observations=config.get(
-            'momentum_dynamic_min_state_observations', 3
-        ),
-        momentum_buffer_low=config.get('momentum_buffer_low', 0.1),
-        momentum_buffer_high=config.get('momentum_buffer_high', 0.9),
-        include_volatility=config.get('include_volatility', False),
-        include_vix=config.get('include_vix', False),
-        include_credit_spread=config.get('include_credit_spread', False),
-        include_global_regime=config.get('include_global_regime', False),
-        regime_change_months=config.get('regime_change_months', 12),
-        regime_norm_months=config.get('regime_norm_months', 120),
-        regime_clip_z=config.get('regime_clip_z', 3.0),
-        regime_exclusion_months=config.get('regime_exclusion_months', 1),
-        regime_similarity_quantile=config.get('regime_similarity_quantile', 0.2),
-        regime_min_history_months=config.get('regime_min_history_months', 24),
-        regime_strict=config.get('regime_strict', False),
-        include_rsi=config.get('include_rsi', False),
-        include_ma_features=config.get('include_ma_features', False),
-        include_price_features=config.get('include_price_features', False),
-        include_volume_features=config.get('include_volume_features', False),
-    )
+    from mci_gru.config import FeatureConfig
+    return FeatureEngineer(FeatureConfig(**config))

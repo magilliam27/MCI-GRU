@@ -59,45 +59,9 @@ def load_config(model_dir: Path) -> dict:
 
 
 def build_feature_engineer(features_cfg: dict) -> FeatureEngineer:
-    return FeatureEngineer(
-        include_momentum=features_cfg.get("include_momentum", True),
-        include_weekly_momentum=features_cfg.get("include_weekly_momentum", False),
-        momentum_encoding=features_cfg.get("momentum_encoding", "binary"),
-        momentum_blend_mode=features_cfg.get("momentum_blend_mode", "static"),
-        momentum_blend_fast_weight=features_cfg.get("momentum_blend_fast_weight", 0.5),
-        momentum_dynamic_correction_fast_weight=features_cfg.get(
-            "momentum_dynamic_correction_fast_weight", 0.15
-        ),
-        momentum_dynamic_rebound_fast_weight=features_cfg.get(
-            "momentum_dynamic_rebound_fast_weight", 0.70
-        ),
-        momentum_dynamic_lookback_periods=features_cfg.get(
-            "momentum_dynamic_lookback_periods", 0
-        ),
-        momentum_dynamic_min_history=features_cfg.get(
-            "momentum_dynamic_min_history", 252
-        ),
-        momentum_dynamic_min_state_observations=features_cfg.get(
-            "momentum_dynamic_min_state_observations", 3
-        ),
-        momentum_buffer_low=features_cfg.get("momentum_buffer_low", 0.1),
-        momentum_buffer_high=features_cfg.get("momentum_buffer_high", 0.9),
-        include_volatility=features_cfg.get("include_volatility", False),
-        include_vix=features_cfg.get("include_vix", False),
-        include_credit_spread=features_cfg.get("include_credit_spread", False),
-        include_global_regime=features_cfg.get("include_global_regime", False),
-        regime_change_months=features_cfg.get("regime_change_months", 12),
-        regime_norm_months=features_cfg.get("regime_norm_months", 120),
-        regime_clip_z=features_cfg.get("regime_clip_z", 3.0),
-        regime_exclusion_months=features_cfg.get("regime_exclusion_months", 1),
-        regime_similarity_quantile=features_cfg.get("regime_similarity_quantile", 0.2),
-        regime_min_history_months=features_cfg.get("regime_min_history_months", 24),
-        regime_strict=features_cfg.get("regime_strict", False),
-        include_rsi=features_cfg.get("include_rsi", False),
-        include_ma_features=features_cfg.get("include_ma_features", False),
-        include_price_features=features_cfg.get("include_price_features", False),
-        include_volume_features=features_cfg.get("include_volume_features", False),
-    )
+    """Build a FeatureEngineer from a plain dict (e.g. Hydra config section)."""
+    from mci_gru.config import FeatureConfig
+    return FeatureEngineer(FeatureConfig(**features_cfg))
 
 
 def prepare_inference_data(

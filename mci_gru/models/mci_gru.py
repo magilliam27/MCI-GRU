@@ -35,36 +35,19 @@ class AttentionResetGRUCell(nn.Module):
         self.input_size = input_size
         self.hidden_size = hidden_size
         
-        # Update gate (unchanged from standard GRU)
         self.W_z = nn.Linear(input_size, hidden_size)
         self.U_z = nn.Linear(hidden_size, hidden_size)
-        
-        # Attention mechanism (replaces reset gate)
-        self.W_q = nn.Linear(hidden_size, hidden_size)  # Query from h_{t-1}
-        self.W_k = nn.Linear(input_size, hidden_size)   # Key from x_t
-        self.W_v = nn.Linear(input_size, hidden_size)   # Value from x_t
-        
-        # Candidate hidden state
+        self.W_q = nn.Linear(hidden_size, hidden_size)
+        self.W_k = nn.Linear(input_size, hidden_size)
+        self.W_v = nn.Linear(input_size, hidden_size)
         self.W_h = nn.Linear(input_size, hidden_size)
         self.U_h = nn.Linear(hidden_size, hidden_size)
     
     def forward(self, x_t: torch.Tensor, h_prev: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            x_t: input at time t, shape (batch, num_stocks, input_size)
-            h_prev: hidden state from t-1, shape (batch, num_stocks, hidden_size)
-        
-        Returns:
-            h_t: new hidden state, shape (batch, num_stocks, hidden_size)
-        """
-        # Update gate (standard GRU)
         z_t = torch.sigmoid(self.W_z(x_t) + self.U_z(h_prev))
-        
-        # Attention-based reset gate
-        # Query from hidden state, Key/Value from input
-        q_t = self.W_q(h_prev)  # (batch, num_stocks, hidden_size)
-        k_t = self.W_k(x_t)     # (batch, num_stocks, hidden_size)
-        v_t = self.W_v(x_t)     # (batch, num_stocks, hidden_size)
+        q_t = self.W_q(h_prev)
+        k_t = self.W_k(x_t)
+        v_t = self.W_v(x_t)
         
         # Scaled dot-product score per paper Equation 6.
         # The score is a scalar per stock (shape: batch, num_stocks, 1) so softmax
@@ -107,17 +90,9 @@ class ImprovedGRU(nn.Module):
         self.output_size = hidden_sizes[-1]
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            x: input sequence, shape (batch, num_stocks, seq_len, input_size)
-        
-        Returns:
-            output: final hidden state, shape (batch, num_stocks, output_size)
-        """
         batch_size, num_stocks, seq_len, _ = x.shape
         device = x.device
         
-        # Process through each layer
         layer_input = x
         for layer_idx, layer in enumerate(self.layers):
             hidden_size = self.hidden_sizes[layer_idx]
@@ -128,10 +103,7 @@ class ImprovedGRU(nn.Module):
                 h = layer(layer_input[:, :, t, :], h)
                 outputs.append(h)
             
-            # Stack outputs as input for next layer
             layer_input = torch.stack(outputs, dim=2)
-        
-        # Return final hidden state (last time step of last layer)
         return layer_input[:, :, -1, :]
 
 
@@ -165,14 +137,7 @@ class MultiScaleTemporalEncoder(nn.Module):
         self.hidden_sizes = hidden_sizes
         self.slow_kernel = slow_kernel
         self.slow_stride = slow_stride
-        
-        # Fast path: standard ImprovedGRU on full sequence
-        # Captures short-term, fast-moving patterns (like 1-month momentum)
         self.fast_gru = ImprovedGRU(input_size, hidden_sizes)
-        
-        # Slow path: temporal aggregation then GRU
-        # Captures longer-term, slow-moving patterns (like 12-month momentum)
-        # Conv1d aggregates nearby time steps before processing
         self.slow_aggregator = nn.Conv1d(
             in_channels=input_size, 
             out_channels=input_size, 
@@ -181,55 +146,29 @@ class MultiScaleTemporalEncoder(nn.Module):
             padding=slow_kernel // 2
         )
         self.slow_gru = ImprovedGRU(input_size, hidden_sizes)
-        
-        # Combine both scales
-        # Concatenate fast and slow representations, project back to output size
         self.combiner = nn.Linear(hidden_sizes[-1] * 2, hidden_sizes[-1])
         self.output_size = hidden_sizes[-1]
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Process temporal features at multiple scales.
-        
-        Args:
-            x: input sequence, shape (batch, num_stocks, seq_len, input_size)
-        
-        Returns:
-            output: combined multi-scale features, shape (batch, num_stocks, output_size)
-        """
         batch_size, num_stocks, seq_len, input_size = x.shape
         device = x.device
         
-        # Fast path: process full sequence through ImprovedGRU
-        # Output: (batch, num_stocks, hidden_sizes[-1])
         fast_out = self.fast_gru(x)
-        
-        # Slow path: aggregate temporally then process
-        # Reshape for Conv1d: (batch * num_stocks, input_size, seq_len)
         x_reshaped = x.view(batch_size * num_stocks, seq_len, input_size)
-        x_reshaped = x_reshaped.transpose(1, 2)  # (B*N, input_size, seq_len)
-        
-        # Apply temporal aggregation
-        x_slow = self.slow_aggregator(x_reshaped)  # (B*N, input_size, seq_len')
-        
-        # Transpose back and reshape for GRU
-        x_slow = x_slow.transpose(1, 2)  # (B*N, seq_len', input_size)
+        x_reshaped = x_reshaped.transpose(1, 2)
+        x_slow = self.slow_aggregator(x_reshaped)
+        x_slow = x_slow.transpose(1, 2)
         seq_len_slow = x_slow.shape[1]
         x_slow = x_slow.view(batch_size, num_stocks, seq_len_slow, input_size)
         
-        # Process aggregated sequence through slow GRU
-        # Output: (batch, num_stocks, hidden_sizes[-1])
         slow_out = self.slow_gru(x_slow)
-        
-        # Combine fast and slow representations
-        combined = torch.cat([fast_out, slow_out], dim=-1)  # (batch, num_stocks, hidden*2)
-        output = self.combiner(combined)  # (batch, num_stocks, hidden)
+        combined = torch.cat([fast_out, slow_out], dim=-1)
+        output = self.combiner(combined)
         
         return output
 
 
 def _make_activation(name: str) -> nn.Module:
-    """Return an activation module from a string name."""
     if name == "elu":
         return nn.ELU()
     if name == "relu":
@@ -237,46 +176,36 @@ def _make_activation(name: str) -> nn.Module:
     raise ValueError(f"Unsupported activation: {name!r}. Choose 'elu' or 'relu'.")
 
 
-class GATLayer(nn.Module):
+class GATBlock(nn.Module):
+    """Two-layer Graph Attention block.
+
+    Layer 1: multi-head GAT (in_channels → hidden × heads, concatenated)
+    Layer 2: single-head GAT (hidden × heads → out_channels)
+
+    Used twice in the MCI-GRU architecture: once for cross-sectional feature
+    extraction (Part B) and once for the final prediction head (Part D).
+    The former ``GATLayer`` and ``GATLayer_1`` were near-identical classes
+    that only differed in parameter naming — this unified class replaces both.
     """
-    Two-layer GAT for cross-sectional feature extraction.
-    Activation is configurable (default ELU).
-    """
-    def __init__(self, hidden_size_gat1: int, output_gat1: int, 
-                 in_channels: int, out_channels: int, heads: int = 1,
-                 activation: str = "elu"):
-        super(GATLayer, self).__init__()
-        self.gat1 = GATConv(in_channels, hidden_size_gat1, heads=heads, concat=True, edge_dim=1)
-        self.gat2 = GATConv(hidden_size_gat1 * heads, output_gat1, heads=1, concat=False, edge_dim=1)
+
+    def __init__(self, in_channels: int, hidden: int, out_channels: int,
+                 heads: int = 1, activation: str = "elu"):
+        super().__init__()
+        self.gat1 = GATConv(in_channels, hidden, heads=heads, concat=True, edge_dim=1)
+        self.gat2 = GATConv(hidden * heads, out_channels, heads=1, concat=False, edge_dim=1)
         self.act = _make_activation(activation)
 
-    def forward(self, x: torch.Tensor, edge_index: torch.Tensor, 
+    def forward(self, x: torch.Tensor, edge_index: torch.Tensor,
                 edge_weight: torch.Tensor) -> torch.Tensor:
         x = self.gat1(x, edge_index, edge_weight)
         x = self.act(x)
         x = self.gat2(x, edge_index, edge_weight)
         return x
-    
 
-class GATLayer_1(nn.Module):
-    """
-    Final prediction GAT layer.
-    Activation is configurable (default ELU).
-    """
-    def __init__(self, hidden_size_gat2: int, in_channels: int, 
-                 out_channels: int, heads: int = 1,
-                 activation: str = "elu"):
-        super(GATLayer_1, self).__init__()
-        self.gat1 = GATConv(in_channels, hidden_size_gat2, heads=heads, concat=True, edge_dim=1)
-        self.gat2 = GATConv(hidden_size_gat2 * heads, out_channels, heads=1, concat=False, edge_dim=1)
-        self.act = _make_activation(activation)
 
-    def forward(self, x: torch.Tensor, edge_index: torch.Tensor, 
-                edge_weight: torch.Tensor) -> torch.Tensor:
-        x = self.gat1(x, edge_index, edge_weight)
-        x = self.act(x)
-        x = self.gat2(x, edge_index, edge_weight)
-        return x 
+# Backward-compatible aliases so existing checkpoints and imports keep working.
+GATLayer = GATBlock
+GATLayer_1 = GATBlock
 
 
 class SelfAttention(nn.Module):
@@ -300,13 +229,6 @@ class SelfAttention(nn.Module):
         self.scale = embed_dim ** -0.5
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            x: (N, embed_dim) or (batch, N, embed_dim) -- one vector per stock.
-
-        Returns:
-            Same shape as input, with cross-stock self-attention applied.
-        """
         q = self.W_q(x)
         k = self.W_k(x)
         v = self.W_v(x)
@@ -358,58 +280,23 @@ class MarketLatentStateLearner(nn.Module):
     def multi_head_cross_attention(self, query: torch.Tensor, key_value: torch.Tensor, 
                                     W_Q: nn.Linear, W_K: nn.Linear, 
                                     W_V: nn.Linear, W_O: nn.Linear) -> torch.Tensor:
-        """
-        Multi-head cross-attention.
-        
-        Args:
-            query: (N, feature_dim) - A1 or A2 as query
-            key_value: (num_latent_states, feature_dim) - R1 or R2 as key/value
-            W_Q, W_K, W_V, W_O: projection layers
-        
-        Returns:
-            output: (N, feature_dim) - enriched features
-        """
         N = query.shape[0]
-        
-        # Project to Q, K, V
-        Q = W_Q(query)      # (N, feature_dim)
-        K = W_K(key_value)  # (num_latent_states, feature_dim)
-        V = W_V(key_value)  # (num_latent_states, feature_dim)
-        
-        # Reshape for multi-head attention
-        Q = Q.view(N, self.num_heads, self.head_dim).transpose(0, 1)  # (heads, N, head_dim)
+        Q = W_Q(query)
+        K = W_K(key_value)
+        V = W_V(key_value)
+        Q = Q.view(N, self.num_heads, self.head_dim).transpose(0, 1)
         K = K.view(self.num_latent_states, self.num_heads, self.head_dim).transpose(0, 1)
         V = V.view(self.num_latent_states, self.num_heads, self.head_dim).transpose(0, 1)
-        
-        # Scaled dot-product attention
         attn_scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.head_dim)
         attn_weights = F.softmax(attn_scores, dim=-1)
-        
-        # Apply attention to values
-        attn_output = torch.matmul(attn_weights, V)  # (heads, N, head_dim)
-        
-        # Concatenate heads
-        attn_output = attn_output.transpose(0, 1).contiguous().view(N, -1)  # (N, feature_dim)
-        
-        # Output projection
+        attn_output = torch.matmul(attn_weights, V)
+        attn_output = attn_output.transpose(0, 1).contiguous().view(N, -1)
         output = W_O(attn_output)
         
         return output
     
     def forward(self, A1: torch.Tensor, A2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Args:
-            A1: temporal features, shape (N, feature_dim)
-            A2: cross-sectional features, shape (N, feature_dim)
-        
-        Returns:
-            B1: enriched temporal features, shape (N, feature_dim)
-            B2: enriched cross-sectional features, shape (N, feature_dim)
-        """
-        # Cross-attention between A1 (query) and R1 (key/value)
         B1 = self.multi_head_cross_attention(A1, self.R1, self.W_Q1, self.W_K1, self.W_V1, self.W_O1)
-        
-        # Cross-attention between A2 (query) and R2 (key/value)
         B2 = self.multi_head_cross_attention(A2, self.R2, self.W_Q2, self.W_K2, self.W_V2, self.W_O2)
         
         return B1, B2
@@ -446,7 +333,6 @@ class StockPredictionModel(nn.Module):
         if gru_hidden_sizes is None:
             gru_hidden_sizes = [32, 10]
         
-        # Part A: Temporal feature extraction
         if use_multi_scale:
             self.temporal_encoder = MultiScaleTemporalEncoder(
                 input_size, 
@@ -457,73 +343,45 @@ class StockPredictionModel(nn.Module):
         else:
             self.temporal_encoder = ImprovedGRU(input_size, hidden_sizes=gru_hidden_sizes)
         gru_output_size = self.temporal_encoder.output_size
-        
-        # Part B: GAT for cross-sectional features
-        self.gat_layer = GATLayer(
-            hidden_size_gat1, output_gat1, input_size, output_gat1,
-            gat_heads, activation=activation,
+        self.gat_layer = GATBlock(
+            in_channels=input_size, hidden=hidden_size_gat1,
+            out_channels=output_gat1, heads=gat_heads, activation=activation,
         )
-        
-        # Projection layers to align dimensions for cross-attention
         self.align_dim = hidden_size_gat1
         self.proj_temporal = nn.Linear(gru_output_size, self.align_dim)
         self.proj_cross = nn.Linear(output_gat1, self.align_dim)
-        
-        # Part C: Multi-head cross-attention for latent market states
         self.latent_learner = MarketLatentStateLearner(
             feature_dim=self.align_dim,
             num_latent_states=num_hidden_states,
             num_heads=cross_attn_heads,
             latent_init_scale=latent_init_scale,
         )
-        
-        # Part D: Prediction layer
         concat_size = 4 * self.align_dim
 
-        # Optional self-attention to mix [A1, A2, B1, B2] before the final GAT
         if use_self_attention:
             self.self_attention: Optional[SelfAttention] = SelfAttention(concat_size)
         else:
             self.self_attention = None
 
-        self.final_gat = GATLayer_1(
-            hidden_size_gat2, concat_size, 1, gat_heads, activation=activation,
+        self.final_gat = GATBlock(
+            in_channels=concat_size, hidden=hidden_size_gat2,
+            out_channels=1, heads=gat_heads, activation=activation,
         )
         self.output_act = _make_activation(activation)
         
     def forward(self, x_time_series: torch.Tensor, x_graph: torch.Tensor, 
                 edge_index: torch.Tensor, edge_weight: torch.Tensor, 
                 num_stocks: Optional[int] = None) -> torch.Tensor:
-        """
-        Batched forward pass supporting batch_size > 1.
-        
-        Args:
-            x_time_series: (batch, num_stocks, seq_len, input_size)
-            x_graph: (batch * num_stocks, input_size) - PyG batched graph nodes
-            edge_index: (2, batch * num_edges) - PyG batched edge indices
-            edge_weight: (batch * num_edges,) - PyG batched edge weights
-            num_stocks: int - number of stocks per graph (required for batch > 1)
-        
-        Returns:
-            predictions: (batch, num_stocks) - predicted returns for each stock
-        """
         batch_size = x_time_series.shape[0]
         if num_stocks is None:
             num_stocks = x_time_series.shape[1]
         
-        # Part A: Temporal features
         A1_raw = self.temporal_encoder(x_time_series)
         A1_raw = A1_raw.reshape(batch_size * num_stocks, -1)
         A1 = self.proj_temporal(A1_raw)
-        
-        # Part B: Cross-sectional features via GAT
         A2_raw = self.gat_layer(x_graph, edge_index, edge_weight)
         A2 = self.proj_cross(A2_raw)
-        
-        # Part C: Latent state learning via multi-head cross-attention
         B1, B2 = self.latent_learner(A1, A2)
-        
-        # Part D: Concatenate, optionally self-attend, then predict
         Z = torch.cat([A1, A2, B1, B2], dim=-1)
 
         if self.self_attention is not None:
@@ -541,15 +399,6 @@ class StockPredictionModel(nn.Module):
 
 
 def create_model(input_size: int, config: Dict[str, Any]) -> StockPredictionModel:
-    """
-    Create model using hyperparameters from config dict.
-
-    New configurable options (with backwards-compatible defaults):
-      use_multi_scale   -- True  (use MultiScaleTemporalEncoder; False = plain ImprovedGRU)
-      use_self_attention -- True  (apply SelfAttention before final GAT)
-      activation        -- "elu" (or "relu")
-      latent_init_scale -- 0.02  (original code used 1.0)
-    """
     return StockPredictionModel(
         input_size=input_size,
         gru_hidden_sizes=config.get('gru_hidden_sizes', [32, 10]),

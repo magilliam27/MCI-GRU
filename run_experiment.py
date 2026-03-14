@@ -25,22 +25,18 @@ Usage:
 """
 
 import os
-import gc
 import sys
 import json
 import random
 import logging
+
 import numpy as np
-import pandas as pd
 import torch
-from tqdm import tqdm
-from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
-# Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from mci_gru.config import (
@@ -51,16 +47,14 @@ from mci_gru.config import (
     ModelConfig,
     TrainingConfig,
 )
-from mci_gru.data.data_manager import DataManager, create_data_loaders
+from mci_gru.data.data_manager import create_data_loaders
 from mci_gru.features import FeatureEngineer
-from mci_gru.graph import GraphBuilder
-from mci_gru.models import create_model, StockPredictionModel
-from mci_gru.training import Trainer, train_multiple_models
-from mci_gru.training.metrics import evaluate_predictions, print_metrics
+from mci_gru.models import create_model
+from mci_gru.pipeline import prepare_data, prepare_data_index_level
+from mci_gru.training import train_multiple_models
 
 
 def set_seed(seed: int):
-    """Set random seeds for reproducibility."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -69,25 +63,9 @@ def set_seed(seed: int):
 
 
 def setup_logging(output_dir: str, experiment_name: str) -> logging.Logger:
-    """
-    Setup logging to both file and console.
-    
-    Args:
-        output_dir: Base output directory
-        experiment_name: Name of the experiment
-        
-    Returns:
-        Configured logger
-    """
-    # Create logs directory
-    log_dir = output_dir
-    os.makedirs(log_dir, exist_ok=True)
-    
-    # Create log file with timestamp
+    os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = os.path.join(log_dir, f'training_{timestamp}.log')
-    
-    # Configure logging
+    log_file = os.path.join(output_dir, f'training_{timestamp}.log')
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
@@ -105,11 +83,7 @@ def setup_logging(output_dir: str, experiment_name: str) -> logging.Logger:
 
 
 def dict_to_config(cfg: DictConfig) -> ExperimentConfig:
-    """Convert Hydra DictConfig to ExperimentConfig dataclass."""
-    # Convert to plain dict
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
-    
-    # Create sub-configs
     data_cfg = DataConfig(**cfg_dict.get('data', {}))
     feature_cfg = FeatureConfig(**cfg_dict.get('features', {}))
     graph_cfg = GraphConfig(**cfg_dict.get('graph', {}))
@@ -128,509 +102,38 @@ def dict_to_config(cfg: DictConfig) -> ExperimentConfig:
     )
 
 
-def prepare_data_index_level(
-    config: ExperimentConfig,
-    feature_engineer: FeatureEngineer
-) -> Dict[str, Any]:
-    """
-    Prepare data for index-level experiment mode (single index series, no survivorship bias).
-
-    Loads index series (FRED or CSV), regime inputs, builds features, and returns
-    the same dict shape as prepare_data so the rest of the pipeline runs unchanged.
-    Uses a trivial graph (1 node, 0 edges).
-    """
-    print("=" * 80)
-    print("Preparing Data (index-level mode; no stock-level survivorship bias)")
-    print("=" * 80)
-
-    data_manager = DataManager(config.data)
-    df = data_manager.load_index_series()
-    kdcode_list = ["INDEX"]
-
-    vix_df = None
-    credit_df = None
-    regime_df = None
-    if config.features.include_global_regime:
-        try:
-            regime_df = data_manager.load_regime_inputs(
-                lseg_market_ric=config.features.regime_lseg_market_ric,
-                lseg_copper_ric=config.features.regime_lseg_copper_ric,
-                lseg_yield_10y_ric=config.features.regime_lseg_yield_10y_ric,
-                lseg_yield_3m_ric=config.features.regime_lseg_yield_3m_ric,
-                lseg_oil_ric=config.features.regime_lseg_oil_ric,
-                regime_inputs_csv=config.features.regime_inputs_csv or None,
-                regime_enforce_lag_days=config.features.regime_enforce_lag_days,
-            )
-            print(f"Loaded regime input data: {len(regime_df)} observations")
-        except Exception as e:
-            if config.features.regime_strict:
-                raise
-            print(f"Warning: Could not load regime input data: {e}")
-            print("Continuing with zero-filled regime features (soft-fail)")
-
-    df = feature_engineer.transform(df, vix_df, credit_df, regime_df)
-    feature_cols = feature_engineer.get_feature_columns()
-    print(f"Feature columns ({len(feature_cols)}): {feature_cols}")
-
-    for col in feature_cols:
-        if col in df.columns:
-            df[col] = df[col].fillna(0.0)
-    df = df.fillna(0.0)
-
-    train_start, train_end = config.data.train_start, config.data.train_end
-    val_start, val_end = config.data.val_start, config.data.val_end
-    test_start, test_end = config.data.test_start, config.data.test_end
-    date_mask = (df["dt"] >= train_start) & (df["dt"] <= test_end)
-    df_norm = df[date_mask].copy()
-    train_df = df_norm[(df_norm["dt"] >= train_start) & (df_norm["dt"] <= train_end)]
-    val_df = df_norm[(df_norm["dt"] >= val_start) & (df_norm["dt"] <= val_end)]
-    test_df = df_norm[(df_norm["dt"] >= test_start) & (df_norm["dt"] <= test_end)]
-
-    means = {}
-    stds = {}
-    for col in feature_cols:
-        if col in train_df.columns:
-            means[col] = train_df[col].mean()
-            stds[col] = train_df[col].std() or 1.0
-    for col in feature_cols:
-        if col in df_norm.columns:
-            df_norm[col] = np.clip(
-                df_norm[col],
-                means.get(col, 0) - 3 * stds.get(col, 1),
-                means.get(col, 0) + 3 * stds.get(col, 1),
-            )
-            df_norm[col] = (df_norm[col] - means.get(col, 0)) / stds.get(col, 1)
-
-    df_filtered = df_norm.copy()
-    his_t = config.model.his_t
-    train_dates = sorted(train_df["dt"].unique())
-    val_dates = sorted(val_df["dt"].unique())
-    test_dates = sorted(test_df["dt"].unique())
-    effective_train_days = len(train_dates) - his_t
-
-    stock_features = generate_time_series_features(df_filtered, kdcode_list, feature_cols, his_t)
-    stock_features_train = stock_features[:effective_train_days]
-    stock_features_val = stock_features[effective_train_days:effective_train_days + len(val_dates)]
-    stock_features_test = stock_features[effective_train_days + len(val_dates):]
-
-    x_graph_train = generate_graph_features(train_df, kdcode_list, feature_cols, train_dates[his_t:])
-    x_graph_val = generate_graph_features(val_df, kdcode_list, feature_cols, val_dates)
-    x_graph_test = generate_graph_features(test_df, kdcode_list, feature_cols, test_dates)
-
-    train_labels = compute_labels(df_filtered, kdcode_list, train_dates[his_t:], config.model.label_t)
-    val_labels = compute_labels(df_filtered, kdcode_list, val_dates, config.model.label_t)
-
-    if config.training.label_type == "rank":
-        print("Converting labels to cross-sectional rank percentiles...")
-        train_labels = _apply_rank_labels(train_labels)
-        val_labels = _apply_rank_labels(val_labels)
-
-    edge_index = torch.empty(2, 0, dtype=torch.long)
-    edge_weight = torch.empty(0, dtype=torch.float32)
-
-    return {
-        "kdcode_list": kdcode_list,
-        "train_dates": train_dates[his_t:],
-        "val_dates": val_dates,
-        "test_dates": test_dates,
-        "stock_features_train": stock_features_train,
-        "stock_features_val": stock_features_val,
-        "stock_features_test": stock_features_test,
-        "x_graph_train": x_graph_train,
-        "x_graph_val": x_graph_val,
-        "x_graph_test": x_graph_test,
-        "train_labels": train_labels,
-        "val_labels": val_labels,
-        "edge_index": edge_index,
-        "edge_weight": edge_weight,
-        "feature_cols": feature_cols,
-        "graph_builder": None,
-        "df": df_filtered,
-        "norm_means": means,
-        "norm_stds": stds,
-    }
-
-
-def prepare_data(
-    config: ExperimentConfig,
-    feature_engineer: FeatureEngineer
-) -> Dict[str, Any]:
-    """
-    Load and prepare data for training (stock-level cross-sectional).
-    
-    This function mirrors the data preparation logic from sp500.py
-    but uses the modular components.
-    """
-    print("=" * 80)
-    print("Preparing Data")
-    print("=" * 80)
-    
-    # Load data
-    data_manager = DataManager(config.data)
-    df = data_manager.load()
-    
-    # Load VIX if needed
-    vix_df = None
-    if config.features.include_vix:
-        try:
-            vix_df = data_manager.load_vix()
-            print(f"Loaded VIX data: {len(vix_df)} observations")
-        except Exception as e:
-            print(f"Warning: Could not load VIX data: {e}")
-            print("Continuing without VIX features")
-
-    # Load credit spreads (FRED) if needed
-    credit_df = None
-    if config.features.include_credit_spread:
-        try:
-            credit_df = data_manager.load_credit_spreads()
-            print(f"Loaded credit spread data: {len(credit_df)} observations")
-        except Exception as e:
-            print(f"Warning: Could not load credit spread data: {e}")
-            print("Continuing without credit spread features")
-
-    # Load global regime inputs (hybrid FRED + LSEG) if needed
-    regime_df = None
-    if config.features.include_global_regime:
-        try:
-            regime_df = data_manager.load_regime_inputs(
-                lseg_market_ric=config.features.regime_lseg_market_ric,
-                lseg_copper_ric=config.features.regime_lseg_copper_ric,
-                lseg_yield_10y_ric=config.features.regime_lseg_yield_10y_ric,
-                lseg_yield_3m_ric=config.features.regime_lseg_yield_3m_ric,
-                lseg_oil_ric=config.features.regime_lseg_oil_ric,
-                regime_inputs_csv=config.features.regime_inputs_csv or None,
-                regime_enforce_lag_days=config.features.regime_enforce_lag_days,
-            )
-            print(f"Loaded regime input data: {len(regime_df)} observations")
-        except Exception as e:
-            if config.features.regime_strict:
-                raise
-            print(f"Warning: Could not load regime input data: {e}")
-            print("Continuing with zero-filled regime features (soft-fail)")
-
-    # Apply feature engineering
-    df = feature_engineer.transform(df, vix_df, credit_df, regime_df)
-    
-    # Get feature columns
-    feature_cols = feature_engineer.get_feature_columns()
-    print(f"Feature columns ({len(feature_cols)}): {feature_cols}")
-    
-    # Fill NaN values per day (mean imputation)
-    print("Filling NaN values...")
-    df_features_grouped = df.groupby('dt')
-    res = []
-    for dt in df_features_grouped.groups:
-        df_day = df_features_grouped.get_group(dt).copy()
-        for column in feature_cols:
-            if column in df_day.columns:
-                mean_val = df_day[column].mean()
-                df_day[column] = df_day[column].fillna(mean_val)
-        df_day = df_day.fillna(0.0)
-        res.append(df_day)
-    df_filled = pd.concat(res)
-    del res
-    gc.collect()
-    
-    # Compute normalization statistics from training period
-    print(f"Computing normalization statistics from training period...")
-    train_df = df_filled[df_filled['dt'] <= config.data.train_end]
-    means = {}
-    stds = {}
-    for col in feature_cols:
-        if col in train_df.columns:
-            means[col] = train_df[col].mean()
-            stds[col] = train_df[col].std()
-            if stds[col] == 0:
-                stds[col] = 1.0
-    
-    # Apply normalization
-    df_norm = df_filled.copy()
-    for col in feature_cols:
-        if col in df_norm.columns:
-            mean = means[col]
-            std = stds[col]
-            # 3-sigma clipping
-            max_range = mean + 3 * std
-            min_range = mean - 3 * std
-            df_norm[col] = np.clip(df_norm[col], min_range, max_range)
-            # Z-score
-            df_norm[col] = (df_norm[col] - mean) / std
-    
-    del df_filled
-    gc.collect()
-    
-    # Filter to complete stocks
-    df_filtered, kdcode_list = data_manager.filter_complete_stocks(df_norm)
-    
-    # Split by period
-    train_df, val_df, test_df = data_manager.split_by_period(df_filtered)
-    
-    train_dates = sorted(train_df['dt'].unique())
-    val_dates = sorted(val_df['dt'].unique())
-    test_dates = sorted(test_df['dt'].unique())
-    
-    # Generate time series features
-    print("Generating time series features...")
-    his_t = config.model.his_t
-    
-    # This is a simplified version - in production you'd use the full
-    # generate_time_series_features_paper function from sp500.py
-    stock_features = generate_time_series_features(
-        df_filtered, kdcode_list, feature_cols, his_t
-    )
-    
-    # Split features by period
-    effective_train_days = len(train_dates) - his_t
-    
-    stock_features_train = stock_features[:effective_train_days]
-    stock_features_val = stock_features[effective_train_days:effective_train_days + len(val_dates)]
-    stock_features_test = stock_features[effective_train_days + len(val_dates):]
-    
-    # Generate graph features
-    print("Generating graph features...")
-    x_graph_train = generate_graph_features(train_df, kdcode_list, feature_cols, train_dates[his_t:])
-    x_graph_val = generate_graph_features(val_df, kdcode_list, feature_cols, val_dates)
-    x_graph_test = generate_graph_features(test_df, kdcode_list, feature_cols, test_dates)
-    
-    # Compute labels
-    print("Computing labels...")
-    train_labels = compute_labels(df, kdcode_list, train_dates[his_t:], config.model.label_t)
-    val_labels = compute_labels(df, kdcode_list, val_dates, config.model.label_t)
-
-    if config.training.label_type == "rank":
-        print("Converting labels to cross-sectional rank percentiles...")
-        train_labels = _apply_rank_labels(train_labels)
-        val_labels = _apply_rank_labels(val_labels)
-
-    # Build graph
-    print("Building correlation graph...")
-    graph_builder = GraphBuilder(
-        judge_value=config.graph.judge_value,
-        update_frequency_months=config.graph.update_frequency_months,
-        corr_lookback_days=config.graph.corr_lookback_days
-    )
-    edge_index, edge_weight = graph_builder.build_graph(
-        df, kdcode_list, config.data.train_start
-    )
-    
-    return {
-        'kdcode_list': kdcode_list,
-        'train_dates': train_dates[his_t:],
-        'val_dates': val_dates,
-        'test_dates': test_dates,
-        'stock_features_train': stock_features_train,
-        'stock_features_val': stock_features_val,
-        'stock_features_test': stock_features_test,
-        'x_graph_train': x_graph_train,
-        'x_graph_val': x_graph_val,
-        'x_graph_test': x_graph_test,
-        'train_labels': train_labels,
-        'val_labels': val_labels,
-        'edge_index': edge_index,
-        'edge_weight': edge_weight,
-        'feature_cols': feature_cols,
-        'graph_builder': graph_builder,
-        'df': df,  # Keep for dynamic graph updates
-        'norm_means': means,
-        'norm_stds': stds,
-    }
-
-
-def generate_time_series_features(
-    df: pd.DataFrame,
-    kdcode_list: List[str],
-    feature_cols: List[str],
-    his_t: int
-) -> np.ndarray:
-    """
-    Generate time series features for all stocks.
-    
-    Returns array of shape (num_usable_days, num_stocks, his_t, num_features)
-    """
-    all_dates = sorted(df['dt'].unique())
-    num_stocks = len(kdcode_list)
-    num_features = len(feature_cols)
-    num_usable_days = len(all_dates) - his_t
-    
-    print(f"  Allocating feature array: ({num_usable_days}, {num_stocks}, {his_t}, {num_features})")
-    
-    # Pre-allocate array
-    stock_features = np.zeros((num_usable_days, num_stocks, his_t, num_features), dtype=np.float32)
-    
-    # Build lookup
-    stock_to_idx = {stock: idx for idx, stock in enumerate(kdcode_list)}
-    date_to_idx = {date: idx for idx, date in enumerate(all_dates)}
-    
-    # Build pivot data
-    df_subset = df[df['kdcode'].isin(kdcode_list)][['kdcode', 'dt'] + feature_cols].copy()
-    pivot_data = np.zeros((len(all_dates), num_stocks, num_features), dtype=np.float32)
-    
-    for _, row in tqdm(df_subset.iterrows(), total=len(df_subset), desc="  Building pivot"):
-        kdcode = row['kdcode']
-        dt = row['dt']
-        if kdcode in stock_to_idx and dt in date_to_idx:
-            stock_idx = stock_to_idx[kdcode]
-            date_idx = date_to_idx[dt]
-            pivot_data[date_idx, stock_idx, :] = row[feature_cols].values.astype(np.float32)
-    
-    # Generate sliding windows
-    for day_offset in tqdm(range(num_usable_days), desc="  Processing days"):
-        stock_features[day_offset, :, :, :] = pivot_data[day_offset:day_offset + his_t, :, :].transpose(1, 0, 2)
-    
-    return stock_features
-
-
-def generate_graph_features(
-    df: pd.DataFrame,
-    kdcode_list: List[str],
-    feature_cols: List[str],
-    dates: List[str]
-) -> np.ndarray:
-    """Generate graph node features for each day."""
-    num_dates = len(dates)
-    num_stocks = len(kdcode_list)
-    num_features = len(feature_cols)
-    
-    x_graph = np.zeros((num_dates, num_stocks, num_features), dtype=np.float32)
-    stock_to_idx = {stock: idx for idx, stock in enumerate(kdcode_list)}
-    
-    df_subset = df[df['dt'].isin(dates) & df['kdcode'].isin(kdcode_list)]
-    
-    for date_idx, date in enumerate(dates):
-        df_day = df_subset[df_subset['dt'] == date]
-        for _, row in df_day.iterrows():
-            stock_idx = stock_to_idx.get(row['kdcode'])
-            if stock_idx is not None:
-                x_graph[date_idx, stock_idx, :] = row[feature_cols].values.astype(np.float32)
-    
-    return x_graph
-
-
-def _apply_rank_labels(labels: np.ndarray) -> np.ndarray:
-    """Convert raw return labels to cross-sectional rank percentiles per day.
-
-    Each day's returns are ranked across stocks and divided by the number of
-    stocks to yield percentiles in (0, 1].  Only same-day information is used,
-    so this does **not** introduce look-ahead bias.
-    """
-    from scipy.stats import rankdata
-
-    ranked = np.empty_like(labels)
-    for i in range(labels.shape[0]):
-        ranked[i] = rankdata(labels[i]) / labels.shape[1]
-    return ranked.astype(np.float32)
-
-
-def compute_labels(
-    df: pd.DataFrame,
-    kdcode_list: List[str],
-    dates: List[str],
-    label_t: int
-) -> np.ndarray:
-    """Compute forward return labels."""
-    df_subset = df[df['kdcode'].isin(kdcode_list)].copy()
-    df_subset = df_subset.sort_values(['kdcode', 'dt'])
-    
-    # Compute forward returns
-    df_subset['future_close'] = df_subset.groupby('kdcode')['close'].shift(-label_t)
-    df_subset['next_close'] = df_subset.groupby('kdcode')['close'].shift(-1)
-    df_subset['forward_return'] = df_subset['future_close'] / df_subset['next_close'] - 1
-    
-    # Pivot
-    df_subset = df_subset[df_subset['dt'].isin(dates)]
-    pivot = df_subset.pivot_table(index='dt', columns='kdcode', values='forward_return')
-    pivot = pivot.reindex(index=dates, columns=kdcode_list)
-    
-    # Fill NaN
-    for date in dates:
-        if date in pivot.index:
-            row_mean = pivot.loc[date].mean()
-            pivot.loc[date] = pivot.loc[date].fillna(row_mean)
-    pivot = pivot.fillna(0)
-    
-    return pivot.values.astype(np.float32)
-
-
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def main(cfg: DictConfig):
-    """Main entry point."""
-    # Get Hydra's output directory (respects output_dir override from command line)
     from hydra.core.hydra_config import HydraConfig
     try:
         hydra_cfg = HydraConfig.get()
         output_path = hydra_cfg.runtime.output_dir
     except:
-        # Fallback if Hydra config not available
         output_path = os.getcwd()
     
-    # Setup logging first
     logger = setup_logging(output_path, cfg.get('experiment_name', 'baseline'))
     
     logger.info("=" * 80)
     logger.info("MCI-GRU Experiment Runner")
     logger.info("=" * 80)
-    
-    # Print configuration
     logger.info("\nConfiguration:")
     logger.info("\n" + OmegaConf.to_yaml(cfg))
-    
-    # Convert to typed config
     config = dict_to_config(cfg)
-    
-    # Use Hydra's managed output path (preserves user's output_dir setting)
-    # Don't override config.output_dir - it contains the base path
-    # output_path contains the full timestamped path
-    
-    # Set seed
     set_seed(config.seed)
     logger.info(f"\nRandom seed: {config.seed}")
     logger.info(f"Output directory: {output_path}")
-    
-    # Save config
     config_path = os.path.join(output_path, 'config.yaml')
     OmegaConf.save(cfg, config_path)
     logger.info(f"Configuration saved to: {config_path}")
     
-    # Create feature engineer
     logger.info("\nInitializing feature engineer...")
-    feature_engineer = FeatureEngineer(
-        include_momentum=config.features.include_momentum,
-        include_weekly_momentum=config.features.include_weekly_momentum,
-        momentum_encoding=config.features.momentum_encoding,
-        momentum_blend_mode=config.features.momentum_blend_mode,
-        momentum_blend_fast_weight=config.features.momentum_blend_fast_weight,
-        momentum_dynamic_correction_fast_weight=config.features.momentum_dynamic_correction_fast_weight,
-        momentum_dynamic_rebound_fast_weight=config.features.momentum_dynamic_rebound_fast_weight,
-        momentum_dynamic_lookback_periods=config.features.momentum_dynamic_lookback_periods,
-        momentum_dynamic_min_history=config.features.momentum_dynamic_min_history,
-        momentum_dynamic_min_state_observations=config.features.momentum_dynamic_min_state_observations,
-        momentum_buffer_low=config.features.momentum_buffer_low,
-        momentum_buffer_high=config.features.momentum_buffer_high,
-        include_volatility=config.features.include_volatility,
-        include_vix=config.features.include_vix,
-        include_credit_spread=config.features.include_credit_spread,
-        include_global_regime=config.features.include_global_regime,
-        regime_change_months=config.features.regime_change_months,
-        regime_norm_months=config.features.regime_norm_months,
-        regime_clip_z=config.features.regime_clip_z,
-        regime_exclusion_months=config.features.regime_exclusion_months,
-        regime_similarity_quantile=config.features.regime_similarity_quantile,
-        regime_min_history_months=config.features.regime_min_history_months,
-        regime_strict=config.features.regime_strict,
-        include_rsi=config.features.include_rsi,
-        include_ma_features=config.features.include_ma_features,
-        include_price_features=config.features.include_price_features,
-        include_volume_features=config.features.include_volume_features,
-    )
+    feature_engineer = FeatureEngineer(config.features)
     
-    # Prepare data (stock-level or index-level to avoid survivorship bias)
     if config.data.experiment_mode == "index_level":
         data = prepare_data_index_level(config, feature_engineer)
     else:
         data = prepare_data(config, feature_engineer)
     
-    # Save run metadata for standalone inference (paper trading pipeline)
     metadata = {
         'norm_means': {k: float(v) for k, v in data['norm_means'].items()},
         'norm_stds': {k: float(v) for k, v in data['norm_stds'].items()},
@@ -654,7 +157,6 @@ def main(cfg: DictConfig):
     }, graph_data_path)
     logger.info(f"Graph data saved to: {graph_data_path}")
 
-    # Create data loaders
     logger.info("\nCreating data loaders...")
     train_loader, val_loader, test_loader = create_data_loaders(
         stock_features_train=data['stock_features_train'],
@@ -670,13 +172,11 @@ def main(cfg: DictConfig):
         batch_size=config.training.batch_size
     )
     
-    # Model factory
     num_features = len(data['feature_cols'])
     
     def model_factory():
         return create_model(num_features, config.model.to_dict())
     
-    # Train multiple models
     logger.info("\n" + "=" * 80)
     logger.info("Training")
     logger.info("=" * 80)
@@ -692,10 +192,9 @@ def main(cfg: DictConfig):
         graph_builder=data['graph_builder'],
         df=data['df'],
         train_dates=data['train_dates'],
-        output_path=output_path,  # Pass Hydra's output path
+        output_path=output_path,
     )
     
-    # Summary
     logger.info("\n" + "=" * 80)
     logger.info("Experiment Complete")
     logger.info("=" * 80)

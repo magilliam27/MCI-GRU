@@ -6,117 +6,94 @@
 # Local
 python run_experiment.py
 
-# Google Drive (Colab)
-python run_experiment.py output_dir=/content/drive/MyDrive/MCI-GRU-Experiments
+# Custom output directory
+python run_experiment.py output_dir=/path/to/output
 ```
 
 **Outputs:** `{output_dir}/{experiment_name}/{timestamp}/`
 - `config.yaml` - Full configuration
 - `training_*.log` - Training logs
-- `models/` - Model checkpoints
+- `checkpoints/` - Model checkpoints
 - `averaged_predictions/` - Ensemble predictions
 
 ## Backtesting
 
-```bash
-# Basic (old way)
-python evaluate_sp500.py --predictions_dir path/to/predictions
+Backtesting is done via `tests/backtest_sp500.py` and `tests/backtest_sp500_daily.py`:
 
-# Enhanced (new way)
-python evaluate_sp500.py \
-    --predictions_dir path/to/predictions \
+```bash
+# Basic backtest
+python tests/backtest_sp500.py --predictions_dir path/to/averaged_predictions
+
+# With auto-save and plot
+python tests/backtest_sp500.py \
+    --predictions_dir path/to/averaged_predictions \
     --auto_save \
     --plot
-```
 
-**Outputs:** `{prediction_dir}/../backtest/`
-- `backtest_results.csv` - Metrics
-- `daily_returns.csv` - Time series
-- `equity_curve.png` - Plot
-- `summary.txt` - Report
-
-## Transaction Costs Comparison
-
-```bash
-# Without costs
-python evaluate_sp500.py \
-    --predictions_dir path/to/predictions \
-    --auto_save
-
-# With costs (separate directory)
-python evaluate_sp500.py \
-    --predictions_dir path/to/predictions \
+# With transaction costs (separate directory)
+python tests/backtest_sp500.py \
+    --predictions_dir path/to/averaged_predictions \
     --auto_save \
     --backtest_suffix _with_costs \
     --transaction_costs
 ```
 
-**Result:** Two directories side-by-side for easy comparison
-- `backtest/` - No transaction costs
-- `backtest_with_costs/` - With transaction costs
+**Outputs:** `{prediction_dir}/../backtest/` (or `backtest_with_costs/` when using `--backtest_suffix _with_costs`)
+- `backtest_results.csv` - Metrics
+- `daily_returns.csv` - Time series
+- `equity_curve.png` - Plot (with `--plot`)
+- `summary.txt` - Report
+
+## Paper Trade Pipeline
+
+The paper trading pipeline in `paper_trade/scripts/` provides inference, portfolio decisions, tracking, and reporting:
+
+```bash
+# Full nightly run (refresh data, track, infer, portfolio, report)
+python paper_trade/scripts/run_nightly.py
+
+# Individual steps
+python paper_trade/scripts/infer.py
+python paper_trade/scripts/portfolio.py
+python paper_trade/scripts/track.py
+python paper_trade/scripts/report.py
+```
+
+Pipeline order: `refresh_data` -> `track` -> `infer` -> `portfolio` -> `report`
 
 ## Finding Latest Run
 
 ```python
 import glob
 
-# Find latest run
 runs = sorted(glob.glob("results/baseline/*/"))
 latest = runs[-1]
 predictions = f"{latest}averaged_predictions"
 ```
 
-## Colab Setup
-
-```python
-from google.colab import drive
-drive.mount('/content/drive')
-
-GDRIVE = '/content/drive/MyDrive/MCI-GRU-Experiments'
-
-# Train
-!python run_experiment.py output_dir={GDRIVE} experiment_name=baseline
-
-# Find and backtest
-import glob
-latest = sorted(glob.glob(f"{GDRIVE}/baseline/*/"))[-1]
-!python evaluate_sp500.py \
-    --predictions_dir {latest}averaged_predictions \
-    --auto_save \
-    --plot
-```
-
 ## Key Arguments
 
 ### run_experiment.py
-- `output_dir=PATH` - Where to save (supports Google Drive)
+- `output_dir=PATH` - Where to save outputs
 - `experiment_name=NAME` - Experiment identifier
 - `+experiment=PRESET` - Use config preset (with_vix, etc.)
-
-### evaluate_sp500.py  
-- `--predictions_dir PATH` - Path to predictions
-- `--auto_save` - Save comprehensive outputs
-- `--backtest_suffix SUFFIX` - Add suffix to output dir
-- `--transaction_costs` - Enable TC modeling
-- `--plot` - Generate equity curve
+- `+data=PRESET` - Use data preset (russell1000, etc.)
 
 ## Output Structure
 
 ```
 output_dir/
 └── experiment_name/
-    └── YYYYMMDD_HHMMSS/           # Timestamp
+    └── YYYYMMDD_HHMMSS/
         ├── config.yaml
         ├── training_*.log
-        ├── models/
+        ├── checkpoints/
         ├── averaged_predictions/
-        ├── backtest/
-        │   ├── backtest_results.csv
-        │   ├── daily_returns.csv
-        │   ├── equity_curve.png
-        │   └── summary.txt
-        └── backtest_with_costs/
-            └── ... same structure ...
+        └── backtest/
+            ├── backtest_results.csv
+            ├── daily_returns.csv
+            ├── equity_curve.png
+            └── summary.txt
 ```
 
 ## See Also

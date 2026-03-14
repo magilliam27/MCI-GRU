@@ -26,7 +26,6 @@ from mci_gru.training.losses import ICLoss, CombinedMSEICLoss
 
 @dataclass
 class TrainingResult:
-    """Container for training results."""
     best_val_loss: float
     final_train_loss: float
     epochs_trained: int
@@ -54,8 +53,6 @@ class Trainer:
         checkpoint_path: Optional[str] = None,
     ):
         """
-        Initialize trainer.
-        
         Args:
             model: PyTorch model to train
             config: Experiment configuration
@@ -97,8 +94,6 @@ class Trainer:
         kdcode_list: Optional[List[str]] = None
     ) -> TrainingResult:
         """
-        Train the model.
-        
         Args:
             train_loader: Training data loader
             val_loader: Validation data loader
@@ -110,8 +105,7 @@ class Trainer:
             TrainingResult with training metrics
         """
         training_cfg = self.config.training
-        
-        # Setup optimizer and loss
+
         optimizer = optim.Adam(
             self.model.parameters(),
             lr=training_cfg.learning_rate,
@@ -124,7 +118,6 @@ class Trainer:
         else:
             criterion = nn.MSELoss()
 
-        # Create output directory
         output_path = self.output_path
         os.makedirs(output_path, exist_ok=True)
         best_model_path = (
@@ -133,8 +126,7 @@ class Trainer:
             else os.path.join(output_path, 'best_model.pth')
         )
         os.makedirs(os.path.dirname(best_model_path), exist_ok=True)
-        
-        # Training loop
+
         self.best_val_loss = float('inf')
         self.patience_counter = 0
         final_train_loss = 0.0
@@ -148,25 +140,20 @@ class Trainer:
         
         for epoch in range(training_cfg.num_epochs):
             self.epoch = epoch
-            
-            # Check for dynamic graph update
+
             if self._should_update_graph(epoch, train_dates):
                 self._update_graph(df, kdcode_list, train_dates[epoch % len(train_dates)])
-            
-            # Training phase
+
             train_loss = self._train_epoch(train_loader, optimizer, criterion)
             final_train_loss = train_loss
-            
-            # Validation phase
+
             val_loss = self._validate(val_loader, criterion)
             
             print(f"Epoch [{epoch+1}/{training_cfg.num_epochs}] - Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}")
-            
-            # Early stopping check
+
             if val_loss < self.best_val_loss:
                 self.best_val_loss = val_loss
                 self.patience_counter = 0
-                # Save best model
                 torch.save(self.model.state_dict(), best_model_path)
                 print(f"  -> New best model saved (val_loss={self.best_val_loss:.6f})")
             else:
@@ -183,32 +170,24 @@ class Trainer:
         )
     
     def _train_epoch(self, train_loader, optimizer, criterion) -> float:
-        """Run one training epoch."""
         self.model.train()
         total_loss = 0.0
         num_samples = 0
         
         for time_series, labels, graph_features, edge_index, edge_weight, n_stocks in train_loader:
             batch_size = time_series.shape[0]
-            
-            # Move to device
+
             time_series = time_series.to(self.device)
             labels = labels.to(self.device)
             graph_features = graph_features.to(self.device)
             edge_index = edge_index.to(self.device)
             edge_weight = edge_weight.to(self.device)
-            
-            # Forward pass
+
             optimizer.zero_grad()
             outputs = self.model(time_series, graph_features, edge_index, edge_weight, n_stocks)
-            
-            # Compute loss
             loss = criterion(outputs, labels)
-            
-            # Backward pass
             loss.backward()
-            
-            # Gradient clipping
+
             if self.config.training.gradient_clip > 0:
                 torch.nn.utils.clip_grad_norm_(
                     self.model.parameters(),
@@ -223,7 +202,6 @@ class Trainer:
         return total_loss / num_samples if num_samples > 0 else 0.0
     
     def _validate(self, val_loader, criterion) -> float:
-        """Run validation."""
         self.model.eval()
         total_loss = 0.0
         num_samples = 0
@@ -231,15 +209,13 @@ class Trainer:
         with torch.no_grad():
             for time_series, labels, graph_features, edge_index, edge_weight, n_stocks in val_loader:
                 batch_size = time_series.shape[0]
-                
-                # Move to device
+
                 time_series = time_series.to(self.device)
                 labels = labels.to(self.device)
                 graph_features = graph_features.to(self.device)
                 edge_index = edge_index.to(self.device)
                 edge_weight = edge_weight.to(self.device)
-                
-                # Forward pass
+
                 outputs = self.model(time_series, graph_features, edge_index, edge_weight, n_stocks)
                 loss = criterion(outputs, labels)
                 
@@ -249,7 +225,6 @@ class Trainer:
         return total_loss / num_samples if num_samples > 0 else 0.0
     
     def _should_update_graph(self, epoch: int, train_dates: Optional[List[str]]) -> bool:
-        """Check if graph should be updated."""
         if self.graph_builder is None:
             return False
         if self.config.graph.update_frequency_months == 0:
@@ -261,7 +236,6 @@ class Trainer:
         return self.graph_builder.should_update(current_date)
     
     def _update_graph(self, df: pd.DataFrame, kdcode_list: List[str], current_date: str):
-        """Update graph if needed."""
         if self.graph_builder is None:
             return
         
@@ -281,8 +255,6 @@ class Trainer:
         test_dates: List[str]
     ) -> np.ndarray:
         """
-        Run inference on test set.
-        
         Args:
             test_loader: Test data loader
             kdcode_list: List of stock codes
@@ -296,17 +268,15 @@ class Trainer:
         
         with torch.no_grad():
             for time_series, _, graph_features, edge_index, edge_weight, n_stocks in test_loader:
-                # Move to device
                 time_series = time_series.to(self.device)
                 graph_features = graph_features.to(self.device)
                 edge_index = edge_index.to(self.device)
                 edge_weight = edge_weight.to(self.device)
-                
-                # Forward pass
+
                 outputs = self.model(time_series, graph_features, edge_index, edge_weight, n_stocks)
                 predictions = outputs.squeeze().cpu().numpy()
                 all_predictions.append(predictions)
-        
+
         return np.array(all_predictions)
     
     def save_predictions(
@@ -317,8 +287,6 @@ class Trainer:
         output_dir: str
     ):
         """
-        Save predictions to CSV files.
-        
         Args:
             predictions: Predictions array (n_dates, n_stocks)
             kdcode_list: Stock codes
@@ -335,7 +303,6 @@ class Trainer:
                 df.to_csv(os.path.join(output_dir, f'{date}.csv'), index=False)
     
     def load_best_model(self, best_model_path: Optional[str] = None):
-        """Load the best saved model."""
         if best_model_path is None:
             if self.last_best_model_path is not None:
                 best_model_path = self.last_best_model_path
@@ -365,10 +332,8 @@ def train_multiple_models(
     output_path: Optional[str] = None,
 ) -> Tuple[List[TrainingResult], np.ndarray]:
     """
-    Train multiple models and average predictions.
-    
     Per paper Section 4.1.2: Train num_models and average predictions.
-    
+
     Args:
         model_factory: Callable that creates a new model instance
         config: Experiment configuration
@@ -386,8 +351,7 @@ def train_multiple_models(
         Tuple of (list of training results, averaged predictions)
     """
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    
-    # Use provided output_path or fall back to config
+
     base_output_path = output_path if output_path else config.get_output_path()
     checkpoint_dir = os.path.join(base_output_path, "checkpoints")
     os.makedirs(checkpoint_dir, exist_ok=True)
@@ -399,15 +363,9 @@ def train_multiple_models(
         print(f"\n{'='*60}")
         print(f"Training Model {model_id + 1}/{config.training.num_models}")
         print(f"{'='*60}")
-        
-        # Create fresh model
+
         model = model_factory()
-        
-        # Update config for this model
         model_config = config
-        # Could add model_id to output path if needed
-        
-        # Create trainer
         model_checkpoint_path = os.path.join(checkpoint_dir, f"model_{model_id}_best.pth")
         trainer = Trainer(
             model=model,
@@ -417,8 +375,7 @@ def train_multiple_models(
             output_path=base_output_path,
             checkpoint_path=model_checkpoint_path,
         )
-        
-        # Train
+
         result = trainer.train(
             train_loader=train_loader,
             val_loader=val_loader,
@@ -429,21 +386,16 @@ def train_multiple_models(
         all_results.append(result)
         
         print(f"Model {model_id + 1} training complete. Best val loss: {result.best_val_loss:.6f}")
-        
-        # Load best model and run inference
+
         trainer.last_best_model_path = result.best_model_path
         trainer.load_best_model(result.best_model_path)
         predictions = trainer.predict(test_loader, kdcode_list, test_dates)
         all_predictions.append(predictions)
-        
-        # Save individual predictions using base_output_path
+
         pred_dir = os.path.join(base_output_path, f'predictions_model_{model_id}')
         trainer.save_predictions(predictions, kdcode_list, test_dates, pred_dir)
-    
-    # Average predictions
+
     avg_predictions = np.mean(all_predictions, axis=0)
-    
-    # Save averaged predictions using base_output_path
     avg_pred_dir = os.path.join(base_output_path, 'averaged_predictions')
     os.makedirs(avg_pred_dir, exist_ok=True)
     

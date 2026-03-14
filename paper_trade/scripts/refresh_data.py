@@ -34,17 +34,9 @@ MIN_COVERAGE_DEFAULT = 0.80
 FETCH_LOOKBACK_DAYS = 7
 BENCHMARK_RIC = "SPY.P"
 
+from mci_gru.data.reshape import COLUMN_MAPPING, STANDARD_COLS, reshape_lseg_to_standard
+
 LSEG_FIELDS = ["OPEN_PRC", "HIGH_1", "LOW_1", "TRDPRC_1", "ACVOL_UNS"]
-
-COLUMN_MAPPING = {
-    'MKT_OPEN': 'open', 'MKT_HIGH': 'high', 'MKT_LOW': 'low',
-    'TRDPRC_1': 'close', 'ACVOL_UNS': 'volume',
-    'OPEN_PRC': 'open', 'HIGH_1': 'high', 'LOW_1': 'low', 'HST_CLOSE': 'close',
-    'OPEN': 'open', 'HIGH': 'high', 'LOW': 'low', 'CLOSE': 'close', 'VOLUME': 'volume',
-    'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume',
-}
-
-STANDARD_COLS = ['kdcode', 'dt', 'open', 'high', 'low', 'close', 'volume', 'turnover']
 
 
 def load_rics(csv_path: str) -> list:
@@ -166,39 +158,12 @@ def download_incremental(rd, rics: list, start: str, end: str) -> tuple:
 
 
 def reshape_to_standard(combined: pd.DataFrame) -> pd.DataFrame:
-    """Reshape LSEG MultiIndex DataFrame to flat OHLCV + turnover format."""
-    if not isinstance(combined.columns, pd.MultiIndex):
-        raise ValueError("Expected MultiIndex columns from rd.get_history")
+    """Reshape LSEG MultiIndex DataFrame to flat OHLCV + turnover format.
 
-    instruments = combined.columns.get_level_values(0).unique().tolist()
-    records = []
-
-    for instrument in instruments:
-        if instrument in ('Date', 'Instrument', 'index'):
-            continue
-        try:
-            inst_data = combined[instrument].copy()
-            inst_data = inst_data.rename(columns=COLUMN_MAPPING)
-            inst_data['kdcode'] = instrument
-            inst_data['dt'] = combined.index
-            records.append(inst_data)
-        except Exception as e:
-            print(f"  Skipping {instrument}: {e}")
-
-    df = pd.concat(records, ignore_index=True)
-
-    required = ['open', 'high', 'low', 'close', 'volume']
-    missing = [c for c in required if c not in df.columns]
-    if missing:
-        raise KeyError(f"Missing required columns after reshape: {missing}")
-
-    df['dt'] = pd.to_datetime(df['dt']).dt.strftime('%Y-%m-%d')
-    df = df.dropna(subset=['close'])
-    df = df.drop_duplicates(subset=['kdcode', 'dt'], keep='first')
-    df['turnover'] = df['volume'] * df['close']
-    df = df[STANDARD_COLS]
-    df = df.sort_values(['kdcode', 'dt']).reset_index(drop=True)
-    return df
+    Delegates to the shared ``reshape_lseg_to_standard`` in
+    ``mci_gru.data.reshape`` so the logic is maintained in one place.
+    """
+    return reshape_lseg_to_standard(combined)
 
 
 def validate(master_df: pd.DataFrame, new_dates: list, expected_stock_count: int):

@@ -41,7 +41,6 @@ class DataConfig:
     test_end: str = "2025-12-31"
     
     def __post_init__(self):
-        """Validate date ordering and experiment mode."""
         if self.experiment_mode not in ("stock_level", "index_level"):
             raise ValueError(f"experiment_mode must be 'stock_level' or 'index_level', got {self.experiment_mode!r}")
         dates = [self.train_start, self.train_end, self.val_start,
@@ -132,7 +131,6 @@ class FeatureConfig:
     include_volume_features: bool = False
     
     def __post_init__(self):
-        """Validate momentum encoding."""
         valid_encodings = ['binary', 'continuous', 'buffered']
         valid_blend_modes = ['static', 'dynamic']
         if self.momentum_encoding not in valid_encodings:
@@ -187,7 +185,6 @@ class GraphConfig:
     corr_lookback_days: int = 252
     
     def __post_init__(self):
-        """Validate parameters."""
         if not (0 < self.judge_value < 1):
             raise ValueError(f"judge_value must be between 0 and 1, got {self.judge_value}")
         if self.update_frequency_months < 0:
@@ -235,14 +232,12 @@ class ModelConfig:
     latent_init_scale: float = 0.02
 
     def __post_init__(self):
-        """Validate new fields."""
         if self.activation not in ("elu", "relu"):
             raise ValueError(f"activation must be 'elu' or 'relu', got {self.activation!r}")
         if self.latent_init_scale <= 0:
             raise ValueError("latent_init_scale must be > 0")
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for model creation."""
         return {
             'gru_hidden_sizes': self.gru_hidden_sizes,
             'hidden_size_gat1': self.hidden_size_gat1,
@@ -295,7 +290,6 @@ class TrainingConfig:
     _VALID_LABEL_TYPES = ("returns", "rank")
 
     def __post_init__(self):
-        """Validate parameters."""
         if self.batch_size <= 0:
             raise ValueError("batch_size must be > 0")
         if self.learning_rate <= 0:
@@ -343,12 +337,10 @@ class ExperimentConfig:
     seed: int = 42
     
     def get_output_path(self) -> str:
-        """Get full output path for this experiment."""
         import os
         return os.path.join(self.output_dir, self.experiment_name)
     
     def to_flat_dict(self) -> Dict[str, Any]:
-        """Convert to flat dictionary for logging."""
         flat = {
             'experiment_name': self.experiment_name,
             'seed': self.seed,
