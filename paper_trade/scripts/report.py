@@ -148,14 +148,22 @@ def build_markdown_report(
     today_perf = perf_df[perf_df["dt"] == date] if has_perf else pd.DataFrame()
     if not today_perf.empty:
         row = today_perf.iloc[0]
+
+        def _fmt_pct(val, default=0):
+            """Format a percentage, returning 'N/A' if NaN."""
+            v = val if not pd.isna(val) else default
+            if pd.isna(v):
+                return "N/A"
+            return f"{v:+.4%}"
+
         lines.append(f"| Metric | Value |")
         lines.append(f"|--------|-------|")
-        lines.append(f"| Daily Return | {row.get('daily_return', 0):+.4%} |")
-        lines.append(f"| Net Return (after costs) | {row.get('net_return', 0):+.4%} |")
-        lines.append(f"| Benchmark Return | {row.get('benchmark_return', 0):+.4%} |")
-        lines.append(f"| Excess Return | {row.get('excess_return', 0):+.4%} |")
-        lines.append(f"| Cumulative Return | {row.get('cum_return', 0):+.4%} |")
-        lines.append(f"| Cumulative Benchmark | {row.get('cum_benchmark', 0):+.4%} |")
+        lines.append(f"| Daily Return | {_fmt_pct(row.get('daily_return', 0))} |")
+        lines.append(f"| Net Return (after costs) | {_fmt_pct(row.get('net_return', 0))} |")
+        lines.append(f"| Benchmark Return | {_fmt_pct(row.get('benchmark_return'), np.nan)} |")
+        lines.append(f"| Excess Return | {_fmt_pct(row.get('excess_return'), np.nan)} |")
+        lines.append(f"| Cumulative Return | {_fmt_pct(row.get('cum_return', 0))} |")
+        lines.append(f"| Cumulative Benchmark | {_fmt_pct(row.get('cum_benchmark', 0))} |")
         lines.append(f"| Equity | {row.get('equity', 1):.4f} |")
         lines.append(f"| Drawdown | {row.get('drawdown', 0):.4%} |")
     else:

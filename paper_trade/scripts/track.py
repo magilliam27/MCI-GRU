@@ -210,7 +210,8 @@ def update_performance_csv(
     est_cost = turnover * cost_per_side * 2
 
     net_return = portfolio_return - est_cost
-    excess_return = portfolio_return - benchmark_return
+    bm_safe = benchmark_return if not np.isnan(benchmark_return) else 0.0
+    excess_return = portfolio_return - bm_safe
 
     if perf_path.exists():
         perf_df = pd.read_csv(str(perf_path))
@@ -228,8 +229,11 @@ def update_performance_csv(
         prev_equity = 1.0
         prev_peak = 1.0
 
+    if np.isnan(prev_cum_bm):
+        prev_cum_bm = 0.0
+
     cum_return = prev_cum + net_return
-    cum_benchmark = prev_cum_bm + benchmark_return
+    cum_benchmark = prev_cum_bm + bm_safe
     equity = prev_equity * (1.0 + net_return)
     peak_equity = max(prev_peak, equity)
     drawdown = (equity / peak_equity) - 1.0 if peak_equity > 0 else 0.0

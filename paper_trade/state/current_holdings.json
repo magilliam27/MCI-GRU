@@ -1,5 +1,5 @@
 {
-  "date": "2026-03-11",
+  "date": "2026-03-13",
   "holdings": [
     {
       "kdcode": "INTC.OQ",
@@ -22,25 +22,25 @@
     {
       "kdcode": "T.N",
       "entry_date": "2026-03-06",
-      "entry_rank": 4,
+      "entry_rank": 18,
       "weight": 0.05
     },
     {
       "kdcode": "PFE.N",
       "entry_date": "2026-03-06",
-      "entry_rank": 7,
+      "entry_rank": 47,
       "weight": 0.05
     },
     {
       "kdcode": "WBD.OQ",
       "entry_date": "2026-03-06",
-      "entry_rank": 5,
+      "entry_rank": 8,
       "weight": 0.05
     },
     {
       "kdcode": "CCL.N",
       "entry_date": "2026-03-06",
-      "entry_rank": 11,
+      "entry_rank": 4,
       "weight": 0.05
     },
     {
@@ -52,61 +52,61 @@
     {
       "kdcode": "TSLA.OQ",
       "entry_date": "2026-03-06",
-      "entry_rank": 8,
+      "entry_rank": 5,
       "weight": 0.05
     },
     {
       "kdcode": "VZ.N",
       "entry_date": "2026-03-06",
-      "entry_rank": 9,
+      "entry_rank": 10,
       "weight": 0.05
     },
     {
       "kdcode": "LUV.N",
       "entry_date": "2026-03-06",
-      "entry_rank": 17,
+      "entry_rank": 14,
       "weight": 0.05
     },
     {
       "kdcode": "NFLX.OQ",
       "entry_date": "2026-03-06",
-      "entry_rank": 12,
+      "entry_rank": 15,
       "weight": 0.05
     },
     {
       "kdcode": "AES.N",
       "entry_date": "2026-03-06",
-      "entry_rank": 28,
+      "entry_rank": 43,
       "weight": 0.05
     },
     {
       "kdcode": "KMI.N",
       "entry_date": "2026-03-06",
-      "entry_rank": 13,
+      "entry_rank": 17,
       "weight": 0.05
     },
     {
       "kdcode": "FCX.N",
       "entry_date": "2026-03-06",
-      "entry_rank": 33,
+      "entry_rank": 9,
       "weight": 0.05
     },
     {
       "kdcode": "HPE.N",
       "entry_date": "2026-03-10",
-      "entry_rank": 15,
+      "entry_rank": 23,
       "weight": 0.05
     },
     {
       "kdcode": "OXY.N",
       "entry_date": "2026-03-10",
-      "entry_rank": 14,
+      "entry_rank": 19,
       "weight": 0.05
     },
     {
       "kdcode": "VTRS.OQ",
       "entry_date": "2026-03-11",
-      "entry_rank": 10,
+      "entry_rank": 7,
       "weight": 0.05
     },
     {
@@ -118,7 +118,7 @@
     {
       "kdcode": "EXC.OQ",
       "entry_date": "2026-03-11",
-      "entry_rank": 18,
+      "entry_rank": 21,
       "weight": 0.05
     }
   ]

@@ -1,6 +1,6 @@
 {
-  "fill_date": "2026-03-11",
-  "decision_date": "2026-03-11",
+  "fill_date": "2026-03-13",
+  "decision_date": "2026-03-12",
   "positions": [
     {
       "kdcode": "INTC.OQ",
@@ -108,19 +108,19 @@
       "kdcode": "VTRS.OQ",
       "weight": 0.05,
       "entry_date": "2026-03-11",
-      "fill_price": 14.04
+      "fill_price": null
     },
     {
       "kdcode": "DOW.N",
       "weight": 0.05,
       "entry_date": "2026-03-11",
-      "fill_price": 33.95
+      "fill_price": null
     },
     {
       "kdcode": "EXC.OQ",
       "weight": 0.05,
       "entry_date": "2026-03-11",
-      "fill_price": 48.85
+      "fill_price": null
     }
   ]
 }
