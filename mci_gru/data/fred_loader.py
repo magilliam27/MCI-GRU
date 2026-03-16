@@ -27,12 +27,6 @@ class FREDLoader:
     """
 
     def __init__(self, api_key: Optional[str] = None):
-        """
-        Initialize the FRED client.
-
-        Args:
-            api_key: FRED API key. If None, reads from FRED_API_KEY env var.
-        """
         self._api_key = api_key or os.environ.get("FRED_API_KEY")
         if not self._api_key:
             raise ValueError(
@@ -69,8 +63,6 @@ class FREDLoader:
             Exception: On network/API errors (caller should catch and soft-fail).
         """
         fred = self._get_client()
-        # Pull a small pre-start buffer so a 1-day lag still has values on the
-        # first requested date (avoids dropping the first in-range day).
         start_ts = pd.Timestamp(start)
         end_ts = pd.Timestamp(end)
         buffered_start = (start_ts - pd.Timedelta(days=7)).strftime("%Y-%m-%d")
@@ -88,23 +80,18 @@ class FREDLoader:
             observation_end=observation_end,
         )
 
-        # Align to same index (union of dates), forward-fill missing
         df = pd.DataFrame({"ig_spread": ig, "hy_spread": hy})
         df = df.sort_index()
         df = df.ffill()
-
-        # Drop rows where we have no data at all
         df = df.dropna(how="all")
         if df.empty:
             raise ValueError(
                 f"No credit spread data returned from FRED for {observation_start} to {observation_end}."
             )
 
-        # Backfill leading NaNs if any (first valid value propagated backward for merge)
         df = df.bfill()
 
-        # 1-day lag: value at T = spread from T-1 (avoid look-ahead bias).
-        # Keep buffered history during lagging, then slice back to requested range.
+        # 1-day lag: value at T = spread from T-1 (avoid look-ahead bias)
         df = df.shift(1)
         df = df.loc[(df.index >= start_ts) & (df.index <= end_ts)]
         df = df.dropna(how="all")
@@ -114,7 +101,6 @@ class FREDLoader:
                 f"No lagged credit spread data available for requested range {observation_start} to {observation_end}."
             )
 
-        # dt as string for merging with stock data
         df = df.reset_index()
         df = df.rename(columns={df.columns[0]: "dt"})
         df["dt"] = pd.to_datetime(df["dt"]).dt.strftime("%Y-%m-%d")
