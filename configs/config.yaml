@@ -43,6 +43,16 @@ training:
   ic_loss_alpha: 0.5           # Weight for IC component (only for combined)
   label_type: returns          # returns (raw) or rank (cross-sectional percentile)
 
+# Optional local MLflow tracking (disabled by default)
+tracking:
+  enabled: false
+  tracking_uri: mlruns
+  experiment_name: null
+  run_name: null
+  log_artifacts: true
+  log_checkpoints: true
+  log_predictions: false
+
 # Experiment metadata
 experiment_name: baseline
 output_dir: results

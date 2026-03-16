@@ -16,6 +16,9 @@ tqdm>=4.65
 hydra-core>=1.3
 omegaconf>=2.3
 
+# Experiment tracking (optional - only needed when tracking.enabled=true)
+mlflow>=2.0
+
 # Data Loading (optional - only needed for LSEG data)
 # refinitiv-data>=1.5
 

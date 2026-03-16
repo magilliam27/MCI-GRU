@@ -6,6 +6,13 @@ This guide explains how training outputs are organized and persisted, including 
 
 `run_experiment.py` organizes all outputs under timestamped directories. Backtesting is a separate workflow (see `tests/backtest_sp500.py`) and is not part of the training run.
 
+## MLflow Integration
+
+The project also supports **optional local MLflow tracking**.
+MLflow is **disabled by default** -- enable it with `tracking.enabled=true`.
+It complements the filesystem outputs documented here rather than replacing them.
+See `docs/MLFLOW_TRACKING.md` for setup, tracking behavior, and UI usage.
+
 ## Output Directory Structure
 
 Training outputs go to `{output_dir}/{experiment_name}/{timestamp}/`:

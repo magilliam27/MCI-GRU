@@ -29,6 +29,7 @@ import sys
 import json
 import random
 import logging
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -46,11 +47,13 @@ from mci_gru.config import (
     GraphConfig,
     ModelConfig,
     TrainingConfig,
+    TrackingConfig,
 )
 from mci_gru.data.data_manager import create_data_loaders
 from mci_gru.features import FeatureEngineer
 from mci_gru.models import create_model
 from mci_gru.pipeline import prepare_data, prepare_data_index_level
+from mci_gru.tracking import MLflowTrackingManager
 from mci_gru.training import train_multiple_models
 
 
@@ -89,6 +92,7 @@ def dict_to_config(cfg: DictConfig) -> ExperimentConfig:
     graph_cfg = GraphConfig(**cfg_dict.get('graph', {}))
     model_cfg = ModelConfig(**cfg_dict.get('model', {}))
     training_cfg = TrainingConfig(**cfg_dict.get('training', {}))
+    tracking_cfg = TrackingConfig(**cfg_dict.get('tracking', {}))
     
     return ExperimentConfig(
         data=data_cfg,
@@ -96,6 +100,7 @@ def dict_to_config(cfg: DictConfig) -> ExperimentConfig:
         graph=graph_cfg,
         model=model_cfg,
         training=training_cfg,
+        tracking=tracking_cfg,
         experiment_name=cfg_dict.get('experiment_name', 'baseline'),
         output_dir=cfg_dict.get('output_dir', 'results'),
         seed=cfg_dict.get('seed', 42),
@@ -181,29 +186,89 @@ def main(cfg: DictConfig):
     logger.info("Training")
     logger.info("=" * 80)
     
-    results, avg_predictions = train_multiple_models(
-        model_factory=model_factory,
-        config=config,
-        train_loader=train_loader,
-        val_loader=val_loader,
-        test_loader=test_loader,
-        kdcode_list=data['kdcode_list'],
-        test_dates=data['test_dates'],
-        graph_builder=data['graph_builder'],
-        df=data['df'],
-        train_dates=data['train_dates'],
+    tracking_experiment_name = config.tracking.experiment_name or config.experiment_name
+    tracking_run_name = config.tracking.run_name or f"{config.experiment_name}-{Path(output_path).name}"
+    tracking_manager = MLflowTrackingManager(
+        enabled=config.tracking.enabled,
+        tracking_uri=config.tracking.tracking_uri,
+        experiment_name=tracking_experiment_name,
+        run_name=tracking_run_name,
         output_path=output_path,
+        tags={
+            "run_kind": "training_parent",
+            "experiment_name": config.experiment_name,
+            "output_path": output_path,
+            "data_source": config.data.source,
+            "experiment_mode": config.data.experiment_mode,
+            "loss_type": config.training.loss_type,
+            "label_type": config.training.label_type,
+        },
     )
-    
-    logger.info("\n" + "=" * 80)
-    logger.info("Experiment Complete")
-    logger.info("=" * 80)
-    logger.info(f"Experiment: {config.experiment_name}")
-    logger.info(f"Models trained: {len(results)}")
-    logger.info(f"Best validation losses: {[r.best_val_loss for r in results]}")
-    logger.info(f"Mean best val loss: {np.mean([r.best_val_loss for r in results]):.6f}")
-    logger.info(f"Results saved to: {output_path}")
-    logger.info("=" * 80)
+
+    try:
+        if tracking_manager.enabled:
+            tracking_manager.log_params(OmegaConf.to_container(cfg, resolve=True))
+            mlflow_meta = tracking_manager.persist_run_metadata(extra_metadata={"output_path": output_path})
+            if mlflow_meta is not None:
+                logger.info(f"MLflow run metadata saved to: {mlflow_meta}")
+
+        results, avg_predictions = train_multiple_models(
+            model_factory=model_factory,
+            config=config,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            test_loader=test_loader,
+            kdcode_list=data['kdcode_list'],
+            test_dates=data['test_dates'],
+            graph_builder=data['graph_builder'],
+            df=data['df'],
+            train_dates=data['train_dates'],
+            output_path=output_path,
+            tracking_manager=tracking_manager,
+        )
+
+        best_val_losses = [r.best_val_loss for r in results]
+        training_summary = {
+            "experiment_name": config.experiment_name,
+            "models_trained": len(results),
+            "best_val_losses": best_val_losses,
+            "mean_best_val_loss": float(np.mean(best_val_losses)) if best_val_losses else None,
+        }
+        training_summary_path = os.path.join(output_path, "training_summary.json")
+        with open(training_summary_path, "w") as f:
+            json.dump(training_summary, f, indent=2)
+        logger.info(f"Training summary saved to: {training_summary_path}")
+
+        if tracking_manager.enabled:
+            tracking_manager.log_metrics({
+                "models_trained": len(results),
+                "mean_best_val_loss": training_summary["mean_best_val_loss"],
+            }, prefix="training.")
+            if config.tracking.log_artifacts:
+                for artifact in [config_path, metadata_path, graph_data_path, training_summary_path]:
+                    tracking_manager.log_artifact(artifact, artifact_path="run_artifacts")
+                for log_path in sorted(Path(output_path).glob("training_*.log")):
+                    tracking_manager.log_artifact(log_path, artifact_path="logs")
+            if config.tracking.log_predictions:
+                tracking_manager.log_artifacts(
+                    Path(output_path) / "averaged_predictions",
+                    artifact_path="predictions/averaged",
+                )
+
+        logger.info("\n" + "=" * 80)
+        logger.info("Experiment Complete")
+        logger.info("=" * 80)
+        logger.info(f"Experiment: {config.experiment_name}")
+        logger.info(f"Models trained: {len(results)}")
+        logger.info(f"Best validation losses: {best_val_losses}")
+        logger.info(f"Mean best val loss: {np.mean(best_val_losses):.6f}")
+        logger.info(f"Results saved to: {output_path}")
+        logger.info("=" * 80)
+    except Exception:
+        tracking_manager.close(status="FAILED")
+        raise
+    else:
+        tracking_manager.close(status="FINISHED")
 
 
 if __name__ == "__main__":

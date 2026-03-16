@@ -16,6 +16,7 @@ build/
 results/
 outputs/
 models/
+mlruns/
 *.pt
 *.pth
 *.log
