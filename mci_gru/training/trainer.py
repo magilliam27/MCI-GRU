@@ -10,18 +10,23 @@ This module provides the Trainer class that handles:
 """
 
 import os
+from contextlib import nullcontext
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Callable, Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 
 from mci_gru.config import ExperimentConfig, TrainingConfig
 from mci_gru.graph.builder import GraphBuilder
 from mci_gru.training.losses import ICLoss, CombinedMSEICLoss
+
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from mci_gru.tracking import MLflowTrackingManager
 
 
 @dataclass
@@ -91,7 +96,8 @@ class Trainer:
         val_loader,
         train_dates: Optional[List[str]] = None,
         df: Optional[pd.DataFrame] = None,
-        kdcode_list: Optional[List[str]] = None
+        kdcode_list: Optional[List[str]] = None,
+        epoch_callback: Optional[Callable[[int, float, float, float], None]] = None,
     ) -> TrainingResult:
         """
         Args:
@@ -160,7 +166,12 @@ class Trainer:
                 self.patience_counter += 1
                 if self.patience_counter >= training_cfg.early_stopping_patience:
                     print(f"Early stopping at epoch {epoch+1} (patience={training_cfg.early_stopping_patience})")
+                    if epoch_callback is not None:
+                        epoch_callback(epoch + 1, train_loss, val_loss, self.best_val_loss)
                     break
+
+            if epoch_callback is not None:
+                epoch_callback(epoch + 1, train_loss, val_loss, self.best_val_loss)
         
         return TrainingResult(
             best_val_loss=self.best_val_loss,
@@ -330,6 +341,7 @@ def train_multiple_models(
     df: Optional[pd.DataFrame] = None,
     train_dates: Optional[List[str]] = None,
     output_path: Optional[str] = None,
+    tracking_manager: Optional["MLflowTrackingManager"] = None,
 ) -> Tuple[List[TrainingResult], np.ndarray]:
     """
     Per paper Section 4.1.2: Train num_models and average predictions.
@@ -376,24 +388,54 @@ def train_multiple_models(
             checkpoint_path=model_checkpoint_path,
         )
 
-        result = trainer.train(
-            train_loader=train_loader,
-            val_loader=val_loader,
-            train_dates=train_dates,
-            df=df,
-            kdcode_list=kdcode_list
-        )
-        all_results.append(result)
-        
-        print(f"Model {model_id + 1} training complete. Best val loss: {result.best_val_loss:.6f}")
+        child_ctx = nullcontext(None)
+        if tracking_manager is not None and tracking_manager.enabled:
+            child_ctx = tracking_manager.create_child_run(
+                run_name=f"model_{model_id}",
+                tags={"run_kind": "training_child", "model_id": model_id},
+            )
 
-        trainer.last_best_model_path = result.best_model_path
-        trainer.load_best_model(result.best_model_path)
-        predictions = trainer.predict(test_loader, kdcode_list, test_dates)
-        all_predictions.append(predictions)
+        with child_ctx as child_tracking:
+            epoch_callback = None
+            if child_tracking is not None and child_tracking.enabled:
+                epoch_callback = child_tracking.log_epoch_metrics
 
-        pred_dir = os.path.join(base_output_path, f'predictions_model_{model_id}')
-        trainer.save_predictions(predictions, kdcode_list, test_dates, pred_dir)
+            result = trainer.train(
+                train_loader=train_loader,
+                val_loader=val_loader,
+                train_dates=train_dates,
+                df=df,
+                kdcode_list=kdcode_list,
+                epoch_callback=epoch_callback,
+            )
+            all_results.append(result)
+
+            print(f"Model {model_id + 1} training complete. Best val loss: {result.best_val_loss:.6f}")
+
+            trainer.last_best_model_path = result.best_model_path
+            trainer.load_best_model(result.best_model_path)
+            predictions = trainer.predict(test_loader, kdcode_list, test_dates)
+            all_predictions.append(predictions)
+
+            pred_dir = os.path.join(base_output_path, f'predictions_model_{model_id}')
+            trainer.save_predictions(predictions, kdcode_list, test_dates, pred_dir)
+
+            if child_tracking is not None and child_tracking.enabled:
+                child_tracking.log_metrics({
+                    "best_val_loss": result.best_val_loss,
+                    "final_train_loss": result.final_train_loss,
+                    "epochs_trained": result.epochs_trained,
+                })
+                if config.tracking.log_artifacts and config.tracking.log_checkpoints:
+                    child_tracking.log_artifact(
+                        result.best_model_path,
+                        artifact_path=f"checkpoints/model_{model_id}",
+                    )
+                if config.tracking.log_artifacts and config.tracking.log_predictions:
+                    child_tracking.log_artifacts(
+                        pred_dir,
+                        artifact_path=f"predictions/model_{model_id}",
+                    )
 
     avg_predictions = np.mean(all_predictions, axis=0)
     avg_pred_dir = os.path.join(base_output_path, 'averaged_predictions')

@@ -311,6 +311,29 @@ class TrainingConfig:
 
 
 @dataclass
+class TrackingConfig:
+    """Optional MLflow experiment tracking configuration.
+
+    Attributes:
+        enabled: Whether MLflow tracking is active
+        tracking_uri: Local or remote MLflow tracking URI
+        experiment_name: Optional MLflow experiment override
+        run_name: Optional MLflow run name override
+        log_artifacts: Whether to log run artifacts to MLflow
+        log_checkpoints: Whether to log checkpoint files
+        log_predictions: Whether to log prediction directories (off by default
+            to avoid duplicating a large number of CSV artifacts)
+    """
+    enabled: bool = False
+    tracking_uri: str = "mlruns"
+    experiment_name: Optional[str] = None
+    run_name: Optional[str] = None
+    log_artifacts: bool = True
+    log_checkpoints: bool = True
+    log_predictions: bool = False
+
+
+@dataclass
 class ExperimentConfig:
     """
     Complete experiment configuration.
@@ -323,6 +346,7 @@ class ExperimentConfig:
         graph: Graph construction configuration
         model: Model architecture configuration
         training: Training configuration
+        tracking: MLflow tracking configuration
         experiment_name: Name for this experiment
         output_dir: Directory for saving outputs
         seed: Random seed for reproducibility
@@ -332,6 +356,7 @@ class ExperimentConfig:
     graph: GraphConfig = field(default_factory=GraphConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
+    tracking: TrackingConfig = field(default_factory=TrackingConfig)
     experiment_name: str = "baseline"
     output_dir: str = "results"
     seed: int = 42
@@ -382,6 +407,12 @@ class ExperimentConfig:
             'training.num_models': self.training.num_models,
             'training.loss_type': self.training.loss_type,
             'training.ic_loss_alpha': self.training.ic_loss_alpha,
+            # Tracking
+            'tracking.enabled': self.tracking.enabled,
+            'tracking.tracking_uri': self.tracking.tracking_uri,
+            'tracking.log_artifacts': self.tracking.log_artifacts,
+            'tracking.log_checkpoints': self.tracking.log_checkpoints,
+            'tracking.log_predictions': self.tracking.log_predictions,
         }
         return flat
 
@@ -476,6 +507,7 @@ def create_config_from_dict(config_dict: Dict[str, Any]) -> ExperimentConfig:
     graph_dict = config_dict.get('graph', {})
     model_dict = config_dict.get('model', {})
     training_dict = config_dict.get('training', {})
+    tracking_dict = config_dict.get('tracking', {})
     
     return ExperimentConfig(
         data=DataConfig(**data_dict) if data_dict else DataConfig(),
@@ -483,6 +515,7 @@ def create_config_from_dict(config_dict: Dict[str, Any]) -> ExperimentConfig:
         graph=GraphConfig(**graph_dict) if graph_dict else GraphConfig(),
         model=ModelConfig(**model_dict) if model_dict else ModelConfig(),
         training=TrainingConfig(**training_dict) if training_dict else TrainingConfig(),
+        tracking=TrackingConfig(**tracking_dict) if tracking_dict else TrackingConfig(),
         experiment_name=config_dict.get('experiment_name', 'baseline'),
         output_dir=config_dict.get('output_dir', 'results'),
         seed=config_dict.get('seed', 42),
