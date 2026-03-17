@@ -1,66 +1,32 @@
 {
-  "run_start": "2026-03-15T20:16:53.869631",
-  "run_end": "2026-03-15T20:20:05.258212",
+  "run_start": "2026-03-16T22:07:45.172034",
+  "run_end": "2026-03-16T22:10:20.733464",
   "python": "C:\\Users\\magil\\MCI-GRU\\lseg_env\\Scripts\\python.exe",
-  "mode": "catchup",
-  "days_processed": 2,
-  "days_total": 2,
   "steps": [
     {
-      "name": "track.py",
+      "name": "Data Refresh",
       "status": "OK",
-      "duration": 1.125929355621338,
-      "date": "2026-03-12",
-      "step": "Execution Tracker"
+      "duration": 142.44405913352966
     },
     {
-      "name": "infer.py",
+      "name": "Execution Tracker",
       "status": "OK",
-      "duration": 12.423151969909668,
-      "date": "2026-03-12",
-      "step": "Model Inference"
+      "duration": 0.9926881790161133
     },
     {
-      "name": "portfolio.py",
+      "name": "Model Inference",
       "status": "OK",
-      "duration": 0.39214015007019043,
-      "date": "2026-03-12",
-      "step": "Portfolio Decision"
+      "duration": 10.591023683547974
     },
     {
-      "name": "report.py",
+      "name": "Portfolio Decision",
       "status": "OK",
-      "duration": 1.1756222248077393,
-      "date": "2026-03-12",
-      "step": "Daily Report"
+      "duration": 0.3955855369567871
     },
     {
-      "name": "track.py",
+      "name": "Daily Report",
       "status": "OK",
-      "duration": 0.9870843887329102,
-      "date": "2026-03-13",
-      "step": "Execution Tracker"
-    },
-    {
-      "name": "infer.py",
-      "status": "OK",
-      "duration": 9.69018840789795,
-      "date": "2026-03-13",
-      "step": "Model Inference"
-    },
-    {
-      "name": "portfolio.py",
-      "status": "OK",
-      "duration": 0.3994922637939453,
-      "date": "2026-03-13",
-      "step": "Portfolio Decision"
-    },
-    {
-      "name": "report.py",
-      "status": "OK",
-      "duration": 0.7649610042572021,
-      "date": "2026-03-13",
-      "step": "Daily Report"
+      "duration": 1.1022014617919922
     }
   ],
   "all_ok": true
