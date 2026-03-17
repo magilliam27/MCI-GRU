@@ -81,8 +81,11 @@ import numpy as np
 import pandas as pd
 from glob import glob
 from datetime import datetime
+from pathlib import Path
 import warnings
 warnings.filterwarnings('ignore')
+
+from mci_gru.tracking import MLflowTrackingManager, load_run_metadata_from_predictions_dir
 
 
 # ============================================================================
@@ -2592,6 +2595,83 @@ def setup_backtest_logging(backtest_dir: str) -> logging.Logger:
     return logger
 
 
+def _infer_experiment_name(predictions_dir: str) -> str:
+    """Infer experiment name from a standard averaged_predictions path."""
+    predictions_path = Path(predictions_dir).resolve()
+    if predictions_path.parent.parent.exists():
+        return predictions_path.parent.parent.name
+    return "backtest"
+
+
+def setup_backtest_tracking(
+    predictions_dir: str,
+    config: dict,
+    enable_mlflow: bool = False,
+    tracking_uri: str = None,
+    experiment_name: str = None,
+    backtest_suffix: str = "",
+) -> tuple:
+    """Create an optional MLflow child run for backtest tracking.
+
+    If the predictions directory belongs to a tracked training run, the
+    backtest automatically links itself beneath that parent run.
+    """
+    linked_metadata = load_run_metadata_from_predictions_dir(predictions_dir)
+    tracking_enabled = enable_mlflow or linked_metadata is not None
+
+    if not tracking_enabled:
+        return MLflowTrackingManager(enabled=False), linked_metadata
+
+    resolved_tracking_uri = tracking_uri
+    parent_run_id = None
+    resolved_experiment_name = experiment_name
+
+    if linked_metadata is not None:
+        resolved_tracking_uri = resolved_tracking_uri or linked_metadata.get("tracking_uri")
+        resolved_experiment_name = (
+            resolved_experiment_name
+            or linked_metadata.get("experiment_name")
+            or _infer_experiment_name(predictions_dir)
+        )
+        parent_run_id = linked_metadata.get("run_id")
+    else:
+        resolved_experiment_name = resolved_experiment_name or _infer_experiment_name(predictions_dir)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_name = f"backtest{backtest_suffix or ''}-{timestamp}"
+
+    manager = MLflowTrackingManager(
+        enabled=True,
+        tracking_uri=resolved_tracking_uri,
+        experiment_name=resolved_experiment_name,
+        run_name=run_name,
+        output_path=Path(predictions_dir).resolve().parent,
+        parent_run_id=parent_run_id,
+        tags={
+            "run_kind": "backtest",
+            "linked_training_run": linked_metadata is not None,
+            "predictions_dir": str(Path(predictions_dir).resolve()),
+            "top_k": config.get("top_k"),
+            "label_t": config.get("label_t"),
+        },
+    )
+    return manager, linked_metadata
+
+
+def _log_backtest_artifacts(tracking_manager: MLflowTrackingManager, backtest_dir: str):
+    """Log the highest-value backtest artifacts."""
+    if not tracking_manager.is_active:
+        return
+
+    artifact_names = [
+        "backtest_results.csv", "backtest_metrics.json", "backtest_config.json",
+        "summary.txt", "daily_returns.csv", "cumulative_performance.csv",
+        "monthly_performance.csv", "equity_curve.png",
+    ]
+    for name in artifact_names:
+        tracking_manager.log_artifact(Path(backtest_dir) / name, artifact_path="backtest_artifacts")
+
+
 def plot_equity_curve(predictions_dir, stock_data, config, output_path=None):
     """
     Plot equity curve similar to paper Figure 2.
@@ -2893,6 +2973,20 @@ def main():
         help='Suffix for backtest directory (e.g., "_with_costs" or "_tc")'
     )
     
+    parser.add_argument(
+        '--enable_mlflow', action='store_true',
+        help='Enable MLflow tracking for this backtest. Auto-links to training '
+             'run if mlflow_run.json exists in the predictions directory.'
+    )
+    parser.add_argument(
+        '--mlflow_tracking_uri', type=str, default=None,
+        help='Optional MLflow tracking URI override'
+    )
+    parser.add_argument(
+        '--mlflow_experiment_name', type=str, default=None,
+        help='Optional MLflow experiment name override'
+    )
+
     # Rank-drop sell gate (exit held names only if rank worsens by >= N vs previous prediction day)
     parser.add_argument(
         '--enable_rank_drop_gate',
@@ -2959,6 +3053,22 @@ def main():
         logger.info(f"Predictions directory: {args.predictions_dir}")
         logger.info(f"Backtest output directory: {backtest_dir}")
     
+    tracking_manager, linked_metadata = setup_backtest_tracking(
+        predictions_dir=args.predictions_dir,
+        config=config,
+        enable_mlflow=args.enable_mlflow,
+        tracking_uri=args.mlflow_tracking_uri,
+        experiment_name=args.mlflow_experiment_name,
+        backtest_suffix=args.backtest_suffix,
+    )
+
+    if tracking_manager.enabled:
+        tracking_manager.log_params({
+            "backtest": config,
+            "num_tests": args.num_tests,
+            "adjustment_method": args.adjustment_method,
+        })
+
     # Run evaluation
     if args.multi_model:
         # Multi-model evaluation (paper style: 10 runs averaged)
@@ -3102,6 +3212,18 @@ def main():
                     plot_output = args.output.replace('.csv', '_equity.png') if args.output else None
                     plot_equity_curve(args.predictions_dir, stock_data, config, plot_output)
     
+    if tracking_manager.enabled:
+        eval_results = None
+        if args.multi_model and multi_results:
+            eval_results = multi_results['averaged']
+        elif not args.multi_model and results:
+            eval_results = results
+        if eval_results is not None:
+            tracking_manager.log_metrics(eval_results, prefix="backtest.")
+        if backtest_dir:
+            _log_backtest_artifacts(tracking_manager, backtest_dir)
+        tracking_manager.close()
+
     if logger:
         logger.info("Backtest evaluation completed successfully")
 

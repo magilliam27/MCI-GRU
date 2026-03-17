@@ -15,6 +15,7 @@ from mci_gru.config import (
     GraphConfig,
     ModelConfig,
     TrainingConfig,
+    TrackingConfig,
     ExperimentConfig,
 )
 
@@ -25,5 +26,6 @@ __all__ = [
     "GraphConfig",
     "ModelConfig",
     "TrainingConfig",
+    "TrackingConfig",
     "ExperimentConfig",
 ]
