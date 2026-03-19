@@ -192,6 +192,7 @@ class DataManager:
         lseg_yield_10y_ric: str = "US10YT=RR",
         lseg_yield_3m_ric: str = "US3MT=RR",
         lseg_oil_ric: str = "CLc1",
+        lseg_vix_ric: str = "VIX",
         regime_inputs_csv: Optional[str] = None,
         regime_enforce_lag_days: int = 0,
     ) -> pd.DataFrame:
@@ -202,22 +203,30 @@ class DataManager:
         otherwise use FRED/LSEG APIs.
 
         Output columns:
-            dt, regime_market, regime_yield_curve, regime_oil, regime_copper, regime_stock_bond_corr
+            dt, regime_market, regime_yield_curve, regime_oil, regime_copper,
+            regime_stock_bond_corr, regime_monetary_policy, regime_volatility
         """
-        from mci_gru.features.regime import REGIME_VARIABLES
+        from mci_gru.features.regime import (
+            REGIME_OPTIONAL_VARIABLES,
+            REGIME_REQUIRED_VARIABLES,
+            REGIME_VARIABLES,
+        )
 
         if regime_inputs_csv:
             resolved = resolve_project_data_path(regime_inputs_csv)
             base = pd.read_csv(resolved)
             base["dt"] = pd.to_datetime(base["dt"])
             base = base.sort_values("dt").drop_duplicates(subset=["dt"], keep="last")
-            required = {"dt"} | set(REGIME_VARIABLES)
+            required = {"dt"} | set(REGIME_REQUIRED_VARIABLES)
             missing = sorted(required - set(base.columns))
             if missing:
                 raise ValueError(
                     f"Regime CSV {regime_inputs_csv} is missing required columns: {missing}. "
                     "See docs/REGIME_DATA_CONTRACT.md."
                 )
+            for col in REGIME_OPTIONAL_VARIABLES:
+                if col not in base.columns:
+                    base[col] = np.nan
             base = base[["dt"] + REGIME_VARIABLES].copy()
             for col in REGIME_VARIABLES:
                 base[col] = pd.to_numeric(base[col], errors="coerce")
@@ -235,6 +244,7 @@ class DataManager:
             FRED_SERIES_3M,
             FRED_SERIES_OIL_WTI,
             FRED_SERIES_COPPER,
+            FRED_SERIES_VIX,
         )
 
         start_ts = pd.Timestamp(self.config.train_start) - pd.Timedelta(days=365 * 15)
@@ -259,6 +269,7 @@ class DataManager:
         yield_10y = try_fred(FRED_SERIES_10Y, "yield_10y")
         yield_3m = try_fred(FRED_SERIES_3M, "yield_3m")
         oil = try_fred(FRED_SERIES_OIL_WTI, "regime_oil")
+        volatility = try_fred(FRED_SERIES_VIX, "regime_volatility")
 
         # FRED fallback candidates.
         market_fallback = try_fred(FRED_SERIES_SP500, "regime_market")
@@ -269,6 +280,7 @@ class DataManager:
         lseg_yield_10y = None
         lseg_yield_3m = None
         lseg_oil = None
+        lseg_volatility = None
 
         if self.config.source == "lseg":
             from mci_gru.data.lseg_loader import LSEGLoader
@@ -284,6 +296,8 @@ class DataManager:
                     lseg_yield_3m = loader.get_series(lseg_yield_3m_ric, start, end, "yield_3m")
                 if oil is None:
                     lseg_oil = loader.get_series(lseg_oil_ric, start, end, "regime_oil")
+                if volatility is None:
+                    lseg_volatility = loader.get_series(lseg_vix_ric, start, end, "regime_volatility")
             finally:
                 loader.disconnect()
 
@@ -293,6 +307,8 @@ class DataManager:
             yield_3m = lseg_yield_3m
         if oil is None:
             oil = lseg_oil
+        if volatility is None:
+            volatility = lseg_volatility
 
         if market is None:
             market = market_fallback
@@ -305,6 +321,7 @@ class DataManager:
             "regime_oil": oil,
             "regime_market": market,
             "regime_copper": copper,
+            "regime_volatility": volatility,
         }
         missing = [name for name, value in required_series.items() if value is None or len(value) == 0]
         if missing:
@@ -318,6 +335,7 @@ class DataManager:
             .merge(oil, on="dt", how="outer")
             .merge(market, on="dt", how="outer")
             .merge(copper, on="dt", how="outer")
+            .merge(volatility, on="dt", how="outer")
         )
         base["dt"] = pd.to_datetime(base["dt"])
         base = base.sort_values("dt").drop_duplicates(subset=["dt"], keep="last")
@@ -325,7 +343,9 @@ class DataManager:
         base["yield_10y"] = pd.to_numeric(base["yield_10y"], errors="coerce")
         base["yield_3m"] = pd.to_numeric(base["yield_3m"], errors="coerce")
         base["regime_yield_curve"] = base["yield_10y"] - base["yield_3m"]
+        base["regime_monetary_policy"] = base["yield_3m"]
         base["regime_market"] = pd.to_numeric(base["regime_market"], errors="coerce")
+        base["regime_volatility"] = pd.to_numeric(base["regime_volatility"], errors="coerce")
 
         # Stock-bond correlation proxy: rolling corr between market returns and yield-10y changes.
         market_ret = base["regime_market"].pct_change()
@@ -333,7 +353,15 @@ class DataManager:
         base["regime_stock_bond_corr"] = market_ret.rolling(63, min_periods=21).corr(yield_change)
 
         # Fill sparse macro holidays/weekends while preserving time direction.
-        for col in ["regime_market", "regime_yield_curve", "regime_oil", "regime_copper", "regime_stock_bond_corr"]:
+        for col in [
+            "regime_market",
+            "regime_yield_curve",
+            "regime_oil",
+            "regime_copper",
+            "regime_stock_bond_corr",
+            "regime_monetary_policy",
+            "regime_volatility",
+        ]:
             base[col] = pd.to_numeric(base[col], errors="coerce").ffill().bfill()
 
         base = base[
@@ -344,6 +372,8 @@ class DataManager:
                 "regime_oil",
                 "regime_copper",
                 "regime_stock_bond_corr",
+                "regime_monetary_policy",
+                "regime_volatility",
             ]
         ].copy()
         base["dt"] = base["dt"].dt.strftime("%Y-%m-%d")

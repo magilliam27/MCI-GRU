@@ -61,6 +61,7 @@ def _load_auxiliary_data(
                 lseg_yield_10y_ric=config.features.regime_lseg_yield_10y_ric,
                 lseg_yield_3m_ric=config.features.regime_lseg_yield_3m_ric,
                 lseg_oil_ric=config.features.regime_lseg_oil_ric,
+                lseg_vix_ric=config.features.regime_lseg_vix_ric,
                 regime_inputs_csv=config.features.regime_inputs_csv or None,
                 regime_enforce_lag_days=config.features.regime_enforce_lag_days,
             )

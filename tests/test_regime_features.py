@@ -1,8 +1,10 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from mci_gru.features.regime import (
     REGIME_FEATURES,
+    REGIME_REQUIRED_VARIABLES,
     REGIME_VARIABLES,
     add_regime_features,
     compute_regime_monthly_features,
@@ -20,6 +22,25 @@ def _make_regime_daily(start: str = "2000-01-01", periods: int = 3800) -> pd.Dat
             "regime_oil": 60 + 8 * np.sin(x / 1.3),
             "regime_copper": 3.2 + 0.3 * np.cos(x / 2.3),
             "regime_stock_bond_corr": -0.2 + 0.35 * np.sin(x / 2.0),
+            "regime_monetary_policy": 2.0 + 0.15 * np.sin(x / 1.8),
+            "regime_volatility": 18 + 4 * np.cos(x / 1.5),
+        }
+    )
+
+
+def _make_repeating_monthly_regime() -> pd.DataFrame:
+    dates = pd.date_range("2000-01-31", periods=10, freq="ME")
+    market = np.array([100.0, 101.0, 104.0, 105.0, 108.0, 109.0, 112.0, 113.0, 116.0, 117.0])
+    return pd.DataFrame(
+        {
+            "dt": dates.strftime("%Y-%m-%d"),
+            "regime_market": market,
+            "regime_yield_curve": np.full(len(dates), 1.5),
+            "regime_oil": np.full(len(dates), 60.0),
+            "regime_copper": np.full(len(dates), 3.5),
+            "regime_stock_bond_corr": np.full(len(dates), -0.1),
+            "regime_monetary_policy": np.full(len(dates), 2.0),
+            "regime_volatility": np.full(len(dates), 20.0),
         }
     )
 
@@ -40,6 +61,28 @@ def test_compute_regime_monthly_features_outputs_expected_columns():
     assert monthly["dt"].is_monotonic_increasing
 
 
+def test_compute_regime_monthly_features_adds_subsequent_return_signals():
+    regime_df = _make_repeating_monthly_regime()
+    monthly = compute_regime_monthly_features(
+        regime_df=regime_df,
+        change_months=1,
+        norm_window_months=2,
+        exclusion_months=1,
+        similarity_quantile=0.4,
+        min_history_months=1,
+        subsequent_return_horizons=[1, 3],
+    )
+
+    october_row = monthly.loc[monthly["dt"] == pd.Timestamp("2000-10-31")].iloc[0]
+    expected_similar_return_1m = np.mean([(108.0 / 105.0) - 1.0, (112.0 / 109.0) - 1.0])
+    expected_similar_return_3m = np.mean([(112.0 / 105.0) - 1.0, (116.0 / 109.0) - 1.0])
+    expected_spread_1m = expected_similar_return_1m - np.mean([(109.0 / 108.0) - 1.0, (113.0 / 112.0) - 1.0])
+
+    assert october_row["regime_similar_subsequent_return_1m"] == pytest.approx(expected_similar_return_1m)
+    assert october_row["regime_similar_subsequent_return_3m"] == pytest.approx(expected_similar_return_3m)
+    assert october_row["regime_subsequent_return_spread_1m"] == pytest.approx(expected_spread_1m)
+
+
 def test_compute_regime_monthly_features_no_lookahead_exclusion_effect():
     regime_df = _make_regime_daily()
 
@@ -49,11 +92,13 @@ def test_compute_regime_monthly_features_no_lookahead_exclusion_effect():
         regime_df=regime_df,
         exclusion_months=0,
         min_history_months=12,
+        include_subsequent_returns=False,
     )
     monthly_ex2 = compute_regime_monthly_features(
         regime_df=regime_df,
         exclusion_months=2,
         min_history_months=12,
+        include_subsequent_returns=False,
     )
 
     joined = monthly_ex0.merge(monthly_ex2, on="dt", suffixes=("_ex0", "_ex2"))
@@ -117,12 +162,12 @@ def test_regime_input_contract_columns_present():
 
 
 def test_regime_csv_contract_required_columns():
-    """Canonical regime CSV must have dt + REGIME_VARIABLES; loader rejects missing columns."""
+    """Canonical regime CSV must have dt + required regime inputs; optional variables can be absent."""
     import tempfile
     from mci_gru.data.data_manager import DataManager
     from mci_gru.config import DataConfig
 
-    good = _make_regime_daily(periods=10)
+    good = _make_regime_daily(periods=10)[["dt"] + REGIME_REQUIRED_VARIABLES]
     with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
         good.to_csv(f.name, index=False)
         path = f.name
@@ -139,6 +184,8 @@ def test_regime_csv_contract_required_columns():
         out = dm.load_regime_inputs(regime_inputs_csv=path, regime_enforce_lag_days=0)
         assert set(["dt"] + REGIME_VARIABLES).issubset(set(out.columns))
         assert len(out) >= 1
+        assert out["regime_monetary_policy"].isna().all()
+        assert out["regime_volatility"].isna().all()
     finally:
         import os
         os.unlink(path)

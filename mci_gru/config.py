@@ -85,8 +85,11 @@ class FeatureConfig:
         regime_lseg_yield_10y_ric: LSEG RIC for 10Y yield fallback
         regime_lseg_yield_3m_ric: LSEG RIC for 3M yield fallback
         regime_lseg_oil_ric: LSEG RIC for oil fallback
+        regime_lseg_vix_ric: LSEG RIC for volatility fallback
         regime_inputs_csv: Optional path to canonical regime CSV (if set, bypass live API for regime)
         regime_enforce_lag_days: If regime_inputs_csv set, shift dates by this many days (0 or 1) to avoid look-ahead
+        regime_include_subsequent_returns: Whether to emit post-similarity return features
+        regime_subsequent_return_horizons: Forward monthly return horizons used for similarity-conditioned features
         include_rsi: Whether to add RSI features
         include_ma_features: Whether to add moving average features
         include_price_features: Whether to add derived price features
@@ -123,8 +126,11 @@ class FeatureConfig:
     regime_lseg_yield_10y_ric: str = "US10YT=RR"
     regime_lseg_yield_3m_ric: str = "US3MT=RR"
     regime_lseg_oil_ric: str = "CLc1"
+    regime_lseg_vix_ric: str = "VIX"
     regime_inputs_csv: Optional[str] = None
     regime_enforce_lag_days: int = 0
+    regime_include_subsequent_returns: bool = True
+    regime_subsequent_return_horizons: List[int] = field(default_factory=lambda: [1, 3])
     include_rsi: bool = False
     include_ma_features: bool = False
     include_price_features: bool = False
@@ -168,6 +174,12 @@ class FeatureConfig:
             raise ValueError("regime_min_history_months must be > 0")
         if self.regime_enforce_lag_days < 0:
             raise ValueError("regime_enforce_lag_days must be >= 0")
+        if any(horizon <= 0 for horizon in self.regime_subsequent_return_horizons):
+            raise ValueError("regime_subsequent_return_horizons must contain only positive integers")
+        if self.regime_include_subsequent_returns and self.regime_exclusion_months < 1:
+            raise ValueError(
+                "regime_exclusion_months must be >= 1 when regime_include_subsequent_returns=True"
+            )
 
 
 @dataclass
@@ -393,6 +405,8 @@ class ExperimentConfig:
             'features.include_credit_spread': self.features.include_credit_spread,
             'features.include_global_regime': self.features.include_global_regime,
             'features.include_volatility': self.features.include_volatility,
+            'features.regime_include_subsequent_returns': self.features.regime_include_subsequent_returns,
+            'features.regime_subsequent_return_horizons': str(self.features.regime_subsequent_return_horizons),
             # Graph
             'graph.judge_value': self.graph.judge_value,
             'graph.update_frequency_months': self.graph.update_frequency_months,

@@ -44,6 +44,7 @@ from mci_gru.features.credit import (
 from mci_gru.features.regime import (
     REGIME_FEATURES,
     add_regime_features,
+    get_regime_features,
 )
 
 
@@ -68,6 +69,8 @@ def build_feature_list(
     include_vix: bool = False,
     include_credit_spread: bool = False,
     include_global_regime: bool = False,
+    regime_include_subsequent_returns: bool = True,
+    regime_subsequent_return_horizons: Optional[List[int]] = None,
     additional_features: Optional[List[str]] = None
 ) -> List[str]:
     """
@@ -81,6 +84,8 @@ def build_feature_list(
         include_vix: Include VIX features
         include_credit_spread: Include credit spread features (IG/HY from FRED)
         include_global_regime: Include global scalar regime features
+        regime_include_subsequent_returns: Include similarity-conditioned subsequent-return features
+        regime_subsequent_return_horizons: Monthly forward-return horizons for regime features
         additional_features: Additional feature column names to include
 
     Returns:
@@ -99,7 +104,12 @@ def build_feature_list(
     if include_credit_spread:
         features.extend(CREDIT_FEATURES)
     if include_global_regime:
-        features.extend(REGIME_FEATURES)
+        features.extend(
+            get_regime_features(
+                include_subsequent_returns=regime_include_subsequent_returns,
+                horizons=regime_subsequent_return_horizons,
+            )
+        )
     if additional_features:
         features.extend(additional_features)
     
@@ -153,6 +163,8 @@ class FeatureEngineer:
         regime_similarity_quantile: float = 0.2,
         regime_min_history_months: int = 24,
         regime_strict: bool = False,
+        regime_include_subsequent_returns: bool = True,
+        regime_subsequent_return_horizons: Optional[List[int]] = None,
         include_rsi: bool = False,
         include_ma_features: bool = False,
         include_price_features: bool = False,
@@ -183,6 +195,8 @@ class FeatureEngineer:
             self.regime_similarity_quantile = config.regime_similarity_quantile
             self.regime_min_history_months = config.regime_min_history_months
             self.regime_strict = config.regime_strict
+            self.regime_include_subsequent_returns = config.regime_include_subsequent_returns
+            self.regime_subsequent_return_horizons = list(config.regime_subsequent_return_horizons)
             self.include_rsi = config.include_rsi
             self.include_ma_features = config.include_ma_features
             self.include_price_features = config.include_price_features
@@ -212,6 +226,10 @@ class FeatureEngineer:
             self.regime_similarity_quantile = regime_similarity_quantile
             self.regime_min_history_months = regime_min_history_months
             self.regime_strict = regime_strict
+            self.regime_include_subsequent_returns = regime_include_subsequent_returns
+            self.regime_subsequent_return_horizons = list(
+                regime_subsequent_return_horizons if regime_subsequent_return_horizons is not None else [1, 3]
+            )
             self.include_rsi = include_rsi
             self.include_ma_features = include_ma_features
             self.include_price_features = include_price_features
@@ -317,11 +335,13 @@ class FeatureEngineer:
                     exclusion_months=self.regime_exclusion_months,
                     similarity_quantile=self.regime_similarity_quantile,
                     min_history_months=self.regime_min_history_months,
+                    include_subsequent_returns=self.regime_include_subsequent_returns,
+                    subsequent_return_horizons=self.regime_subsequent_return_horizons,
                 )
             elif self.regime_strict:
                 raise ValueError("include_global_regime=True but regime_df not provided and regime_strict=True")
             else:
-                for col in REGIME_FEATURES:
+                for col in self._get_regime_feature_columns():
                     df[col] = 0.0
 
         # RSI
@@ -370,7 +390,7 @@ class FeatureEngineer:
             features.extend(CREDIT_FEATURES)
         
         if self.include_global_regime:
-            features.extend(REGIME_FEATURES)
+            features.extend(self._get_regime_feature_columns())
 
         if self.include_rsi:
             features.extend(['rsi_14', 'rsi_normalized'])
@@ -385,6 +405,12 @@ class FeatureEngineer:
             features.extend(['volume_ma20', 'volume_ratio', 'dollar_volume'])
         
         return features
+
+    def _get_regime_feature_columns(self) -> List[str]:
+        return get_regime_features(
+            include_subsequent_returns=self.regime_include_subsequent_returns,
+            horizons=self.regime_subsequent_return_horizons,
+        )
 
 
 def create_feature_engineer_from_config(config: Dict[str, Any]) -> FeatureEngineer:

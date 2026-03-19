@@ -1,6 +1,6 @@
 {
-  "fill_date": "2026-03-16",
-  "decision_date": "2026-03-13",
+  "fill_date": "2026-03-18",
+  "decision_date": "2026-03-17",
   "positions": [
     {
       "kdcode": "INTC.OQ",
@@ -22,12 +22,6 @@
     },
     {
       "kdcode": "T.N",
-      "weight": 0.05,
-      "entry_date": "2026-03-06",
-      "fill_price": null
-    },
-    {
-      "kdcode": "PFE.N",
       "weight": 0.05,
       "entry_date": "2026-03-06",
       "fill_price": null
@@ -93,12 +87,6 @@
       "fill_price": null
     },
     {
-      "kdcode": "HPE.N",
-      "weight": 0.05,
-      "entry_date": "2026-03-10",
-      "fill_price": null
-    },
-    {
       "kdcode": "OXY.N",
       "weight": 0.05,
       "entry_date": "2026-03-10",
@@ -120,6 +108,18 @@
       "kdcode": "EXC.OQ",
       "weight": 0.05,
       "entry_date": "2026-03-11",
+      "fill_price": null
+    },
+    {
+      "kdcode": "AMZN.OQ",
+      "weight": 0.05,
+      "entry_date": "2026-03-16",
+      "fill_price": null
+    },
+    {
+      "kdcode": "CTRA.N",
+      "weight": 0.05,
+      "entry_date": "2026-03-16",
       "fill_price": null
     }
   ]

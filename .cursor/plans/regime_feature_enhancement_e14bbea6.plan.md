@@ -4,31 +4,31 @@ overview: "Enhance the regime feature implementation to fully align with the Har
 todos:
   - id: part1-variables
     content: Add regime_monetary_policy and regime_volatility to REGIME_VARIABLES and update distance computation (regime.py)
-    status: pending
+    status: completed
   - id: part1-data-loading
     content: Update data_manager.py and fred_loader.py to load VIX and standalone 3M yield for regime
-    status: pending
+    status: completed
   - id: part1-config
     content: Add VIX RIC config field and make new variables optional for backward compat
-    status: pending
+    status: completed
   - id: part2-subsequent-returns
     content: Implement subsequent return lookup in compute_regime_monthly_features (core of Part 2)
-    status: pending
+    status: completed
   - id: part2-refactor-distances
     content: Refactor distance loop to preserve hist_idx mapping for return lookups
-    status: pending
+    status: completed
   - id: part2-features
     content: Add regime_similar_subsequent_return_Nm and spread features to REGIME_FEATURES
-    status: pending
+    status: completed
   - id: part2-config
     content: Add regime_subsequent_return_horizons and regime_include_subsequent_returns to config
-    status: pending
+    status: completed
   - id: part3-registry
     content: Wire new features through FeatureEngineer in registry.py
-    status: pending
+    status: completed
   - id: part3-tests
     content: Extend test_regime_features.py with subsequent return and look-ahead bias tests
-    status: pending
+    status: completed
 isProject: false
 ---
 

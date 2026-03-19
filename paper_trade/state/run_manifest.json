@@ -1,32 +1,32 @@
 {
-  "run_start": "2026-03-16T22:07:45.172034",
-  "run_end": "2026-03-16T22:10:20.733464",
+  "run_start": "2026-03-18T20:03:24.558668",
+  "run_end": "2026-03-18T20:06:01.832199",
   "python": "C:\\Users\\magil\\MCI-GRU\\lseg_env\\Scripts\\python.exe",
   "steps": [
     {
       "name": "Data Refresh",
       "status": "OK",
-      "duration": 142.44405913352966
+      "duration": 143.46336698532104
     },
     {
       "name": "Execution Tracker",
       "status": "OK",
-      "duration": 0.9926881790161133
+      "duration": 1.0854668617248535
     },
     {
       "name": "Model Inference",
       "status": "OK",
-      "duration": 10.591023683547974
+      "duration": 11.003970861434937
     },
     {
       "name": "Portfolio Decision",
       "status": "OK",
-      "duration": 0.3955855369567871
+      "duration": 0.4230985641479492
     },
     {
       "name": "Daily Report",
       "status": "OK",
-      "duration": 1.1022014617919922
+      "duration": 1.257378339767456
     }
   ],
   "all_ok": true
