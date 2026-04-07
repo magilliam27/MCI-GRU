@@ -80,11 +80,11 @@ class Trainer:
         
         self.model.to(self.device)
         
-        # State tracking for dynamic graph updates
-        self.current_edge_index: Optional[torch.Tensor] = None
-        self.current_edge_weight: Optional[torch.Tensor] = None
-        self.train_dates: Optional[List[str]] = None
-        
+        # Runtime state for dynamic graph (set at start of train / predict)
+        self._df: Optional[pd.DataFrame] = None
+        self._kdcode_list: Optional[List[str]] = None
+        self._dynamic_update_count: int = 0
+
         # Training state
         self.best_val_loss = float('inf')
         self.patience_counter = 0
@@ -135,20 +135,34 @@ class Trainer:
 
         self.best_val_loss = float('inf')
         self.patience_counter = 0
+        self._dynamic_update_count = 0
         final_train_loss = 0.0
-        
+
+        # Store for batch-level dynamic graph access
+        self._df = df
+        self._kdcode_list = kdcode_list
+
+        dynamic = (
+            self.graph_builder is not None
+            and self.config.graph.update_frequency_months > 0
+        )
+        if self.graph_builder is not None:
+            stats = self.graph_builder.get_stats()
+            print(f"  Initial graph: {stats.get('n_edges', 0)} edges, "
+                  f"last_update={stats.get('last_update_date')}, "
+                  f"update_frequency_months={stats.get('update_frequency_months')}")
+
         print(f"Training on {self.device}...")
         print(f"  Loss: {training_cfg.loss_type}" + (
             f" (alpha={training_cfg.ic_loss_alpha})" if training_cfg.loss_type == "combined" else ""
         ))
         print(f"  Max epochs: {training_cfg.num_epochs}")
         print(f"  Early stopping patience: {training_cfg.early_stopping_patience}")
-        
+        if dynamic:
+            print(f"  Dynamic graph: ON (update every {self.config.graph.update_frequency_months} months per batch date)")
+
         for epoch in range(training_cfg.num_epochs):
             self.epoch = epoch
-
-            if self._should_update_graph(epoch, train_dates):
-                self._update_graph(df, kdcode_list, train_dates[epoch % len(train_dates)])
 
             train_loss = self._train_epoch(train_loader, optimizer, criterion)
             final_train_loss = train_loss
@@ -173,24 +187,77 @@ class Trainer:
             if epoch_callback is not None:
                 epoch_callback(epoch + 1, train_loss, val_loss, self.best_val_loss)
         
+        if dynamic:
+            print(f"  Dynamic graph updates applied during training: {self._dynamic_update_count}")
+
         return TrainingResult(
             best_val_loss=self.best_val_loss,
             final_train_loss=final_train_loss,
             epochs_trained=epoch + 1,
-            best_model_path=best_model_path
+            best_model_path=best_model_path,
         )
     
+    def _batched_edges(
+        self,
+        edge_index: torch.Tensor,
+        edge_weight: torch.Tensor,
+        batch_size: int,
+        num_stocks: int,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Expand single-graph edge tensors to cover a full batch via index shifting."""
+        ei_list = [edge_index + i * num_stocks for i in range(batch_size)]
+        ew_list = [edge_weight] * batch_size
+        return torch.cat(ei_list, dim=1), torch.cat(ew_list, dim=0)
+
+    def _apply_dynamic_graph(
+        self,
+        batch_dates: Optional[List[str]],
+        edge_index: torch.Tensor,
+        edge_weight: torch.Tensor,
+        n_stocks: int,
+        batch_size: int,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """If dynamic graph is active and dates are provided, update and return current edges."""
+        dynamic = (
+            self.graph_builder is not None
+            and self.config.graph.update_frequency_months > 0
+            and batch_dates is not None
+            and self._df is not None
+        )
+        if not dynamic:
+            return edge_index, edge_weight
+
+        date = batch_dates[0]
+        prev_stats = self.graph_builder.get_stats()
+        updated_ei, updated_ew = self.graph_builder.update_if_needed(
+            self._df, self._kdcode_list, date, show_progress=False
+        )
+        if updated_ei is not None:
+            self._dynamic_update_count += 1
+            new_stats = self.graph_builder.get_stats()
+            print(
+                f"  [graph] updated at {date}: "
+                f"{prev_stats.get('n_edges', '?')} -> {new_stats.get('n_edges', '?')} edges"
+            )
+
+        ei, ew = self.graph_builder.get_current_graph()
+        return self._batched_edges(ei, ew, batch_size, n_stocks)
+
     def _train_epoch(self, train_loader, optimizer, criterion) -> float:
         self.model.train()
         total_loss = 0.0
         num_samples = 0
-        
-        for time_series, labels, graph_features, edge_index, edge_weight, n_stocks in train_loader:
+
+        for time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates in train_loader:
             batch_size = time_series.shape[0]
 
             time_series = time_series.to(self.device)
             labels = labels.to(self.device)
             graph_features = graph_features.to(self.device)
+
+            edge_index, edge_weight = self._apply_dynamic_graph(
+                batch_dates, edge_index, edge_weight, n_stocks, batch_size
+            )
             edge_index = edge_index.to(self.device)
             edge_weight = edge_weight.to(self.device)
 
@@ -202,62 +269,42 @@ class Trainer:
             if self.config.training.gradient_clip > 0:
                 torch.nn.utils.clip_grad_norm_(
                     self.model.parameters(),
-                    self.config.training.gradient_clip
+                    self.config.training.gradient_clip,
                 )
-            
+
             optimizer.step()
-            
+
             total_loss += loss.item() * batch_size
             num_samples += batch_size
-        
+
         return total_loss / num_samples if num_samples > 0 else 0.0
-    
+
     def _validate(self, val_loader, criterion) -> float:
         self.model.eval()
         total_loss = 0.0
         num_samples = 0
-        
+
         with torch.no_grad():
-            for time_series, labels, graph_features, edge_index, edge_weight, n_stocks in val_loader:
+            for time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates in val_loader:
                 batch_size = time_series.shape[0]
 
                 time_series = time_series.to(self.device)
                 labels = labels.to(self.device)
                 graph_features = graph_features.to(self.device)
+
+                edge_index, edge_weight = self._apply_dynamic_graph(
+                    batch_dates, edge_index, edge_weight, n_stocks, batch_size
+                )
                 edge_index = edge_index.to(self.device)
                 edge_weight = edge_weight.to(self.device)
 
                 outputs = self.model(time_series, graph_features, edge_index, edge_weight, n_stocks)
                 loss = criterion(outputs, labels)
-                
+
                 total_loss += loss.item() * batch_size
                 num_samples += batch_size
-        
+
         return total_loss / num_samples if num_samples > 0 else 0.0
-    
-    def _should_update_graph(self, epoch: int, train_dates: Optional[List[str]]) -> bool:
-        if self.graph_builder is None:
-            return False
-        if self.config.graph.update_frequency_months == 0:
-            return False
-        if train_dates is None:
-            return False
-        
-        current_date = train_dates[epoch % len(train_dates)]
-        return self.graph_builder.should_update(current_date)
-    
-    def _update_graph(self, df: pd.DataFrame, kdcode_list: List[str], current_date: str):
-        if self.graph_builder is None:
-            return
-        
-        new_edge_index, new_edge_weight = self.graph_builder.update_if_needed(
-            df, kdcode_list, current_date, show_progress=False
-        )
-        
-        if new_edge_index is not None:
-            self.current_edge_index = new_edge_index
-            self.current_edge_weight = new_edge_weight
-            print(f"  Graph updated at {current_date}")
     
     def predict(
         self,
@@ -276,11 +323,17 @@ class Trainer:
         """
         self.model.eval()
         all_predictions = []
-        
+
         with torch.no_grad():
-            for time_series, _, graph_features, edge_index, edge_weight, n_stocks in test_loader:
+            for time_series, _, graph_features, edge_index, edge_weight, n_stocks, batch_dates in test_loader:
+                batch_size = time_series.shape[0]
+
                 time_series = time_series.to(self.device)
                 graph_features = graph_features.to(self.device)
+
+                edge_index, edge_weight = self._apply_dynamic_graph(
+                    batch_dates, edge_index, edge_weight, n_stocks, batch_size
+                )
                 edge_index = edge_index.to(self.device)
                 edge_weight = edge_weight.to(self.device)
 

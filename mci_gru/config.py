@@ -373,6 +373,17 @@ class ExperimentConfig:
     output_dir: str = "results"
     seed: int = 42
     
+    def __post_init__(self):
+        if self.graph.update_frequency_months > 0 and self.training.batch_size != 1:
+            import warnings
+            warnings.warn(
+                f"graph.update_frequency_months={self.graph.update_frequency_months} > 0 "
+                f"but training.batch_size={self.training.batch_size}. "
+                "Dynamic graph mode requires batch_size=1; create_data_loaders will enforce this.",
+                UserWarning,
+                stacklevel=2,
+            )
+
     def get_output_path(self) -> str:
         import os
         return os.path.join(self.output_dir, self.experiment_name)
@@ -457,7 +468,8 @@ EXPERIMENT_PRESETS = {
     
     'correlation_6mo': ExperimentConfig(
         graph=GraphConfig(update_frequency_months=6),
-        experiment_name='correlation_6mo'
+        training=TrainingConfig(batch_size=1),
+        experiment_name='correlation_6mo',
     ),
     
     'momentum_buffered': ExperimentConfig(

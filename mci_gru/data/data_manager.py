@@ -448,38 +448,43 @@ class DataManager:
 class CombinedDataset(Dataset):
     """
     Combined dataset for synchronized time series, graph features, and labels.
-    
+
     This ensures time series and graph data stay aligned when shuffling.
     """
-    
-    def __init__(self, X_time_series, X_graph, y):
+
+    def __init__(self, X_time_series, X_graph, y, sample_dates: Optional[List[str]] = None):
         self.X_time_series = X_time_series
         self.X_graph = X_graph
         self.y = y
+        self.sample_dates = sample_dates
 
     def __len__(self):
         return len(self.y)
 
     def __getitem__(self, idx):
-        return {
+        item = {
             'time_series': self.X_time_series[idx],
             'graph_features': self.X_graph[idx],
             'label': self.y[idx]
         }
+        if self.sample_dates is not None:
+            item['date'] = self.sample_dates[idx]
+        return item
 
 
 def combined_collate_fn(batch, edge_index, edge_weight):
     """
     Custom collate function to create properly batched graph data.
-    
+
     PyG batches graphs by concatenating nodes and shifting edge indices.
     This function replicates that behavior while keeping time series aligned.
-    
+
     Args:
         batch: List of dicts with 'time_series', 'graph_features', 'label'
+               and optional 'date' string.
         edge_index: Original edge index tensor (2, num_edges)
         edge_weight: Original edge weight tensor (num_edges,)
-    
+
     Returns:
         time_series: (batch_size, num_stocks, seq_len, features)
         labels: (batch_size, num_stocks)
@@ -487,29 +492,34 @@ def combined_collate_fn(batch, edge_index, edge_weight):
         batched_edge_index: (2, batch_size * num_edges)
         batched_edge_weight: (batch_size * num_edges,)
         num_stocks: int
+        batch_dates: List[str] of length batch_size, or None
     """
-    batch_size = len(batch)
     num_stocks = batch[0]['graph_features'].shape[0]
-    
+
     time_series = torch.stack([item['time_series'] for item in batch])
     labels = torch.stack([item['label'] for item in batch])
-    
-    # Create batched graph structure
+
     graph_features_list = []
     edge_index_list = []
     edge_weight_list = []
-    
+
     for i, item in enumerate(batch):
         graph_features_list.append(item['graph_features'])
         shifted_edge_index = edge_index + (i * num_stocks)
         edge_index_list.append(shifted_edge_index)
         edge_weight_list.append(edge_weight)
-    
+
     batched_graph_features = torch.cat(graph_features_list, dim=0)
     batched_edge_index = torch.cat(edge_index_list, dim=1)
     batched_edge_weight = torch.cat(edge_weight_list, dim=0)
-    
-    return time_series, labels, batched_graph_features, batched_edge_index, batched_edge_weight, num_stocks
+
+    batch_dates = [item['date'] for item in batch] if 'date' in batch[0] else None
+
+    return (
+        time_series, labels, batched_graph_features,
+        batched_edge_index, batched_edge_weight, num_stocks,
+        batch_dates,
+    )
 
 
 def create_data_loaders(
@@ -523,11 +533,15 @@ def create_data_loaders(
     x_graph_test: np.ndarray,
     edge_index: torch.Tensor,
     edge_weight: torch.Tensor,
-    batch_size: int = 32
+    batch_size: int = 32,
+    train_dates: Optional[List[str]] = None,
+    val_dates: Optional[List[str]] = None,
+    test_dates: Optional[List[str]] = None,
+    dynamic_graph: bool = False,
 ) -> Tuple:
     """
     Create train/val/test data loaders.
-    
+
     Args:
         stock_features_train: Training time series (days, stocks, seq_len, features)
         x_graph_train: Training graph features (days, stocks, features)
@@ -537,59 +551,79 @@ def create_data_loaders(
         val_labels: Validation labels
         stock_features_test: Test time series
         x_graph_test: Test graph features
-        edge_index: Graph edge indices
+        edge_index: Graph edge indices (used as static fallback in dynamic mode)
         edge_weight: Graph edge weights
-        batch_size: Batch size for training
-        
+        batch_size: Batch size for training (clamped to 1 in dynamic mode)
+        train_dates: Per-sample dates aligned with train samples (required for dynamic mode)
+        val_dates: Per-sample dates aligned with val samples
+        test_dates: Per-sample dates aligned with test samples
+        dynamic_graph: When True enforce shuffle=False and batch_size=1 for train/val,
+                       and attach dates to datasets so each batch carries its trading date.
+
     Returns:
         Tuple of (train_loader, val_loader, test_loader)
     """
     print("Creating data loaders...")
-    
+
+    if dynamic_graph and batch_size != 1:
+        print(f"  [dynamic graph] forcing batch_size=1 for train and val (was {batch_size})")
+        effective_batch_size = 1
+    else:
+        effective_batch_size = batch_size
+
     X_train_ts = torch.from_numpy(stock_features_train).float()
     X_train_graph = torch.from_numpy(x_graph_train).float()
     y_train = torch.from_numpy(train_labels).float()
-    
+
     X_val_ts = torch.from_numpy(stock_features_val).float()
     X_val_graph = torch.from_numpy(x_graph_val).float()
     y_val = torch.from_numpy(val_labels).float()
-    
+
     X_test_ts = torch.from_numpy(stock_features_test).float()
     X_test_graph = torch.from_numpy(x_graph_test).float()
     y_test_dummy = torch.zeros(len(X_test_ts), X_test_graph.shape[1], dtype=torch.float32)
-    
+
     print(f"  Train: ts={X_train_ts.shape}, graph={X_train_graph.shape}, labels={y_train.shape}")
     print(f"  Val: ts={X_val_ts.shape}, graph={X_val_graph.shape}, labels={y_val.shape}")
     print(f"  Test: ts={X_test_ts.shape}, graph={X_test_graph.shape}")
-    
-    train_dataset = CombinedDataset(X_train_ts, X_train_graph, y_train)
-    val_dataset = CombinedDataset(X_val_ts, X_val_graph, y_val)
-    test_dataset = CombinedDataset(X_test_ts, X_test_graph, y_test_dummy)
-    
+
+    train_dataset = CombinedDataset(
+        X_train_ts, X_train_graph, y_train,
+        sample_dates=train_dates if dynamic_graph else None,
+    )
+    val_dataset = CombinedDataset(
+        X_val_ts, X_val_graph, y_val,
+        sample_dates=val_dates if dynamic_graph else None,
+    )
+    test_dataset = CombinedDataset(
+        X_test_ts, X_test_graph, y_test_dummy,
+        sample_dates=test_dates if dynamic_graph else None,
+    )
+
     collate_fn = partial(combined_collate_fn, edge_index=edge_index, edge_weight=edge_weight)
-    
+
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
+        batch_size=effective_batch_size if dynamic_graph else batch_size,
+        shuffle=False if dynamic_graph else True,
         drop_last=False,
-        collate_fn=collate_fn
+        collate_fn=collate_fn,
     )
-    
+
     val_loader = torch.utils.data.DataLoader(
         val_dataset,
-        batch_size=batch_size,
+        batch_size=effective_batch_size if dynamic_graph else batch_size,
         shuffle=False,
-        collate_fn=collate_fn
+        collate_fn=collate_fn,
     )
-    
+
     test_loader = torch.utils.data.DataLoader(
         test_dataset,
         batch_size=1,
         shuffle=False,
-        collate_fn=collate_fn
+        collate_fn=collate_fn,
     )
-    
+
     print(f"  Created loaders: train={len(train_loader)} batches, val={len(val_loader)} batches, test={len(test_loader)} batches")
-    
+
     return train_loader, val_loader, test_loader

@@ -163,6 +163,7 @@ def main(cfg: DictConfig):
     logger.info(f"Graph data saved to: {graph_data_path}")
 
     logger.info("\nCreating data loaders...")
+    dynamic_graph = config.graph.update_frequency_months > 0
     train_loader, val_loader, test_loader = create_data_loaders(
         stock_features_train=data['stock_features_train'],
         x_graph_train=data['x_graph_train'],
@@ -174,7 +175,11 @@ def main(cfg: DictConfig):
         x_graph_test=data['x_graph_test'],
         edge_index=data['edge_index'],
         edge_weight=data['edge_weight'],
-        batch_size=config.training.batch_size
+        batch_size=config.training.batch_size,
+        train_dates=data['train_dates'],
+        val_dates=data['val_dates'],
+        test_dates=data['test_dates'],
+        dynamic_graph=dynamic_graph,
     )
     
     num_features = len(data['feature_cols'])
