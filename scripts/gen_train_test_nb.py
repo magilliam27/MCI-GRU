@@ -344,9 +344,18 @@ if BACKTEST_SUFFIX:
     bt_cmd.extend(["--backtest_suffix", BACKTEST_SUFFIX])
 
 print("Backtest:", " ".join(bt_cmd))
-proc = subprocess.run(bt_cmd, cwd=str(REPO_ROOT))
+proc = subprocess.run(
+    bt_cmd,
+    cwd=str(REPO_ROOT),
+    stdout=subprocess.PIPE,
+    stderr=subprocess.STDOUT,
+    text=True,
+)
+print(proc.stdout)
 if proc.returncode != 0:
-    raise RuntimeError(f"Backtest exit code {proc.returncode}")
+    raise RuntimeError(
+        f"Backtest exit code {proc.returncode}. Full subprocess output is printed above."
+    )
 
 bt_name = "backtest" + (BACKTEST_SUFFIX or "")
 BACKTEST_DIR = LATEST_RUN / bt_name

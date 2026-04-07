@@ -2547,7 +2547,7 @@ def save_backtest_results(
         f.write(f"Generated: {timestamp}\n")
     
     print(f"  Summary: {summary_file}")
-    print(f"\n✓ All backtest outputs saved successfully!")
+    print("\nAll backtest outputs saved successfully.")
     
     return backtest_dir
 

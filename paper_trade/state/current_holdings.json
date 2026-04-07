@@ -1,124 +1,124 @@
 {
-  "date": "2026-03-19",
+  "date": "2026-04-06",
   "holdings": [
-    {
-      "kdcode": "INTC.OQ",
-      "entry_date": "2026-03-06",
-      "entry_rank": 1,
-      "weight": 0.05
-    },
-    {
-      "kdcode": "F.N",
-      "entry_date": "2026-03-06",
-      "entry_rank": 3,
-      "weight": 0.05
-    },
-    {
-      "kdcode": "NVDA.OQ",
-      "entry_date": "2026-03-06",
-      "entry_rank": 2,
-      "weight": 0.05
-    },
-    {
-      "kdcode": "T.N",
-      "entry_date": "2026-03-06",
-      "entry_rank": 12,
-      "weight": 0.05
-    },
     {
       "kdcode": "WBD.OQ",
       "entry_date": "2026-03-06",
-      "entry_rank": 4,
-      "weight": 0.05
-    },
-    {
-      "kdcode": "CCL.N",
-      "entry_date": "2026-03-06",
-      "entry_rank": 9,
-      "weight": 0.05
-    },
-    {
-      "kdcode": "PCG.N",
-      "entry_date": "2026-03-06",
-      "entry_rank": 10,
-      "weight": 0.05
-    },
-    {
-      "kdcode": "TSLA.OQ",
-      "entry_date": "2026-03-06",
-      "entry_rank": 5,
-      "weight": 0.05
-    },
-    {
-      "kdcode": "VZ.N",
-      "entry_date": "2026-03-06",
-      "entry_rank": 11,
-      "weight": 0.05
-    },
-    {
-      "kdcode": "LUV.N",
-      "entry_date": "2026-03-06",
-      "entry_rank": 22,
-      "weight": 0.05
-    },
-    {
-      "kdcode": "NFLX.OQ",
-      "entry_date": "2026-03-06",
-      "entry_rank": 16,
-      "weight": 0.05
-    },
-    {
-      "kdcode": "AES.N",
-      "entry_date": "2026-03-06",
-      "entry_rank": 78,
-      "weight": 0.05
-    },
-    {
-      "kdcode": "KMI.N",
-      "entry_date": "2026-03-06",
-      "entry_rank": 18,
+      "entry_rank": 7,
       "weight": 0.05
     },
     {
       "kdcode": "FCX.N",
       "entry_date": "2026-03-06",
-      "entry_rank": 14,
+      "entry_rank": 97,
       "weight": 0.05
     },
     {
-      "kdcode": "OXY.N",
-      "entry_date": "2026-03-10",
-      "entry_rank": 25,
+      "kdcode": "BAX.N",
+      "entry_date": "2026-03-20",
+      "entry_rank": 17,
       "weight": 0.05
     },
     {
-      "kdcode": "VTRS.OQ",
-      "entry_date": "2026-03-11",
+      "kdcode": "CAG.N",
+      "entry_date": "2026-03-20",
+      "entry_rank": 5,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "CPB.OQ",
+      "entry_date": "2026-03-20",
       "entry_rank": 15,
       "weight": 0.05
     },
     {
-      "kdcode": "DOW.N",
-      "entry_date": "2026-03-11",
-      "entry_rank": 23,
+      "kdcode": "GIS.N",
+      "entry_date": "2026-03-20",
+      "entry_rank": 18,
       "weight": 0.05
     },
     {
-      "kdcode": "EXC.OQ",
-      "entry_date": "2026-03-11",
-      "entry_rank": 24,
+      "kdcode": "CMCSA.OQ",
+      "entry_date": "2026-03-20",
+      "entry_rank": 4,
       "weight": 0.05
     },
     {
-      "kdcode": "AMZN.OQ",
-      "entry_date": "2026-03-16",
+      "kdcode": "CNC.N",
+      "entry_date": "2026-03-20",
+      "entry_rank": 19,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "MKC.N",
+      "entry_date": "2026-03-20",
+      "entry_rank": 6,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "KHC.OQ",
+      "entry_date": "2026-03-20",
+      "entry_rank": 33,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "CMG.N",
+      "entry_date": "2026-03-20",
+      "entry_rank": 21,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "GEN.OQ",
+      "entry_date": "2026-03-20",
+      "entry_rank": 14,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "BLDR.N",
+      "entry_date": "2026-03-20",
       "entry_rank": 32,
       "weight": 0.05
     },
     {
-      "kdcode": "CTRA.N",
-      "entry_date": "2026-03-16",
-      "entry_rank": 26,
+      "kdcode": "CPRT.OQ",
+      "entry_date": "2026-03-20",
+      "entry_rank": 10,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "NKE.N",
+      "entry_date": "2026-03-20",
+      "entry_rank": 3,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "DHI.N",
+      "entry_date": "2026-03-20",
+      "entry_rank": 23,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "LW.N",
+      "entry_date": "2026-03-20",
+      "entry_rank": 34,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "PSKY.OQ",
+      "entry_date": "2026-03-30",
+      "entry_rank": 2,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "TTD.OQ",
+      "entry_date": "2026-04-06",
+      "entry_rank": 1,
+      "weight": 0.05
+    },
+    {
+      "kdcode": "CSGP.OQ",
+      "entry_date": "2026-04-06",
+      "entry_rank": 8,
       "weight": 0.05
     }
   ]

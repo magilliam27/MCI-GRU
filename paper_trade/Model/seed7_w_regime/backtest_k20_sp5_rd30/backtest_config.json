@@ -1,0 +1,19 @@
+{
+  "top_k": 20,
+  "trading_days_per_year": 252,
+  "test_start": "2025-01-01",
+  "test_end": "2025-12-31",
+  "data_file": "data/raw/market/sp500_2019_universe_data_through_2026.csv",
+  "label_t": 21,
+  "transaction_costs": {
+    "enabled": true,
+    "bid_ask_spread": 0.0005,
+    "slippage": 0.0005
+  },
+  "rank_drop_gate": {
+    "enabled": true,
+    "min_rank_drop": 30
+  },
+  "holding_period": 1,
+  "rebalance_style": "staggered"
+}

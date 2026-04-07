@@ -13,6 +13,7 @@ Usage:
     python paper_trade/scripts/catchup.py
     python paper_trade/scripts/catchup.py --skip-refresh
     python paper_trade/scripts/catchup.py --dry-run
+    python paper_trade/scripts/catchup.py --model-dir paper_trade/Model/seed7_w_regime
 """
 
 import argparse
@@ -31,6 +32,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 DEFAULT_CSV = PROJECT_ROOT / "data" / "raw" / "market" / "sp500_2019_universe_data_through_2026.csv"
 STATE_DIR = PROJECT_ROOT / "paper_trade" / "state"
 RESULTS_DIR = PROJECT_ROOT / "paper_trade" / "results"
+DEFAULT_MODEL_DIR = "paper_trade/Model/seed7_w_regime"
 
 DAY_STEPS = [
     {"name": "Execution Tracker", "script": "track.py"},
@@ -117,19 +119,24 @@ def main():
         "--python", default=sys.executable,
         help="Python executable to use (default: current interpreter)",
     )
+    parser.add_argument(
+        "--model-dir",
+        default=DEFAULT_MODEL_DIR,
+        help="Model directory passed to infer.py (default: seed7_w_regime)",
+    )
     args = parser.parse_args()
 
     start_time = datetime.now()
 
     print()
     print("=" * 70)
-    print("  MCI-GRU Paper Trading — Catch-Up")
+    print("  MCI-GRU Paper Trading - Catch-Up")
     print(f"  {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 70)
 
     last_date = get_last_processed_date()
     if last_date is None:
-        print("\n  ERROR: No current_holdings.json found — nothing to catch up from.")
+        print("\n  ERROR: No current_holdings.json found - nothing to catch up from.")
         print("  Run the normal pipeline first: python paper_trade/scripts/run_nightly.py")
         sys.exit(1)
 
@@ -137,9 +144,9 @@ def main():
 
     # --- Step 1: Data refresh ---
     if not args.skip_refresh:
-        print(f"\n{'─' * 70}")
+        print(f"\n{'-' * 70}")
         print("  STEP 1: Data Refresh (one-time)")
-        print(f"{'─' * 70}")
+        print(f"{'-' * 70}")
         result = run_script("refresh_data.py", args.python, dry_run=args.dry_run)
         if result["status"] == "FAILED":
             print("\n  Data refresh failed. Fix the issue or use --skip-refresh")
@@ -166,15 +173,18 @@ def main():
     # --- Step 2: Process each day ---
     all_results = []
     for i, trade_date in enumerate(missed_days, 1):
-        print(f"\n{'─' * 70}")
+        print(f"\n{'-' * 70}")
         print(f"  DAY {i}/{len(missed_days)}: {trade_date}")
-        print(f"{'─' * 70}")
+        print(f"{'-' * 70}")
 
         day_ok = True
         for step in DAY_STEPS:
+            extra = ["--date", trade_date]
+            if step["script"] == "infer.py":
+                extra.extend(["--model-dir", args.model_dir])
             result = run_script(
                 step["script"], args.python,
-                extra_args=["--date", trade_date],
+                extra_args=extra,
                 dry_run=args.dry_run,
             )
             result["date"] = trade_date
@@ -187,7 +197,7 @@ def main():
                 break
 
         if not day_ok:
-            print("  Stopping catch-up — fix the error and re-run.")
+            print("  Stopping catch-up - fix the error and re-run.")
             break
 
     # --- Summary ---

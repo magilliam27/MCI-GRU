@@ -1,0 +1,96 @@
+data:
+  universe: sp500
+  source: csv
+  filename: data/raw/market/sp500_2019_universe_data_through_2026.csv
+  train_start: '2019-01-01'
+  train_end: '2023-12-31'
+  val_start: '2024-01-01'
+  val_end: '2024-12-31'
+  test_start: '2025-01-01'
+  test_end: '2025-12-31'
+features:
+  base_features:
+  - close
+  - open
+  - high
+  - low
+  - volume
+  - turnover
+  include_momentum: true
+  include_weekly_momentum: false
+  momentum_encoding: binary
+  momentum_blend_mode: dynamic
+  momentum_blend_fast_weight: 0.5
+  momentum_dynamic_correction_fast_weight: 0.15
+  momentum_dynamic_rebound_fast_weight: 0.7
+  momentum_dynamic_lookback_periods: 0
+  momentum_dynamic_min_history: 252
+  momentum_dynamic_min_state_observations: 3
+  momentum_buffer_low: 0.1
+  momentum_buffer_high: 0.9
+  include_volatility: false
+  include_vix: false
+  include_credit_spread: false
+  include_global_regime: true
+  regime_change_months: 12
+  regime_norm_months: 120
+  regime_clip_z: 3.0
+  regime_exclusion_months: 1
+  regime_similarity_quantile: 0.2
+  regime_min_history_months: 24
+  regime_strict: false
+  regime_lseg_market_ric: .SPX
+  regime_lseg_copper_ric: .MXCOPPFE
+  regime_lseg_yield_10y_ric: US10YT=RR
+  regime_lseg_yield_3m_ric: US3MT=RR
+  regime_lseg_oil_ric: CLc1
+  regime_inputs_csv: null
+  regime_enforce_lag_days: 0
+  include_rsi: false
+  include_ma_features: false
+  include_price_features: false
+  include_volume_features: false
+model:
+  his_t: 60
+  label_t: 21
+  gru_hidden_sizes:
+  - 32
+  - 10
+  hidden_size_gat1: 32
+  output_gat1: 4
+  gat_heads: 4
+  hidden_size_gat2: 32
+  num_hidden_states: 32
+  cross_attn_heads: 4
+  slow_kernel: 5
+  slow_stride: 2
+  use_multi_scale: false
+  use_self_attention: false
+  activation: elu
+  latent_init_scale: 0.02
+graph:
+  judge_value: 0.8
+  update_frequency_months: 0
+  corr_lookback_days: 252
+training:
+  batch_size: 32
+  learning_rate: 5.0e-05
+  num_epochs: 100
+  num_models: 10
+  early_stopping_patience: 15
+  weight_decay: 0.001
+  gradient_clip: 1.0
+  loss_type: mse
+  ic_loss_alpha: 0.5
+  label_type: rank
+tracking:
+  enabled: false
+  tracking_uri: mlruns
+  experiment_name: null
+  run_name: null
+  log_artifacts: true
+  log_checkpoints: true
+  log_predictions: false
+experiment_name: notebook_train_backtest
+output_dir: results
+seed: 7

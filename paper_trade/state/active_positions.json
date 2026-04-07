@@ -1,69 +1,9 @@
 {
-  "fill_date": "2026-03-19",
-  "decision_date": "2026-03-18",
+  "fill_date": "2026-04-06",
+  "decision_date": "2026-04-02",
   "positions": [
     {
-      "kdcode": "INTC.OQ",
-      "weight": 0.05,
-      "entry_date": "2026-03-06",
-      "fill_price": null
-    },
-    {
-      "kdcode": "F.N",
-      "weight": 0.05,
-      "entry_date": "2026-03-06",
-      "fill_price": null
-    },
-    {
-      "kdcode": "NVDA.OQ",
-      "weight": 0.05,
-      "entry_date": "2026-03-06",
-      "fill_price": null
-    },
-    {
-      "kdcode": "T.N",
-      "weight": 0.05,
-      "entry_date": "2026-03-06",
-      "fill_price": null
-    },
-    {
       "kdcode": "WBD.OQ",
-      "weight": 0.05,
-      "entry_date": "2026-03-06",
-      "fill_price": null
-    },
-    {
-      "kdcode": "CCL.N",
-      "weight": 0.05,
-      "entry_date": "2026-03-06",
-      "fill_price": null
-    },
-    {
-      "kdcode": "PCG.N",
-      "weight": 0.05,
-      "entry_date": "2026-03-06",
-      "fill_price": null
-    },
-    {
-      "kdcode": "TSLA.OQ",
-      "weight": 0.05,
-      "entry_date": "2026-03-06",
-      "fill_price": null
-    },
-    {
-      "kdcode": "VZ.N",
-      "weight": 0.05,
-      "entry_date": "2026-03-06",
-      "fill_price": null
-    },
-    {
-      "kdcode": "LUV.N",
-      "weight": 0.05,
-      "entry_date": "2026-03-06",
-      "fill_price": null
-    },
-    {
-      "kdcode": "NFLX.OQ",
       "weight": 0.05,
       "entry_date": "2026-03-06",
       "fill_price": null
@@ -75,51 +15,111 @@
       "fill_price": null
     },
     {
-      "kdcode": "KMI.N",
-      "weight": 0.05,
-      "entry_date": "2026-03-06",
-      "fill_price": null
-    },
-    {
       "kdcode": "FCX.N",
       "weight": 0.05,
       "entry_date": "2026-03-06",
       "fill_price": null
     },
     {
-      "kdcode": "OXY.N",
+      "kdcode": "BAX.N",
       "weight": 0.05,
-      "entry_date": "2026-03-10",
+      "entry_date": "2026-03-20",
       "fill_price": null
     },
     {
-      "kdcode": "VTRS.OQ",
+      "kdcode": "CAG.N",
       "weight": 0.05,
-      "entry_date": "2026-03-11",
+      "entry_date": "2026-03-20",
       "fill_price": null
     },
     {
-      "kdcode": "DOW.N",
+      "kdcode": "CPB.OQ",
       "weight": 0.05,
-      "entry_date": "2026-03-11",
+      "entry_date": "2026-03-20",
       "fill_price": null
     },
     {
-      "kdcode": "EXC.OQ",
+      "kdcode": "GIS.N",
       "weight": 0.05,
-      "entry_date": "2026-03-11",
+      "entry_date": "2026-03-20",
       "fill_price": null
     },
     {
-      "kdcode": "AMZN.OQ",
+      "kdcode": "CMCSA.OQ",
       "weight": 0.05,
-      "entry_date": "2026-03-16",
+      "entry_date": "2026-03-20",
       "fill_price": null
     },
     {
-      "kdcode": "CTRA.N",
+      "kdcode": "CNC.N",
       "weight": 0.05,
-      "entry_date": "2026-03-16",
+      "entry_date": "2026-03-20",
+      "fill_price": null
+    },
+    {
+      "kdcode": "MKC.N",
+      "weight": 0.05,
+      "entry_date": "2026-03-20",
+      "fill_price": null
+    },
+    {
+      "kdcode": "KHC.OQ",
+      "weight": 0.05,
+      "entry_date": "2026-03-20",
+      "fill_price": null
+    },
+    {
+      "kdcode": "CMG.N",
+      "weight": 0.05,
+      "entry_date": "2026-03-20",
+      "fill_price": null
+    },
+    {
+      "kdcode": "GEN.OQ",
+      "weight": 0.05,
+      "entry_date": "2026-03-20",
+      "fill_price": null
+    },
+    {
+      "kdcode": "BLDR.N",
+      "weight": 0.05,
+      "entry_date": "2026-03-20",
+      "fill_price": null
+    },
+    {
+      "kdcode": "CPRT.OQ",
+      "weight": 0.05,
+      "entry_date": "2026-03-20",
+      "fill_price": null
+    },
+    {
+      "kdcode": "NKE.N",
+      "weight": 0.05,
+      "entry_date": "2026-03-20",
+      "fill_price": null
+    },
+    {
+      "kdcode": "DHI.N",
+      "weight": 0.05,
+      "entry_date": "2026-03-20",
+      "fill_price": null
+    },
+    {
+      "kdcode": "LW.N",
+      "weight": 0.05,
+      "entry_date": "2026-03-20",
+      "fill_price": null
+    },
+    {
+      "kdcode": "PSKY.OQ",
+      "weight": 0.05,
+      "entry_date": "2026-03-30",
+      "fill_price": null
+    },
+    {
+      "kdcode": "SWK.N",
+      "weight": 0.05,
+      "entry_date": "2026-04-01",
       "fill_price": null
     }
   ]

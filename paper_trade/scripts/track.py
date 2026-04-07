@@ -74,6 +74,20 @@ def get_trading_dates(csv_path: str, n_recent: int = 5) -> list:
     return dates[-n_recent:]
 
 
+def get_all_trading_dates(csv_path: str) -> list:
+    """All unique trading dates in the master CSV, sorted."""
+    df = pd.read_csv(csv_path, usecols=["dt"])
+    return sorted(df["dt"].unique().tolist())
+
+
+def get_previous_trading_date(all_dates: list, date: str) -> str | None:
+    """Previous trading day before ``date`` in the calendar, or None if first."""
+    if date not in all_dates:
+        return None
+    i = all_dates.index(date)
+    return all_dates[i - 1] if i > 0 else None
+
+
 def compute_fills(
     orders_path: Path,
     open_prices: pd.DataFrame,
@@ -352,19 +366,17 @@ def main():
     print("  MCI-GRU Execution Tracker")
     print("=" * 70)
 
-    recent_dates = get_trading_dates(str(csv_path), n_recent=5)
-    if not recent_dates:
+    all_dates = get_all_trading_dates(str(csv_path))
+    if not all_dates:
         print("ERROR: No trading dates found in CSV")
         sys.exit(1)
 
-    today = args.date or recent_dates[-1]
-    if len(recent_dates) >= 2:
-        yesterday = recent_dates[-2] if today == recent_dates[-1] else None
-        if yesterday is None:
-            idx = recent_dates.index(today) if today in recent_dates else -1
-            yesterday = recent_dates[idx - 1] if idx > 0 else None
-    else:
-        yesterday = None
+    today = args.date or all_dates[-1]
+    if today not in all_dates:
+        print(f"ERROR: Date {today} not found in master CSV")
+        sys.exit(1)
+
+    yesterday = get_previous_trading_date(all_dates, today)
 
     print(f"  Today:     {today}")
     print(f"  Yesterday: {yesterday or 'N/A'}")
@@ -457,7 +469,7 @@ def main():
             print("    No returns to compute (missing price data)")
     else:
         if not prev_positions:
-            print("\n  First run — no prior positions to compute returns from.")
+            print("\n  First run - no prior positions to compute returns from.")
         elif not yesterday:
             print("\n  No previous trading day available for return calculation.")
 
