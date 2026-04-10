@@ -1,21 +1,9 @@
 {
-  "fill_date": "2026-04-06",
-  "decision_date": "2026-04-02",
+  "fill_date": "2026-04-08",
+  "decision_date": "2026-04-08",
   "positions": [
     {
       "kdcode": "WBD.OQ",
-      "weight": 0.05,
-      "entry_date": "2026-03-06",
-      "fill_price": null
-    },
-    {
-      "kdcode": "AES.N",
-      "weight": 0.05,
-      "entry_date": "2026-03-06",
-      "fill_price": null
-    },
-    {
-      "kdcode": "FCX.N",
       "weight": 0.05,
       "entry_date": "2026-03-06",
       "fill_price": null
@@ -111,15 +99,27 @@
       "fill_price": null
     },
     {
-      "kdcode": "PSKY.OQ",
+      "kdcode": "TTD.OQ",
       "weight": 0.05,
-      "entry_date": "2026-03-30",
+      "entry_date": "2026-04-06",
+      "fill_price": null
+    },
+    {
+      "kdcode": "CSGP.OQ",
+      "weight": 0.05,
+      "entry_date": "2026-04-06",
       "fill_price": null
     },
     {
       "kdcode": "SWK.N",
       "weight": 0.05,
-      "entry_date": "2026-04-01",
+      "entry_date": "2026-04-07",
+      "fill_price": null
+    },
+    {
+      "kdcode": "COO.OQ",
+      "weight": 0.05,
+      "entry_date": "2026-04-08",
       "fill_price": null
     }
   ]

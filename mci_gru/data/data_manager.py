@@ -195,12 +195,19 @@ class DataManager:
         lseg_vix_ric: str = "VIX",
         regime_inputs_csv: Optional[str] = None,
         regime_enforce_lag_days: int = 0,
+        end: Optional[str] = None,
     ) -> pd.DataFrame:
         """
         Load Phase-1 global regime input series with hybrid sourcing.
 
         If regime_inputs_csv is set, load from that file (and optionally apply lag);
         otherwise use FRED/LSEG APIs.
+
+        Args:
+            end: Optional override for the fetch end date (ISO string). When None,
+                defaults to self.config.test_end. Pass the inference/prediction date
+                here so FRED series are fetched through the live date, not the frozen
+                training config end date.
 
         Output columns:
             dt, regime_market, regime_yield_curve, regime_oil, regime_copper,
@@ -249,7 +256,7 @@ class DataManager:
 
         start_ts = pd.Timestamp(self.config.train_start) - pd.Timedelta(days=365 * 15)
         start = start_ts.strftime("%Y-%m-%d")
-        end = self.config.test_end
+        end = end if end is not None else self.config.test_end
 
         fred = None
         try:

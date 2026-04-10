@@ -34,8 +34,10 @@ from mci_gru.features import FeatureEngineer
 from mci_gru.models import create_model
 from mci_gru.data.data_manager import (
     CombinedDataset,
+    DataManager,
     combined_collate_fn,
 )
+from mci_gru.config import DataConfig
 
 DEFAULT_MODEL_DIR = "paper_trade/Model/Seed73_trained_to_2062026"
 DEFAULT_CSV = "data/raw/market/sp500_2019_universe_data_through_2026.csv"
@@ -64,12 +66,70 @@ def build_feature_engineer(features_cfg: dict) -> FeatureEngineer:
     return FeatureEngineer(FeatureConfig(**features_cfg))
 
 
+def prepare_inference_regime_df(
+    config: dict,
+    inference_end_date: str,
+) -> "pd.DataFrame | None":
+    """
+    Load global regime inputs for inference.
+
+    Uses FRED by default (when features.regime_inputs_csv is null).  The fetch
+    window is extended to *inference_end_date* so that macro series cover the
+    prediction date rather than the frozen training config test_end.
+
+    If features.regime_inputs_csv is set, loads from that file instead (offline
+    / reproducibility override).
+
+    Returns a regime DataFrame ready to pass into FeatureEngineer.transform, or
+    None if include_global_regime is False.
+    """
+    features_cfg = config.get("features", {})
+    if not features_cfg.get("include_global_regime", False):
+        return None
+
+    # Build a DataManager scoped to the inference horizon.
+    # Clamp test_start to inference_end_date so DataConfig's chronological
+    # ordering check passes even when the model's test_start is in the future
+    # relative to the requested inference date (e.g. --date before test_start).
+    data_cfg = config.get("data", {})
+    inferred_test_start = data_cfg.get("test_start", "2025-01-01")
+    safe_test_start = min(inferred_test_start, inference_end_date)
+    data_config = DataConfig(
+        universe=data_cfg.get("universe", "sp500"),
+        source=data_cfg.get("source", "csv"),
+        train_start=data_cfg.get("train_start", "2019-01-01"),
+        train_end=data_cfg.get("train_end", "2023-12-31"),
+        val_start=data_cfg.get("val_start", "2024-01-01"),
+        val_end=data_cfg.get("val_end", "2024-12-31"),
+        test_start=safe_test_start,
+        test_end=inference_end_date,
+    )
+    dm = DataManager(data_config)
+
+    regime_inputs_csv = features_cfg.get("regime_inputs_csv") or None
+    regime_df = dm.load_regime_inputs(
+        lseg_market_ric=features_cfg.get("regime_lseg_market_ric", ".SPX"),
+        lseg_copper_ric=features_cfg.get("regime_lseg_copper_ric", ".MXCOPPFE"),
+        lseg_yield_10y_ric=features_cfg.get("regime_lseg_yield_10y_ric", "US10YT=RR"),
+        lseg_yield_3m_ric=features_cfg.get("regime_lseg_yield_3m_ric", "US3MT=RR"),
+        lseg_oil_ric=features_cfg.get("regime_lseg_oil_ric", "CLc1"),
+        lseg_vix_ric=features_cfg.get("regime_lseg_vix_ric", "VIX"),
+        regime_inputs_csv=regime_inputs_csv,
+        regime_enforce_lag_days=features_cfg.get("regime_enforce_lag_days", 0),
+        end=inference_end_date,
+    )
+    source_label = f"CSV ({regime_inputs_csv})" if regime_inputs_csv else f"FRED through {inference_end_date}"
+    print(f"  Loaded regime inputs via {source_label}: {len(regime_df)} rows")
+    return regime_df
+
+
 def prepare_inference_data(
     csv_path: str,
     metadata: dict,
     features_cfg: dict,
     his_t: int,
     target_date: str = None,
+    regime_df=None,
 ):
     """
     Load CSV, engineer features, normalize with saved stats, and build
@@ -84,7 +144,7 @@ def prepare_inference_data(
     print(f"  Loaded {len(df):,} rows, date range {df['dt'].min()} to {df['dt'].max()}")
 
     feature_engineer = build_feature_engineer(features_cfg)
-    df = feature_engineer.transform(df, None, None, None)
+    df = feature_engineer.transform(df, None, None, regime_df)
 
     feature_cols = metadata["feature_cols"]
     kdcode_list = metadata["kdcode_list"]
@@ -309,12 +369,30 @@ def main():
     feature_cols = metadata["feature_cols"]
     model_cfg = config["model"]
 
+    # Determine the inference end date: max of requested date and CSV max date.
+    csv_dates = pd.read_csv(str(csv_path), usecols=["dt"])["dt"]
+    csv_max_date = csv_dates.max()
+    inference_end_date = max(filter(None, [args.date, csv_max_date]))
+
+    # Load regime inputs if the model was trained with global regime features.
+    regime_df = None
+    features_cfg = config.get("features", {})
+    if features_cfg.get("include_global_regime", False):
+        try:
+            regime_df = prepare_inference_regime_df(config, inference_end_date)
+        except Exception as exc:
+            if features_cfg.get("regime_strict", False):
+                raise
+            print(f"Warning: Could not load regime inputs: {exc}")
+            print("Continuing with zero-filled regime features (soft-fail)")
+
     time_series, graph_features, kdcode_list, pred_date = prepare_inference_data(
         csv_path=str(csv_path),
         metadata=metadata,
-        features_cfg=config.get("features", {}),
+        features_cfg=features_cfg,
         his_t=his_t,
         target_date=args.date,
+        regime_df=regime_df,
     )
 
     scores = run_inference(

@@ -7,7 +7,9 @@
       "Bash(python -m pytest tests/test_output_management.py tests/test_backtest_fairness.py tests/test_index_level_mode.py tests/test_momentum_blend_modes.py -v --timeout=60)",
       "Bash(python -m pytest tests/test_output_management.py tests/test_backtest_fairness.py tests/test_index_level_mode.py tests/test_momentum_blend_modes.py -v)",
       "Bash(python -m pytest tests/test_output_management.py -v)",
-      "Bash(python -m pytest tests/test_index_level_mode.py -v)"
+      "Bash(python -m pytest tests/test_index_level_mode.py -v)",
+      "Bash(python -m pytest tests/test_regime_features.py::test_transform_with_regime_df_produces_nonzero_regime_columns -x -q)",
+      "Bash(python -m pytest tests/test_regime_features.py -x -q)"
     ]
   }
 }

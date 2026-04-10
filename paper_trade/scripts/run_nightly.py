@@ -33,6 +33,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = Path(__file__).resolve().parent
 
+DEFAULT_MODEL_DIR = "paper_trade/Model/seed7_w_regime"
+
 STEPS = [
     {
         "name": "Data Refresh",
@@ -205,13 +207,18 @@ def main():
         default=sys.executable,
         help="Python executable to use (default: current interpreter)",
     )
+    parser.add_argument(
+        "--model-dir",
+        default=DEFAULT_MODEL_DIR,
+        help="Model directory passed to infer.py (default: seed7_w_regime)",
+    )
     args = parser.parse_args()
 
     start_time = datetime.now()
 
     print()
     print("=" * 70)
-    print("  MCI-GRU Paper Trading — Nightly Pipeline")
+    print("  MCI-GRU Paper Trading - Nightly Pipeline")
     print(f"  {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 70)
     print()
@@ -257,6 +264,8 @@ def main():
         extra_args = []
         if step["script"] == "refresh_data.py" and args.dry_run:
             extra_args.append("--dry-run")
+        if step["script"] == "infer.py":
+            extra_args.extend(["--model-dir", args.model_dir])
 
         result = run_step(step, args.python, extra_args, dry_run=args.dry_run)
         step_results.append(result)

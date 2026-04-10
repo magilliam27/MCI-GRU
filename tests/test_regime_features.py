@@ -206,6 +206,57 @@ def test_regime_csv_contract_required_columns():
         os.unlink(path_bad)
 
 
+def test_transform_with_regime_df_produces_nonzero_regime_columns():
+    """Regime columns must be non-constant when a real regime_df is passed to transform."""
+    from mci_gru.features import FeatureEngineer
+    from mci_gru.config import FeatureConfig
+
+    # Build a minimal stock DataFrame: 2 stocks × 3000 daily rows so there is
+    # enough history for regime monthly aggregation (regime_min_history_months=24).
+    n_days = 3000
+    dates = pd.date_range("2000-01-01", periods=n_days, freq="B")
+    date_strs = dates.strftime("%Y-%m-%d")
+    stocks = ["AAA", "BBB"]
+    rows = []
+    rng = np.random.default_rng(0)
+    for stock in stocks:
+        prices = 100.0 * np.cumprod(1 + rng.normal(0, 0.01, n_days))
+        for i, (dt, price) in enumerate(zip(date_strs, prices)):
+            rows.append({
+                "kdcode": stock,
+                "dt": dt,
+                "open": price * 0.99,
+                "high": price * 1.01,
+                "low": price * 0.98,
+                "close": price,
+                "volume": 1_000_000.0,
+                "turnover": price * 1_000_000.0,
+            })
+    stock_df = pd.DataFrame(rows)
+
+    regime_df = _make_regime_daily(start="2000-01-01", periods=n_days + 100)
+
+    fe = FeatureEngineer(FeatureConfig(
+        include_momentum=True,
+        include_global_regime=True,
+        regime_min_history_months=24,
+        regime_include_subsequent_returns=False,
+    ))
+    result = fe.transform(stock_df.copy(), None, None, regime_df)
+
+    regime_col = "regime_global_score"
+    assert regime_col in result.columns, f"{regime_col} missing from transform output"
+    scores = result[regime_col].dropna()
+    assert len(scores) > 0, "All regime_global_score values are NaN"
+    non_zero_count = (scores != 0.0).sum()
+    assert non_zero_count > 0, (
+        "regime_global_score is all zeros — regime_df was not used in transform"
+    )
+    assert scores.std() > 0, (
+        "regime_global_score is constant — regime features appear to be zero-filled"
+    )
+
+
 def test_regime_csv_lag_safety():
     """With regime_enforce_lag_days=1, value at date T should reflect prior-day data (no look-ahead)."""
     import tempfile
