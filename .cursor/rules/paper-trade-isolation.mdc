@@ -1,0 +1,26 @@
+---
+description: Paper trading uses frozen checkpoints — do not couple to training code
+globs: ["paper_trade/**"]
+alwaysApply: false
+---
+
+# Paper Trade Isolation
+
+The `paper_trade/` directory uses frozen model checkpoints from `paper_trade/Model/`.
+
+## Rules
+
+- **Do not import `GraphBuilder`** in paper_trade code. The graph is loaded from
+  a pre-saved `graph_data.pt` file.
+- **Do not import `pipeline.py`** or `prepare_data()`. Inference uses its own
+  lightweight data path in `infer.py`.
+- **Normalization stats** come from `run_metadata.json` saved during training.
+  Do not recompute them at inference time.
+- **The rank-drop gate** in `portfolio.py` only sells when rank drops ≥ 30 places.
+  Changing this threshold requires backtesting evidence.
+
+## Pipeline order
+
+`refresh_data → track → infer → portfolio → report`
+
+Orchestrated by `run_nightly.py`.

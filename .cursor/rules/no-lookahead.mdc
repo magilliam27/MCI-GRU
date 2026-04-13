@@ -1,0 +1,25 @@
+---
+description: Enforce no-lookahead constraint in feature and data code
+globs: ["mci_gru/features/**", "mci_gru/data/**", "mci_gru/pipeline.py"]
+alwaysApply: false
+---
+
+# No-Lookahead Rule
+
+All normalization, feature computation, and label generation must use only data
+available up to (and including) the current date. Specifically:
+
+- **Normalization stats** are computed from training dates only and stored in
+  `run_metadata.json`. Test-period data must not influence these stats.
+- **Momentum features** use trailing windows. The dynamic blend (Proposition 9)
+  uses only past state-conditioned returns.
+- **Regime features** compare the current month only to historical months
+  (controlled by `regime_exclusion_months`).
+- **Graph edges** use trailing `corr_lookback_days` returns ending before the
+  current date.
+- **Labels** are computed as forward returns and are never used as inputs.
+
+Violations are caught by tests:
+- `tests/test_momentum_blend_modes.py` (Proposition 9 no-lookahead)
+- `tests/test_regime_features.py` (regime no-lookahead)
+- `tests/test_backtest_fairness.py` (simulation timing)

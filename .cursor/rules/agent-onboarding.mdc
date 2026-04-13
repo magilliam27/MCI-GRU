@@ -1,0 +1,30 @@
+---
+description: Agent onboarding — read before any code change
+globs: ["**/*.py", "**/*.yaml"]
+alwaysApply: true
+---
+
+# Agent Onboarding
+
+Before modifying any code, read `AGENTS.md` (repo root) for the quick map, then
+`docs/ARCHITECTURE.md` for the full data-flow and model architecture.
+
+## Critical Invariants
+
+1. **No lookahead** — normalization stats, graph edges, and labels must use only
+   training-period data. Verify with existing tests in `test_momentum_blend_modes.py`
+   and `test_regime_features.py`.
+
+2. **Dynamic graph requires batch_size=1** — enforced in `ExperimentConfig.__post_init__`.
+
+3. **Collate 7-tuple** — `combined_collate_fn` returns
+   `(time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates)`.
+   Do not change this contract without updating all consumers.
+
+4. **Paper-trade isolation** — `paper_trade/scripts/infer.py` loads a frozen
+   `graph_data.pt`. It must never import `GraphBuilder`.
+
+## After Every Change
+
+- Run `python -m pytest tests/ -v` and ensure all tests pass.
+- Run `ruff check .` to verify lint cleanliness.

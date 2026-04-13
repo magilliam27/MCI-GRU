@@ -1,0 +1,94 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "mci-gru"
+version = "0.1.0"
+description = "Multi-head Cross-attention and Improved GRU for Stock Prediction"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0",
+    "torch-geometric>=2.4",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scikit-learn>=1.3",
+    "scipy>=1.11",
+    "matplotlib>=3.7",
+    "tqdm>=4.65",
+    "hydra-core>=1.3",
+    "omegaconf>=2.3",
+    "python-dateutil>=2.8",
+]
+
+[project.optional-dependencies]
+tracking = ["mlflow>=2.0"]
+lseg = ["refinitiv-data>=1.5"]
+fred = ["fredapi>=0.5"]
+dev = [
+    "pytest>=7.4",
+    "pytest-timeout>=2.2",
+    "ruff>=0.4",
+]
+all = ["mci-gru[tracking,fred,dev]"]
+
+[tool.setuptools.packages.find]
+include = ["mci_gru*"]
+
+# --- Ruff (linting + formatting) ---
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+exclude = [
+    "archive/",
+    "seed_results/",
+    "_uncertain/",
+    "notebooks/",
+    "outputs/",
+    "results/",
+    ".hydra/",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "SIM",   # flake8-simplify
+    "TCH",   # flake8-type-checking
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # do not perform function call in argument defaults (Hydra uses this)
+    "SIM108", # use ternary (reduces readability in numeric code)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mci_gru"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# --- Pytest ---
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "requires_data: marks tests that need real market data files",
+    "requires_fred: marks tests that need FRED_API_KEY env var",
+    "requires_lseg: marks tests that need LSEG/Refinitiv Workspace",
+]
+filterwarnings = [
+    "ignore::UserWarning:mci_gru.config",
+]
