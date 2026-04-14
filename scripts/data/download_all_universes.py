@@ -29,29 +29,28 @@ UNIVERSES = [
         "constituents_csv": "data/raw/constituents/sp500_constituents_2016.csv",
         "output_csv": "data/raw/market/sp500_2016_universe_data.csv",
         "start": "2015-01-01",
-        "end": "2025-12-31",
+        "end": "2026-04-14",
         "label": "2016",
     },
     {
         "constituents_csv": "data/raw/constituents/sp500_constituents_2017.csv",
         "output_csv": "data/raw/market/sp500_2017_universe_data.csv",
         "start": "2016-01-01",
-        "end": "2025-12-31",
+        "end": "2026-04-14",
         "label": "2017",
     },
     {
         "constituents_csv": "data/raw/constituents/sp500_constituents_2018.csv",
         "output_csv": "data/raw/market/sp500_2018_universe_data.csv",
         "start": "2017-01-01",
-        "end": "2025-12-31",
+        "end": "2026-04-14",
         "label": "2018",
     },
-    # ── Extended through 2026 for production / live-trading pipeline ──
     {
         "constituents_csv": "data/raw/constituents/sp500_constituents_2019.csv",
         "output_csv": "data/raw/market/sp500_2019_universe_data_through_2026.csv",
         "start": "2018-01-01",
-        "end": "2026-03-06",
+        "end": "2026-04-14",
         "label": "2019_through_2026",
     },
 ]

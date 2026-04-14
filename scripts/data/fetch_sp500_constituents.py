@@ -13,7 +13,7 @@ from pathlib import Path
 import refinitiv.data as rd
 
 # Years to fetch constituents for
-YEARS = [2016, 2017, 2018]
+YEARS = [2016, 2017, 2018, 2019]
 OUTPUT_DIR = Path("data/raw/constituents")
 
 # Connect to Refinitiv Workspace
