@@ -5,15 +5,21 @@ This module provides a unified interface for loading data from
 different sources (CSV, LSEG) and preparing it for model training.
 """
 
+from __future__ import annotations
+
 from functools import partial
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
-from mci_gru.config import DataConfig
 from mci_gru.data.path_resolver import resolve_project_data_path
+
+if TYPE_CHECKING:
+    from mci_gru.config import DataConfig
+    from mci_gru.graph.builder import GraphSchedule
 
 
 class DataManager:
@@ -561,7 +567,7 @@ def create_data_loaders(
     val_dates: list[str] | None = None,
     test_dates: list[str] | None = None,
     dynamic_graph: bool = False,
-    graph_schedule: "GraphSchedule | None" = None,
+    graph_schedule: GraphSchedule | None = None,
 ) -> tuple:
     """
     Create train/val/test data loaders.
@@ -590,8 +596,6 @@ def create_data_loaders(
     Returns:
         Tuple of (train_loader, val_loader, test_loader)
     """
-    from mci_gru.graph.builder import GraphSchedule  # noqa: F811
-
     print("Creating data loaders...")
 
     X_train_ts = torch.from_numpy(stock_features_train).float()

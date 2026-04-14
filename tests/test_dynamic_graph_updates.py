@@ -212,7 +212,7 @@ class TestGraphSchedule:
 
         assert schedule.num_snapshots >= 2
         for date in schedule.snapshot_dates:
-            corr = gb.compute_correlation_matrix(df, kdcodes, date)
+            gb.compute_correlation_matrix(df, kdcodes, date)
             used_dates = df[df["dt"] < date]["dt"].unique()
             assert len(used_dates) > 0 or date <= df["dt"].min()
 
