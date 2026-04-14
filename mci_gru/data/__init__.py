@@ -11,14 +11,14 @@ Modules:
 - universes: Stock universe definitions (S&P 500, Russell 1000, etc.)
 """
 
-from mci_gru.data.universes import UNIVERSES, get_universe_info
 from mci_gru.data.data_manager import DataManager
 from mci_gru.data.preprocessing import (
-    generate_time_series_features,
-    generate_graph_features,
-    compute_labels,
     apply_rank_labels,
+    compute_labels,
+    generate_graph_features,
+    generate_time_series_features,
 )
+from mci_gru.data.universes import UNIVERSES, get_universe_info
 
 __all__ = [
     "UNIVERSES",

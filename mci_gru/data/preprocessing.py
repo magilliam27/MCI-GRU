@@ -10,14 +10,13 @@ Contains pure data-transformation functions extracted from run_experiment.py:
 
 import numpy as np
 import pandas as pd
-from typing import List
 from tqdm import tqdm
 
 
 def generate_time_series_features(
     df: pd.DataFrame,
-    kdcode_list: List[str],
-    feature_cols: List[str],
+    kdcode_list: list[str],
+    feature_cols: list[str],
     his_t: int,
 ) -> np.ndarray:
     """Build sliding-window feature tensors for all stocks.
@@ -31,9 +30,7 @@ def generate_time_series_features(
 
     print(f"  Allocating feature array: ({num_usable_days}, {num_stocks}, {his_t}, {num_features})")
 
-    stock_features = np.zeros(
-        (num_usable_days, num_stocks, his_t, num_features), dtype=np.float32
-    )
+    stock_features = np.zeros((num_usable_days, num_stocks, his_t, num_features), dtype=np.float32)
 
     stock_to_idx = {stock: idx for idx, stock in enumerate(kdcode_list)}
     date_to_idx = {date: idx for idx, date in enumerate(all_dates)}
@@ -59,9 +56,9 @@ def generate_time_series_features(
 
 def generate_graph_features(
     df: pd.DataFrame,
-    kdcode_list: List[str],
-    feature_cols: List[str],
-    dates: List[str],
+    kdcode_list: list[str],
+    feature_cols: list[str],
+    dates: list[str],
 ) -> np.ndarray:
     """Build per-day graph node feature tensors.
 
@@ -103,8 +100,8 @@ def apply_rank_labels(labels: np.ndarray) -> np.ndarray:
 
 def compute_labels(
     df: pd.DataFrame,
-    kdcode_list: List[str],
-    dates: List[str],
+    kdcode_list: list[str],
+    dates: list[str],
     label_t: int,
 ) -> np.ndarray:
     """Compute forward-return labels for the given dates.

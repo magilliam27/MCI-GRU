@@ -23,9 +23,7 @@ sys.path.insert(0, str(project_root))
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Fetch current index constituents from LSEG."
-    )
+    parser = argparse.ArgumentParser(description="Fetch current index constituents from LSEG.")
     parser.add_argument(
         "--universe",
         default="sp500",
@@ -90,7 +88,7 @@ def main():
 
         print(f"Saved {len(constituents)} constituents to {out_path}")
         print(f"Fetched on: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-        print(f"\nFirst 5 entries:")
+        print("\nFirst 5 entries:")
         print(constituents.head().to_string(index=False))
     finally:
         loader.disconnect()

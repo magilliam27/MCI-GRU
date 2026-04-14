@@ -7,47 +7,46 @@ Main entry point for running MCI-GRU experiments with Hydra configuration.
 Usage:
     # Run baseline experiment
     python run_experiment.py
-    
+
     # Override lookback period
     python run_experiment.py model.his_t=5
-    
+
     # Use a different experiment preset
     python run_experiment.py +experiment=with_vix
-    
+
     # Sweep over multiple values
     python run_experiment.py --multirun model.his_t=5,10,15,20
-    
+
     # Use Russell 1000 data
     python run_experiment.py +data=russell1000
-    
+
     # Combine overrides
     python run_experiment.py +experiment=with_vix +data=russell1000 model.his_t=20
 """
 
-import os
-import sys
 import json
-import random
 import logging
+import os
+import random
+import sys
+from datetime import datetime
 from pathlib import Path
 
+import hydra
 import numpy as np
 import torch
-from datetime import datetime
-
-import hydra
 from omegaconf import DictConfig, OmegaConf
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from mci_gru.config import (
-    ExperimentConfig,
     DataConfig,
+    ExperimentConfig,
     FeatureConfig,
     GraphConfig,
     ModelConfig,
-    TrainingConfig,
     TrackingConfig,
+    TrainingConfig,
 )
 from mci_gru.data.data_manager import create_data_loaders
 from mci_gru.features import FeatureEngineer
@@ -68,32 +67,29 @@ def set_seed(seed: int):
 def setup_logging(output_dir: str, experiment_name: str) -> logging.Logger:
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = os.path.join(output_dir, f'training_{timestamp}.log')
+    log_file = os.path.join(output_dir, f"training_{timestamp}.log")
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler(sys.stdout)
-        ],
-        force=True  # Override any existing configuration
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[logging.FileHandler(log_file), logging.StreamHandler(sys.stdout)],
+        force=True,  # Override any existing configuration
     )
-    
+
     logger = logging.getLogger(__name__)
     logger.info(f"Logging initialized. Log file: {log_file}")
-    
+
     return logger
 
 
 def dict_to_config(cfg: DictConfig) -> ExperimentConfig:
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
-    data_cfg = DataConfig(**cfg_dict.get('data', {}))
-    feature_cfg = FeatureConfig(**cfg_dict.get('features', {}))
-    graph_cfg = GraphConfig(**cfg_dict.get('graph', {}))
-    model_cfg = ModelConfig(**cfg_dict.get('model', {}))
-    training_cfg = TrainingConfig(**cfg_dict.get('training', {}))
-    tracking_cfg = TrackingConfig(**cfg_dict.get('tracking', {}))
-    
+    data_cfg = DataConfig(**cfg_dict.get("data", {}))
+    feature_cfg = FeatureConfig(**cfg_dict.get("features", {}))
+    graph_cfg = GraphConfig(**cfg_dict.get("graph", {}))
+    model_cfg = ModelConfig(**cfg_dict.get("model", {}))
+    training_cfg = TrainingConfig(**cfg_dict.get("training", {}))
+    tracking_cfg = TrackingConfig(**cfg_dict.get("tracking", {}))
+
     return ExperimentConfig(
         data=data_cfg,
         features=feature_cfg,
@@ -101,23 +97,24 @@ def dict_to_config(cfg: DictConfig) -> ExperimentConfig:
         model=model_cfg,
         training=training_cfg,
         tracking=tracking_cfg,
-        experiment_name=cfg_dict.get('experiment_name', 'baseline'),
-        output_dir=cfg_dict.get('output_dir', 'results'),
-        seed=cfg_dict.get('seed', 42),
+        experiment_name=cfg_dict.get("experiment_name", "baseline"),
+        output_dir=cfg_dict.get("output_dir", "results"),
+        seed=cfg_dict.get("seed", 42),
     )
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def main(cfg: DictConfig):
     from hydra.core.hydra_config import HydraConfig
+
     try:
         hydra_cfg = HydraConfig.get()
         output_path = hydra_cfg.runtime.output_dir
-    except:
+    except Exception:
         output_path = os.getcwd()
-    
-    logger = setup_logging(output_path, cfg.get('experiment_name', 'baseline'))
-    
+
+    logger = setup_logging(output_path, cfg.get("experiment_name", "baseline"))
+
     logger.info("=" * 80)
     logger.info("MCI-GRU Experiment Runner")
     logger.info("=" * 80)
@@ -127,72 +124,77 @@ def main(cfg: DictConfig):
     set_seed(config.seed)
     logger.info(f"\nRandom seed: {config.seed}")
     logger.info(f"Output directory: {output_path}")
-    config_path = os.path.join(output_path, 'config.yaml')
+    config_path = os.path.join(output_path, "config.yaml")
     OmegaConf.save(cfg, config_path)
     logger.info(f"Configuration saved to: {config_path}")
-    
+
     logger.info("\nInitializing feature engineer...")
     feature_engineer = FeatureEngineer(config.features)
-    
+
     if config.data.experiment_mode == "index_level":
         data = prepare_data_index_level(config, feature_engineer)
     else:
         data = prepare_data(config, feature_engineer)
-    
+
     metadata = {
-        'norm_means': {k: float(v) for k, v in data['norm_means'].items()},
-        'norm_stds': {k: float(v) for k, v in data['norm_stds'].items()},
-        'feature_cols': data['feature_cols'],
-        'kdcode_list': data['kdcode_list'],
-        'his_t': config.model.his_t,
-        'label_t': config.model.label_t,
-        'seed': config.seed,
-        'train_end': config.data.train_end,
-        'data_file': config.data.filename,
+        "norm_means": {k: float(v) for k, v in data["norm_means"].items()},
+        "norm_stds": {k: float(v) for k, v in data["norm_stds"].items()},
+        "feature_cols": data["feature_cols"],
+        "kdcode_list": data["kdcode_list"],
+        "his_t": config.model.his_t,
+        "label_t": config.model.label_t,
+        "seed": config.seed,
+        "train_end": config.data.train_end,
+        "data_file": config.data.filename,
     }
-    metadata_path = os.path.join(output_path, 'run_metadata.json')
-    with open(metadata_path, 'w') as f:
+    metadata_path = os.path.join(output_path, "run_metadata.json")
+    with open(metadata_path, "w") as f:
         json.dump(metadata, f, indent=2)
     logger.info(f"Run metadata saved to: {metadata_path}")
 
-    graph_data_path = os.path.join(output_path, 'graph_data.pt')
-    torch.save({
-        'edge_index': data['edge_index'],
-        'edge_weight': data['edge_weight'],
-    }, graph_data_path)
+    graph_data_path = os.path.join(output_path, "graph_data.pt")
+    torch.save(
+        {
+            "edge_index": data["edge_index"],
+            "edge_weight": data["edge_weight"],
+        },
+        graph_data_path,
+    )
     logger.info(f"Graph data saved to: {graph_data_path}")
 
     logger.info("\nCreating data loaders...")
     dynamic_graph = config.graph.update_frequency_months > 0
     train_loader, val_loader, test_loader = create_data_loaders(
-        stock_features_train=data['stock_features_train'],
-        x_graph_train=data['x_graph_train'],
-        train_labels=data['train_labels'],
-        stock_features_val=data['stock_features_val'],
-        x_graph_val=data['x_graph_val'],
-        val_labels=data['val_labels'],
-        stock_features_test=data['stock_features_test'],
-        x_graph_test=data['x_graph_test'],
-        edge_index=data['edge_index'],
-        edge_weight=data['edge_weight'],
+        stock_features_train=data["stock_features_train"],
+        x_graph_train=data["x_graph_train"],
+        train_labels=data["train_labels"],
+        stock_features_val=data["stock_features_val"],
+        x_graph_val=data["x_graph_val"],
+        val_labels=data["val_labels"],
+        stock_features_test=data["stock_features_test"],
+        x_graph_test=data["x_graph_test"],
+        edge_index=data["edge_index"],
+        edge_weight=data["edge_weight"],
         batch_size=config.training.batch_size,
-        train_dates=data['train_dates'],
-        val_dates=data['val_dates'],
-        test_dates=data['test_dates'],
+        train_dates=data["train_dates"],
+        val_dates=data["val_dates"],
+        test_dates=data["test_dates"],
         dynamic_graph=dynamic_graph,
     )
-    
-    num_features = len(data['feature_cols'])
-    
+
+    num_features = len(data["feature_cols"])
+
     def model_factory():
         return create_model(num_features, config.model.to_dict())
-    
+
     logger.info("\n" + "=" * 80)
     logger.info("Training")
     logger.info("=" * 80)
-    
+
     tracking_experiment_name = config.tracking.experiment_name or config.experiment_name
-    tracking_run_name = config.tracking.run_name or f"{config.experiment_name}-{Path(output_path).name}"
+    tracking_run_name = (
+        config.tracking.run_name or f"{config.experiment_name}-{Path(output_path).name}"
+    )
     tracking_manager = MLflowTrackingManager(
         enabled=config.tracking.enabled,
         tracking_uri=config.tracking.tracking_uri,
@@ -213,7 +215,9 @@ def main(cfg: DictConfig):
     try:
         if tracking_manager.enabled:
             tracking_manager.log_params(OmegaConf.to_container(cfg, resolve=True))
-            mlflow_meta = tracking_manager.persist_run_metadata(extra_metadata={"output_path": output_path})
+            mlflow_meta = tracking_manager.persist_run_metadata(
+                extra_metadata={"output_path": output_path}
+            )
             if mlflow_meta is not None:
                 logger.info(f"MLflow run metadata saved to: {mlflow_meta}")
 
@@ -223,11 +227,11 @@ def main(cfg: DictConfig):
             train_loader=train_loader,
             val_loader=val_loader,
             test_loader=test_loader,
-            kdcode_list=data['kdcode_list'],
-            test_dates=data['test_dates'],
-            graph_builder=data['graph_builder'],
-            df=data['df'],
-            train_dates=data['train_dates'],
+            kdcode_list=data["kdcode_list"],
+            test_dates=data["test_dates"],
+            graph_builder=data["graph_builder"],
+            df=data["df"],
+            train_dates=data["train_dates"],
             output_path=output_path,
             tracking_manager=tracking_manager,
         )
@@ -245,12 +249,20 @@ def main(cfg: DictConfig):
         logger.info(f"Training summary saved to: {training_summary_path}")
 
         if tracking_manager.enabled:
-            tracking_manager.log_metrics({
-                "models_trained": len(results),
-                "mean_best_val_loss": training_summary["mean_best_val_loss"],
-            }, prefix="training.")
+            tracking_manager.log_metrics(
+                {
+                    "models_trained": len(results),
+                    "mean_best_val_loss": training_summary["mean_best_val_loss"],
+                },
+                prefix="training.",
+            )
             if config.tracking.log_artifacts:
-                for artifact in [config_path, metadata_path, graph_data_path, training_summary_path]:
+                for artifact in [
+                    config_path,
+                    metadata_path,
+                    graph_data_path,
+                    training_summary_path,
+                ]:
                     tracking_manager.log_artifact(artifact, artifact_path="run_artifacts")
                 for log_path in sorted(Path(output_path).glob("training_*.log")):
                     tracking_manager.log_artifact(log_path, artifact_path="logs")

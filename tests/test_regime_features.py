@@ -76,10 +76,16 @@ def test_compute_regime_monthly_features_adds_subsequent_return_signals():
     october_row = monthly.loc[monthly["dt"] == pd.Timestamp("2000-10-31")].iloc[0]
     expected_similar_return_1m = np.mean([(108.0 / 105.0) - 1.0, (112.0 / 109.0) - 1.0])
     expected_similar_return_3m = np.mean([(112.0 / 105.0) - 1.0, (116.0 / 109.0) - 1.0])
-    expected_spread_1m = expected_similar_return_1m - np.mean([(109.0 / 108.0) - 1.0, (113.0 / 112.0) - 1.0])
+    expected_spread_1m = expected_similar_return_1m - np.mean(
+        [(109.0 / 108.0) - 1.0, (113.0 / 112.0) - 1.0]
+    )
 
-    assert october_row["regime_similar_subsequent_return_1m"] == pytest.approx(expected_similar_return_1m)
-    assert october_row["regime_similar_subsequent_return_3m"] == pytest.approx(expected_similar_return_3m)
+    assert october_row["regime_similar_subsequent_return_1m"] == pytest.approx(
+        expected_similar_return_1m
+    )
+    assert october_row["regime_similar_subsequent_return_3m"] == pytest.approx(
+        expected_similar_return_3m
+    )
     assert october_row["regime_subsequent_return_spread_1m"] == pytest.approx(expected_spread_1m)
 
 
@@ -164,8 +170,9 @@ def test_regime_input_contract_columns_present():
 def test_regime_csv_contract_required_columns():
     """Canonical regime CSV must have dt + required regime inputs; optional variables can be absent."""
     import tempfile
-    from mci_gru.data.data_manager import DataManager
+
     from mci_gru.config import DataConfig
+    from mci_gru.data.data_manager import DataManager
 
     good = _make_regime_daily(periods=10)[["dt"] + REGIME_REQUIRED_VARIABLES]
     with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
@@ -188,6 +195,7 @@ def test_regime_csv_contract_required_columns():
         assert out["regime_volatility"].isna().all()
     finally:
         import os
+
         os.unlink(path)
 
     bad = good.drop(columns=["regime_copper"])
@@ -198,18 +206,19 @@ def test_regime_csv_contract_required_columns():
         dm2 = DataManager(config)
         try:
             dm2.load_regime_inputs(regime_inputs_csv=path_bad, regime_enforce_lag_days=0)
-            assert False, "Expected ValueError for missing column"
+            raise AssertionError("Expected ValueError for missing column")
         except ValueError as e:
             assert "regime_copper" in str(e) or "missing" in str(e).lower()
     finally:
         import os
+
         os.unlink(path_bad)
 
 
 def test_transform_with_regime_df_produces_nonzero_regime_columns():
     """Regime columns must be non-constant when a real regime_df is passed to transform."""
-    from mci_gru.features import FeatureEngineer
     from mci_gru.config import FeatureConfig
+    from mci_gru.features import FeatureEngineer
 
     # Build a minimal stock DataFrame: 2 stocks × 3000 daily rows so there is
     # enough history for regime monthly aggregation (regime_min_history_months=24).
@@ -221,27 +230,31 @@ def test_transform_with_regime_df_produces_nonzero_regime_columns():
     rng = np.random.default_rng(0)
     for stock in stocks:
         prices = 100.0 * np.cumprod(1 + rng.normal(0, 0.01, n_days))
-        for i, (dt, price) in enumerate(zip(date_strs, prices)):
-            rows.append({
-                "kdcode": stock,
-                "dt": dt,
-                "open": price * 0.99,
-                "high": price * 1.01,
-                "low": price * 0.98,
-                "close": price,
-                "volume": 1_000_000.0,
-                "turnover": price * 1_000_000.0,
-            })
+        for _i, (dt, price) in enumerate(zip(date_strs, prices, strict=False)):
+            rows.append(
+                {
+                    "kdcode": stock,
+                    "dt": dt,
+                    "open": price * 0.99,
+                    "high": price * 1.01,
+                    "low": price * 0.98,
+                    "close": price,
+                    "volume": 1_000_000.0,
+                    "turnover": price * 1_000_000.0,
+                }
+            )
     stock_df = pd.DataFrame(rows)
 
     regime_df = _make_regime_daily(start="2000-01-01", periods=n_days + 100)
 
-    fe = FeatureEngineer(FeatureConfig(
-        include_momentum=True,
-        include_global_regime=True,
-        regime_min_history_months=24,
-        regime_include_subsequent_returns=False,
-    ))
+    fe = FeatureEngineer(
+        FeatureConfig(
+            include_momentum=True,
+            include_global_regime=True,
+            regime_min_history_months=24,
+            regime_include_subsequent_returns=False,
+        )
+    )
     result = fe.transform(stock_df.copy(), None, None, regime_df)
 
     regime_col = "regime_global_score"
@@ -260,8 +273,9 @@ def test_transform_with_regime_df_produces_nonzero_regime_columns():
 def test_regime_csv_lag_safety():
     """With regime_enforce_lag_days=1, value at date T should reflect prior-day data (no look-ahead)."""
     import tempfile
-    from mci_gru.data.data_manager import DataManager
+
     from mci_gru.config import DataConfig
+    from mci_gru.data.data_manager import DataManager
 
     df = _make_regime_daily(start="2000-01-01", periods=5)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
@@ -291,4 +305,5 @@ def test_regime_csv_lag_safety():
                 )
     finally:
         import os
+
         os.unlink(path)

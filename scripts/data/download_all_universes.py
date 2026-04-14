@@ -9,12 +9,13 @@ Same reshape logic as scratch1.py / lseg_loader.py (proven to work).
 Requires: Refinitiv Workspace desktop app to be running.
 """
 
-import refinitiv.data as rd
-import pandas as pd
-from tqdm import tqdm
-import time
 import os
+import time
 from pathlib import Path
+
+import pandas as pd
+import refinitiv.data as rd
+from tqdm import tqdm
 
 # ============================================================
 # CONFIGURATION
@@ -25,33 +26,33 @@ from pathlib import Path
 # End date extends through 2025 for full coverage.
 UNIVERSES = [
     {
-        'constituents_csv': 'data/raw/constituents/sp500_constituents_2016.csv',
-        'output_csv': 'data/raw/market/sp500_2016_universe_data.csv',
-        'start': '2015-01-01',
-        'end': '2025-12-31',
-        'label': '2016',
+        "constituents_csv": "data/raw/constituents/sp500_constituents_2016.csv",
+        "output_csv": "data/raw/market/sp500_2016_universe_data.csv",
+        "start": "2015-01-01",
+        "end": "2025-12-31",
+        "label": "2016",
     },
     {
-        'constituents_csv': 'data/raw/constituents/sp500_constituents_2017.csv',
-        'output_csv': 'data/raw/market/sp500_2017_universe_data.csv',
-        'start': '2016-01-01',
-        'end': '2025-12-31',
-        'label': '2017',
+        "constituents_csv": "data/raw/constituents/sp500_constituents_2017.csv",
+        "output_csv": "data/raw/market/sp500_2017_universe_data.csv",
+        "start": "2016-01-01",
+        "end": "2025-12-31",
+        "label": "2017",
     },
     {
-        'constituents_csv': 'data/raw/constituents/sp500_constituents_2018.csv',
-        'output_csv': 'data/raw/market/sp500_2018_universe_data.csv',
-        'start': '2017-01-01',
-        'end': '2025-12-31',
-        'label': '2018',
+        "constituents_csv": "data/raw/constituents/sp500_constituents_2018.csv",
+        "output_csv": "data/raw/market/sp500_2018_universe_data.csv",
+        "start": "2017-01-01",
+        "end": "2025-12-31",
+        "label": "2018",
     },
     # ── Extended through 2026 for production / live-trading pipeline ──
     {
-        'constituents_csv': 'data/raw/constituents/sp500_constituents_2019.csv',
-        'output_csv': 'data/raw/market/sp500_2019_universe_data_through_2026.csv',
-        'start': '2018-01-01',
-        'end': '2026-03-06',
-        'label': '2019_through_2026',
+        "constituents_csv": "data/raw/constituents/sp500_constituents_2019.csv",
+        "output_csv": "data/raw/market/sp500_2019_universe_data_through_2026.csv",
+        "start": "2018-01-01",
+        "end": "2026-03-06",
+        "label": "2019_through_2026",
     },
 ]
 
@@ -59,24 +60,38 @@ UNIVERSES = [
 SKIP_EXISTING = True
 
 # Refinitiv API settings
-BATCH_SIZE = 50        # RICs per API call (avoid rate limits)
-BATCH_DELAY = 0.5      # seconds between batches
+BATCH_SIZE = 50  # RICs per API call (avoid rate limits)
+BATCH_DELAY = 0.5  # seconds between batches
 
 # Column name mapping from LSEG field names -> standard OHLCV
 # (covers all known field name variants returned by rd.get_history)
 COLUMN_MAPPING = {
-    'MKT_OPEN': 'open', 'MKT_HIGH': 'high', 'MKT_LOW': 'low',
-    'TRDPRC_1': 'close', 'ACVOL_UNS': 'volume',
-    'OPEN_PRC': 'open', 'HIGH_1': 'high', 'LOW_1': 'low', 'HST_CLOSE': 'close',
-    'OPEN': 'open', 'HIGH': 'high', 'LOW': 'low', 'CLOSE': 'close', 'VOLUME': 'volume',
-    'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume',
+    "MKT_OPEN": "open",
+    "MKT_HIGH": "high",
+    "MKT_LOW": "low",
+    "TRDPRC_1": "close",
+    "ACVOL_UNS": "volume",
+    "OPEN_PRC": "open",
+    "HIGH_1": "high",
+    "LOW_1": "low",
+    "HST_CLOSE": "close",
+    "OPEN": "open",
+    "HIGH": "high",
+    "LOW": "low",
+    "CLOSE": "close",
+    "VOLUME": "volume",
+    "Open": "open",
+    "High": "high",
+    "Low": "low",
+    "Close": "close",
+    "Volume": "volume",
 }
 
 
 def load_rics(csv_path):
     """Load RIC codes from a constituents CSV file."""
     df = pd.read_csv(csv_path)
-    rics = df['Instrument'].dropna().tolist()
+    rics = df["Instrument"].dropna().tolist()
     return rics
 
 
@@ -91,15 +106,10 @@ def download_history(rics, start, end):
     all_data = []
 
     for i in tqdm(range(0, len(rics), BATCH_SIZE), desc="  Downloading"):
-        batch = rics[i:i + BATCH_SIZE]
+        batch = rics[i : i + BATCH_SIZE]
 
         try:
-            df = rd.get_history(
-                universe=batch,
-                start=start,
-                end=end,
-                interval='1D'
-            )
+            df = rd.get_history(universe=batch, start=start, end=end, interval="1D")
             if df is not None and len(df) > 0:
                 all_data.append(df)
         except Exception as e:
@@ -131,7 +141,7 @@ def reshape_to_standard(combined):
 
     for instrument in tqdm(instruments, desc="  Reshaping"):
         # Skip metadata-like column names that aren't real instruments
-        if instrument in ['Date', 'Instrument', 'index']:
+        if instrument in ["Date", "Instrument", "index"]:
             continue
         try:
             # Extract this instrument's data: columns become the field names
@@ -141,10 +151,10 @@ def reshape_to_standard(combined):
             instrument_data = instrument_data.rename(columns=COLUMN_MAPPING)
 
             # Add stock identifier (full RIC, e.g. "AAPL.OQ")
-            instrument_data['kdcode'] = instrument
+            instrument_data["kdcode"] = instrument
 
             # Add date from the DataFrame index
-            instrument_data['dt'] = combined.index
+            instrument_data["dt"] = combined.index
 
             records.append(instrument_data)
         except Exception as e:
@@ -154,7 +164,7 @@ def reshape_to_standard(combined):
     final_df = pd.concat(records, ignore_index=True)
 
     # Verify required OHLCV columns exist
-    required = ['open', 'high', 'low', 'close', 'volume']
+    required = ["open", "high", "low", "close", "volume"]
     missing = [c for c in required if c not in final_df.columns]
     if missing:
         print(f"  ERROR: Missing columns: {missing}")
@@ -162,26 +172,26 @@ def reshape_to_standard(combined):
         raise KeyError(f"Missing required columns: {missing}")
 
     # Format date as YYYY-MM-DD string
-    final_df['dt'] = pd.to_datetime(final_df['dt']).dt.strftime('%Y-%m-%d')
+    final_df["dt"] = pd.to_datetime(final_df["dt"]).dt.strftime("%Y-%m-%d")
 
     # Drop rows where close price is NaN (no trade that day)
-    final_df = final_df.dropna(subset=['close'])
+    final_df = final_df.dropna(subset=["close"])
 
     # Remove duplicate (stock, date) rows
     before = len(final_df)
-    final_df = final_df.drop_duplicates(subset=['kdcode', 'dt'], keep='first')
+    final_df = final_df.drop_duplicates(subset=["kdcode", "dt"], keep="first")
     dropped = before - len(final_df)
     if dropped > 0:
         print(f"  Dropped {dropped} duplicate rows")
 
     # Compute turnover (volume * close price)
-    final_df['turnover'] = final_df['volume'] * final_df['close']
+    final_df["turnover"] = final_df["volume"] * final_df["close"]
 
     # Keep only the standard columns in order
-    final_df = final_df[['kdcode', 'dt', 'open', 'high', 'low', 'close', 'volume', 'turnover']]
+    final_df = final_df[["kdcode", "dt", "open", "high", "low", "close", "volume", "turnover"]]
 
     # Sort by stock then date
-    final_df = final_df.sort_values(['kdcode', 'dt']).reset_index(drop=True)
+    final_df = final_df.sort_values(["kdcode", "dt"]).reset_index(drop=True)
 
     return final_df
 
@@ -190,13 +200,13 @@ def process_universe(universe_config):
     """
     Full pipeline for one universe: load RICs -> download -> reshape -> save.
     """
-    csv_path = universe_config['constituents_csv']
-    output_path = universe_config['output_csv']
+    csv_path = universe_config["constituents_csv"]
+    output_path = universe_config["output_csv"]
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
-    start = universe_config['start']
-    end = universe_config['end']
-    label = universe_config['label']
+    start = universe_config["start"]
+    end = universe_config["end"]
+    label = universe_config["label"]
 
     print(f"\n{'=' * 70}")
     print(f"  UNIVERSE: {label}")
@@ -208,7 +218,7 @@ def process_universe(universe_config):
     # Check if output already exists
     if SKIP_EXISTING and os.path.exists(output_path):
         print(f"  SKIPPING - output file already exists ({output_path})")
-        print(f"  Set SKIP_EXISTING = False to re-download.")
+        print("  Set SKIP_EXISTING = False to re-download.")
         return {
             "status": "skipped",
             "output_path": output_path,
@@ -251,7 +261,7 @@ def process_universe(universe_config):
     print(f"    Stocks:     {final_df['kdcode'].nunique()}")
     print(f"    Date range: {final_df['dt'].min()} to {final_df['dt'].max()}")
     print(f"    Columns:    {final_df.columns.tolist()}")
-    print(f"    Sample:")
+    print("    Sample:")
     print(final_df.head(3).to_string(index=False))
 
     return {
@@ -265,7 +275,7 @@ def process_universe(universe_config):
 # ============================================================
 # MAIN
 # ============================================================
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("Connecting to Refinitiv Workspace...")
     rd.open_session()
 
@@ -273,10 +283,10 @@ if __name__ == '__main__':
     for universe_config in UNIVERSES:
         try:
             result = process_universe(universe_config)
-            results[universe_config['label']] = result
+            results[universe_config["label"]] = result
         except Exception as e:
             print(f"\n  FAILED for {universe_config['label']}: {e}")
-            results[universe_config['label']] = {
+            results[universe_config["label"]] = {
                 "status": "failed",
                 "reason": str(e),
                 "output_path": universe_config.get("output_csv"),
@@ -286,7 +296,7 @@ if __name__ == '__main__':
 
     # Summary
     print(f"\n{'=' * 70}")
-    print(f"  SUMMARY")
+    print("  SUMMARY")
     print(f"{'=' * 70}")
     for label, result in results.items():
         status = result.get("status", "failed") if isinstance(result, dict) else "failed"
@@ -295,7 +305,11 @@ if __name__ == '__main__':
         elif status == "skipped":
             print(f"  {label}: SKIPPED (already exists)")
         else:
-            reason = result.get("reason", "unknown error") if isinstance(result, dict) else "unknown error"
+            reason = (
+                result.get("reason", "unknown error")
+                if isinstance(result, dict)
+                else "unknown error"
+            )
             print(f"  {label}: FAILED ({reason})")
     print(f"{'=' * 70}")
     print("Done!")

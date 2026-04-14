@@ -36,9 +36,9 @@ DEFAULT_MODEL_DIR = "paper_trade/Model/seed7_w_regime"
 
 DAY_STEPS = [
     {"name": "Execution Tracker", "script": "track.py"},
-    {"name": "Model Inference",   "script": "infer.py"},
+    {"name": "Model Inference", "script": "infer.py"},
     {"name": "Portfolio Decision", "script": "portfolio.py"},
-    {"name": "Daily Report",      "script": "report.py"},
+    {"name": "Daily Report", "script": "report.py"},
 ]
 
 
@@ -59,8 +59,9 @@ def get_trading_dates_after(csv_path: Path, after_date: str) -> list[str]:
     return [d for d in dates if d > after_date]
 
 
-def run_script(script_name: str, python_exe: str, extra_args: list = None,
-               dry_run: bool = False) -> dict:
+def run_script(
+    script_name: str, python_exe: str, extra_args: list = None, dry_run: bool = False
+) -> dict:
     """Run a pipeline script as a subprocess. Returns result dict."""
     script_path = SCRIPTS_DIR / script_name
     cmd = [python_exe, str(script_path)]
@@ -76,8 +77,11 @@ def run_script(script_name: str, python_exe: str, extra_args: list = None,
 
     try:
         result = subprocess.run(
-            cmd, cwd=str(PROJECT_ROOT),
-            capture_output=True, text=True, timeout=600,
+            cmd,
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=600,
         )
         duration = time.time() - start
 
@@ -90,17 +94,24 @@ def run_script(script_name: str, python_exe: str, extra_args: list = None,
             if result.stderr:
                 for line in result.stderr.strip().split("\n")[-10:]:
                     print(f"      ERROR: {line}")
-            return {"name": script_name, "status": "FAILED", "duration": duration,
-                    "error": result.stderr.strip() if result.stderr else ""}
+            return {
+                "name": script_name,
+                "status": "FAILED",
+                "duration": duration,
+                "error": result.stderr.strip() if result.stderr else "",
+            }
 
         return {"name": script_name, "status": "OK", "duration": duration}
 
     except subprocess.TimeoutExpired:
-        return {"name": script_name, "status": "TIMEOUT",
-                "duration": time.time() - start}
+        return {"name": script_name, "status": "TIMEOUT", "duration": time.time() - start}
     except Exception as e:
-        return {"name": script_name, "status": "ERROR",
-                "duration": time.time() - start, "error": str(e)}
+        return {
+            "name": script_name,
+            "status": "ERROR",
+            "duration": time.time() - start,
+            "error": str(e),
+        }
 
 
 def main():
@@ -108,15 +119,18 @@ def main():
         description="Catch up on missed paper-trading days.",
     )
     parser.add_argument(
-        "--skip-refresh", action="store_true",
+        "--skip-refresh",
+        action="store_true",
         help="Skip LSEG data refresh (if CSV is already up to date)",
     )
     parser.add_argument(
-        "--dry-run", action="store_true",
+        "--dry-run",
+        action="store_true",
         help="Show what would run without executing anything",
     )
     parser.add_argument(
-        "--python", default=sys.executable,
+        "--python",
+        default=sys.executable,
         help="Python executable to use (default: current interpreter)",
     )
     parser.add_argument(
@@ -167,8 +181,7 @@ def main():
         print("=" * 70)
         return
 
-    print(f"\n  Found {len(missed_days)} missed trading day(s): "
-          f"{', '.join(missed_days)}")
+    print(f"\n  Found {len(missed_days)} missed trading day(s): {', '.join(missed_days)}")
 
     # --- Step 2: Process each day ---
     all_results = []
@@ -183,7 +196,8 @@ def main():
             if step["script"] == "infer.py":
                 extra.extend(["--model-dir", args.model_dir])
             result = run_script(
-                step["script"], args.python,
+                step["script"],
+                args.python,
                 extra_args=extra,
                 dry_run=args.dry_run,
             )
@@ -218,8 +232,7 @@ def main():
         print(f"    {r.get('step', r['name']):25s}  {status:10s}  {dur:6.1f}s")
 
     all_ok = all(r["status"] in ("OK", "SKIPPED") for r in all_results)
-    days_processed = len(set(r["date"] for r in all_results
-                             if r["status"] in ("OK", "SKIPPED")))
+    days_processed = len(set(r["date"] for r in all_results if r["status"] in ("OK", "SKIPPED")))
 
     print()
     print(f"  Days processed: {days_processed}/{len(missed_days)}")

@@ -6,15 +6,14 @@ for experiment configuration and management.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any
-from omegaconf import MISSING
+from typing import Any
 
 
 @dataclass
 class DataConfig:
     """
     Data source and date range configuration.
-    
+
     Attributes:
         universe: Stock universe name (sp500, russell1000, msci_world)
         source: Data source type (csv, lseg)
@@ -28,23 +27,32 @@ class DataConfig:
         test_start: Test period start date
         test_end: Test period end date
     """
+
     universe: str = "sp500"
     source: str = "csv"
     filename: str = "data/raw/market/sp500_data.csv"
     experiment_mode: str = "stock_level"
-    index_filename: Optional[str] = None
+    index_filename: str | None = None
     train_start: str = "2019-01-01"
     train_end: str = "2023-12-31"
     val_start: str = "2024-01-01"
     val_end: str = "2024-12-31"
     test_start: str = "2025-01-01"
     test_end: str = "2025-12-31"
-    
+
     def __post_init__(self):
         if self.experiment_mode not in ("stock_level", "index_level"):
-            raise ValueError(f"experiment_mode must be 'stock_level' or 'index_level', got {self.experiment_mode!r}")
-        dates = [self.train_start, self.train_end, self.val_start,
-                 self.val_end, self.test_start, self.test_end]
+            raise ValueError(
+                f"experiment_mode must be 'stock_level' or 'index_level', got {self.experiment_mode!r}"
+            )
+        dates = [
+            self.train_start,
+            self.train_end,
+            self.val_start,
+            self.val_end,
+            self.test_start,
+            self.test_end,
+        ]
         for i in range(len(dates) - 1):
             if dates[i] > dates[i + 1]:
                 raise ValueError(f"Dates must be in chronological order: {dates}")
@@ -54,7 +62,7 @@ class DataConfig:
 class FeatureConfig:
     """
     Feature engineering configuration.
-    
+
     Attributes:
         base_features: List of base OHLCV feature column names
         include_momentum: Whether to add momentum features
@@ -95,8 +103,9 @@ class FeatureConfig:
         include_price_features: Whether to add derived price features
         include_volume_features: Whether to add volume features
     """
-    base_features: List[str] = field(
-        default_factory=lambda: ['close', 'open', 'high', 'low', 'volume', 'turnover']
+
+    base_features: list[str] = field(
+        default_factory=lambda: ["close", "open", "high", "low", "volume", "turnover"]
     )
     include_momentum: bool = True
     include_weekly_momentum: bool = True
@@ -127,18 +136,18 @@ class FeatureConfig:
     regime_lseg_yield_3m_ric: str = "US3MT=RR"
     regime_lseg_oil_ric: str = "CLc1"
     regime_lseg_vix_ric: str = "VIX"
-    regime_inputs_csv: Optional[str] = None
+    regime_inputs_csv: str | None = None
     regime_enforce_lag_days: int = 0
     regime_include_subsequent_returns: bool = True
-    regime_subsequent_return_horizons: List[int] = field(default_factory=lambda: [1, 3])
+    regime_subsequent_return_horizons: list[int] = field(default_factory=lambda: [1, 3])
     include_rsi: bool = False
     include_ma_features: bool = False
     include_price_features: bool = False
     include_volume_features: bool = False
-    
+
     def __post_init__(self):
-        valid_encodings = ['binary', 'continuous', 'buffered']
-        valid_blend_modes = ['static', 'dynamic']
+        valid_encodings = ["binary", "continuous", "buffered"]
+        valid_blend_modes = ["static", "dynamic"]
         if self.momentum_encoding not in valid_encodings:
             raise ValueError(f"momentum_encoding must be one of {valid_encodings}")
         if self.momentum_blend_mode not in valid_blend_modes:
@@ -175,7 +184,9 @@ class FeatureConfig:
         if self.regime_enforce_lag_days < 0:
             raise ValueError("regime_enforce_lag_days must be >= 0")
         if any(horizon <= 0 for horizon in self.regime_subsequent_return_horizons):
-            raise ValueError("regime_subsequent_return_horizons must contain only positive integers")
+            raise ValueError(
+                "regime_subsequent_return_horizons must contain only positive integers"
+            )
         if self.regime_include_subsequent_returns and self.regime_exclusion_months < 1:
             raise ValueError(
                 "regime_exclusion_months must be >= 1 when regime_include_subsequent_returns=True"
@@ -186,23 +197,24 @@ class FeatureConfig:
 class GraphConfig:
     """
     Graph construction configuration.
-    
+
     Attributes:
         judge_value: Correlation threshold for edge creation
         update_frequency_months: How often to update graph (0 = never)
         corr_lookback_days: Days of history for correlation computation
     """
+
     judge_value: float = 0.8
     update_frequency_months: int = 0
     corr_lookback_days: int = 252
-    
+
     def __post_init__(self):
         if not (0 < self.judge_value < 1):
             raise ValueError(f"judge_value must be between 0 and 1, got {self.judge_value}")
         if self.update_frequency_months < 0:
-            raise ValueError(f"update_frequency_months must be >= 0")
+            raise ValueError("update_frequency_months must be >= 0")
         if self.corr_lookback_days <= 0:
-            raise ValueError(f"corr_lookback_days must be > 0")
+            raise ValueError("corr_lookback_days must be > 0")
 
 
 @dataclass
@@ -227,9 +239,10 @@ class ModelConfig:
         activation: Activation function ("elu" or "relu")
         latent_init_scale: Std for latent state initialisation (original code used 1.0)
     """
+
     his_t: int = 10
     label_t: int = 5
-    gru_hidden_sizes: List[int] = field(default_factory=lambda: [32, 10])
+    gru_hidden_sizes: list[int] = field(default_factory=lambda: [32, 10])
     hidden_size_gat1: int = 32
     output_gat1: int = 4
     gat_heads: int = 4
@@ -249,21 +262,21 @@ class ModelConfig:
         if self.latent_init_scale <= 0:
             raise ValueError("latent_init_scale must be > 0")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
-            'gru_hidden_sizes': self.gru_hidden_sizes,
-            'hidden_size_gat1': self.hidden_size_gat1,
-            'output_gat1': self.output_gat1,
-            'gat_heads': self.gat_heads,
-            'hidden_size_gat2': self.hidden_size_gat2,
-            'num_hidden_states': self.num_hidden_states,
-            'cross_attn_heads': self.cross_attn_heads,
-            'slow_kernel': self.slow_kernel,
-            'slow_stride': self.slow_stride,
-            'use_multi_scale': self.use_multi_scale,
-            'use_self_attention': self.use_self_attention,
-            'activation': self.activation,
-            'latent_init_scale': self.latent_init_scale,
+            "gru_hidden_sizes": self.gru_hidden_sizes,
+            "hidden_size_gat1": self.hidden_size_gat1,
+            "output_gat1": self.output_gat1,
+            "gat_heads": self.gat_heads,
+            "hidden_size_gat2": self.hidden_size_gat2,
+            "num_hidden_states": self.num_hidden_states,
+            "cross_attn_heads": self.cross_attn_heads,
+            "slow_kernel": self.slow_kernel,
+            "slow_stride": self.slow_stride,
+            "use_multi_scale": self.use_multi_scale,
+            "use_self_attention": self.use_self_attention,
+            "activation": self.activation,
+            "latent_init_scale": self.latent_init_scale,
         }
 
 
@@ -287,6 +300,7 @@ class TrainingConfig:
                      Rank labels use only same-day information so they
                      do not introduce look-ahead bias.
     """
+
     batch_size: int = 32
     learning_rate: float = 5e-5
     num_epochs: int = 100
@@ -336,10 +350,11 @@ class TrackingConfig:
         log_predictions: Whether to log prediction directories (off by default
             to avoid duplicating a large number of CSV artifacts)
     """
+
     enabled: bool = False
     tracking_uri: str = "mlruns"
-    experiment_name: Optional[str] = None
-    run_name: Optional[str] = None
+    experiment_name: str | None = None
+    run_name: str | None = None
     log_artifacts: bool = True
     log_checkpoints: bool = True
     log_predictions: bool = False
@@ -349,9 +364,9 @@ class TrackingConfig:
 class ExperimentConfig:
     """
     Complete experiment configuration.
-    
+
     Combines all sub-configurations into a single config object.
-    
+
     Attributes:
         data: Data source and date configuration
         features: Feature engineering configuration
@@ -363,6 +378,7 @@ class ExperimentConfig:
         output_dir: Directory for saving outputs
         seed: Random seed for reproducibility
     """
+
     data: DataConfig = field(default_factory=DataConfig)
     features: FeatureConfig = field(default_factory=FeatureConfig)
     graph: GraphConfig = field(default_factory=GraphConfig)
@@ -372,10 +388,11 @@ class ExperimentConfig:
     experiment_name: str = "baseline"
     output_dir: str = "results"
     seed: int = 42
-    
+
     def __post_init__(self):
         if self.graph.update_frequency_months > 0 and self.training.batch_size != 1:
             import warnings
+
             warnings.warn(
                 f"graph.update_frequency_months={self.graph.update_frequency_months} > 0 "
                 f"but training.batch_size={self.training.batch_size}. "
@@ -386,112 +403,99 @@ class ExperimentConfig:
 
     def get_output_path(self) -> str:
         import os
+
         return os.path.join(self.output_dir, self.experiment_name)
-    
-    def to_flat_dict(self) -> Dict[str, Any]:
+
+    def to_flat_dict(self) -> dict[str, Any]:
         flat = {
-            'experiment_name': self.experiment_name,
-            'seed': self.seed,
+            "experiment_name": self.experiment_name,
+            "seed": self.seed,
             # Data
-            'data.universe': self.data.universe,
-            'data.source': self.data.source,
-            'data.train_start': self.data.train_start,
-            'data.train_end': self.data.train_end,
-            'data.val_start': self.data.val_start,
-            'data.val_end': self.data.val_end,
-            'data.test_start': self.data.test_start,
-            'data.test_end': self.data.test_end,
+            "data.universe": self.data.universe,
+            "data.source": self.data.source,
+            "data.train_start": self.data.train_start,
+            "data.train_end": self.data.train_end,
+            "data.val_start": self.data.val_start,
+            "data.val_end": self.data.val_end,
+            "data.test_start": self.data.test_start,
+            "data.test_end": self.data.test_end,
             # Features
-            'features.include_momentum': self.features.include_momentum,
-            'features.momentum_encoding': self.features.momentum_encoding,
-            'features.momentum_blend_mode': self.features.momentum_blend_mode,
-            'features.momentum_blend_fast_weight': self.features.momentum_blend_fast_weight,
-            'features.momentum_dynamic_correction_fast_weight': self.features.momentum_dynamic_correction_fast_weight,
-            'features.momentum_dynamic_rebound_fast_weight': self.features.momentum_dynamic_rebound_fast_weight,
-            'features.momentum_dynamic_lookback_periods': self.features.momentum_dynamic_lookback_periods,
-            'features.momentum_dynamic_min_history': self.features.momentum_dynamic_min_history,
-            'features.momentum_dynamic_min_state_observations': self.features.momentum_dynamic_min_state_observations,
-            'features.include_weekly_momentum': self.features.include_weekly_momentum,
-            'features.include_vix': self.features.include_vix,
-            'features.include_credit_spread': self.features.include_credit_spread,
-            'features.include_global_regime': self.features.include_global_regime,
-            'features.include_volatility': self.features.include_volatility,
-            'features.regime_include_subsequent_returns': self.features.regime_include_subsequent_returns,
-            'features.regime_subsequent_return_horizons': str(self.features.regime_subsequent_return_horizons),
+            "features.include_momentum": self.features.include_momentum,
+            "features.momentum_encoding": self.features.momentum_encoding,
+            "features.momentum_blend_mode": self.features.momentum_blend_mode,
+            "features.momentum_blend_fast_weight": self.features.momentum_blend_fast_weight,
+            "features.momentum_dynamic_correction_fast_weight": self.features.momentum_dynamic_correction_fast_weight,
+            "features.momentum_dynamic_rebound_fast_weight": self.features.momentum_dynamic_rebound_fast_weight,
+            "features.momentum_dynamic_lookback_periods": self.features.momentum_dynamic_lookback_periods,
+            "features.momentum_dynamic_min_history": self.features.momentum_dynamic_min_history,
+            "features.momentum_dynamic_min_state_observations": self.features.momentum_dynamic_min_state_observations,
+            "features.include_weekly_momentum": self.features.include_weekly_momentum,
+            "features.include_vix": self.features.include_vix,
+            "features.include_credit_spread": self.features.include_credit_spread,
+            "features.include_global_regime": self.features.include_global_regime,
+            "features.include_volatility": self.features.include_volatility,
+            "features.regime_include_subsequent_returns": self.features.regime_include_subsequent_returns,
+            "features.regime_subsequent_return_horizons": str(
+                self.features.regime_subsequent_return_horizons
+            ),
             # Graph
-            'graph.judge_value': self.graph.judge_value,
-            'graph.update_frequency_months': self.graph.update_frequency_months,
+            "graph.judge_value": self.graph.judge_value,
+            "graph.update_frequency_months": self.graph.update_frequency_months,
             # Model
-            'model.his_t': self.model.his_t,
-            'model.label_t': self.model.label_t,
-            'model.gru_hidden_sizes': str(self.model.gru_hidden_sizes),
+            "model.his_t": self.model.his_t,
+            "model.label_t": self.model.label_t,
+            "model.gru_hidden_sizes": str(self.model.gru_hidden_sizes),
             # Training
-            'training.batch_size': self.training.batch_size,
-            'training.learning_rate': self.training.learning_rate,
-            'training.num_epochs': self.training.num_epochs,
-            'training.num_models': self.training.num_models,
-            'training.loss_type': self.training.loss_type,
-            'training.ic_loss_alpha': self.training.ic_loss_alpha,
+            "training.batch_size": self.training.batch_size,
+            "training.learning_rate": self.training.learning_rate,
+            "training.num_epochs": self.training.num_epochs,
+            "training.num_models": self.training.num_models,
+            "training.loss_type": self.training.loss_type,
+            "training.ic_loss_alpha": self.training.ic_loss_alpha,
             # Tracking
-            'tracking.enabled': self.tracking.enabled,
-            'tracking.tracking_uri': self.tracking.tracking_uri,
-            'tracking.log_artifacts': self.tracking.log_artifacts,
-            'tracking.log_checkpoints': self.tracking.log_checkpoints,
-            'tracking.log_predictions': self.tracking.log_predictions,
+            "tracking.enabled": self.tracking.enabled,
+            "tracking.tracking_uri": self.tracking.tracking_uri,
+            "tracking.log_artifacts": self.tracking.log_artifacts,
+            "tracking.log_checkpoints": self.tracking.log_checkpoints,
+            "tracking.log_predictions": self.tracking.log_predictions,
         }
         return flat
 
 
 # Pre-defined experiment configurations
 EXPERIMENT_PRESETS = {
-    'baseline': ExperimentConfig(),
-    
-    'lookback_5': ExperimentConfig(
-        model=ModelConfig(his_t=5),
-        experiment_name='lookback_5'
+    "baseline": ExperimentConfig(),
+    "lookback_5": ExperimentConfig(model=ModelConfig(his_t=5), experiment_name="lookback_5"),
+    "lookback_20": ExperimentConfig(model=ModelConfig(his_t=20), experiment_name="lookback_20"),
+    "training_10yr": ExperimentConfig(
+        data=DataConfig(train_start="2014-01-01"), experiment_name="training_10yr"
     ),
-    
-    'lookback_20': ExperimentConfig(
-        model=ModelConfig(his_t=20),
-        experiment_name='lookback_20'
-    ),
-    
-    'training_10yr': ExperimentConfig(
-        data=DataConfig(train_start='2014-01-01'),
-        experiment_name='training_10yr'
-    ),
-    
-    'with_vix': ExperimentConfig(
+    "with_vix": ExperimentConfig(
         features=FeatureConfig(include_vix=True, include_volatility=True),
-        experiment_name='with_vix'
+        experiment_name="with_vix",
     ),
-    
-    'correlation_6mo': ExperimentConfig(
+    "correlation_6mo": ExperimentConfig(
         graph=GraphConfig(update_frequency_months=6),
         training=TrainingConfig(batch_size=1),
-        experiment_name='correlation_6mo',
+        experiment_name="correlation_6mo",
     ),
-    
-    'momentum_buffered': ExperimentConfig(
-        features=FeatureConfig(momentum_encoding='buffered'),
-        experiment_name='momentum_buffered'
+    "momentum_buffered": ExperimentConfig(
+        features=FeatureConfig(momentum_encoding="buffered"), experiment_name="momentum_buffered"
     ),
-    
-    'momentum_continuous': ExperimentConfig(
-        features=FeatureConfig(momentum_encoding='continuous'),
-        experiment_name='momentum_continuous'
+    "momentum_continuous": ExperimentConfig(
+        features=FeatureConfig(momentum_encoding="continuous"),
+        experiment_name="momentum_continuous",
     ),
-
-    'momentum_dynamic': ExperimentConfig(
+    "momentum_dynamic": ExperimentConfig(
         features=FeatureConfig(
-            momentum_blend_mode='dynamic',
+            momentum_blend_mode="dynamic",
             momentum_dynamic_correction_fast_weight=0.15,
             momentum_dynamic_rebound_fast_weight=0.70,
             momentum_dynamic_lookback_periods=0,
             momentum_dynamic_min_history=252,
             momentum_dynamic_min_state_observations=3,
         ),
-        experiment_name='momentum_dynamic'
+        experiment_name="momentum_dynamic",
     ),
 }
 
@@ -499,13 +503,13 @@ EXPERIMENT_PRESETS = {
 def get_preset(name: str) -> ExperimentConfig:
     """
     Get a pre-defined experiment configuration.
-    
+
     Args:
         name: Preset name
-        
+
     Returns:
         ExperimentConfig instance
-        
+
     Raises:
         ValueError: If preset name not found
     """
@@ -515,26 +519,26 @@ def get_preset(name: str) -> ExperimentConfig:
     return EXPERIMENT_PRESETS[name]
 
 
-def create_config_from_dict(config_dict: Dict[str, Any]) -> ExperimentConfig:
+def create_config_from_dict(config_dict: dict[str, Any]) -> ExperimentConfig:
     """
     Create ExperimentConfig from a flat or nested dictionary.
-    
+
     Useful for creating configs from Hydra or command-line args.
-    
+
     Args:
         config_dict: Configuration dictionary
-        
+
     Returns:
         ExperimentConfig instance
     """
     # Handle nested structure
-    data_dict = config_dict.get('data', {})
-    features_dict = config_dict.get('features', {})
-    graph_dict = config_dict.get('graph', {})
-    model_dict = config_dict.get('model', {})
-    training_dict = config_dict.get('training', {})
-    tracking_dict = config_dict.get('tracking', {})
-    
+    data_dict = config_dict.get("data", {})
+    features_dict = config_dict.get("features", {})
+    graph_dict = config_dict.get("graph", {})
+    model_dict = config_dict.get("model", {})
+    training_dict = config_dict.get("training", {})
+    tracking_dict = config_dict.get("tracking", {})
+
     return ExperimentConfig(
         data=DataConfig(**data_dict) if data_dict else DataConfig(),
         features=FeatureConfig(**features_dict) if features_dict else FeatureConfig(),
@@ -542,7 +546,7 @@ def create_config_from_dict(config_dict: Dict[str, Any]) -> ExperimentConfig:
         model=ModelConfig(**model_dict) if model_dict else ModelConfig(),
         training=TrainingConfig(**training_dict) if training_dict else TrainingConfig(),
         tracking=TrackingConfig(**tracking_dict) if tracking_dict else TrackingConfig(),
-        experiment_name=config_dict.get('experiment_name', 'baseline'),
-        output_dir=config_dict.get('output_dir', 'results'),
-        seed=config_dict.get('seed', 42),
+        experiment_name=config_dict.get("experiment_name", "baseline"),
+        output_dir=config_dict.get("output_dir", "results"),
+        seed=config_dict.get("seed", 42),
     )

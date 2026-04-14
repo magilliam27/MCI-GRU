@@ -6,12 +6,11 @@ No CSV fallback: if the API fails, the caller should soft-fail (log and continue
 """
 
 import os
-from typing import Optional
 
 import pandas as pd
 
 # FRED series IDs for credit spreads (daily, basis points)
-FRED_SERIES_IG = "BAMLC0A0CM"   # ICE BofA US Corporate Index OAS
+FRED_SERIES_IG = "BAMLC0A0CM"  # ICE BofA US Corporate Index OAS
 FRED_SERIES_HY = "BAMLH0A0HYM2"  # ICE BofA US High Yield Index OAS
 FRED_SERIES_SP500 = "SP500"
 FRED_SERIES_10Y = "DGS10"
@@ -27,7 +26,7 @@ class FREDLoader:
     Requires FRED_API_KEY environment variable. Raises on missing key or fetch failure.
     """
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: str | None = None):
         self._api_key = api_key or os.environ.get("FRED_API_KEY")
         if not self._api_key:
             raise ValueError(
@@ -39,6 +38,7 @@ class FREDLoader:
         """Lazy-initialize fredapi.Fred to avoid import at module load if key is missing."""
         if self._fred is None:
             from fredapi import Fred
+
             self._fred = Fred(api_key=self._api_key)
         return self._fred
 
@@ -150,7 +150,9 @@ class FREDLoader:
         df = df.loc[(df.index >= start_ts) & (df.index <= end_ts)]
         df = df.dropna(how="all")
         if df.empty:
-            raise ValueError(f"No data available for FRED series {series_id} in range {start} to {end}")
+            raise ValueError(
+                f"No data available for FRED series {series_id} in range {start} to {end}"
+            )
 
         df = df.reset_index()
         df = df.rename(columns={df.columns[0]: "dt"})

@@ -15,29 +15,24 @@ Usage:
 
 import argparse
 import json
-import gc
-import os
 import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import torch
-from functools import partial
-from tqdm import tqdm
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from omegaconf import OmegaConf
-from mci_gru.features import FeatureEngineer
-from mci_gru.models import create_model
-from mci_gru.data.data_manager import (
-    CombinedDataset,
+from omegaconf import OmegaConf  # noqa: E402
+
+from mci_gru.config import DataConfig  # noqa: E402
+from mci_gru.data.data_manager import (  # noqa: E402
     DataManager,
-    combined_collate_fn,
 )
-from mci_gru.config import DataConfig
+from mci_gru.features import FeatureEngineer  # noqa: E402
+from mci_gru.models import create_model  # noqa: E402
 
 DEFAULT_MODEL_DIR = "paper_trade/Model/Seed73_trained_to_2062026"
 DEFAULT_CSV = "data/raw/market/sp500_2019_universe_data_through_2026.csv"
@@ -63,6 +58,7 @@ def load_config(model_dir: Path) -> dict:
 def build_feature_engineer(features_cfg: dict) -> FeatureEngineer:
     """Build a FeatureEngineer from a plain dict (e.g. Hydra config section)."""
     from mci_gru.config import FeatureConfig
+
     return FeatureEngineer(FeatureConfig(**features_cfg))
 
 
@@ -118,7 +114,9 @@ def prepare_inference_regime_df(
         regime_enforce_lag_days=features_cfg.get("regime_enforce_lag_days", 0),
         end=inference_end_date,
     )
-    source_label = f"CSV ({regime_inputs_csv})" if regime_inputs_csv else f"FRED through {inference_end_date}"
+    source_label = (
+        f"CSV ({regime_inputs_csv})" if regime_inputs_csv else f"FRED through {inference_end_date}"
+    )
     print(f"  Loaded regime inputs via {source_label}: {len(regime_df)} rows")
     return regime_df
 
@@ -170,17 +168,16 @@ def prepare_inference_data(
     target_idx = all_dates.index(target_date)
     if target_idx < his_t:
         raise ValueError(
-            f"Need at least {his_t} days before target date; "
-            f"only {target_idx} available"
+            f"Need at least {his_t} days before target date; only {target_idx} available"
         )
 
-    window_dates = all_dates[target_idx - his_t: target_idx + 1]
+    window_dates = all_dates[target_idx - his_t : target_idx + 1]
     df_window = df[df["dt"].isin(window_dates)].copy()
 
     print("Filling NaN values...")
     grouped = df_window.groupby("dt")
     filled_parts = []
-    for dt_val, df_day in grouped:
+    for _dt_val, df_day in grouped:
         df_day = df_day.copy()
         for col in feature_cols:
             if col in df_day.columns:
@@ -274,9 +271,7 @@ def run_inference(
     all_preds = []
     for ckpt_path in ckpt_files:
         model = create_model(num_features, model_cfg)
-        model.load_state_dict(
-            torch.load(str(ckpt_path), map_location=device, weights_only=True)
-        )
+        model.load_state_dict(torch.load(str(ckpt_path), map_location=device, weights_only=True))
         model.to(device)
         model.eval()
 
@@ -301,11 +296,13 @@ def save_scores(
     """Save scores CSV with kdcode, dt, score, rank columns."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    df = pd.DataFrame({
-        "kdcode": kdcode_list,
-        "dt": pred_date,
-        "score": np.round(scores, 5),
-    })
+    df = pd.DataFrame(
+        {
+            "kdcode": kdcode_list,
+            "dt": pred_date,
+            "score": np.round(scores, 5),
+        }
+    )
     df = df.sort_values("score", ascending=False).reset_index(drop=True)
     df["rank"] = np.arange(1, len(df) + 1)
 
@@ -315,9 +312,9 @@ def save_scores(
     df.to_csv(str(out_path), index=False)
 
     print(f"\nScores saved to {out_path}")
-    print(f"  Top 5:")
+    print("  Top 5:")
     print(df.head().to_string(index=False))
-    print(f"  Bottom 5:")
+    print("  Bottom 5:")
     print(df.tail().to_string(index=False))
 
     return df

@@ -25,10 +25,10 @@ from mci_gru.data.data_manager import (
 )
 from mci_gru.graph.builder import GraphBuilder
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_price_df(kdcodes, start="2020-01-01", periods=400):
     """Synthetic price DataFrame with plausible daily returns."""
@@ -53,6 +53,7 @@ def _make_small_arrays(n_days=10, n_stocks=4, seq_len=5, n_features=3):
 # ---------------------------------------------------------------------------
 # GraphBuilder: static path (update_frequency_months=0)
 # ---------------------------------------------------------------------------
+
 
 class TestStaticGraph:
     def test_should_update_always_false(self):
@@ -95,6 +96,7 @@ class TestStaticGraph:
 # GraphBuilder: dynamic path (update_frequency_months>0)
 # ---------------------------------------------------------------------------
 
+
 class TestDynamicGraph:
     def _build_gb(self, freq=6):
         return GraphBuilder(judge_value=0.3, update_frequency_months=freq, corr_lookback_days=120)
@@ -122,8 +124,9 @@ class TestDynamicGraph:
 
     def test_batched_edges_shape(self):
         """_batched_edges expands single-graph edges correctly."""
-        from mci_gru.training.trainer import Trainer
         import torch.nn as nn
+
+        from mci_gru.training.trainer import Trainer
 
         n_stocks = 4
         edge_index = torch.tensor([[0, 1, 2, 3], [1, 0, 3, 2]], dtype=torch.long)
@@ -149,7 +152,7 @@ class TestDynamicGraph:
     def test_collate_returns_dates_when_dataset_has_dates(self):
         n_days, n_stocks = 6, 3
         ts, graph, labels = _make_small_arrays(n_days=n_days, n_stocks=n_stocks)
-        dates = [f"2021-01-{i+1:02d}" for i in range(n_days)]
+        dates = [f"2021-01-{i + 1:02d}" for i in range(n_days)]
         ei = torch.zeros((2, 0), dtype=torch.long)
         ew = torch.zeros(0)
         dataset = CombinedDataset(
@@ -174,13 +177,14 @@ class TestDynamicGraph:
 # create_data_loaders: dynamic_graph flag enforcement
 # ---------------------------------------------------------------------------
 
+
 class TestCreateDataLoaders:
     def _loaders(self, dynamic_graph, batch_size=8):
         n_days, n_stocks, seq_len, n_features = 20, 5, 5, 3
         ts, graph, labels = _make_small_arrays(n_days, n_stocks, seq_len, n_features)
         ei = torch.zeros((2, 0), dtype=torch.long)
         ew = torch.zeros(0)
-        dates = [f"2021-{i+1:03d}" for i in range(n_days)]
+        dates = [f"2021-{i + 1:03d}" for i in range(n_days)]
         return create_data_loaders(
             stock_features_train=ts,
             x_graph_train=graph,
@@ -218,6 +222,7 @@ class TestCreateDataLoaders:
         train_loader, _, _ = self._loaders(dynamic_graph=True, batch_size=4)
         # DataLoader stores sampler; shuffle=False means SequentialSampler
         from torch.utils.data import SequentialSampler
+
         assert isinstance(train_loader.sampler, SequentialSampler)
 
     def test_batch_yields_7_tuple(self):
@@ -234,6 +239,7 @@ class TestCreateDataLoaders:
 # ---------------------------------------------------------------------------
 # ExperimentConfig warning
 # ---------------------------------------------------------------------------
+
 
 class TestConfigWarning:
     def test_warns_when_dynamic_and_batch_size_not_1(self):

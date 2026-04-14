@@ -7,6 +7,7 @@ and mode separation is explicit (experiment_mode index_level vs stock_level).
 
 import os
 import tempfile
+
 import numpy as np
 import pandas as pd
 
@@ -22,7 +23,7 @@ def test_index_level_config_valid():
     assert cfg2.experiment_mode == "stock_level"
     try:
         DataConfig(experiment_mode="invalid")
-        assert False, "Expected ValueError"
+        raise AssertionError("Expected ValueError")
     except ValueError as e:
         assert "experiment_mode" in str(e)
 
@@ -32,10 +33,12 @@ def test_load_index_series_returns_single_series():
     with tempfile.TemporaryDirectory() as tmp:
         index_csv = os.path.abspath(os.path.join(tmp, "index.csv"))
         dates = pd.date_range("2019-01-01", periods=100, freq="B")
-        pd.DataFrame({
-            "dt": dates.strftime("%Y-%m-%d"),
-            "close": 100 + np.cumsum(np.random.randn(len(dates)) * 0.5),
-        }).to_csv(index_csv, index=False)
+        pd.DataFrame(
+            {
+                "dt": dates.strftime("%Y-%m-%d"),
+                "close": 100 + np.cumsum(np.random.randn(len(dates)) * 0.5),
+            }
+        ).to_csv(index_csv, index=False)
 
         config = DataConfig(
             experiment_mode="index_level",
@@ -61,4 +64,7 @@ def test_index_level_mode_separation():
     """Index-level and stock-level are distinct modes; only index-level uses load_index_series."""
     # Design contract: experiment_mode="index_level" triggers index-level path (prepare_data_index_level)
     # and yields single series + empty graph; stock_level uses prepare_data and constituent stocks.
-    assert DataConfig(experiment_mode="index_level").experiment_mode != DataConfig(experiment_mode="stock_level").experiment_mode
+    assert (
+        DataConfig(experiment_mode="index_level").experiment_mode
+        != DataConfig(experiment_mode="stock_level").experiment_mode
+    )

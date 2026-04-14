@@ -1,7 +1,7 @@
-import tempfile
-from pathlib import Path
 import os
 import sys
+import tempfile
+from pathlib import Path
 
 import pytest
 from omegaconf import OmegaConf
@@ -18,9 +18,8 @@ from mci_gru.tracking import (
 from run_experiment import dict_to_config
 from tests.backtest_sp500 import setup_backtest_tracking
 
-
 mlflow = pytest.importorskip("mlflow")
-from mlflow.tracking import MlflowClient
+from mlflow.tracking import MlflowClient  # noqa: E402
 
 
 def test_tracking_config_defaults_disabled():

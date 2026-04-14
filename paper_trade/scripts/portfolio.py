@@ -16,7 +16,6 @@ Usage:
 import argparse
 import json
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -40,9 +39,7 @@ def load_scores(scores_path: Path) -> pd.DataFrame:
     if missing:
         raise ValueError(f"Scores CSV missing columns: {missing}")
 
-    df = df.sort_values(
-        ["score", "kdcode"], ascending=[False, True]
-    ).reset_index(drop=True)
+    df = df.sort_values(["score", "kdcode"], ascending=[False, True]).reset_index(drop=True)
     df["rank"] = np.arange(1, len(df) + 1, dtype=int)
 
     return df
@@ -141,12 +138,14 @@ def apply_rank_drop_gate(
         rank_drop = curr_rank - prev_rank
         if rank_drop >= min_rank_drop:
             exits.append(kdcode)
-            exit_details.append({
-                "kdcode": kdcode,
-                "prev_rank": prev_rank,
-                "curr_rank": curr_rank,
-                "rank_drop": rank_drop,
-            })
+            exit_details.append(
+                {
+                    "kdcode": kdcode,
+                    "prev_rank": prev_rank,
+                    "curr_rank": curr_rank,
+                    "rank_drop": rank_drop,
+                }
+            )
         else:
             survivors.append(kdcode)
 
@@ -154,19 +153,18 @@ def apply_rank_drop_gate(
     if dropped_from_universe:
         exits.extend(dropped_from_universe)
         for kd in dropped_from_universe:
-            exit_details.append({
-                "kdcode": kd,
-                "prev_rank": prev_ranks.get(kd),
-                "curr_rank": None,
-                "rank_drop": None,
-                "reason": "dropped_from_universe",
-            })
+            exit_details.append(
+                {
+                    "kdcode": kd,
+                    "prev_rank": prev_ranks.get(kd),
+                    "curr_rank": None,
+                    "rank_drop": None,
+                    "reason": "dropped_from_universe",
+                }
+            )
 
     survivor_set = set(survivors)
-    refill_candidates = [
-        kd for kd in scores_df["kdcode"].tolist()
-        if kd not in survivor_set
-    ]
+    refill_candidates = [kd for kd in scores_df["kdcode"].tolist() if kd not in survivor_set]
     slots_needed = max(0, top_k - len(survivors))
     new_entries = refill_candidates[:slots_needed]
     target_stocks = survivors + new_entries
@@ -200,14 +198,16 @@ def build_target_portfolio(
 
     records = []
     for kd in target_stocks:
-        records.append({
-            "kdcode": kd,
-            "dt": date,
-            "weight": round(weight, 6),
-            "rank": rank_map.get(kd),
-            "score": round(score_map.get(kd, 0.0), 5),
-            "entry_date": entry_dates.get(kd, date),
-        })
+        records.append(
+            {
+                "kdcode": kd,
+                "dt": date,
+                "weight": round(weight, 6),
+                "rank": rank_map.get(kd),
+                "score": round(score_map.get(kd, 0.0), 5),
+                "entry_date": entry_dates.get(kd, date),
+            }
+        )
 
     df = pd.DataFrame(records)
     return df
@@ -223,23 +223,29 @@ def build_orders(
     for detail in decision["exit_details"]:
         reason = detail.get("reason", "rank_drop_gate")
         if reason == "rank_drop_gate":
-            reason_str = f"rank_drop {detail['prev_rank']}->{detail['curr_rank']} ({detail['rank_drop']:+d})"
+            reason_str = (
+                f"rank_drop {detail['prev_rank']}->{detail['curr_rank']} ({detail['rank_drop']:+d})"
+            )
         else:
             reason_str = reason
-        records.append({
-            "kdcode": detail["kdcode"],
-            "dt": date,
-            "side": "SELL",
-            "reason": reason_str,
-        })
+        records.append(
+            {
+                "kdcode": detail["kdcode"],
+                "dt": date,
+                "side": "SELL",
+                "reason": reason_str,
+            }
+        )
 
     for kd in decision["new_entries"]:
-        records.append({
-            "kdcode": kd,
-            "dt": date,
-            "side": "BUY",
-            "reason": "new_entry" if not decision["is_initial"] else "initial_fill",
-        })
+        records.append(
+            {
+                "kdcode": kd,
+                "dt": date,
+                "side": "BUY",
+                "reason": "new_entry" if not decision["is_initial"] else "initial_fill",
+            }
+        )
 
     df = pd.DataFrame(records)
     if df.empty:
@@ -259,7 +265,13 @@ def find_scores_file(scores_dir: Path, date: str = None) -> tuple:
         if candidate.exists():
             return candidate, date
 
-        avg_dir = PROJECT_ROOT / "paper_trade" / "Model" / "Seed73_trained_to_2062026" / "averaged_predictions"
+        avg_dir = (
+            PROJECT_ROOT
+            / "paper_trade"
+            / "Model"
+            / "Seed73_trained_to_2062026"
+            / "averaged_predictions"
+        )
         candidate = avg_dir / f"{date}.csv"
         if candidate.exists():
             return candidate, date
@@ -277,16 +289,20 @@ def find_scores_file(scores_dir: Path, date: str = None) -> tuple:
         latest = dated_dirs[-1]
         return latest / "scores.csv", latest.name
 
-    avg_dir = PROJECT_ROOT / "paper_trade" / "Model" / "Seed73_trained_to_2062026" / "averaged_predictions"
+    avg_dir = (
+        PROJECT_ROOT
+        / "paper_trade"
+        / "Model"
+        / "Seed73_trained_to_2062026"
+        / "averaged_predictions"
+    )
     if avg_dir.exists():
         avg_files = sorted(avg_dir.glob("*.csv"))
         if avg_files:
             latest = avg_files[-1]
             return latest, latest.stem
 
-    raise FileNotFoundError(
-        f"No scores files found in {scores_dir} or averaged_predictions/"
-    )
+    raise FileNotFoundError(f"No scores files found in {scores_dir} or averaged_predictions/")
 
 
 def main():
@@ -367,12 +383,14 @@ def main():
 
     current_holdings = []
     for _, row in target_portfolio.iterrows():
-        current_holdings.append({
-            "kdcode": row["kdcode"],
-            "entry_date": row["entry_date"],
-            "entry_rank": int(row["rank"]) if pd.notna(row["rank"]) else None,
-            "weight": row["weight"],
-        })
+        current_holdings.append(
+            {
+                "kdcode": row["kdcode"],
+                "entry_date": row["entry_date"],
+                "entry_rank": int(row["rank"]) if pd.notna(row["rank"]) else None,
+                "weight": row["weight"],
+            }
+        )
 
     current_ranks = scores_df.set_index("kdcode")["rank"].to_dict()
     current_ranks = {k: int(v) for k, v in current_ranks.items()}
@@ -388,16 +406,18 @@ def main():
         print(f"  New entries:  {len(decision['new_entries'])}")
 
     if decision["exit_details"]:
-        print(f"\n  EXITS:")
+        print("\n  EXITS:")
         for d in decision["exit_details"]:
             reason = d.get("reason", "rank_drop_gate")
             if reason == "rank_drop_gate":
-                print(f"    {d['kdcode']:12s}  rank {d['prev_rank']:>3d} -> {d['curr_rank']:>3d}  (drop {d['rank_drop']:+d})")
+                print(
+                    f"    {d['kdcode']:12s}  rank {d['prev_rank']:>3d} -> {d['curr_rank']:>3d}  (drop {d['rank_drop']:+d})"
+                )
             else:
                 print(f"    {d['kdcode']:12s}  {reason}")
 
     if decision["new_entries"]:
-        print(f"\n  NEW ENTRIES:")
+        print("\n  NEW ENTRIES:")
         rank_map = scores_df.set_index("kdcode")["rank"].to_dict()
         for kd in decision["new_entries"]:
             print(f"    {kd:12s}  rank {rank_map.get(kd, '?'):>3}")

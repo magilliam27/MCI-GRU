@@ -19,7 +19,6 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
@@ -34,19 +33,19 @@ MIN_COVERAGE_DEFAULT = 0.80
 FETCH_LOOKBACK_DAYS = 7
 BENCHMARK_RIC = "SPY.P"
 
-from mci_gru.data.reshape import COLUMN_MAPPING, STANDARD_COLS, reshape_lseg_to_standard
+from mci_gru.data.reshape import reshape_lseg_to_standard  # noqa: E402
 
 LSEG_FIELDS = ["OPEN_PRC", "HIGH_1", "LOW_1", "TRDPRC_1", "ACVOL_UNS"]
 
 
 def load_rics(csv_path: str) -> list:
     df = pd.read_csv(csv_path)
-    return df['Instrument'].dropna().tolist()
+    return df["Instrument"].dropna().tolist()
 
 
 def get_last_date(csv_path: str) -> str:
-    df = pd.read_csv(csv_path, usecols=['dt'])
-    return df['dt'].max()
+    df = pd.read_csv(csv_path, usecols=["dt"])
+    return df["dt"].max()
 
 
 def _fetch_batch(rd, batch: list, start: str, end: str) -> pd.DataFrame | None:
@@ -91,7 +90,7 @@ def download_incremental(rd, rics: list, start: str, end: str) -> tuple:
 
     # --- Pass 1: batch download with retries ---
     for i in tqdm(range(0, len(rics), BATCH_SIZE), desc="Fetching"):
-        batch = rics[i:i + BATCH_SIZE]
+        batch = rics[i : i + BATCH_SIZE]
         batch_num = i // BATCH_SIZE
 
         df = None
@@ -101,13 +100,17 @@ def download_incremental(rd, rics: list, start: str, end: str) -> tuple:
                 if df is not None:
                     break
                 wait = RETRY_BACKOFF * attempt
-                print(f"    Batch {batch_num} attempt {attempt}/{MAX_RETRIES} "
-                      f"returned empty (retry in {wait:.0f}s)")
+                print(
+                    f"    Batch {batch_num} attempt {attempt}/{MAX_RETRIES} "
+                    f"returned empty (retry in {wait:.0f}s)"
+                )
                 time.sleep(wait)
             except Exception as e:
                 wait = RETRY_BACKOFF * attempt
-                print(f"    Batch {batch_num} attempt {attempt}/{MAX_RETRIES} "
-                      f"failed: {e}  (retry in {wait:.0f}s)")
+                print(
+                    f"    Batch {batch_num} attempt {attempt}/{MAX_RETRIES} "
+                    f"failed: {e}  (retry in {wait:.0f}s)"
+                )
                 time.sleep(wait)
 
         if df is not None:
@@ -117,8 +120,10 @@ def download_incremental(rd, rics: list, start: str, end: str) -> tuple:
             if len(batch_rics) < len(batch):
                 print(f"    Batch {batch_num}: got {len(batch_rics)}/{len(batch)} RICs")
         else:
-            print(f"    Batch {batch_num}: FAILED after {MAX_RETRIES} attempts "
-                  f"({len(batch)} RICs lost)")
+            print(
+                f"    Batch {batch_num}: FAILED after {MAX_RETRIES} attempts "
+                f"({len(batch)} RICs lost)"
+            )
 
         time.sleep(BATCH_DELAY)
 
@@ -127,10 +132,12 @@ def download_incremental(rd, rics: list, start: str, end: str) -> tuple:
     if missing:
         retry_batch_size = 10
         n_micro = (len(missing) + retry_batch_size - 1) // retry_batch_size
-        print(f"\n  Retrying {len(missing)} missing RICs in {n_micro} "
-              f"micro-batches of {retry_batch_size}...")
+        print(
+            f"\n  Retrying {len(missing)} missing RICs in {n_micro} "
+            f"micro-batches of {retry_batch_size}..."
+        )
         for i in range(0, len(missing), retry_batch_size):
-            micro = missing[i:i + retry_batch_size]
+            micro = missing[i : i + retry_batch_size]
             micro_num = i // retry_batch_size
             df = None
             for attempt in range(1, MAX_RETRIES + 1):
@@ -147,8 +154,10 @@ def download_incremental(rd, rics: list, start: str, end: str) -> tuple:
                 fetched_rics.update(batch_rics)
                 all_data.append(df)
             else:
-                print(f"    Micro-batch {micro_num}: failed "
-                      f"({', '.join(micro[:3])}{'...' if len(micro) > 3 else ''})")
+                print(
+                    f"    Micro-batch {micro_num}: failed "
+                    f"({', '.join(micro[:3])}{'...' if len(micro) > 3 else ''})"
+                )
             time.sleep(BATCH_DELAY)
 
         recovered = len(fetched_rics) - (len(requested_rics) - len(missing))
@@ -170,23 +179,22 @@ def validate(master_df: pd.DataFrame, new_dates: list, expected_stock_count: int
     """Run basic data quality checks after refresh."""
     issues = []
 
-    latest = master_df['dt'].max()
-    today = datetime.now().strftime('%Y-%m-%d')
+    latest = master_df["dt"].max()
+    datetime.now().strftime("%Y-%m-%d")
 
     if not new_dates:
         issues.append(f"WARNING: No new dates were added (latest in CSV: {latest})")
     else:
         print(f"  New dates added: {len(new_dates)} ({min(new_dates)} to {max(new_dates)})")
 
-    stock_count = master_df['kdcode'].nunique()
+    stock_count = master_df["kdcode"].nunique()
     if stock_count < expected_stock_count * 0.8:
         issues.append(
-            f"WARNING: Only {stock_count} stocks in data "
-            f"(expected ~{expected_stock_count})"
+            f"WARNING: Only {stock_count} stocks in data (expected ~{expected_stock_count})"
         )
 
-    latest_day = master_df[master_df['dt'] == latest]
-    for col in ['open', 'high', 'low', 'close', 'volume']:
+    latest_day = master_df[master_df["dt"] == latest]
+    for col in ["open", "high", "low", "close", "volume"]:
         null_pct = latest_day[col].isna().mean()
         if null_pct > 0.05:
             issues.append(f"WARNING: {col} has {null_pct:.1%} nulls on {latest}")
@@ -261,20 +269,22 @@ def main():
     if args.force:
         fetch_start = last_date
     else:
-        fetch_start = (pd.Timestamp(last_date) + timedelta(days=1)).strftime('%Y-%m-%d')
-    fetch_end = args.end or datetime.now().strftime('%Y-%m-%d')
+        fetch_start = (pd.Timestamp(last_date) + timedelta(days=1)).strftime("%Y-%m-%d")
+    fetch_end = args.end or datetime.now().strftime("%Y-%m-%d")
 
-    api_start = (
-        pd.Timestamp(fetch_start) - timedelta(days=FETCH_LOOKBACK_DAYS)
-    ).strftime('%Y-%m-%d')
+    api_start = (pd.Timestamp(fetch_start) - timedelta(days=FETCH_LOOKBACK_DAYS)).strftime(
+        "%Y-%m-%d"
+    )
 
     print(f"  Master CSV:     {csv_path}")
     print(f"  Last date:      {last_date}")
     if args.force:
         print(f"  Mode:           --force (re-fetching from {last_date})")
     print(f"  Target range:   {fetch_start} to {fetch_end}")
-    print(f"  API range:      {api_start} to {fetch_end} "
-          f"(+{FETCH_LOOKBACK_DAYS}d lookback for LSEG reliability)")
+    print(
+        f"  API range:      {api_start} to {fetch_end} "
+        f"(+{FETCH_LOOKBACK_DAYS}d lookback for LSEG reliability)"
+    )
 
     if fetch_start > fetch_end:
         print("  Data is already up to date. Nothing to fetch.")
@@ -286,12 +296,16 @@ def main():
     print(f"  Constituents:   {len(rics)} RICs from {constituents_path.name}")
 
     import refinitiv.data as rd
+
     print("\n  Connecting to Refinitiv Workspace...")
     rd.open_session()
 
     try:
         raw_batches, fetched_rics = download_incremental(
-            rd, rics, api_start, fetch_end,
+            rd,
+            rics,
+            api_start,
+            fetch_end,
         )
     finally:
         rd.close_session()
@@ -306,9 +320,11 @@ def main():
 
     still_missing = sorted(set(rics) - fetched_rics)
     if still_missing:
-        print(f"  Missing RICs ({len(still_missing)}): "
-              f"{', '.join(still_missing[:20])}"
-              f"{'...' if len(still_missing) > 20 else ''}")
+        print(
+            f"  Missing RICs ({len(still_missing)}): "
+            f"{', '.join(still_missing[:20])}"
+            f"{'...' if len(still_missing) > 20 else ''}"
+        )
 
     if coverage < args.min_coverage:
         print(
@@ -326,15 +342,17 @@ def main():
     print(f"  Combining {len(raw_batches)} batches...")
     combined = pd.concat(raw_batches)
     all_data = reshape_to_standard(combined)
-    all_api_dates = sorted(all_data['dt'].unique().tolist())
+    all_api_dates = sorted(all_data["dt"].unique().tolist())
     print(f"  API returned: {len(all_data):,} rows across {len(all_api_dates)} dates")
 
-    new_data = all_data[all_data['dt'] >= fetch_start].copy()
-    new_dates = sorted(new_data['dt'].unique().tolist())
+    new_data = all_data[all_data["dt"] >= fetch_start].copy()
+    new_dates = sorted(new_data["dt"].unique().tolist())
     if len(all_api_dates) > len(new_dates):
-        print(f"  Filtered to target range: {len(new_data):,} rows across "
-              f"{len(new_dates)} dates (dropped {len(all_api_dates) - len(new_dates)} "
-              f"lookback dates)")
+        print(
+            f"  Filtered to target range: {len(new_data):,} rows across "
+            f"{len(new_dates)} dates (dropped {len(all_api_dates) - len(new_dates)} "
+            f"lookback dates)"
+        )
     print(f"  New rows: {len(new_data):,} across {len(new_dates)} dates")
 
     if args.dry_run:
@@ -343,13 +361,13 @@ def main():
         print(f"  New date range: {min(new_dates)} to {max(new_dates)}")
         return
 
-    print(f"\n  Reading existing master CSV...")
+    print("\n  Reading existing master CSV...")
     master_df = pd.read_csv(str(csv_path))
     before_rows = len(master_df)
 
     merged = pd.concat([master_df, new_data], ignore_index=True)
-    merged = merged.drop_duplicates(subset=['kdcode', 'dt'], keep='last')
-    merged = merged.sort_values(['kdcode', 'dt']).reset_index(drop=True)
+    merged = merged.drop_duplicates(subset=["kdcode", "dt"], keep="last")
+    merged = merged.sort_values(["kdcode", "dt"]).reset_index(drop=True)
 
     added_rows = len(merged) - before_rows
 

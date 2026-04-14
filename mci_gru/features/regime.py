@@ -16,13 +16,15 @@ Design goals:
 
 from __future__ import annotations
 
-from typing import List, Optional, Sequence
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
-REGIME_REQUIRED_VARIABLES: List[str] = [
+REGIME_REQUIRED_VARIABLES: list[str] = [
     "regime_market",
     "regime_yield_curve",
     "regime_oil",
@@ -30,27 +32,27 @@ REGIME_REQUIRED_VARIABLES: List[str] = [
     "regime_stock_bond_corr",
 ]
 
-REGIME_OPTIONAL_VARIABLES: List[str] = [
+REGIME_OPTIONAL_VARIABLES: list[str] = [
     "regime_monetary_policy",
     "regime_volatility",
 ]
 
-REGIME_VARIABLES: List[str] = REGIME_REQUIRED_VARIABLES + REGIME_OPTIONAL_VARIABLES
+REGIME_VARIABLES: list[str] = REGIME_REQUIRED_VARIABLES + REGIME_OPTIONAL_VARIABLES
 
-REGIME_BASE_FEATURES: List[str] = [
+REGIME_BASE_FEATURES: list[str] = [
     "regime_global_score",
     "regime_similarity_q20_mean",
     "regime_dissimilarity_q80_mean",
     "regime_similarity_spread",
 ]
 
-DEFAULT_SUBSEQUENT_RETURN_HORIZONS: List[int] = [1, 3]
+DEFAULT_SUBSEQUENT_RETURN_HORIZONS: list[int] = [1, 3]
 
 
 def get_regime_features(
     include_subsequent_returns: bool = True,
-    horizons: Optional[Sequence[int]] = None,
-) -> List[str]:
+    horizons: Sequence[int] | None = None,
+) -> list[str]:
     features = list(REGIME_BASE_FEATURES)
     if not include_subsequent_returns:
         return features
@@ -90,9 +92,9 @@ def _monthly_transform(
     return transformed
 
 
-def _normalize_horizons(horizons: Optional[Sequence[int]]) -> List[int]:
+def _normalize_horizons(horizons: Sequence[int] | None) -> list[int]:
     raw_horizons = list(DEFAULT_SUBSEQUENT_RETURN_HORIZONS if horizons is None else horizons)
-    normalized: List[int] = []
+    normalized: list[int] = []
     seen = set()
     for horizon in raw_horizons:
         horizon_int = int(horizon)
@@ -116,7 +118,7 @@ def _nanmean_or_nan(values: np.ndarray) -> float:
     return float(np.nanmean(values))
 
 
-REGIME_FEATURES: List[str] = get_regime_features()
+REGIME_FEATURES: list[str] = get_regime_features()
 
 
 def compute_regime_monthly_features(
@@ -128,7 +130,7 @@ def compute_regime_monthly_features(
     similarity_quantile: float = 0.2,
     min_history_months: int = 24,
     include_subsequent_returns: bool = True,
-    subsequent_return_horizons: Optional[Sequence[int]] = None,
+    subsequent_return_horizons: Sequence[int] | None = None,
 ) -> pd.DataFrame:
     """
     Compute monthly regime scalar features from daily regime inputs.
@@ -151,7 +153,9 @@ def compute_regime_monthly_features(
 
     horizons = _normalize_horizons(subsequent_return_horizons) if include_subsequent_returns else []
     if include_subsequent_returns and exclusion_months < 1:
-        raise ValueError("include_subsequent_returns=True requires exclusion_months >= 1 to avoid look-ahead")
+        raise ValueError(
+            "include_subsequent_returns=True requires exclusion_months >= 1 to avoid look-ahead"
+        )
 
     feature_columns = get_regime_features(
         include_subsequent_returns=include_subsequent_returns,
@@ -167,12 +171,7 @@ def compute_regime_monthly_features(
     work = work.sort_values("dt")
 
     # Monthly sampling at month-end keeps one market-wide state per month.
-    monthly_raw = (
-        work.set_index("dt")[REGIME_VARIABLES]
-        .resample("ME")
-        .last()
-        .dropna(how="all")
-    )
+    monthly_raw = work.set_index("dt")[REGIME_VARIABLES].resample("ME").last().dropna(how="all")
 
     transformed = _monthly_transform(
         monthly_raw=monthly_raw,
@@ -184,8 +183,7 @@ def compute_regime_monthly_features(
 
     market_series = pd.to_numeric(monthly_raw["regime_market"], errors="coerce")
     forward_returns = {
-        horizon: (market_series.shift(-horizon) / market_series) - 1.0
-        for horizon in horizons
+        horizon: (market_series.shift(-horizon) / market_series) - 1.0 for horizon in horizons
     }
 
     out_rows = []
@@ -242,7 +240,8 @@ def compute_regime_monthly_features(
                 )
                 row["regime_subsequent_return_spread_1m"] = (
                     row["regime_similar_subsequent_return_1m"] - dissimilar_ret_1m
-                    if not np.isnan(row["regime_similar_subsequent_return_1m"]) and not np.isnan(dissimilar_ret_1m)
+                    if not np.isnan(row["regime_similar_subsequent_return_1m"])
+                    and not np.isnan(dissimilar_ret_1m)
                     else np.nan
                 )
         out_rows.append(row)
@@ -267,7 +266,7 @@ def add_regime_features(
     similarity_quantile: float = 0.2,
     min_history_months: int = 24,
     include_subsequent_returns: bool = True,
-    subsequent_return_horizons: Optional[Sequence[int]] = None,
+    subsequent_return_horizons: Sequence[int] | None = None,
 ) -> pd.DataFrame:
     """
     Merge monthly regime scalar features onto stock-level daily rows.

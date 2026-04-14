@@ -72,7 +72,8 @@ STEPS = [
 def check_lseg_available() -> bool:
     """Check if the refinitiv.data library can be imported."""
     try:
-        import refinitiv.data
+        import refinitiv.data  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -172,8 +173,11 @@ def save_manifest(results_dir: Path, state_dir: Path, results: list, start_time:
         "run_end": datetime.now().isoformat(),
         "python": sys.executable,
         "steps": results,
-        "all_ok": all(r["status"] == "OK" for r in results
-                      if r["status"] not in ("SKIPPED", "SKIPPED (dry run)")),
+        "all_ok": all(
+            r["status"] == "OK"
+            for r in results
+            if r["status"] not in ("SKIPPED", "SKIPPED (dry run)")
+        ),
     }
 
     manifest_path = state_dir / "run_manifest.json"
@@ -223,12 +227,11 @@ def main():
     print("=" * 70)
     print()
 
-    if not args.skip_refresh and not args.dry_run:
-        if not check_lseg_available():
-            print("  WARNING: refinitiv.data not found in current environment.")
-            print("  Make sure you activated lseg_env before running.")
-            print("  Use --skip-refresh if data is already up to date.")
-            print()
+    if not args.skip_refresh and not args.dry_run and not check_lseg_available():
+        print("  WARNING: refinitiv.data not found in current environment.")
+        print("  Make sure you activated lseg_env before running.")
+        print("  Use --skip-refresh if data is already up to date.")
+        print()
 
     results_dir = PROJECT_ROOT / "paper_trade" / "results"
     state_dir = PROJECT_ROOT / "paper_trade" / "state"
@@ -242,22 +245,26 @@ def main():
         print(f"{'-' * 70}")
 
         if step["script"] == "refresh_data.py" and args.skip_refresh:
-            print(f"  SKIPPED (--skip-refresh)")
-            step_results.append({
-                "name": step_name,
-                "status": "SKIPPED",
-                "duration": 0,
-            })
+            print("  SKIPPED (--skip-refresh)")
+            step_results.append(
+                {
+                    "name": step_name,
+                    "status": "SKIPPED",
+                    "duration": 0,
+                }
+            )
             print()
             continue
 
         if step["script"] == "track.py" and args.skip_track:
-            print(f"  SKIPPED (--skip-track)")
-            step_results.append({
-                "name": step_name,
-                "status": "SKIPPED",
-                "duration": 0,
-            })
+            print("  SKIPPED (--skip-track)")
+            step_results.append(
+                {
+                    "name": step_name,
+                    "status": "SKIPPED",
+                    "duration": 0,
+                }
+            )
             print()
             continue
 

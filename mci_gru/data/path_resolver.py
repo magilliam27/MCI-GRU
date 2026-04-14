@@ -4,7 +4,6 @@ Path resolution helpers for project data files.
 
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -44,4 +43,3 @@ def resolve_project_data_path(configured_path: str) -> Path:
         f"Data file not found for configured path '{configured_path}'. "
         f"Tried explicit path and project fallbacks."
     )
-

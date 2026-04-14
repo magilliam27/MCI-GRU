@@ -29,14 +29,13 @@ import torch
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from paper_trade.scripts.infer import (
-    build_feature_engineer,
+from mci_gru.models import create_model  # noqa: E402
+from paper_trade.scripts.infer import (  # noqa: E402
     load_config,
     load_metadata,
     prepare_inference_data,
     prepare_inference_regime_df,
 )
-from mci_gru.models import create_model
 
 DEFAULT_MODEL_DIR = "paper_trade/Model/seed7_w_regime"
 DEFAULT_CSV = "data/raw/market/sp500_2019_universe_data_through_2026.csv"
@@ -67,9 +66,7 @@ def load_models(model_dir: Path, num_features: int, model_cfg: dict):
     models = []
     for ckpt_path in ckpt_files:
         model = create_model(num_features, model_cfg)
-        model.load_state_dict(
-            torch.load(str(ckpt_path), map_location=device, weights_only=True)
-        )
+        model.load_state_dict(torch.load(str(ckpt_path), map_location=device, weights_only=True))
         model.to(device)
         model.eval()
         models.append(model)
@@ -78,8 +75,12 @@ def load_models(model_dir: Path, num_features: int, model_cfg: dict):
 
 
 def run_ensemble(
-    models, edge_index, edge_weight, device,
-    time_series: np.ndarray, graph_features: np.ndarray,
+    models,
+    edge_index,
+    edge_weight,
+    device,
+    time_series: np.ndarray,
+    graph_features: np.ndarray,
 ) -> np.ndarray:
     """Run all models and return averaged predictions."""
     ts_tensor = torch.from_numpy(time_series).float().to(device)
@@ -99,39 +100,63 @@ def run_ensemble(
 def save_prediction(scores: np.ndarray, kdcode_list: list, pred_date: str, out_dir: Path):
     """Save a single date's scores in backtest_sp500.py format: <dir>/<date>.csv"""
     out_dir.mkdir(parents=True, exist_ok=True)
-    df = pd.DataFrame({
-        "kdcode": kdcode_list,
-        "dt": pred_date,
-        "score": np.round(scores, 5),
-    })
+    df = pd.DataFrame(
+        {
+            "kdcode": kdcode_list,
+            "dt": pred_date,
+            "score": np.round(scores, 5),
+        }
+    )
     df.to_csv(out_dir / f"{pred_date}.csv", index=False)
 
 
-def run_backtest(predictions_dir: Path, test_start: str, test_end: str,
-                 data_file: str, python_exe: str, label: str) -> dict:
+def run_backtest(
+    predictions_dir: Path,
+    test_start: str,
+    test_end: str,
+    data_file: str,
+    python_exe: str,
+    label: str,
+) -> dict:
     """Run backtest_sp500.py and return parsed metrics."""
     suffix = f"_{label}"
     cmd = [
-        python_exe, str(BACKTEST_SCRIPT),
-        "--predictions_dir", str(predictions_dir),
-        "--data_file", data_file,
-        "--test_start", test_start,
-        "--test_end", test_end,
-        "--top_k", "20",
+        python_exe,
+        str(BACKTEST_SCRIPT),
+        "--predictions_dir",
+        str(predictions_dir),
+        "--data_file",
+        data_file,
+        "--test_start",
+        test_start,
+        "--test_end",
+        test_end,
+        "--top_k",
+        "20",
         "--transaction_costs",
-        "--spread", "5",
-        "--slippage", "5",
+        "--spread",
+        "5",
+        "--slippage",
+        "5",
         "--enable_rank_drop_gate",
-        "--min_rank_drop", "30",
-        "--holding_period", "1",
-        "--rebalance_style", "staggered",
+        "--min_rank_drop",
+        "30",
+        "--holding_period",
+        "1",
+        "--rebalance_style",
+        "staggered",
         "--auto_save",
-        "--backtest_suffix", suffix,
+        "--backtest_suffix",
+        suffix,
     ]
     print(f"\n  Running backtest ({label})...")
     env = {**os.environ, "PYTHONPATH": str(PROJECT_ROOT)}
     result = subprocess.run(
-        cmd, cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=300,
+        cmd,
+        cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+        timeout=300,
         env=env,
     )
     if result.returncode != 0:
@@ -177,7 +202,7 @@ def print_comparison(metrics_regime: dict, metrics_no_regime: dict):
     ]
 
     print(f"\n  {'Metric':<22s}  {'With Regime':>14s}  {'No Regime':>14s}  {'Delta':>14s}")
-    print(f"  {'-'*22}  {'-'*14}  {'-'*14}  {'-'*14}")
+    print(f"  {'-' * 22}  {'-' * 14}  {'-' * 14}  {'-' * 14}")
 
     for label, key, fmt in rows:
         val_r = metrics_regime.get(key)
@@ -200,8 +225,12 @@ def main():
     )
     parser.add_argument("--model-dir", default=DEFAULT_MODEL_DIR)
     parser.add_argument("--csv", default=DEFAULT_CSV)
-    parser.add_argument("--days", type=int, default=10,
-                        help="Number of recent trading days to compare (default: 10)")
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=10,
+        help="Number of recent trading days to compare (default: 10)",
+    )
     parser.add_argument("--python", default=sys.executable)
     args = parser.parse_args()
 
@@ -224,7 +253,9 @@ def main():
     dates = get_trading_dates(csv_path, args.days)
     print(f"\n  Model:       {model_dir.name}")
     print(f"  Date window: {dates[0]} to {dates[-1]} ({len(dates)} trading days)")
-    print(f"  Features:    {len(feature_cols)} (include_global_regime={features_cfg.get('include_global_regime')})")
+    print(
+        f"  Features:    {len(feature_cols)} (include_global_regime={features_cfg.get('include_global_regime')})"
+    )
 
     # Load regime data once for the full window.
     regime_df = None
@@ -240,18 +271,20 @@ def main():
     # Load models once.
     print("\n  Loading model checkpoints...")
     models, edge_index, edge_weight, device = load_models(
-        model_dir, len(feature_cols), model_cfg,
+        model_dir,
+        len(feature_cols),
+        model_cfg,
     )
     print(f"  Loaded {len(models)} checkpoints on {device}")
 
     # Score each date twice.
     print(f"\n{'=' * 75}")
-    print(f"  GENERATING SCORES")
+    print("  GENERATING SCORES")
     print(f"{'=' * 75}")
 
     t0 = time.time()
     for i, target_date in enumerate(dates):
-        print(f"\n  [{i+1}/{len(dates)}] {target_date}")
+        print(f"\n  [{i + 1}/{len(dates)}] {target_date}")
 
         for label, rdf, out_dir in [
             ("regime", regime_df, out_regime),
@@ -268,7 +301,7 @@ def main():
             scores = run_ensemble(models, edge_index, edge_weight, device, ts, gf)
             save_prediction(scores, kdcode_list, pred_date, out_dir)
 
-            top3 = sorted(zip(kdcode_list, scores), key=lambda x: -x[1])[:3]
+            top3 = sorted(zip(kdcode_list, scores, strict=False), key=lambda x: -x[1])[:3]
             top3_str = ", ".join(f"{k}={s:.4f}" for k, s in top3)
             print(f"    {label:>10s}: top3 = {top3_str}")
 
@@ -277,15 +310,25 @@ def main():
 
     # Run backtests.
     print(f"\n{'=' * 75}")
-    print(f"  RUNNING BACKTESTS")
+    print("  RUNNING BACKTESTS")
     print(f"{'=' * 75}")
 
     data_file = str(PROJECT_ROOT / args.csv)
     metrics_regime = run_backtest(
-        out_regime, dates[0], dates[-1], data_file, args.python, "with_regime",
+        out_regime,
+        dates[0],
+        dates[-1],
+        data_file,
+        args.python,
+        "with_regime",
     )
     metrics_no_regime = run_backtest(
-        out_no_regime, dates[0], dates[-1], data_file, args.python, "no_regime",
+        out_no_regime,
+        dates[0],
+        dates[-1],
+        data_file,
+        args.python,
+        "no_regime",
     )
 
     if metrics_regime and metrics_no_regime:

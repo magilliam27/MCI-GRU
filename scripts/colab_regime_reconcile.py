@@ -19,7 +19,6 @@ Or copy the logic below into a notebook cell and set the variables there.
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 
 import pandas as pd
@@ -38,11 +37,11 @@ def main():
         return
 
     from mci_gru.data.fred_loader import (
-        FREDLoader,
-        FRED_SERIES_SP500,
-        FRED_SERIES_10Y,
         FRED_SERIES_3M,
+        FRED_SERIES_10Y,
         FRED_SERIES_OIL_WTI,
+        FRED_SERIES_SP500,
+        FREDLoader,
     )
 
     fred = FREDLoader()
@@ -66,10 +65,18 @@ def main():
     lseg = pd.read_csv(LSEG_REGIME_PATH)
     lseg["dt"] = pd.to_datetime(lseg["dt"])
     # Merge LSEG-only columns (copper required; market/oil optional - use suffixes to prefer LSEG)
-    lseg_extra = [c for c in ["regime_copper", "regime_market", "regime_oil"] if c in lseg.columns and c not in base.columns]
-    lseg_cols = ["dt"] + lseg_extra if lseg_extra else ["dt"]
+    lseg_extra = [
+        c
+        for c in ["regime_copper", "regime_market", "regime_oil"]
+        if c in lseg.columns and c not in base.columns
+    ]
+    ["dt"] + lseg_extra if lseg_extra else ["dt"]
     if lseg_extra:
-        base = base.merge(lseg[["dt"] + lseg_extra].drop_duplicates(subset=["dt"], keep="last"), on="dt", how="outer")
+        base = base.merge(
+            lseg[["dt"] + lseg_extra].drop_duplicates(subset=["dt"], keep="last"),
+            on="dt",
+            how="outer",
+        )
     base = base.sort_values("dt").drop_duplicates(subset=["dt"], keep="last")
 
     base["yield_10y"] = pd.to_numeric(base["yield_10y"], errors="coerce")
@@ -80,18 +87,33 @@ def main():
     yield_change = base["yield_10y"].diff()
     base["regime_stock_bond_corr"] = market_ret.rolling(63, min_periods=21).corr(yield_change)
 
-    for col in ["regime_market", "regime_yield_curve", "regime_oil", "regime_copper", "regime_stock_bond_corr"]:
+    for col in [
+        "regime_market",
+        "regime_yield_curve",
+        "regime_oil",
+        "regime_copper",
+        "regime_stock_bond_corr",
+    ]:
         if col in base.columns:
             base[col] = pd.to_numeric(base[col], errors="coerce").ffill().bfill()
 
-    out_cols = ["dt", "regime_market", "regime_yield_curve", "regime_oil", "regime_copper", "regime_stock_bond_corr"]
+    out_cols = [
+        "dt",
+        "regime_market",
+        "regime_yield_curve",
+        "regime_oil",
+        "regime_copper",
+        "regime_stock_bond_corr",
+    ]
     base = base[[c for c in out_cols if c in base.columns]].copy()
     base["dt"] = base["dt"].dt.strftime("%Y-%m-%d")
 
     out_path = Path(REGIME_OUTPUT)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     base.to_csv(out_path, index=False)
-    print(f"Saved {out_path} ({len(base)} rows). Use regime_inputs_csv: '{REGIME_OUTPUT}' in config.")
+    print(
+        f"Saved {out_path} ({len(base)} rows). Use regime_inputs_csv: '{REGIME_OUTPUT}' in config."
+    )
 
 
 if __name__ == "__main__":

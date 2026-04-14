@@ -49,6 +49,7 @@ exclude = [
     "outputs/",
     "results/",
     ".hydra/",
+    "Seed_test*.ipynb",
 ]
 
 [tool.ruff.lint]

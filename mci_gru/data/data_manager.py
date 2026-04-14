@@ -5,36 +5,32 @@ This module provides a unified interface for loading data from
 different sources (CSV, LSEG) and preparing it for model training.
 """
 
-import os
-import gc
-import numpy as np
-import pandas as pd
-from tqdm import tqdm
-from typing import List, Dict, Any, Optional, Tuple
 from functools import partial
 
+import numpy as np
+import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
-from mci_gru.config import DataConfig, FeatureConfig, ExperimentConfig
+from mci_gru.config import DataConfig
 from mci_gru.data.path_resolver import resolve_project_data_path
 
 
 class DataManager:
     """
     Unified data manager for loading and preparing stock data.
-    
+
     Supports loading from CSV files or LSEG/Refinitiv API.
     """
-    
+
     def __init__(self, config: DataConfig):
         self.config = config
-        self.df: Optional[pd.DataFrame] = None
-        self.vix_df: Optional[pd.DataFrame] = None
-        self.credit_df: Optional[pd.DataFrame] = None
-        self.regime_df: Optional[pd.DataFrame] = None
-        self.kdcode_list: Optional[List[str]] = None
-    
+        self.df: pd.DataFrame | None = None
+        self.vix_df: pd.DataFrame | None = None
+        self.credit_df: pd.DataFrame | None = None
+        self.regime_df: pd.DataFrame | None = None
+        self.kdcode_list: list[str] | None = None
+
     def load(self) -> pd.DataFrame:
         if self.config.source == "csv":
             return self._load_from_csv()
@@ -68,7 +64,8 @@ class DataManager:
                 df["turnover"] = df["volume"] * df["close"]
             df = df[["dt", "open", "high", "low", "close", "volume", "turnover"]]
         else:
-            from mci_gru.data.fred_loader import FREDLoader, FRED_SERIES_SP500
+            from mci_gru.data.fred_loader import FRED_SERIES_SP500, FREDLoader
+
             fred = FREDLoader()
             s = fred.get_series(FRED_SERIES_SP500, start, end, "close", lag_days=1)
             df = s.copy()
@@ -92,49 +89,46 @@ class DataManager:
         print(f"Loading data from {resolved_path}...")
 
         df = pd.read_csv(resolved_path)
-        
+
         print(f"  Loaded {len(df)} rows")
         print(f"  Date range: {df['dt'].min()} to {df['dt'].max()}")
         print(f"  Stocks: {df['kdcode'].nunique()}")
-        
+
         self.df = df
         return df
-    
+
     def _load_from_lseg(self) -> pd.DataFrame:
         from mci_gru.data.lseg_loader import LSEGLoader
-        
+
         loader = LSEGLoader()
         try:
             loader.connect()
-            
+
             # Determine date range (need data before training for correlation)
             start_date = self.config.train_start
             end_date = self.config.test_end
-            
+
             df = loader.fetch_universe_data(
                 universe=self.config.universe,
                 start=start_date,
                 end=end_date,
-                include_vix=False  # We'll handle VIX separately
+                include_vix=False,  # We'll handle VIX separately
             )
-            
+
             self.df = df
             return df
-            
+
         finally:
             loader.disconnect()
-    
+
     def load_vix(self) -> pd.DataFrame:
         if self.config.source == "lseg":
             from mci_gru.data.lseg_loader import LSEGLoader
-            
+
             loader = LSEGLoader()
             try:
                 loader.connect()
-                vix_df = loader.get_vix(
-                    self.config.train_start,
-                    self.config.test_end
-                )
+                vix_df = loader.get_vix(self.config.train_start, self.config.test_end)
                 self.vix_df = vix_df
                 return vix_df
             finally:
@@ -142,11 +136,11 @@ class DataManager:
         else:
             try:
                 vix_path = resolve_project_data_path("vix_data.csv")
-            except FileNotFoundError:
+            except FileNotFoundError as e:
                 raise FileNotFoundError(
                     "VIX data not found. Create vix_data.csv under data/raw/market "
                     "or use source='lseg'"
-                )
+                ) from e
             vix_df = pd.read_csv(vix_path)
             self.vix_df = vix_df
             return vix_df
@@ -193,9 +187,9 @@ class DataManager:
         lseg_yield_3m_ric: str = "US3MT=RR",
         lseg_oil_ric: str = "CLc1",
         lseg_vix_ric: str = "VIX",
-        regime_inputs_csv: Optional[str] = None,
+        regime_inputs_csv: str | None = None,
         regime_enforce_lag_days: int = 0,
-        end: Optional[str] = None,
+        end: str | None = None,
     ) -> pd.DataFrame:
         """
         Load Phase-1 global regime input series with hybrid sourcing.
@@ -245,13 +239,13 @@ class DataManager:
             return base
 
         from mci_gru.data.fred_loader import (
-            FREDLoader,
-            FRED_SERIES_SP500,
-            FRED_SERIES_10Y,
             FRED_SERIES_3M,
-            FRED_SERIES_OIL_WTI,
+            FRED_SERIES_10Y,
             FRED_SERIES_COPPER,
+            FRED_SERIES_OIL_WTI,
+            FRED_SERIES_SP500,
             FRED_SERIES_VIX,
+            FREDLoader,
         )
 
         start_ts = pd.Timestamp(self.config.train_start) - pd.Timedelta(days=365 * 15)
@@ -304,7 +298,9 @@ class DataManager:
                 if oil is None:
                     lseg_oil = loader.get_series(lseg_oil_ric, start, end, "regime_oil")
                 if volatility is None:
-                    lseg_volatility = loader.get_series(lseg_vix_ric, start, end, "regime_volatility")
+                    lseg_volatility = loader.get_series(
+                        lseg_vix_ric, start, end, "regime_volatility"
+                    )
             finally:
                 loader.disconnect()
 
@@ -330,7 +326,9 @@ class DataManager:
             "regime_copper": copper,
             "regime_volatility": volatility,
         }
-        missing = [name for name, value in required_series.items() if value is None or len(value) == 0]
+        missing = [
+            name for name, value in required_series.items() if value is None or len(value) == 0
+        ]
         if missing:
             raise ValueError(
                 "Unable to load required regime input series. Missing: "
@@ -387,68 +385,67 @@ class DataManager:
         self.regime_df = base
         return base
 
-    def filter_complete_stocks(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
+    def filter_complete_stocks(self, df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
         """
         Filter to stocks with complete data across all periods.
-        
+
         Args:
             df: Input DataFrame
-            
+
         Returns:
             Filtered DataFrame and list of stock codes
         """
         print("Filtering stocks with complete data...")
-        
-        date_mask = (df['dt'] >= self.config.train_start) & (df['dt'] <= self.config.test_end)
+
+        date_mask = (df["dt"] >= self.config.train_start) & (df["dt"] <= self.config.test_end)
         df_period = df[date_mask].copy()
-        period_dates = sorted(df_period['dt'].unique())
-        
-        print(f"  Period: {len(period_dates)} trading days from {period_dates[0]} to {period_dates[-1]}")
-        
-        kdcode_counts = df_period['kdcode'].value_counts()
+        period_dates = sorted(df_period["dt"].unique())
+
+        print(
+            f"  Period: {len(period_dates)} trading days from {period_dates[0]} to {period_dates[-1]}"
+        )
+
+        kdcode_counts = df_period["kdcode"].value_counts()
         kdcode_list = kdcode_counts[kdcode_counts == len(period_dates)].index.tolist()
         kdcode_list = sorted(kdcode_list)
-        
+
         print(f"  Stocks with complete data: {len(kdcode_list)}")
-        
+
         if len(kdcode_list) == 0:
             raise ValueError("No stocks have complete data across the entire period!")
-        
-        df_filtered = df_period[df_period['kdcode'].isin(kdcode_list)].copy()
-        df_filtered = df_filtered.sort_values(['dt', 'kdcode']).reset_index(drop=True)
-        
+
+        df_filtered = df_period[df_period["kdcode"].isin(kdcode_list)].copy()
+        df_filtered = df_filtered.sort_values(["dt", "kdcode"]).reset_index(drop=True)
+
         self.kdcode_list = kdcode_list
         return df_filtered, kdcode_list
-    
-    def split_by_period(
-        self, 
-        df: pd.DataFrame
-    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+
+    def split_by_period(self, df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """
         Split data into train/val/test periods.
-        
+
         Args:
             df: Filtered DataFrame
-            
+
         Returns:
             Tuple of (train_df, val_df, test_df)
         """
-        train_mask = (df['dt'] >= self.config.train_start) & (df['dt'] <= self.config.train_end)
-        val_mask = (df['dt'] >= self.config.val_start) & (df['dt'] <= self.config.val_end)
-        test_mask = (df['dt'] >= self.config.test_start) & (df['dt'] <= self.config.test_end)
-        
+        train_mask = (df["dt"] >= self.config.train_start) & (df["dt"] <= self.config.train_end)
+        val_mask = (df["dt"] >= self.config.val_start) & (df["dt"] <= self.config.val_end)
+        test_mask = (df["dt"] >= self.config.test_start) & (df["dt"] <= self.config.test_end)
+
         train_df = df[train_mask].copy()
         val_df = df[val_mask].copy()
         test_df = df[test_mask].copy()
-        
-        train_dates = sorted(train_df['dt'].unique())
-        val_dates = sorted(val_df['dt'].unique())
-        test_dates = sorted(test_df['dt'].unique())
-        
+
+        train_dates = sorted(train_df["dt"].unique())
+        val_dates = sorted(val_df["dt"].unique())
+        test_dates = sorted(test_df["dt"].unique())
+
         print(f"  Training: {len(train_dates)} days ({train_dates[0]} to {train_dates[-1]})")
         print(f"  Validation: {len(val_dates)} days ({val_dates[0]} to {val_dates[-1]})")
         print(f"  Test: {len(test_dates)} days ({test_dates[0]} to {test_dates[-1]})")
-        
+
         return train_df, val_df, test_df
 
 
@@ -459,7 +456,7 @@ class CombinedDataset(Dataset):
     This ensures time series and graph data stay aligned when shuffling.
     """
 
-    def __init__(self, X_time_series, X_graph, y, sample_dates: Optional[List[str]] = None):
+    def __init__(self, X_time_series, X_graph, y, sample_dates: list[str] | None = None):
         self.X_time_series = X_time_series
         self.X_graph = X_graph
         self.y = y
@@ -470,12 +467,12 @@ class CombinedDataset(Dataset):
 
     def __getitem__(self, idx):
         item = {
-            'time_series': self.X_time_series[idx],
-            'graph_features': self.X_graph[idx],
-            'label': self.y[idx]
+            "time_series": self.X_time_series[idx],
+            "graph_features": self.X_graph[idx],
+            "label": self.y[idx],
         }
         if self.sample_dates is not None:
-            item['date'] = self.sample_dates[idx]
+            item["date"] = self.sample_dates[idx]
         return item
 
 
@@ -501,17 +498,17 @@ def combined_collate_fn(batch, edge_index, edge_weight):
         num_stocks: int
         batch_dates: List[str] of length batch_size, or None
     """
-    num_stocks = batch[0]['graph_features'].shape[0]
+    num_stocks = batch[0]["graph_features"].shape[0]
 
-    time_series = torch.stack([item['time_series'] for item in batch])
-    labels = torch.stack([item['label'] for item in batch])
+    time_series = torch.stack([item["time_series"] for item in batch])
+    labels = torch.stack([item["label"] for item in batch])
 
     graph_features_list = []
     edge_index_list = []
     edge_weight_list = []
 
     for i, item in enumerate(batch):
-        graph_features_list.append(item['graph_features'])
+        graph_features_list.append(item["graph_features"])
         shifted_edge_index = edge_index + (i * num_stocks)
         edge_index_list.append(shifted_edge_index)
         edge_weight_list.append(edge_weight)
@@ -520,11 +517,15 @@ def combined_collate_fn(batch, edge_index, edge_weight):
     batched_edge_index = torch.cat(edge_index_list, dim=1)
     batched_edge_weight = torch.cat(edge_weight_list, dim=0)
 
-    batch_dates = [item['date'] for item in batch] if 'date' in batch[0] else None
+    batch_dates = [item["date"] for item in batch] if "date" in batch[0] else None
 
     return (
-        time_series, labels, batched_graph_features,
-        batched_edge_index, batched_edge_weight, num_stocks,
+        time_series,
+        labels,
+        batched_graph_features,
+        batched_edge_index,
+        batched_edge_weight,
+        num_stocks,
         batch_dates,
     )
 
@@ -541,11 +542,11 @@ def create_data_loaders(
     edge_index: torch.Tensor,
     edge_weight: torch.Tensor,
     batch_size: int = 32,
-    train_dates: Optional[List[str]] = None,
-    val_dates: Optional[List[str]] = None,
-    test_dates: Optional[List[str]] = None,
+    train_dates: list[str] | None = None,
+    val_dates: list[str] | None = None,
+    test_dates: list[str] | None = None,
     dynamic_graph: bool = False,
-) -> Tuple:
+) -> tuple:
     """
     Create train/val/test data loaders.
 
@@ -595,15 +596,21 @@ def create_data_loaders(
     print(f"  Test: ts={X_test_ts.shape}, graph={X_test_graph.shape}")
 
     train_dataset = CombinedDataset(
-        X_train_ts, X_train_graph, y_train,
+        X_train_ts,
+        X_train_graph,
+        y_train,
         sample_dates=train_dates if dynamic_graph else None,
     )
     val_dataset = CombinedDataset(
-        X_val_ts, X_val_graph, y_val,
+        X_val_ts,
+        X_val_graph,
+        y_val,
         sample_dates=val_dates if dynamic_graph else None,
     )
     test_dataset = CombinedDataset(
-        X_test_ts, X_test_graph, y_test_dummy,
+        X_test_ts,
+        X_test_graph,
+        y_test_dummy,
         sample_dates=test_dates if dynamic_graph else None,
     )
 
@@ -612,7 +619,7 @@ def create_data_loaders(
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=effective_batch_size if dynamic_graph else batch_size,
-        shuffle=False if dynamic_graph else True,
+        shuffle=not dynamic_graph,
         drop_last=False,
         collate_fn=collate_fn,
     )
@@ -631,6 +638,8 @@ def create_data_loaders(
         collate_fn=collate_fn,
     )
 
-    print(f"  Created loaders: train={len(train_loader)} batches, val={len(val_loader)} batches, test={len(test_loader)} batches")
+    print(
+        f"  Created loaders: train={len(train_loader)} batches, val={len(val_loader)} batches, test={len(test_loader)} batches"
+    )
 
     return train_loader, val_loader, test_loader

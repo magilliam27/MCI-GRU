@@ -10,6 +10,7 @@ fakeredis >= 2.31.1 renamed FakeConnection to FakeRedisConnection,
 but docket/_redis.py still imports the old name. This wrapper patches
 the module before the server starts.
 """
+
 import fakeredis.aioredis as _aioredis
 
 if not hasattr(_aioredis, "FakeConnection"):

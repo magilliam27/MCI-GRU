@@ -76,9 +76,10 @@ def generate_equity_chart(perf_df: pd.DataFrame, output_path: Path):
     """Generate an equity curve PNG with portfolio vs benchmark."""
     try:
         import matplotlib
+
         matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
         import matplotlib.dates as mdates
+        import matplotlib.pyplot as plt
     except ImportError:
         print("  WARNING: matplotlib not installed, skipping equity chart")
         return
@@ -92,13 +93,13 @@ def generate_equity_chart(perf_df: pd.DataFrame, output_path: Path):
 
     bm_equity = np.cumprod(1.0 + perf_df["benchmark_return"].values)
 
-    fig, axes = plt.subplots(2, 1, figsize=(12, 8), height_ratios=[3, 1],
-                             sharex=True, gridspec_kw={"hspace": 0.08})
+    fig, axes = plt.subplots(
+        2, 1, figsize=(12, 8), height_ratios=[3, 1], sharex=True, gridspec_kw={"hspace": 0.08}
+    )
 
     ax1 = axes[0]
     ax1.plot(dates, equity, color="#2563eb", linewidth=1.8, label="Portfolio (net)")
-    ax1.plot(dates, bm_equity, color="#9ca3af", linewidth=1.2,
-             linestyle="--", label="Benchmark")
+    ax1.plot(dates, bm_equity, color="#9ca3af", linewidth=1.2, linestyle="--", label="Benchmark")
     ax1.set_ylabel("Equity")
     ax1.legend(loc="upper left", framealpha=0.9)
     ax1.set_title("MCI-GRU Paper Trading — Equity Curve", fontsize=13, fontweight="bold")
@@ -156,8 +157,8 @@ def build_markdown_report(
                 return "N/A"
             return f"{v:+.4%}"
 
-        lines.append(f"| Metric | Value |")
-        lines.append(f"|--------|-------|")
+        lines.append("| Metric | Value |")
+        lines.append("|--------|-------|")
         lines.append(f"| Daily Return | {_fmt_pct(row.get('daily_return', 0))} |")
         lines.append(f"| Net Return (after costs) | {_fmt_pct(row.get('net_return', 0))} |")
         lines.append(f"| Benchmark Return | {_fmt_pct(row.get('benchmark_return'), np.nan)} |")
@@ -173,31 +174,31 @@ def build_markdown_report(
     # --- Rolling Stats ---
     lines.append("## Rolling Statistics")
     lines.append("")
-    lines.append(f"| Metric | Value |")
-    lines.append(f"|--------|-------|")
+    lines.append("| Metric | Value |")
+    lines.append("|--------|-------|")
     lines.append(f"| Trading Days | {rolling['num_days']} |")
 
     if not np.isnan(rolling["rolling_vol_ann"]):
         lines.append(f"| 20D Annualized Vol | {rolling['rolling_vol_ann']:.2%} |")
     else:
-        lines.append(f"| 20D Annualized Vol | N/A |")
+        lines.append("| 20D Annualized Vol | N/A |")
 
     if not np.isnan(rolling["sharpe_proxy"]):
         lines.append(f"| 20D Sharpe Proxy | {rolling['sharpe_proxy']:.2f} |")
     else:
-        lines.append(f"| 20D Sharpe Proxy | N/A |")
+        lines.append("| 20D Sharpe Proxy | N/A |")
 
     lines.append(f"| Max Drawdown (to date) | {rolling['max_drawdown']:.4%} |")
 
     if not np.isnan(rolling["win_rate"]):
         lines.append(f"| Win Rate | {rolling['win_rate']:.1%} |")
     else:
-        lines.append(f"| Win Rate | N/A |")
+        lines.append("| Win Rate | N/A |")
 
     if not np.isnan(rolling["avg_daily_return"]):
         lines.append(f"| Avg Daily Return | {rolling['avg_daily_return']:+.4%} |")
     else:
-        lines.append(f"| Avg Daily Return | N/A |")
+        lines.append("| Avg Daily Return | N/A |")
     lines.append("")
 
     # --- Portfolio Snapshot ---
@@ -216,8 +217,8 @@ def build_markdown_report(
             tp["day_return"] = np.nan
             tp["contribution"] = np.nan
 
-        lines.append(f"| Stock | Rank | Score | Weight | Day Return | Contribution | Entry Date |")
-        lines.append(f"|-------|------|-------|--------|------------|-------------|------------|")
+        lines.append("| Stock | Rank | Score | Weight | Day Return | Contribution | Entry Date |")
+        lines.append("|-------|------|-------|--------|------------|-------------|------------|")
         for _, row in tp.iterrows():
             dr = f"{row['day_return']:+.4%}" if pd.notna(row.get("day_return")) else "—"
             ct = f"{row['contribution']:+.4%}" if pd.notna(row.get("contribution")) else "—"
@@ -245,8 +246,8 @@ def build_markdown_report(
         if not sells.empty:
             lines.append(f"### Exits ({len(sells)})")
             lines.append("")
-            lines.append(f"| Stock | Reason |")
-            lines.append(f"|-------|--------|")
+            lines.append("| Stock | Reason |")
+            lines.append("|-------|--------|")
             for _, row in sells.iterrows():
                 lines.append(f"| {row['kdcode']} | {row.get('reason', '')} |")
             lines.append("")
@@ -254,8 +255,8 @@ def build_markdown_report(
         if not buys.empty:
             lines.append(f"### New Entries ({len(buys)})")
             lines.append("")
-            lines.append(f"| Stock | Reason |")
-            lines.append(f"|-------|--------|")
+            lines.append("| Stock | Reason |")
+            lines.append("|-------|--------|")
             for _, row in buys.iterrows():
                 lines.append(f"| {row['kdcode']} | {row.get('reason', '')} |")
             lines.append("")
@@ -273,8 +274,8 @@ def build_markdown_report(
 
     if not today_perf.empty:
         row = today_perf.iloc[0]
-        lines.append(f"| Metric | Value |")
-        lines.append(f"|--------|-------|")
+        lines.append("| Metric | Value |")
+        lines.append("|--------|-------|")
         lines.append(f"| Trades | {int(row.get('num_trades', 0))} |")
         lines.append(f"| Turnover | {row.get('turnover', 0):.2%} |")
         lines.append(f"| Est. Cost | {row.get('est_cost', 0):.4%} |")
@@ -284,7 +285,7 @@ def build_markdown_report(
     lines.append("")
 
     lines.append("---")
-    lines.append(f"*Report generated by MCI-GRU Paper Trading System*")
+    lines.append("*Report generated by MCI-GRU Paper Trading System*")
     lines.append("")
 
     return "\n".join(lines)
@@ -305,11 +306,15 @@ def build_json_report(
     report = {
         "date": date,
         "generated_at": datetime.now().isoformat(),
-        "performance": {k: float(v) if isinstance(v, (np.floating, float)) else v
-                        for k, v in perf_dict.items()},
-        "rolling_stats": {k: float(v) if isinstance(v, (np.floating, float)) else v
-                          for k, v in rolling.items()},
-        "holdings": target_portfolio.to_dict(orient="records") if not target_portfolio.empty else [],
+        "performance": {
+            k: float(v) if isinstance(v, (np.floating, float)) else v for k, v in perf_dict.items()
+        },
+        "rolling_stats": {
+            k: float(v) if isinstance(v, (np.floating, float)) else v for k, v in rolling.items()
+        },
+        "holdings": target_portfolio.to_dict(orient="records")
+        if not target_portfolio.empty
+        else [],
         "orders": orders.to_dict(orient="records") if not orders.empty else [],
     }
 
@@ -328,8 +333,7 @@ def find_report_date(results_dir: Path, requested_date: str = None) -> str:
             return perf["dt"].iloc[-1]
 
     dated_dirs = sorted(
-        [d for d in results_dir.iterdir()
-         if d.is_dir() and len(d.name) == 10 and d.name[4] == "-"],
+        [d for d in results_dir.iterdir() if d.is_dir() and len(d.name) == 10 and d.name[4] == "-"],
         key=lambda d: d.name,
     )
     if dated_dirs:
@@ -383,8 +387,14 @@ def main():
     rolling = compute_rolling_stats(perf_df)
 
     md_report = build_markdown_report(
-        date, perf_df, target_portfolio, orders, holdings,
-        daily_return, rolling, state_dir,
+        date,
+        perf_df,
+        target_portfolio,
+        orders,
+        holdings,
+        daily_return,
+        rolling,
+        state_dir,
     )
 
     day_dir.mkdir(parents=True, exist_ok=True)

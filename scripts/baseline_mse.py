@@ -1,13 +1,11 @@
 import argparse
 import os
 import sys
-from typing import Dict
 
 import numpy as np
 import pandas as pd
 
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'archive'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "archive"))
 import mci_gru_sp500 as mci  # legacy monolith, archived
 
 
@@ -106,25 +104,21 @@ def run_baselines(ticker_csv_path, use_train_mean_lookback=None):
         hist_days=mci.CONFIG["hist_days"],
         label_days=mci.CONFIG["label_days"],
     )
-    train_samples, _, test_samples = mci.split_dataset(
-        samples, mci.TRAIN_END, mci.VAL_END
-    )
+    train_samples, _, test_samples = mci.split_dataset(samples, mci.TRAIN_END, mci.VAL_END)
 
     y_true, test_dates = collect_targets(test_samples)
     train_returns = compute_train_stats(
         normalized, tickers, mci.TRAIN_END, lookback=use_train_mean_lookback
     )
 
-    baselines: Dict[str, np.ndarray] = {
+    baselines: dict[str, np.ndarray] = {
         "zero": baseline_zero(y_true),
         "mean_per_stock": baseline_mean_per_stock(train_returns, y_true),
         "global_mean": baseline_global_mean(train_returns, y_true),
         "last_return": baseline_last_return(normalized, tickers, test_dates),
         "rolling_mean_5": baseline_rolling_mean(normalized, tickers, test_dates, 5),
         "rolling_mean_10": baseline_rolling_mean(normalized, tickers, test_dates, 10),
-        "cross_sectional_mean": baseline_cross_sectional_mean(
-            normalized, tickers, test_dates
-        ),
+        "cross_sectional_mean": baseline_cross_sectional_mean(normalized, tickers, test_dates),
     }
 
     results = {name: mse(preds, y_true) for name, preds in baselines.items()}
@@ -132,9 +126,7 @@ def run_baselines(ticker_csv_path, use_train_mean_lookback=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Baseline MSE evaluation for MCI-GRU targets."
-    )
+    parser = argparse.ArgumentParser(description="Baseline MSE evaluation for MCI-GRU targets.")
     parser.add_argument(
         "--tickers",
         type=str,

@@ -5,9 +5,7 @@ Centralizes the MultiIndex-to-flat-OHLCV transformation used by both
 ``lseg_loader.py`` and ``paper_trade/scripts/refresh_data.py``.
 """
 
-import numpy as np
 import pandas as pd
-
 
 # LSEG field names → standard OHLCV column names.
 # Covers the official daily summary fields, alternative field names,

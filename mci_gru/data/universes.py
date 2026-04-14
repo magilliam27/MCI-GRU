@@ -5,11 +5,10 @@ This module provides definitions for different stock universes
 including S&P 500, Russell 1000, and MSCI World.
 """
 
-from typing import Dict, Any, List, Optional
-
+from typing import Any
 
 # Universe definitions with Refinitiv RICs
-UNIVERSES: Dict[str, Dict[str, Any]] = {
+UNIVERSES: dict[str, dict[str, Any]] = {
     "sp500": {
         "chain_ric": "0#.SPX",
         "name": "S&P 500",
@@ -67,16 +66,16 @@ UNIVERSES: Dict[str, Dict[str, Any]] = {
 }
 
 
-def get_universe_info(universe: str) -> Dict[str, Any]:
+def get_universe_info(universe: str) -> dict[str, Any]:
     """
     Get information about a stock universe.
-    
+
     Args:
         universe: Universe name (e.g., 'sp500', 'russell1000')
-        
+
     Returns:
         Dictionary with universe information
-        
+
     Raises:
         ValueError: If universe not found
     """
@@ -89,20 +88,20 @@ def get_universe_info(universe: str) -> Dict[str, Any]:
 def get_chain_ric(universe: str) -> str:
     """
     Get the chain RIC for a universe.
-    
+
     Args:
         universe: Universe name
-        
+
     Returns:
         Chain RIC string for Refinitiv API
     """
     return get_universe_info(universe)["chain_ric"]
 
 
-def list_universes() -> List[str]:
+def list_universes() -> list[str]:
     """
     List all available universe names.
-    
+
     Returns:
         List of universe names
     """
@@ -112,10 +111,10 @@ def list_universes() -> List[str]:
 def is_multi_country(universe: str) -> bool:
     """
     Check if a universe spans multiple countries.
-    
+
     Args:
         universe: Universe name
-        
+
     Returns:
         True if multi-country universe
     """

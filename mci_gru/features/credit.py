@@ -51,9 +51,7 @@ def add_credit_features(
     df = df.merge(credit_merge, on="dt", how="left")
 
     missing_before = {
-        col: int(df[col].isna().sum())
-        for col in CREDIT_FEATURES
-        if col in df.columns
+        col: int(df[col].isna().sum()) for col in CREDIT_FEATURES if col in df.columns
     }
     for col in CREDIT_FEATURES:
         if col in df.columns:

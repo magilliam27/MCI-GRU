@@ -10,21 +10,21 @@ This module provides the Trainer class that handles:
 """
 
 import os
+from collections.abc import Callable
 from contextlib import nullcontext
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Optional
+
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from tqdm import tqdm
-from typing import Callable, Dict, List, Optional, Tuple, Any
-from dataclasses import dataclass
 
-from mci_gru.config import ExperimentConfig, TrainingConfig
+from mci_gru.config import ExperimentConfig
 from mci_gru.graph.builder import GraphBuilder
-from mci_gru.training.losses import ICLoss, CombinedMSEICLoss
+from mci_gru.training.losses import CombinedMSEICLoss, ICLoss
 
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from mci_gru.tracking import MLflowTrackingManager
 
@@ -35,27 +35,27 @@ class TrainingResult:
     final_train_loss: float
     epochs_trained: int
     best_model_path: str
-    predictions: Optional[np.ndarray] = None
+    predictions: np.ndarray | None = None
 
 
 class Trainer:
     """
     Trainer for MCI-GRU models.
-    
+
     Supports:
     - Standard training with validation-based early stopping
     - Dynamic graph updates during training
     - Multi-model training (for averaging predictions)
     """
-    
+
     def __init__(
         self,
         model: nn.Module,
         config: ExperimentConfig,
-        graph_builder: Optional[GraphBuilder] = None,
-        device: Optional[torch.device] = None,
-        output_path: Optional[str] = None,
-        checkpoint_path: Optional[str] = None,
+        graph_builder: GraphBuilder | None = None,
+        device: torch.device | None = None,
+        output_path: str | None = None,
+        checkpoint_path: str | None = None,
     ):
         """
         Args:
@@ -71,33 +71,33 @@ class Trainer:
         self.graph_builder = graph_builder
         self.output_path = output_path if output_path else self.config.get_output_path()
         self.checkpoint_path = checkpoint_path
-        self.last_best_model_path: Optional[str] = None
-        
+        self.last_best_model_path: str | None = None
+
         if device is None:
-            self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+            self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         else:
             self.device = device
-        
+
         self.model.to(self.device)
-        
+
         # Runtime state for dynamic graph (set at start of train / predict)
-        self._df: Optional[pd.DataFrame] = None
-        self._kdcode_list: Optional[List[str]] = None
+        self._df: pd.DataFrame | None = None
+        self._kdcode_list: list[str] | None = None
         self._dynamic_update_count: int = 0
 
         # Training state
-        self.best_val_loss = float('inf')
+        self.best_val_loss = float("inf")
         self.patience_counter = 0
         self.epoch = 0
-    
+
     def train(
         self,
         train_loader,
         val_loader,
-        train_dates: Optional[List[str]] = None,
-        df: Optional[pd.DataFrame] = None,
-        kdcode_list: Optional[List[str]] = None,
-        epoch_callback: Optional[Callable[[int, float, float, float], None]] = None,
+        train_dates: list[str] | None = None,
+        df: pd.DataFrame | None = None,
+        kdcode_list: list[str] | None = None,
+        epoch_callback: Callable[[int, float, float, float], None] | None = None,
     ) -> TrainingResult:
         """
         Args:
@@ -106,7 +106,7 @@ class Trainer:
             train_dates: List of training dates (for dynamic graph updates)
             df: DataFrame (for dynamic graph updates)
             kdcode_list: Stock list (for dynamic graph updates)
-            
+
         Returns:
             TrainingResult with training metrics
         """
@@ -115,7 +115,7 @@ class Trainer:
         optimizer = optim.Adam(
             self.model.parameters(),
             lr=training_cfg.learning_rate,
-            weight_decay=training_cfg.weight_decay
+            weight_decay=training_cfg.weight_decay,
         )
         if training_cfg.loss_type == "ic":
             criterion = ICLoss()
@@ -129,11 +129,11 @@ class Trainer:
         best_model_path = (
             self.checkpoint_path
             if self.checkpoint_path
-            else os.path.join(output_path, 'best_model.pth')
+            else os.path.join(output_path, "best_model.pth")
         )
         os.makedirs(os.path.dirname(best_model_path), exist_ok=True)
 
-        self.best_val_loss = float('inf')
+        self.best_val_loss = float("inf")
         self.patience_counter = 0
         self._dynamic_update_count = 0
         final_train_loss = 0.0
@@ -142,24 +142,30 @@ class Trainer:
         self._df = df
         self._kdcode_list = kdcode_list
 
-        dynamic = (
-            self.graph_builder is not None
-            and self.config.graph.update_frequency_months > 0
-        )
+        dynamic = self.graph_builder is not None and self.config.graph.update_frequency_months > 0
         if self.graph_builder is not None:
             stats = self.graph_builder.get_stats()
-            print(f"  Initial graph: {stats.get('n_edges', 0)} edges, "
-                  f"last_update={stats.get('last_update_date')}, "
-                  f"update_frequency_months={stats.get('update_frequency_months')}")
+            print(
+                f"  Initial graph: {stats.get('n_edges', 0)} edges, "
+                f"last_update={stats.get('last_update_date')}, "
+                f"update_frequency_months={stats.get('update_frequency_months')}"
+            )
 
         print(f"Training on {self.device}...")
-        print(f"  Loss: {training_cfg.loss_type}" + (
-            f" (alpha={training_cfg.ic_loss_alpha})" if training_cfg.loss_type == "combined" else ""
-        ))
+        print(
+            f"  Loss: {training_cfg.loss_type}"
+            + (
+                f" (alpha={training_cfg.ic_loss_alpha})"
+                if training_cfg.loss_type == "combined"
+                else ""
+            )
+        )
         print(f"  Max epochs: {training_cfg.num_epochs}")
         print(f"  Early stopping patience: {training_cfg.early_stopping_patience}")
         if dynamic:
-            print(f"  Dynamic graph: ON (update every {self.config.graph.update_frequency_months} months per batch date)")
+            print(
+                f"  Dynamic graph: ON (update every {self.config.graph.update_frequency_months} months per batch date)"
+            )
 
         for epoch in range(training_cfg.num_epochs):
             self.epoch = epoch
@@ -168,8 +174,10 @@ class Trainer:
             final_train_loss = train_loss
 
             val_loss = self._validate(val_loader, criterion)
-            
-            print(f"Epoch [{epoch+1}/{training_cfg.num_epochs}] - Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}")
+
+            print(
+                f"Epoch [{epoch + 1}/{training_cfg.num_epochs}] - Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}"
+            )
 
             if val_loss < self.best_val_loss:
                 self.best_val_loss = val_loss
@@ -179,14 +187,16 @@ class Trainer:
             else:
                 self.patience_counter += 1
                 if self.patience_counter >= training_cfg.early_stopping_patience:
-                    print(f"Early stopping at epoch {epoch+1} (patience={training_cfg.early_stopping_patience})")
+                    print(
+                        f"Early stopping at epoch {epoch + 1} (patience={training_cfg.early_stopping_patience})"
+                    )
                     if epoch_callback is not None:
                         epoch_callback(epoch + 1, train_loss, val_loss, self.best_val_loss)
                     break
 
             if epoch_callback is not None:
                 epoch_callback(epoch + 1, train_loss, val_loss, self.best_val_loss)
-        
+
         if dynamic:
             print(f"  Dynamic graph updates applied during training: {self._dynamic_update_count}")
 
@@ -196,14 +206,14 @@ class Trainer:
             epochs_trained=epoch + 1,
             best_model_path=best_model_path,
         )
-    
+
     def _batched_edges(
         self,
         edge_index: torch.Tensor,
         edge_weight: torch.Tensor,
         batch_size: int,
         num_stocks: int,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Expand single-graph edge tensors to cover a full batch via index shifting."""
         ei_list = [edge_index + i * num_stocks for i in range(batch_size)]
         ew_list = [edge_weight] * batch_size
@@ -211,12 +221,12 @@ class Trainer:
 
     def _apply_dynamic_graph(
         self,
-        batch_dates: Optional[List[str]],
+        batch_dates: list[str] | None,
         edge_index: torch.Tensor,
         edge_weight: torch.Tensor,
         n_stocks: int,
         batch_size: int,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """If dynamic graph is active and dates are provided, update and return current edges."""
         dynamic = (
             self.graph_builder is not None
@@ -248,7 +258,15 @@ class Trainer:
         total_loss = 0.0
         num_samples = 0
 
-        for time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates in train_loader:
+        for (
+            time_series,
+            labels,
+            graph_features,
+            edge_index,
+            edge_weight,
+            n_stocks,
+            batch_dates,
+        ) in train_loader:
             batch_size = time_series.shape[0]
 
             time_series = time_series.to(self.device)
@@ -285,7 +303,15 @@ class Trainer:
         num_samples = 0
 
         with torch.no_grad():
-            for time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates in val_loader:
+            for (
+                time_series,
+                labels,
+                graph_features,
+                edge_index,
+                edge_weight,
+                n_stocks,
+                batch_dates,
+            ) in val_loader:
                 batch_size = time_series.shape[0]
 
                 time_series = time_series.to(self.device)
@@ -305,19 +331,14 @@ class Trainer:
                 num_samples += batch_size
 
         return total_loss / num_samples if num_samples > 0 else 0.0
-    
-    def predict(
-        self,
-        test_loader,
-        kdcode_list: List[str],
-        test_dates: List[str]
-    ) -> np.ndarray:
+
+    def predict(self, test_loader, kdcode_list: list[str], test_dates: list[str]) -> np.ndarray:
         """
         Args:
             test_loader: Test data loader
             kdcode_list: List of stock codes
             test_dates: List of test dates
-            
+
         Returns:
             Predictions array of shape (n_dates, n_stocks)
         """
@@ -325,7 +346,15 @@ class Trainer:
         all_predictions = []
 
         with torch.no_grad():
-            for time_series, _, graph_features, edge_index, edge_weight, n_stocks, batch_dates in test_loader:
+            for (
+                time_series,
+                _,
+                graph_features,
+                edge_index,
+                edge_weight,
+                n_stocks,
+                batch_dates,
+            ) in test_loader:
                 batch_size = time_series.shape[0]
 
                 time_series = time_series.to(self.device)
@@ -342,13 +371,13 @@ class Trainer:
                 all_predictions.append(predictions)
 
         return np.array(all_predictions)
-    
+
     def save_predictions(
         self,
         predictions: np.ndarray,
-        kdcode_list: List[str],
-        test_dates: List[str],
-        output_dir: str
+        kdcode_list: list[str],
+        test_dates: list[str],
+        output_dir: str,
     ):
         """
         Args:
@@ -358,22 +387,24 @@ class Trainer:
             output_dir: Output directory
         """
         os.makedirs(output_dir, exist_ok=True)
-        
+
         for idx, date in enumerate(test_dates):
             if idx < len(predictions):
-                data = [[kdcode_list[i], date, round(float(predictions[idx][i]), 5)]
-                        for i in range(len(kdcode_list))]
-                df = pd.DataFrame(columns=['kdcode', 'dt', 'score'], data=data)
-                df.to_csv(os.path.join(output_dir, f'{date}.csv'), index=False)
-    
-    def load_best_model(self, best_model_path: Optional[str] = None):
+                data = [
+                    [kdcode_list[i], date, round(float(predictions[idx][i]), 5)]
+                    for i in range(len(kdcode_list))
+                ]
+                df = pd.DataFrame(columns=["kdcode", "dt", "score"], data=data)
+                df.to_csv(os.path.join(output_dir, f"{date}.csv"), index=False)
+
+    def load_best_model(self, best_model_path: str | None = None):
         if best_model_path is None:
             if self.last_best_model_path is not None:
                 best_model_path = self.last_best_model_path
             elif self.checkpoint_path is not None:
                 best_model_path = self.checkpoint_path
             else:
-                best_model_path = os.path.join(self.output_path, 'best_model.pth')
+                best_model_path = os.path.join(self.output_path, "best_model.pth")
 
         if os.path.exists(best_model_path):
             self.model.load_state_dict(torch.load(best_model_path, weights_only=True))
@@ -388,14 +419,14 @@ def train_multiple_models(
     train_loader,
     val_loader,
     test_loader,
-    kdcode_list: List[str],
-    test_dates: List[str],
-    graph_builder: Optional[GraphBuilder] = None,
-    df: Optional[pd.DataFrame] = None,
-    train_dates: Optional[List[str]] = None,
-    output_path: Optional[str] = None,
+    kdcode_list: list[str],
+    test_dates: list[str],
+    graph_builder: GraphBuilder | None = None,
+    df: pd.DataFrame | None = None,
+    train_dates: list[str] | None = None,
+    output_path: str | None = None,
     tracking_manager: Optional["MLflowTrackingManager"] = None,
-) -> Tuple[List[TrainingResult], np.ndarray]:
+) -> tuple[list[TrainingResult], np.ndarray]:
     """
     Per paper Section 4.1.2: Train num_models and average predictions.
 
@@ -411,23 +442,23 @@ def train_multiple_models(
         df: DataFrame for dynamic graph updates
         train_dates: Training dates for dynamic updates
         output_path: Optional output path override (for Hydra managed paths)
-        
+
     Returns:
         Tuple of (list of training results, averaged predictions)
     """
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     base_output_path = output_path if output_path else config.get_output_path()
     checkpoint_dir = os.path.join(base_output_path, "checkpoints")
     os.makedirs(checkpoint_dir, exist_ok=True)
-    
+
     all_results = []
     all_predictions = []
-    
+
     for model_id in range(config.training.num_models):
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Training Model {model_id + 1}/{config.training.num_models}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         model = model_factory()
         model_config = config
@@ -463,22 +494,26 @@ def train_multiple_models(
             )
             all_results.append(result)
 
-            print(f"Model {model_id + 1} training complete. Best val loss: {result.best_val_loss:.6f}")
+            print(
+                f"Model {model_id + 1} training complete. Best val loss: {result.best_val_loss:.6f}"
+            )
 
             trainer.last_best_model_path = result.best_model_path
             trainer.load_best_model(result.best_model_path)
             predictions = trainer.predict(test_loader, kdcode_list, test_dates)
             all_predictions.append(predictions)
 
-            pred_dir = os.path.join(base_output_path, f'predictions_model_{model_id}')
+            pred_dir = os.path.join(base_output_path, f"predictions_model_{model_id}")
             trainer.save_predictions(predictions, kdcode_list, test_dates, pred_dir)
 
             if child_tracking is not None and child_tracking.enabled:
-                child_tracking.log_metrics({
-                    "best_val_loss": result.best_val_loss,
-                    "final_train_loss": result.final_train_loss,
-                    "epochs_trained": result.epochs_trained,
-                })
+                child_tracking.log_metrics(
+                    {
+                        "best_val_loss": result.best_val_loss,
+                        "final_train_loss": result.final_train_loss,
+                        "epochs_trained": result.epochs_trained,
+                    }
+                )
                 if config.tracking.log_artifacts and config.tracking.log_checkpoints:
                     child_tracking.log_artifact(
                         result.best_model_path,
@@ -491,16 +526,18 @@ def train_multiple_models(
                     )
 
     avg_predictions = np.mean(all_predictions, axis=0)
-    avg_pred_dir = os.path.join(base_output_path, 'averaged_predictions')
+    avg_pred_dir = os.path.join(base_output_path, "averaged_predictions")
     os.makedirs(avg_pred_dir, exist_ok=True)
-    
+
     for idx, date in enumerate(test_dates):
         if idx < len(avg_predictions):
-            data = [[kdcode_list[i], date, round(float(avg_predictions[idx][i]), 5)]
-                    for i in range(len(kdcode_list))]
-            df_pred = pd.DataFrame(columns=['kdcode', 'dt', 'score'], data=data)
-            df_pred.to_csv(os.path.join(avg_pred_dir, f'{date}.csv'), index=False)
-    
+            data = [
+                [kdcode_list[i], date, round(float(avg_predictions[idx][i]), 5)]
+                for i in range(len(kdcode_list))
+            ]
+            df_pred = pd.DataFrame(columns=["kdcode", "dt", "score"], data=data)
+            df_pred.to_csv(os.path.join(avg_pred_dir, f"{date}.csv"), index=False)
+
     print(f"\nAveraged predictions saved to {avg_pred_dir}")
-    
+
     return all_results, avg_predictions

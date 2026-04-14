@@ -9,11 +9,11 @@ Provides:
 
 from __future__ import annotations
 
-import pandas as pd
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
-from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    import pandas as pd
+
     from mci_gru.config import FeatureConfig
 
 from mci_gru.features.base import (
@@ -22,42 +22,46 @@ from mci_gru.features.base import (
     add_price_features,
     add_volume_features,
 )
-from mci_gru.features.momentum import (
-    MOMENTUM_FEATURES,
-    get_momentum_features,
-    add_momentum_binary,
-    add_momentum_continuous,
-    add_momentum_buffered,
-)
-from mci_gru.features.volatility import (
-    VOLATILITY_FEATURES,
-    VIX_FEATURES,
-    add_volatility_features,
-    add_vix_features,
-    add_rsi,
-    add_moving_average_features,
-)
 from mci_gru.features.credit import (
     CREDIT_FEATURES,
     add_credit_features,
+)
+from mci_gru.features.momentum import (
+    MOMENTUM_FEATURES,
+    add_momentum_binary,
+    add_momentum_buffered,
+    add_momentum_continuous,
+    get_momentum_features,
 )
 from mci_gru.features.regime import (
     REGIME_FEATURES,
     add_regime_features,
     get_regime_features,
 )
-
+from mci_gru.features.volatility import (
+    VIX_FEATURES,
+    VOLATILITY_FEATURES,
+    add_moving_average_features,
+    add_rsi,
+    add_vix_features,
+    add_volatility_features,
+)
 
 # Pre-defined feature sets
 FEATURE_SETS = {
-    'base': BASE_FEATURES,
-    'momentum': MOMENTUM_FEATURES,
-    'volatility': VOLATILITY_FEATURES,
-    'vix': VIX_FEATURES,
-    'credit': CREDIT_FEATURES,
-    'regime': REGIME_FEATURES,
-    'base_momentum': BASE_FEATURES + MOMENTUM_FEATURES,
-    'full': BASE_FEATURES + MOMENTUM_FEATURES + VOLATILITY_FEATURES + VIX_FEATURES + CREDIT_FEATURES + REGIME_FEATURES,
+    "base": BASE_FEATURES,
+    "momentum": MOMENTUM_FEATURES,
+    "volatility": VOLATILITY_FEATURES,
+    "vix": VIX_FEATURES,
+    "credit": CREDIT_FEATURES,
+    "regime": REGIME_FEATURES,
+    "base_momentum": BASE_FEATURES + MOMENTUM_FEATURES,
+    "full": BASE_FEATURES
+    + MOMENTUM_FEATURES
+    + VOLATILITY_FEATURES
+    + VIX_FEATURES
+    + CREDIT_FEATURES
+    + REGIME_FEATURES,
 }
 
 
@@ -70,9 +74,9 @@ def build_feature_list(
     include_credit_spread: bool = False,
     include_global_regime: bool = False,
     regime_include_subsequent_returns: bool = True,
-    regime_subsequent_return_horizons: Optional[List[int]] = None,
-    additional_features: Optional[List[str]] = None
-) -> List[str]:
+    regime_subsequent_return_horizons: list[int] | None = None,
+    additional_features: list[str] | None = None,
+) -> list[str]:
     """
     Build feature column list based on configuration flags.
 
@@ -112,7 +116,7 @@ def build_feature_list(
         )
     if additional_features:
         features.extend(additional_features)
-    
+
     # Remove duplicates while preserving order
     seen = set()
     unique_features = []
@@ -120,7 +124,7 @@ def build_feature_list(
         if f not in seen:
             seen.add(f)
             unique_features.append(f)
-    
+
     return unique_features
 
 
@@ -137,13 +141,13 @@ class FeatureEngineer:
 
     def __init__(
         self,
-        config: "FeatureConfig | None" = None,
+        config: FeatureConfig | None = None,
         *,
         # Legacy kwargs — used only when *config* is None.
         include_momentum: bool = True,
         include_weekly_momentum: bool = True,
-        momentum_encoding: str = 'binary',
-        momentum_blend_mode: str = 'static',
+        momentum_encoding: str = "binary",
+        momentum_blend_mode: str = "static",
         momentum_blend_fast_weight: float = 0.5,
         momentum_dynamic_correction_fast_weight: float = 0.15,
         momentum_dynamic_rebound_fast_weight: float = 0.70,
@@ -164,7 +168,7 @@ class FeatureEngineer:
         regime_min_history_months: int = 24,
         regime_strict: bool = False,
         regime_include_subsequent_returns: bool = True,
-        regime_subsequent_return_horizons: Optional[List[int]] = None,
+        regime_subsequent_return_horizons: list[int] | None = None,
         include_rsi: bool = False,
         include_ma_features: bool = False,
         include_price_features: bool = False,
@@ -177,11 +181,15 @@ class FeatureEngineer:
             self.momentum_encoding = config.momentum_encoding
             self.momentum_blend_mode = config.momentum_blend_mode
             self.momentum_blend_fast_weight = config.momentum_blend_fast_weight
-            self.momentum_dynamic_correction_fast_weight = config.momentum_dynamic_correction_fast_weight
+            self.momentum_dynamic_correction_fast_weight = (
+                config.momentum_dynamic_correction_fast_weight
+            )
             self.momentum_dynamic_rebound_fast_weight = config.momentum_dynamic_rebound_fast_weight
             self.momentum_dynamic_lookback_periods = config.momentum_dynamic_lookback_periods
             self.momentum_dynamic_min_history = config.momentum_dynamic_min_history
-            self.momentum_dynamic_min_state_observations = config.momentum_dynamic_min_state_observations
+            self.momentum_dynamic_min_state_observations = (
+                config.momentum_dynamic_min_state_observations
+            )
             self.momentum_buffer_low = config.momentum_buffer_low
             self.momentum_buffer_high = config.momentum_buffer_high
             self.include_volatility = config.include_volatility
@@ -228,19 +236,21 @@ class FeatureEngineer:
             self.regime_strict = regime_strict
             self.regime_include_subsequent_returns = regime_include_subsequent_returns
             self.regime_subsequent_return_horizons = list(
-                regime_subsequent_return_horizons if regime_subsequent_return_horizons is not None else [1, 3]
+                regime_subsequent_return_horizons
+                if regime_subsequent_return_horizons is not None
+                else [1, 3]
             )
             self.include_rsi = include_rsi
             self.include_ma_features = include_ma_features
             self.include_price_features = include_price_features
             self.include_volume_features = include_volume_features
-    
+
     def transform(
         self,
         df: pd.DataFrame,
-        vix_df: Optional[pd.DataFrame] = None,
-        credit_df: Optional[pd.DataFrame] = None,
-        regime_df: Optional[pd.DataFrame] = None,
+        vix_df: pd.DataFrame | None = None,
+        credit_df: pd.DataFrame | None = None,
+        regime_df: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
         """
         Apply feature transformations to dataframe.
@@ -263,7 +273,7 @@ class FeatureEngineer:
 
         # Momentum features
         if self.include_momentum:
-            if self.momentum_encoding == 'binary':
+            if self.momentum_encoding == "binary":
                 df = add_momentum_binary(
                     df,
                     blend_mode=self.momentum_blend_mode,
@@ -275,7 +285,7 @@ class FeatureEngineer:
                     dynamic_min_state_observations=self.momentum_dynamic_min_state_observations,
                     include_weekly_momentum=self.include_weekly_momentum,
                 )
-            elif self.momentum_encoding == 'continuous':
+            elif self.momentum_encoding == "continuous":
                 df = add_momentum_continuous(
                     df,
                     blend_mode=self.momentum_blend_mode,
@@ -287,7 +297,7 @@ class FeatureEngineer:
                     dynamic_min_state_observations=self.momentum_dynamic_min_state_observations,
                     include_weekly_momentum=self.include_weekly_momentum,
                 )
-            elif self.momentum_encoding == 'buffered':
+            elif self.momentum_encoding == "buffered":
                 df = add_momentum_buffered(
                     df,
                     blend_mode=self.momentum_blend_mode,
@@ -339,7 +349,9 @@ class FeatureEngineer:
                     subsequent_return_horizons=self.regime_subsequent_return_horizons,
                 )
             elif self.regime_strict:
-                raise ValueError("include_global_regime=True but regime_df not provided and regime_strict=True")
+                raise ValueError(
+                    "include_global_regime=True but regime_df not provided and regime_strict=True"
+                )
             else:
                 for col in self._get_regime_feature_columns():
                     df[col] = 0.0
@@ -347,77 +359,78 @@ class FeatureEngineer:
         # RSI
         if self.include_rsi:
             df = add_rsi(df)
-        
+
         # Moving average features
         if self.include_ma_features:
             df = add_moving_average_features(df)
-        
+
         # Price features
         if self.include_price_features:
             df = add_price_features(df)
-        
+
         # Volume features
         if self.include_volume_features:
             df = add_volume_features(df)
-        
+
         print("=" * 60)
         print("Feature engineering complete")
         print("=" * 60)
-        
+
         return df
-    
-    def get_feature_columns(self) -> List[str]:
+
+    def get_feature_columns(self) -> list[str]:
         """
         Get list of feature columns that will be created.
-        
+
         Returns:
             List of feature column names
         """
         features = list(BASE_FEATURES)
-        
+
         if self.include_momentum:
             features.extend(get_momentum_features(self.include_weekly_momentum))
-            if self.momentum_encoding == 'buffered':
-                features.append('trade_signal')
-        
+            if self.momentum_encoding == "buffered":
+                features.append("trade_signal")
+
         if self.include_volatility:
             features.extend(VOLATILITY_FEATURES)
-        
+
         if self.include_vix:
             features.extend(VIX_FEATURES)
 
         if self.include_credit_spread:
             features.extend(CREDIT_FEATURES)
-        
+
         if self.include_global_regime:
             features.extend(self._get_regime_feature_columns())
 
         if self.include_rsi:
-            features.extend(['rsi_14', 'rsi_normalized'])
-        
+            features.extend(["rsi_14", "rsi_normalized"])
+
         if self.include_ma_features:
-            features.extend(['dist_ma50', 'dist_ma200', 'ma_cross'])
-        
+            features.extend(["dist_ma50", "dist_ma200", "ma_cross"])
+
         if self.include_price_features:
-            features.extend(['daily_range', 'body_ratio', 'overnight_return', 'intraday_return'])
-        
+            features.extend(["daily_range", "body_ratio", "overnight_return", "intraday_return"])
+
         if self.include_volume_features:
-            features.extend(['volume_ma20', 'volume_ratio', 'dollar_volume'])
-        
+            features.extend(["volume_ma20", "volume_ratio", "dollar_volume"])
+
         return features
 
-    def _get_regime_feature_columns(self) -> List[str]:
+    def _get_regime_feature_columns(self) -> list[str]:
         return get_regime_features(
             include_subsequent_returns=self.regime_include_subsequent_returns,
             horizons=self.regime_subsequent_return_horizons,
         )
 
 
-def create_feature_engineer_from_config(config: Dict[str, Any]) -> FeatureEngineer:
+def create_feature_engineer_from_config(config: dict[str, Any]) -> FeatureEngineer:
     """Create FeatureEngineer from a plain dictionary.
 
     .. deprecated::
         Prefer ``FeatureEngineer(FeatureConfig(**config_dict))`` directly.
     """
     from mci_gru.config import FeatureConfig
+
     return FeatureEngineer(FeatureConfig(**config))

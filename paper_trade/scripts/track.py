@@ -17,7 +17,6 @@ Usage:
 import argparse
 import json
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -110,13 +109,15 @@ def compute_fills(
     records = []
     for _, row in orders.iterrows():
         kd = row["kdcode"]
-        records.append({
-            "kdcode": kd,
-            "dt": fill_date,
-            "side": row["side"],
-            "fill_price": round(price_map.get(kd, np.nan), 4),
-            "reason": row.get("reason", ""),
-        })
+        records.append(
+            {
+                "kdcode": kd,
+                "dt": fill_date,
+                "side": row["side"],
+                "fill_price": round(price_map.get(kd, np.nan), 4),
+                "reason": row.get("reason", ""),
+            }
+        )
 
     fills_df = pd.DataFrame(records)
 
@@ -145,7 +146,9 @@ def compute_daily_returns(
     entry_date_for_positions = active_positions.get("fill_date")
 
     prev_prices = open_prices[open_prices["dt"] == prev_date].set_index("kdcode")["open"].to_dict()
-    curr_prices = open_prices[open_prices["dt"] == return_date].set_index("kdcode")["open"].to_dict()
+    curr_prices = (
+        open_prices[open_prices["dt"] == return_date].set_index("kdcode")["open"].to_dict()
+    )
 
     stock_returns = []
     holdings_records = []
@@ -163,16 +166,18 @@ def compute_daily_returns(
         contribution = ret * weight
 
         stock_returns.append(ret)
-        holdings_records.append({
-            "kdcode": kd,
-            "dt": return_date,
-            "weight": round(weight, 6),
-            "entry_date": pos.get("entry_date", entry_date_for_positions),
-            "open_prev": round(open_prev, 4),
-            "open_curr": round(open_curr, 4),
-            "stock_return": round(ret, 6),
-            "contribution": round(contribution, 6),
-        })
+        holdings_records.append(
+            {
+                "kdcode": kd,
+                "dt": return_date,
+                "weight": round(weight, 6),
+                "entry_date": pos.get("entry_date", entry_date_for_positions),
+                "open_prev": round(open_prev, 4),
+                "open_curr": round(open_curr, 4),
+                "stock_return": round(ret, 6),
+                "contribution": round(contribution, 6),
+            }
+        )
 
     if not stock_returns:
         return None
@@ -195,12 +200,10 @@ def compute_benchmark_return(
     Compute SPY open-to-open return as the benchmark.
     """
     prev = open_prices[
-        (open_prices["dt"] == prev_date)
-        & (open_prices["kdcode"] == BENCHMARK_TICKER)
+        (open_prices["dt"] == prev_date) & (open_prices["kdcode"] == BENCHMARK_TICKER)
     ]["open"]
     curr = open_prices[
-        (open_prices["dt"] == return_date)
-        & (open_prices["kdcode"] == BENCHMARK_TICKER)
+        (open_prices["dt"] == return_date) & (open_prices["kdcode"] == BENCHMARK_TICKER)
     ]["open"]
 
     if prev.empty or curr.empty or prev.iloc[0] == 0:
@@ -252,22 +255,26 @@ def update_performance_csv(
     peak_equity = max(prev_peak, equity)
     drawdown = (equity / peak_equity) - 1.0 if peak_equity > 0 else 0.0
 
-    new_row = pd.DataFrame([{
-        "dt": date,
-        "daily_return": round(portfolio_return, 6),
-        "net_return": round(net_return, 6),
-        "benchmark_return": round(benchmark_return, 6),
-        "excess_return": round(excess_return, 6),
-        "cum_return": round(cum_return, 6),
-        "cum_benchmark": round(cum_benchmark, 6),
-        "equity": round(equity, 6),
-        "peak_equity": round(peak_equity, 6),
-        "drawdown": round(drawdown, 6),
-        "turnover": round(turnover, 4),
-        "est_cost": round(est_cost, 6),
-        "num_trades": num_trades,
-        "num_holdings": num_holdings,
-    }])
+    new_row = pd.DataFrame(
+        [
+            {
+                "dt": date,
+                "daily_return": round(portfolio_return, 6),
+                "net_return": round(net_return, 6),
+                "benchmark_return": round(benchmark_return, 6),
+                "excess_return": round(excess_return, 6),
+                "cum_return": round(cum_return, 6),
+                "cum_benchmark": round(cum_benchmark, 6),
+                "equity": round(equity, 6),
+                "peak_equity": round(peak_equity, 6),
+                "drawdown": round(drawdown, 6),
+                "turnover": round(turnover, 4),
+                "est_cost": round(est_cost, 6),
+                "num_trades": num_trades,
+                "num_holdings": num_holdings,
+            }
+        ]
+    )
 
     perf_df = pd.concat([perf_df, new_row], ignore_index=True)
     perf_df.to_csv(str(perf_path), index=False)
@@ -316,12 +323,14 @@ def build_active_positions(
     positions = []
     for h in holdings:
         kd = h["kdcode"]
-        positions.append({
-            "kdcode": kd,
-            "weight": h["weight"],
-            "entry_date": h.get("entry_date", fill_date),
-            "fill_price": fill_prices.get(kd),
-        })
+        positions.append(
+            {
+                "kdcode": kd,
+                "weight": h["weight"],
+                "entry_date": h.get("entry_date", fill_date),
+                "fill_price": fill_prices.get(kd),
+            }
+        )
 
     return {
         "fill_date": fill_date,
@@ -421,14 +430,19 @@ def main():
     if prev_positions and yesterday:
         print(f"\n  RETURNS (open {yesterday} -> open {today}):")
         returns_data = compute_daily_returns(
-            prev_positions, open_prices, today, yesterday,
+            prev_positions,
+            open_prices,
+            today,
+            yesterday,
         )
 
         if returns_data:
             portfolio_return = returns_data["portfolio_return"]
 
             benchmark_return = compute_benchmark_return(
-                open_prices, today, yesterday,
+                open_prices,
+                today,
+                yesterday,
             )
 
             prev_held = set(p["kdcode"] for p in prev_positions.get("positions", []))
@@ -444,19 +458,28 @@ def main():
             holdings_df = pd.DataFrame(returns_data["holdings_records"])
             holdings_df.to_csv(str(day_dir / "holdings.csv"), index=False)
 
-            daily_ret_df = pd.DataFrame([{
-                "dt": today,
-                "portfolio_return": round(portfolio_return, 6),
-                "benchmark_return": round(benchmark_return, 6),
-                "excess_return": round(portfolio_return - benchmark_return, 6),
-                "num_holdings": returns_data["num_stocks"],
-                "turnover": round(turnover, 4),
-            }])
+            daily_ret_df = pd.DataFrame(
+                [
+                    {
+                        "dt": today,
+                        "portfolio_return": round(portfolio_return, 6),
+                        "benchmark_return": round(benchmark_return, 6),
+                        "excess_return": round(portfolio_return - benchmark_return, 6),
+                        "num_holdings": returns_data["num_stocks"],
+                        "turnover": round(turnover, 4),
+                    }
+                ]
+            )
             daily_ret_df.to_csv(str(day_dir / "daily_return.csv"), index=False)
 
             perf = update_performance_csv(
-                results_dir, today, portfolio_return, benchmark_return,
-                turnover, num_trades, returns_data["num_stocks"],
+                results_dir,
+                today,
+                portfolio_return,
+                benchmark_return,
+                turnover,
+                num_trades,
+                returns_data["num_stocks"],
             )
 
             print(f"    Portfolio:  {portfolio_return:+.4%}")

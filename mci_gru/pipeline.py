@@ -10,13 +10,12 @@ paper_trade/scripts/infer.py.
 from __future__ import annotations
 
 import gc
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 import torch
 
-from mci_gru.config import ExperimentConfig
 from mci_gru.data.data_manager import DataManager
 from mci_gru.data.preprocessing import (
     apply_rank_labels,
@@ -24,20 +23,23 @@ from mci_gru.data.preprocessing import (
     generate_graph_features,
     generate_time_series_features,
 )
-from mci_gru.features import FeatureEngineer
 from mci_gru.graph import GraphBuilder
 
+if TYPE_CHECKING:
+    from mci_gru.config import ExperimentConfig
+    from mci_gru.features import FeatureEngineer
 
 # ── helpers ──────────────────────────────────────────────────────────────
+
 
 def _load_auxiliary_data(
     data_manager: DataManager,
     config: ExperimentConfig,
-) -> tuple[Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[pd.DataFrame]]:
+) -> tuple[pd.DataFrame | None, pd.DataFrame | None, pd.DataFrame | None]:
     """Load VIX, credit spread, and regime DataFrames as configured."""
-    vix_df: Optional[pd.DataFrame] = None
-    credit_df: Optional[pd.DataFrame] = None
-    regime_df: Optional[pd.DataFrame] = None
+    vix_df: pd.DataFrame | None = None
+    credit_df: pd.DataFrame | None = None
+    regime_df: pd.DataFrame | None = None
 
     if config.features.include_vix:
         try:
@@ -77,13 +79,13 @@ def _load_auxiliary_data(
 
 def _compute_norm_stats(
     df: pd.DataFrame,
-    feature_cols: List[str],
+    feature_cols: list[str],
     train_end: str,
-) -> tuple[Dict[str, float], Dict[str, float]]:
+) -> tuple[dict[str, float], dict[str, float]]:
     """Compute per-feature mean/std from the training period."""
     train_df = df[df["dt"] <= train_end]
-    means: Dict[str, float] = {}
-    stds: Dict[str, float] = {}
+    means: dict[str, float] = {}
+    stds: dict[str, float] = {}
     for col in feature_cols:
         if col in train_df.columns:
             means[col] = train_df[col].mean()
@@ -95,9 +97,9 @@ def _compute_norm_stats(
 
 def _apply_normalisation(
     df: pd.DataFrame,
-    feature_cols: List[str],
-    means: Dict[str, float],
-    stds: Dict[str, float],
+    feature_cols: list[str],
+    means: dict[str, float],
+    stds: dict[str, float],
 ) -> pd.DataFrame:
     """3-sigma clipping followed by z-score normalisation."""
     df = df.copy()
@@ -113,11 +115,11 @@ def _apply_normalisation(
 
 def _build_tensors(
     df_filtered: pd.DataFrame,
-    kdcode_list: List[str],
-    feature_cols: List[str],
-    train_dates: List[str],
-    val_dates: List[str],
-    test_dates: List[str],
+    kdcode_list: list[str],
+    feature_cols: list[str],
+    train_dates: list[str],
+    val_dates: list[str],
+    test_dates: list[str],
     his_t: int,
     label_t: int,
     label_type: str,
@@ -125,20 +127,22 @@ def _build_tensors(
     train_df: pd.DataFrame,
     val_df: pd.DataFrame,
     test_df: pd.DataFrame,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build time-series tensors, graph features, and labels."""
     print("Generating time series features...")
-    stock_features = generate_time_series_features(
-        df_filtered, kdcode_list, feature_cols, his_t
-    )
+    stock_features = generate_time_series_features(df_filtered, kdcode_list, feature_cols, his_t)
     effective_train_days = len(train_dates) - his_t
 
     stock_features_train = stock_features[:effective_train_days]
-    stock_features_val = stock_features[effective_train_days:effective_train_days + len(val_dates)]
-    stock_features_test = stock_features[effective_train_days + len(val_dates):]
+    stock_features_val = stock_features[
+        effective_train_days : effective_train_days + len(val_dates)
+    ]
+    stock_features_test = stock_features[effective_train_days + len(val_dates) :]
 
     print("Generating graph features...")
-    x_graph_train = generate_graph_features(train_df, kdcode_list, feature_cols, train_dates[his_t:])
+    x_graph_train = generate_graph_features(
+        train_df, kdcode_list, feature_cols, train_dates[his_t:]
+    )
     x_graph_val = generate_graph_features(val_df, kdcode_list, feature_cols, val_dates)
     x_graph_test = generate_graph_features(test_df, kdcode_list, feature_cols, test_dates)
 
@@ -168,10 +172,11 @@ def _build_tensors(
 
 # ── public API ───────────────────────────────────────────────────────────
 
+
 def prepare_data(
     config: ExperimentConfig,
     feature_engineer: FeatureEngineer,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Load and prepare stock-level cross-sectional data for training.
 
     Returns a dict consumed by the training loop and metric evaluation.
@@ -216,12 +221,19 @@ def prepare_data(
     test_dates = sorted(test_df["dt"].unique())
 
     tensors = _build_tensors(
-        df_filtered, kdcode_list, feature_cols,
-        train_dates, val_dates, test_dates,
-        config.model.his_t, config.model.label_t,
+        df_filtered,
+        kdcode_list,
+        feature_cols,
+        train_dates,
+        val_dates,
+        test_dates,
+        config.model.his_t,
+        config.model.label_t,
         config.training.label_type,
-        df,   # use un-normalised df for forward-return labels
-        train_df, val_df, test_df,
+        df,  # use un-normalised df for forward-return labels
+        train_df,
+        val_df,
+        test_df,
     )
 
     print("Building correlation graph...")
@@ -230,9 +242,7 @@ def prepare_data(
         update_frequency_months=config.graph.update_frequency_months,
         corr_lookback_days=config.graph.corr_lookback_days,
     )
-    edge_index, edge_weight = graph_builder.build_graph(
-        df, kdcode_list, config.data.train_start
-    )
+    edge_index, edge_weight = graph_builder.build_graph(df, kdcode_list, config.data.train_start)
 
     return {
         "kdcode_list": kdcode_list,
@@ -250,7 +260,7 @@ def prepare_data(
 def prepare_data_index_level(
     config: ExperimentConfig,
     feature_engineer: FeatureEngineer,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Prepare data for index-level mode (single series, no survivorship bias).
 
     Uses a trivial 1-node / 0-edge graph so the rest of the pipeline runs
@@ -278,9 +288,15 @@ def prepare_data_index_level(
     date_mask = (df["dt"] >= config.data.train_start) & (df["dt"] <= config.data.test_end)
     df_norm = df[date_mask].copy()
 
-    train_df = df_norm[(df_norm["dt"] >= config.data.train_start) & (df_norm["dt"] <= config.data.train_end)]
-    val_df = df_norm[(df_norm["dt"] >= config.data.val_start) & (df_norm["dt"] <= config.data.val_end)]
-    test_df = df_norm[(df_norm["dt"] >= config.data.test_start) & (df_norm["dt"] <= config.data.test_end)]
+    train_df = df_norm[
+        (df_norm["dt"] >= config.data.train_start) & (df_norm["dt"] <= config.data.train_end)
+    ]
+    val_df = df_norm[
+        (df_norm["dt"] >= config.data.val_start) & (df_norm["dt"] <= config.data.val_end)
+    ]
+    test_df = df_norm[
+        (df_norm["dt"] >= config.data.test_start) & (df_norm["dt"] <= config.data.test_end)
+    ]
 
     means, stds = _compute_norm_stats(df_norm, feature_cols, config.data.train_end)
     df_norm = _apply_normalisation(df_norm, feature_cols, means, stds)
@@ -292,12 +308,19 @@ def prepare_data_index_level(
     test_dates = sorted(test_df["dt"].unique())
 
     tensors = _build_tensors(
-        df_filtered, kdcode_list, feature_cols,
-        train_dates, val_dates, test_dates,
-        config.model.his_t, config.model.label_t,
+        df_filtered,
+        kdcode_list,
+        feature_cols,
+        train_dates,
+        val_dates,
+        test_dates,
+        config.model.his_t,
+        config.model.label_t,
         config.training.label_type,
         df_filtered,  # use normalised df (single series, no cross-section)
-        train_df, val_df, test_df,
+        train_df,
+        val_df,
+        test_df,
     )
 
     edge_index = torch.empty(2, 0, dtype=torch.long)

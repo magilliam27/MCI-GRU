@@ -154,10 +154,21 @@ def test_dynamic_estimator_activates_after_sufficient_history():
             # forward_return at row t is _daily_return at row t+1
             "_daily_return": [
                 0.00,
-                0.04, -0.02, 0.01, 0.03,
-                0.04, -0.02, 0.01, 0.03,
-                0.04, -0.02, 0.01, 0.03,
-                0.04, -0.02, 0.01,
+                0.04,
+                -0.02,
+                0.01,
+                0.03,
+                0.04,
+                -0.02,
+                0.01,
+                0.03,
+                0.04,
+                -0.02,
+                0.01,
+                0.03,
+                0.04,
+                -0.02,
+                0.01,
             ],
         }
     )

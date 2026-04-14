@@ -13,27 +13,27 @@ Modules:
 from mci_gru.features.base import add_base_features
 from mci_gru.features.momentum import (
     add_momentum_binary,
-    add_momentum_continuous,
     add_momentum_buffered,
-)
-from mci_gru.features.volatility import (
-    add_volatility_features,
-    add_vix_features,
+    add_momentum_continuous,
 )
 from mci_gru.features.regime import (
-    add_regime_features,
     REGIME_FEATURES,
+    add_regime_features,
 )
 from mci_gru.features.registry import (
+    FEATURE_SETS,
     FeatureEngineer,
     build_feature_list,
-    FEATURE_SETS,
+)
+from mci_gru.features.volatility import (
+    add_vix_features,
+    add_volatility_features,
 )
 
 __all__ = [
     "add_base_features",
     "add_momentum_binary",
-    "add_momentum_continuous", 
+    "add_momentum_continuous",
     "add_momentum_buffered",
     "add_volatility_features",
     "add_vix_features",

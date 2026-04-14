@@ -7,9 +7,9 @@ Modules:
 - losses: Custom loss functions (ICLoss, CombinedMSEICLoss)
 """
 
-from mci_gru.training.trainer import Trainer, train_multiple_models
+from mci_gru.training.losses import CombinedMSEICLoss, ICLoss
 from mci_gru.training.metrics import compute_metrics
-from mci_gru.training.losses import ICLoss, CombinedMSEICLoss
+from mci_gru.training.trainer import Trainer, train_multiple_models
 
 __all__ = [
     "Trainer",

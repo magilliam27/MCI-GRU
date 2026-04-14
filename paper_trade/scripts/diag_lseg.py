@@ -6,13 +6,23 @@ Usage:
     python paper_trade/scripts/diag_lseg.py
 """
 
+import contextlib
 import time
-import refinitiv.data as rd
+
 import pandas as pd
+import refinitiv.data as rd
 
 TEST_RICS = [
-    "AAPL.OQ", "MSFT.OQ", "AMZN.OQ", "NVDA.OQ", "INTC.OQ",
-    "TSLA.OQ", "PSKY.OQ", "F.N", "T.N", "VZ.N",
+    "AAPL.OQ",
+    "MSFT.OQ",
+    "AMZN.OQ",
+    "NVDA.OQ",
+    "INTC.OQ",
+    "TSLA.OQ",
+    "PSKY.OQ",
+    "F.N",
+    "T.N",
+    "VZ.N",
 ]
 
 FIELDS = ["OPEN_PRC", "HIGH_1", "LOW_1", "TRDPRC_1", "ACVOL_UNS"]
@@ -21,8 +31,7 @@ DATES = [("2026-03-09", "2026-03-09"), ("2026-03-10", "2026-03-10")]
 
 def test_fetch(rics, fields, start, end, label=""):
     """Fetch and report what came back."""
-    print(f"\n  [{label}] {len(rics)} RICs, fields={fields is not None}, "
-          f"range {start} to {end}")
+    print(f"\n  [{label}] {len(rics)} RICs, fields={fields is not None}, range {start} to {end}")
     try:
         kwargs = dict(universe=rics, start=start, end=end, interval="1D")
         if fields:
@@ -38,7 +47,8 @@ def test_fetch(rics, fields, start, end, label=""):
 
         if isinstance(df.columns, pd.MultiIndex):
             returned_rics = [
-                r for r in df.columns.get_level_values(0).unique()
+                r
+                for r in df.columns.get_level_values(0).unique()
                 if r not in ("Date", "Instrument", "index")
             ]
         else:
@@ -63,10 +73,8 @@ def check_session(session):
     """Print session state info."""
     print(f"\n  Session type:  {type(session).__name__}")
     print(f"  Session state: {session.open_state if hasattr(session, 'open_state') else 'unknown'}")
-    try:
+    with contextlib.suppress(Exception):
         print(f"  Session repr:  {session}")
-    except Exception:
-        pass
 
 
 def main():
@@ -81,29 +89,24 @@ def main():
 
     try:
         print("\n  --- Test 1: Known historical range (should always work) ---")
-        test_fetch(["AAPL.OQ"], None, "2026-03-03", "2026-03-07",
-                   label="AAPL last week")
+        test_fetch(["AAPL.OQ"], None, "2026-03-03", "2026-03-07", label="AAPL last week")
         time.sleep(2)
 
         print("\n  --- Test 2: Single RIC, recent dates ---")
         for start, end in DATES:
-            test_fetch(["AAPL.OQ"], None, start, end,
-                       label=f"AAPL {start}")
+            test_fetch(["AAPL.OQ"], None, start, end, label=f"AAPL {start}")
             time.sleep(2)
 
         print("\n  --- Test 3: PSKY.OQ (the one that worked before) ---")
-        test_fetch(["PSKY.OQ"], None, "2026-03-10", "2026-03-10",
-                   label="PSKY 2026-03-10")
+        test_fetch(["PSKY.OQ"], None, "2026-03-10", "2026-03-10", label="PSKY 2026-03-10")
         time.sleep(2)
 
         print("\n  --- Test 4: With vs without fields ---")
-        test_fetch(["AAPL.OQ"], FIELDS, "2026-03-03", "2026-03-07",
-                   label="AAPL with fields")
+        test_fetch(["AAPL.OQ"], FIELDS, "2026-03-03", "2026-03-07", label="AAPL with fields")
         time.sleep(2)
 
         print("\n  --- Test 5: Full 10 RICs, wider range ---")
-        test_fetch(TEST_RICS, None, "2026-03-03", "2026-03-10",
-                   label="10 RICs full week")
+        test_fetch(TEST_RICS, None, "2026-03-03", "2026-03-10", label="10 RICs full week")
 
     finally:
         rd.close_session()

@@ -13,9 +13,10 @@ from __future__ import annotations
 import json
 import math
 import subprocess
+from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterator, Mapping, Optional
+from typing import Any
 
 
 def _find_project_root() -> Path:
@@ -23,7 +24,9 @@ def _find_project_root() -> Path:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
             cwd=Path(__file__).resolve().parent,
         )
         return Path(result.stdout.strip())
@@ -46,7 +49,7 @@ def _import_mlflow():
     return mlflow
 
 
-def resolve_tracking_uri(tracking_uri: Optional[str] = None) -> str:
+def resolve_tracking_uri(tracking_uri: str | None = None) -> str:
     """Resolve a tracking URI for local-first usage.
 
     Relative paths are resolved against the repository root and returned as
@@ -77,12 +80,12 @@ def _to_serializable(value: Any) -> Any:
     return value
 
 
-def flatten_params(payload: Mapping[str, Any], prefix: str = "") -> Dict[str, str]:
+def flatten_params(payload: Mapping[str, Any], prefix: str = "") -> dict[str, str]:
     """Flatten nested mappings into MLflow parameter strings.
 
     MLflow params are strings, so lists and complex values are JSON-encoded.
     """
-    flattened: Dict[str, str] = {}
+    flattened: dict[str, str] = {}
 
     for raw_key, raw_value in payload.items():
         key = f"{prefix}.{raw_key}" if prefix else str(raw_key)
@@ -100,7 +103,7 @@ def flatten_params(payload: Mapping[str, Any], prefix: str = "") -> Dict[str, st
     return flattened
 
 
-def load_run_metadata(run_dir: str | Path) -> Optional[Dict[str, Any]]:
+def load_run_metadata(run_dir: str | Path) -> dict[str, Any] | None:
     """Load persisted MLflow run metadata from a run directory."""
     metadata_path = Path(run_dir) / RUN_METADATA_FILENAME
     if not metadata_path.exists():
@@ -110,7 +113,7 @@ def load_run_metadata(run_dir: str | Path) -> Optional[Dict[str, Any]]:
         return json.load(handle)
 
 
-def load_run_metadata_from_predictions_dir(predictions_dir: str | Path) -> Optional[Dict[str, Any]]:
+def load_run_metadata_from_predictions_dir(predictions_dir: str | Path) -> dict[str, Any] | None:
     """Load tracking metadata from a predictions directory.
 
     The current layout is::
@@ -128,12 +131,12 @@ class MLflowTrackingManager:
     def __init__(
         self,
         enabled: bool = False,
-        tracking_uri: Optional[str] = None,
-        experiment_name: Optional[str] = None,
-        run_name: Optional[str] = None,
-        output_path: Optional[str | Path] = None,
-        parent_run_id: Optional[str] = None,
-        tags: Optional[Mapping[str, Any]] = None,
+        tracking_uri: str | None = None,
+        experiment_name: str | None = None,
+        run_name: str | None = None,
+        output_path: str | Path | None = None,
+        parent_run_id: str | None = None,
+        tags: Mapping[str, Any] | None = None,
     ):
         self.enabled = enabled
         self.output_path = Path(output_path).resolve() if output_path else None
@@ -154,7 +157,7 @@ class MLflowTrackingManager:
         self._mlflow.set_tracking_uri(self.tracking_uri)
         self._mlflow.set_experiment(self.experiment_name)
 
-        start_kwargs: Dict[str, Any] = {}
+        start_kwargs: dict[str, Any] = {}
         if self.run_name:
             start_kwargs["run_name"] = self.run_name
         if self.parent_run_id:
@@ -166,7 +169,7 @@ class MLflowTrackingManager:
         if tags:
             self.log_tags(tags)
 
-    def __enter__(self) -> "MLflowTrackingManager":
+    def __enter__(self) -> MLflowTrackingManager:
         return self
 
     def __exit__(self, exc_type, exc, tb):
@@ -178,11 +181,11 @@ class MLflowTrackingManager:
         return self.enabled and self._run is not None
 
     @property
-    def run_id(self) -> Optional[str]:
+    def run_id(self) -> str | None:
         return self._run.info.run_id if self._run is not None else None
 
     @property
-    def experiment_id(self) -> Optional[str]:
+    def experiment_id(self) -> str | None:
         return self._run.info.experiment_id if self._run is not None else None
 
     def close(self, status: str = "FINISHED"):
@@ -204,7 +207,7 @@ class MLflowTrackingManager:
         if not self.is_active:
             return
 
-        serialized: Dict[str, str] = {}
+        serialized: dict[str, str] = {}
         for key, value in tags.items():
             if value is None:
                 continue
@@ -219,7 +222,7 @@ class MLflowTrackingManager:
     def log_metrics(
         self,
         metrics: Mapping[str, Any],
-        step: Optional[int] = None,
+        step: int | None = None,
         prefix: str = "",
     ):
         """Log numeric metrics, skipping non-finite values."""
@@ -237,7 +240,7 @@ class MLflowTrackingManager:
             metric_key = f"{prefix}{key}" if prefix else str(key)
             self._mlflow.log_metric(metric_key, float(value), step=step)
 
-    def log_artifact(self, path: str | Path, artifact_path: Optional[str] = None):
+    def log_artifact(self, path: str | Path, artifact_path: str | None = None):
         """Log one artifact if it exists."""
         if not self.is_active:
             return
@@ -246,7 +249,7 @@ class MLflowTrackingManager:
         if artifact.exists() and artifact.is_file():
             self._mlflow.log_artifact(str(artifact), artifact_path=artifact_path)
 
-    def log_artifacts(self, path: str | Path, artifact_path: Optional[str] = None):
+    def log_artifacts(self, path: str | Path, artifact_path: str | None = None):
         """Log a directory tree if it exists."""
         if not self.is_active:
             return
@@ -275,8 +278,8 @@ class MLflowTrackingManager:
     def create_child_run(
         self,
         run_name: str,
-        tags: Optional[Mapping[str, Any]] = None,
-    ) -> "MLflowTrackingManager":
+        tags: Mapping[str, Any] | None = None,
+    ) -> MLflowTrackingManager:
         """Create a nested child run underneath the current run."""
         if not self.is_active:
             return MLflowTrackingManager(enabled=False)
@@ -292,9 +295,9 @@ class MLflowTrackingManager:
 
     def persist_run_metadata(
         self,
-        output_path: Optional[str | Path] = None,
-        extra_metadata: Optional[Mapping[str, Any]] = None,
-    ) -> Optional[Path]:
+        output_path: str | Path | None = None,
+        extra_metadata: Mapping[str, Any] | None = None,
+    ) -> Path | None:
         """Persist enough metadata for later linked runs such as backtests."""
         if not self.is_active:
             return None
@@ -306,7 +309,7 @@ class MLflowTrackingManager:
         destination_root.mkdir(parents=True, exist_ok=True)
         metadata_path = destination_root / RUN_METADATA_FILENAME
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "tracking_uri": self.tracking_uri,
             "experiment_name": self.experiment_name,
             "experiment_id": self.experiment_id,
@@ -314,7 +317,9 @@ class MLflowTrackingManager:
             "run_name": self.run_name,
         }
         if extra_metadata:
-            payload.update({str(key): _to_serializable(value) for key, value in extra_metadata.items()})
+            payload.update(
+                {str(key): _to_serializable(value) for key, value in extra_metadata.items()}
+            )
 
         with metadata_path.open("w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, default=str)
