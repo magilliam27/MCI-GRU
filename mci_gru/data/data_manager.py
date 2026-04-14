@@ -476,25 +476,32 @@ class CombinedDataset(Dataset):
         return item
 
 
-def combined_collate_fn(batch, edge_index, edge_weight):
+def combined_collate_fn(batch, edge_index, edge_weight, graph_schedule=None):
     """
     Custom collate function to create properly batched graph data.
 
     PyG batches graphs by concatenating nodes and shifting edge indices.
     This function replicates that behavior while keeping time series aligned.
 
+    When *graph_schedule* is provided and samples carry dates, each sample
+    looks up its own graph snapshot from the schedule.  Otherwise the fixed
+    *edge_index* / *edge_weight* are replicated across the batch (static
+    mode).
+
     Args:
         batch: List of dicts with 'time_series', 'graph_features', 'label'
                and optional 'date' string.
-        edge_index: Original edge index tensor (2, num_edges)
-        edge_weight: Original edge weight tensor (num_edges,)
+        edge_index: Fallback edge index tensor (2, num_edges) used when
+                    graph_schedule is None or samples have no date.
+        edge_weight: Fallback edge weight tensor (num_edges,).
+        graph_schedule: Optional GraphSchedule for per-sample graph lookup.
 
     Returns:
         time_series: (batch_size, num_stocks, seq_len, features)
         labels: (batch_size, num_stocks)
         graph_features: (batch_size * num_stocks, features)
-        batched_edge_index: (2, batch_size * num_edges)
-        batched_edge_weight: (batch_size * num_edges,)
+        batched_edge_index: (2, total_edges_across_batch)
+        batched_edge_weight: (total_edges_across_batch,)
         num_stocks: int
         batch_dates: List[str] of length batch_size, or None
     """
@@ -503,21 +510,29 @@ def combined_collate_fn(batch, edge_index, edge_weight):
     time_series = torch.stack([item["time_series"] for item in batch])
     labels = torch.stack([item["label"] for item in batch])
 
+    has_dates = "date" in batch[0]
+    use_schedule = graph_schedule is not None and has_dates
+
     graph_features_list = []
     edge_index_list = []
     edge_weight_list = []
 
     for i, item in enumerate(batch):
         graph_features_list.append(item["graph_features"])
-        shifted_edge_index = edge_index + (i * num_stocks)
-        edge_index_list.append(shifted_edge_index)
-        edge_weight_list.append(edge_weight)
+
+        if use_schedule:
+            ei, ew = graph_schedule.get_graph_for_date(item["date"])
+        else:
+            ei, ew = edge_index, edge_weight
+
+        edge_index_list.append(ei + (i * num_stocks))
+        edge_weight_list.append(ew)
 
     batched_graph_features = torch.cat(graph_features_list, dim=0)
     batched_edge_index = torch.cat(edge_index_list, dim=1)
     batched_edge_weight = torch.cat(edge_weight_list, dim=0)
 
-    batch_dates = [item["date"] for item in batch] if "date" in batch[0] else None
+    batch_dates = [item["date"] for item in batch] if has_dates else None
 
     return (
         time_series,
@@ -546,6 +561,7 @@ def create_data_loaders(
     val_dates: list[str] | None = None,
     test_dates: list[str] | None = None,
     dynamic_graph: bool = False,
+    graph_schedule: "GraphSchedule | None" = None,
 ) -> tuple:
     """
     Create train/val/test data loaders.
@@ -559,25 +575,24 @@ def create_data_loaders(
         val_labels: Validation labels
         stock_features_test: Test time series
         x_graph_test: Test graph features
-        edge_index: Graph edge indices (used as static fallback in dynamic mode)
+        edge_index: Graph edge indices (static fallback when graph_schedule is None)
         edge_weight: Graph edge weights
-        batch_size: Batch size for training (clamped to 1 in dynamic mode)
-        train_dates: Per-sample dates aligned with train samples (required for dynamic mode)
+        batch_size: Batch size for training
+        train_dates: Per-sample dates aligned with train samples
         val_dates: Per-sample dates aligned with val samples
         test_dates: Per-sample dates aligned with test samples
-        dynamic_graph: When True enforce shuffle=False and batch_size=1 for train/val,
-                       and attach dates to datasets so each batch carries its trading date.
+        dynamic_graph: When True, attach dates to datasets and disable shuffle
+                       so the collate function can look up per-sample graphs.
+        graph_schedule: Precomputed graph snapshots.  When provided, each
+                        sample's graph is resolved by date in the collate
+                        function, allowing batch_size > 1 in dynamic mode.
 
     Returns:
         Tuple of (train_loader, val_loader, test_loader)
     """
-    print("Creating data loaders...")
+    from mci_gru.graph.builder import GraphSchedule  # noqa: F811
 
-    if dynamic_graph and batch_size != 1:
-        print(f"  [dynamic graph] forcing batch_size=1 for train and val (was {batch_size})")
-        effective_batch_size = 1
-    else:
-        effective_batch_size = batch_size
+    print("Creating data loaders...")
 
     X_train_ts = torch.from_numpy(stock_features_train).float()
     X_train_graph = torch.from_numpy(x_graph_train).float()
@@ -614,11 +629,16 @@ def create_data_loaders(
         sample_dates=test_dates if dynamic_graph else None,
     )
 
-    collate_fn = partial(combined_collate_fn, edge_index=edge_index, edge_weight=edge_weight)
+    collate_fn = partial(
+        combined_collate_fn,
+        edge_index=edge_index,
+        edge_weight=edge_weight,
+        graph_schedule=graph_schedule,
+    )
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
-        batch_size=effective_batch_size if dynamic_graph else batch_size,
+        batch_size=batch_size,
         shuffle=not dynamic_graph,
         drop_last=False,
         collate_fn=collate_fn,
@@ -626,7 +646,7 @@ def create_data_loaders(
 
     val_loader = torch.utils.data.DataLoader(
         val_dataset,
-        batch_size=effective_batch_size if dynamic_graph else batch_size,
+        batch_size=batch_size,
         shuffle=False,
         collate_fn=collate_fn,
     )

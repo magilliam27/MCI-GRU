@@ -244,13 +244,19 @@ def prepare_data(
     )
     edge_index, edge_weight = graph_builder.build_graph(df, kdcode_list, config.data.train_start)
 
+    graph_schedule = None
+    if config.graph.update_frequency_months > 0:
+        graph_schedule = graph_builder.precompute_snapshots(
+            df, kdcode_list, config.data.train_start, config.data.test_end
+        )
+
     return {
         "kdcode_list": kdcode_list,
         **tensors,
         "edge_index": edge_index,
         "edge_weight": edge_weight,
         "feature_cols": feature_cols,
-        "graph_builder": graph_builder,
+        "graph_schedule": graph_schedule,
         "df": df,
         "norm_means": means,
         "norm_stds": stds,

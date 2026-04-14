@@ -180,6 +180,7 @@ def main(cfg: DictConfig):
         val_dates=data["val_dates"],
         test_dates=data["test_dates"],
         dynamic_graph=dynamic_graph,
+        graph_schedule=data.get("graph_schedule"),
     )
 
     num_features = len(data["feature_cols"])
@@ -229,9 +230,6 @@ def main(cfg: DictConfig):
             test_loader=test_loader,
             kdcode_list=data["kdcode_list"],
             test_dates=data["test_dates"],
-            graph_builder=data["graph_builder"],
-            df=data["df"],
-            train_dates=data["train_dates"],
             output_path=output_path,
             tracking_manager=tracking_manager,
         )

@@ -4,9 +4,12 @@ Training logic for MCI-GRU experiments.
 This module provides the Trainer class that handles:
 - Training loop with validation
 - Early stopping
-- Dynamic graph updates
 - Model checkpointing
 - Inference
+
+Graph resolution is handled upstream by the collate function (via
+``GraphSchedule``), so the Trainer simply consumes the 7-tuple batches
+produced by the data loaders.
 """
 
 import os
@@ -22,7 +25,6 @@ import torch.nn as nn
 import torch.optim as optim
 
 from mci_gru.config import ExperimentConfig
-from mci_gru.graph.builder import GraphBuilder
 from mci_gru.training.losses import CombinedMSEICLoss, ICLoss
 
 if TYPE_CHECKING:
@@ -44,15 +46,16 @@ class Trainer:
 
     Supports:
     - Standard training with validation-based early stopping
-    - Dynamic graph updates during training
     - Multi-model training (for averaging predictions)
+
+    Dynamic graph snapshots are resolved in the collate function; the
+    Trainer receives correctly-assembled edge tensors in every batch.
     """
 
     def __init__(
         self,
         model: nn.Module,
         config: ExperimentConfig,
-        graph_builder: GraphBuilder | None = None,
         device: torch.device | None = None,
         output_path: str | None = None,
         checkpoint_path: str | None = None,
@@ -61,14 +64,12 @@ class Trainer:
         Args:
             model: PyTorch model to train
             config: Experiment configuration
-            graph_builder: Optional graph builder for dynamic updates
             device: Device to train on (auto-detected if None)
             output_path: Output directory override (e.g., Hydra timestamped run dir)
             checkpoint_path: Full path for best-model checkpoint file
         """
         self.model = model
         self.config = config
-        self.graph_builder = graph_builder
         self.output_path = output_path if output_path else self.config.get_output_path()
         self.checkpoint_path = checkpoint_path
         self.last_best_model_path: str | None = None
@@ -80,11 +81,6 @@ class Trainer:
 
         self.model.to(self.device)
 
-        # Runtime state for dynamic graph (set at start of train / predict)
-        self._df: pd.DataFrame | None = None
-        self._kdcode_list: list[str] | None = None
-        self._dynamic_update_count: int = 0
-
         # Training state
         self.best_val_loss = float("inf")
         self.patience_counter = 0
@@ -94,18 +90,13 @@ class Trainer:
         self,
         train_loader,
         val_loader,
-        train_dates: list[str] | None = None,
-        df: pd.DataFrame | None = None,
-        kdcode_list: list[str] | None = None,
         epoch_callback: Callable[[int, float, float, float], None] | None = None,
     ) -> TrainingResult:
         """
         Args:
             train_loader: Training data loader
             val_loader: Validation data loader
-            train_dates: List of training dates (for dynamic graph updates)
-            df: DataFrame (for dynamic graph updates)
-            kdcode_list: Stock list (for dynamic graph updates)
+            epoch_callback: Optional per-epoch callback (epoch, train_loss, val_loss, best_val_loss)
 
         Returns:
             TrainingResult with training metrics
@@ -135,21 +126,7 @@ class Trainer:
 
         self.best_val_loss = float("inf")
         self.patience_counter = 0
-        self._dynamic_update_count = 0
         final_train_loss = 0.0
-
-        # Store for batch-level dynamic graph access
-        self._df = df
-        self._kdcode_list = kdcode_list
-
-        dynamic = self.graph_builder is not None and self.config.graph.update_frequency_months > 0
-        if self.graph_builder is not None:
-            stats = self.graph_builder.get_stats()
-            print(
-                f"  Initial graph: {stats.get('n_edges', 0)} edges, "
-                f"last_update={stats.get('last_update_date')}, "
-                f"update_frequency_months={stats.get('update_frequency_months')}"
-            )
 
         print(f"Training on {self.device}...")
         print(
@@ -162,10 +139,6 @@ class Trainer:
         )
         print(f"  Max epochs: {training_cfg.num_epochs}")
         print(f"  Early stopping patience: {training_cfg.early_stopping_patience}")
-        if dynamic:
-            print(
-                f"  Dynamic graph: ON (update every {self.config.graph.update_frequency_months} months per batch date)"
-            )
 
         for epoch in range(training_cfg.num_epochs):
             self.epoch = epoch
@@ -197,61 +170,12 @@ class Trainer:
             if epoch_callback is not None:
                 epoch_callback(epoch + 1, train_loss, val_loss, self.best_val_loss)
 
-        if dynamic:
-            print(f"  Dynamic graph updates applied during training: {self._dynamic_update_count}")
-
         return TrainingResult(
             best_val_loss=self.best_val_loss,
             final_train_loss=final_train_loss,
             epochs_trained=epoch + 1,
             best_model_path=best_model_path,
         )
-
-    def _batched_edges(
-        self,
-        edge_index: torch.Tensor,
-        edge_weight: torch.Tensor,
-        batch_size: int,
-        num_stocks: int,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Expand single-graph edge tensors to cover a full batch via index shifting."""
-        ei_list = [edge_index + i * num_stocks for i in range(batch_size)]
-        ew_list = [edge_weight] * batch_size
-        return torch.cat(ei_list, dim=1), torch.cat(ew_list, dim=0)
-
-    def _apply_dynamic_graph(
-        self,
-        batch_dates: list[str] | None,
-        edge_index: torch.Tensor,
-        edge_weight: torch.Tensor,
-        n_stocks: int,
-        batch_size: int,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """If dynamic graph is active and dates are provided, update and return current edges."""
-        dynamic = (
-            self.graph_builder is not None
-            and self.config.graph.update_frequency_months > 0
-            and batch_dates is not None
-            and self._df is not None
-        )
-        if not dynamic:
-            return edge_index, edge_weight
-
-        date = batch_dates[0]
-        prev_stats = self.graph_builder.get_stats()
-        updated_ei, updated_ew = self.graph_builder.update_if_needed(
-            self._df, self._kdcode_list, date, show_progress=False
-        )
-        if updated_ei is not None:
-            self._dynamic_update_count += 1
-            new_stats = self.graph_builder.get_stats()
-            print(
-                f"  [graph] updated at {date}: "
-                f"{prev_stats.get('n_edges', '?')} -> {new_stats.get('n_edges', '?')} edges"
-            )
-
-        ei, ew = self.graph_builder.get_current_graph()
-        return self._batched_edges(ei, ew, batch_size, n_stocks)
 
     def _train_epoch(self, train_loader, optimizer, criterion) -> float:
         self.model.train()
@@ -265,17 +189,13 @@ class Trainer:
             edge_index,
             edge_weight,
             n_stocks,
-            batch_dates,
+            _batch_dates,
         ) in train_loader:
             batch_size = time_series.shape[0]
 
             time_series = time_series.to(self.device)
             labels = labels.to(self.device)
             graph_features = graph_features.to(self.device)
-
-            edge_index, edge_weight = self._apply_dynamic_graph(
-                batch_dates, edge_index, edge_weight, n_stocks, batch_size
-            )
             edge_index = edge_index.to(self.device)
             edge_weight = edge_weight.to(self.device)
 
@@ -310,17 +230,13 @@ class Trainer:
                 edge_index,
                 edge_weight,
                 n_stocks,
-                batch_dates,
+                _batch_dates,
             ) in val_loader:
                 batch_size = time_series.shape[0]
 
                 time_series = time_series.to(self.device)
                 labels = labels.to(self.device)
                 graph_features = graph_features.to(self.device)
-
-                edge_index, edge_weight = self._apply_dynamic_graph(
-                    batch_dates, edge_index, edge_weight, n_stocks, batch_size
-                )
                 edge_index = edge_index.to(self.device)
                 edge_weight = edge_weight.to(self.device)
 
@@ -353,16 +269,10 @@ class Trainer:
                 edge_index,
                 edge_weight,
                 n_stocks,
-                batch_dates,
+                _batch_dates,
             ) in test_loader:
-                batch_size = time_series.shape[0]
-
                 time_series = time_series.to(self.device)
                 graph_features = graph_features.to(self.device)
-
-                edge_index, edge_weight = self._apply_dynamic_graph(
-                    batch_dates, edge_index, edge_weight, n_stocks, batch_size
-                )
                 edge_index = edge_index.to(self.device)
                 edge_weight = edge_weight.to(self.device)
 
@@ -421,27 +331,26 @@ def train_multiple_models(
     test_loader,
     kdcode_list: list[str],
     test_dates: list[str],
-    graph_builder: GraphBuilder | None = None,
-    df: pd.DataFrame | None = None,
-    train_dates: list[str] | None = None,
     output_path: str | None = None,
     tracking_manager: Optional["MLflowTrackingManager"] = None,
 ) -> tuple[list[TrainingResult], np.ndarray]:
     """
     Per paper Section 4.1.2: Train num_models and average predictions.
 
+    Graph snapshots are already baked into the data loaders via
+    ``GraphSchedule``; each model simply consumes batches whose edge
+    tensors reflect the correct temporal snapshot.
+
     Args:
         model_factory: Callable that creates a new model instance
         config: Experiment configuration
-        train_loader: Training data loader
+        train_loader: Training data loader (with precomputed graphs)
         val_loader: Validation data loader
         test_loader: Test data loader
         kdcode_list: Stock codes
         test_dates: Test dates
-        graph_builder: Optional graph builder
-        df: DataFrame for dynamic graph updates
-        train_dates: Training dates for dynamic updates
         output_path: Optional output path override (for Hydra managed paths)
+        tracking_manager: Optional MLflow tracking manager
 
     Returns:
         Tuple of (list of training results, averaged predictions)
@@ -461,12 +370,10 @@ def train_multiple_models(
         print(f"{'=' * 60}")
 
         model = model_factory()
-        model_config = config
         model_checkpoint_path = os.path.join(checkpoint_dir, f"model_{model_id}_best.pth")
         trainer = Trainer(
             model=model,
-            config=model_config,
-            graph_builder=graph_builder,
+            config=config,
             device=device,
             output_path=base_output_path,
             checkpoint_path=model_checkpoint_path,
@@ -487,9 +394,6 @@ def train_multiple_models(
             result = trainer.train(
                 train_loader=train_loader,
                 val_loader=val_loader,
-                train_dates=train_dates,
-                df=df,
-                kdcode_list=kdcode_list,
                 epoch_callback=epoch_callback,
             )
             all_results.append(result)

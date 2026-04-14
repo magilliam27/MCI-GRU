@@ -1,12 +1,54 @@
-"""Correlation-based stock graphs: static or dynamic (periodic) updates."""
+"""Correlation-based stock graphs: static or dynamic (periodic) updates.
 
+GraphBuilder computes Pearson-correlation graphs.  GraphSchedule holds a
+time-indexed sequence of precomputed snapshots so that dynamic-graph mode
+no longer requires batch_size=1 during training.
+"""
+
+import bisect
 from datetime import datetime
 
 import numpy as np
 import pandas as pd
 import torch
 from dateutil.relativedelta import relativedelta
-from tqdm import tqdm
+
+
+class GraphSchedule:
+    """Pre-computed graph snapshots indexed by their valid-from date.
+
+    Each snapshot covers the period from its ``valid_from`` date until the
+    next snapshot's ``valid_from`` (or the end of time for the last entry).
+    Lookups use bisect for O(log n) per query.
+    """
+
+    def __init__(
+        self,
+        snapshots: list[tuple[str, torch.Tensor, torch.Tensor]],
+    ):
+        if not snapshots:
+            raise ValueError("GraphSchedule requires at least one snapshot")
+        self._dates: list[str] = [s[0] for s in snapshots]
+        self._edge_indices: list[torch.Tensor] = [s[1] for s in snapshots]
+        self._edge_weights: list[torch.Tensor] = [s[2] for s in snapshots]
+
+    def get_graph_for_date(self, date: str) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return (edge_index, edge_weight) valid for *date*."""
+        idx = bisect.bisect_right(self._dates, date) - 1
+        idx = max(idx, 0)
+        return self._edge_indices[idx], self._edge_weights[idx]
+
+    def get_initial_graph(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return the first snapshot (used for graph_data.pt / static fallback)."""
+        return self._edge_indices[0], self._edge_weights[0]
+
+    @property
+    def num_snapshots(self) -> int:
+        return len(self._dates)
+
+    @property
+    def snapshot_dates(self) -> list[str]:
+        return list(self._dates)
 
 
 class GraphBuilder:
@@ -53,32 +95,20 @@ class GraphBuilder:
     def build_edges(
         self, corr_matrix: pd.DataFrame, kdcode_list: list[str], show_progress: bool = True
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        matrix_values = corr_matrix.values.tolist()
-        n_stocks = len(kdcode_list)
+        """Build edge tensors from a correlation matrix using vectorised numpy ops."""
+        corr = corr_matrix.values
+        mask = (~np.isnan(corr)) & (corr > self.judge_value)
+        np.fill_diagonal(mask, False)
+        rows, cols = np.where(mask)
 
-        edge_index = []
-        edge_weight = []
+        if len(rows) == 0:
+            return (
+                torch.zeros((2, 0), dtype=torch.long),
+                torch.zeros(0, dtype=torch.float),
+            )
 
-        iterator = range(n_stocks)
-        if show_progress:
-            iterator = tqdm(iterator, desc="Building graph edges")
-
-        for i in iterator:
-            for j in range(i + 1, n_stocks):
-                weight = matrix_values[i][j]
-                if not np.isnan(weight) and weight > self.judge_value:
-                    edge_index.append([i, j])
-                    edge_index.append([j, i])
-                    edge_weight.append(weight)
-                    edge_weight.append(weight)
-
-        if len(edge_index) == 0:
-            edge_index = torch.zeros((2, 0), dtype=torch.long)
-            edge_weight = torch.zeros(0, dtype=torch.float)
-        else:
-            edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
-            edge_weight = torch.tensor(edge_weight, dtype=torch.float)
-
+        edge_index = torch.tensor(np.stack([rows, cols]), dtype=torch.long)
+        edge_weight = torch.tensor(corr[rows, cols], dtype=torch.float)
         return edge_index, edge_weight
 
     def build_graph(
@@ -99,6 +129,43 @@ class GraphBuilder:
 
         return edge_index, edge_weight
 
+    # ------------------------------------------------------------------
+    # Pre-computation API (replaces lazy per-batch rebuilding)
+    # ------------------------------------------------------------------
+
+    def precompute_snapshots(
+        self,
+        df: pd.DataFrame,
+        kdcode_list: list[str],
+        start_date: str,
+        end_date: str,
+    ) -> GraphSchedule:
+        """Build all graph snapshots up-front and return a ``GraphSchedule``.
+
+        The schedule covers *start_date* through *end_date*, with one snapshot
+        per update interval.  Each snapshot uses only data **before** its
+        valid-from date (no lookahead).
+        """
+        update_dates = self.get_update_dates(start_date, end_date)
+        snapshots: list[tuple[str, torch.Tensor, torch.Tensor]] = []
+
+        print(
+            f"Precomputing {len(update_dates)} graph snapshot(s) "
+            f"({start_date} to {end_date}, every {self.update_frequency_months} months)..."
+        )
+
+        for date in update_dates:
+            ei, ew = self.build_graph(df, kdcode_list, date, show_progress=False)
+            snapshots.append((date, ei, ew))
+
+        schedule = GraphSchedule(snapshots)
+        print(f"  GraphSchedule ready: {schedule.num_snapshots} snapshots")
+        return schedule
+
+    # ------------------------------------------------------------------
+    # Legacy lazy-update helpers (kept for backward compat / tests)
+    # ------------------------------------------------------------------
+
     def should_update(self, current_date: str) -> bool:
         if self.update_frequency_months == 0:
             return False
@@ -110,7 +177,6 @@ class GraphBuilder:
             last_update = datetime.strptime(self.last_update_date, "%Y-%m-%d")
             current = datetime.strptime(current_date, "%Y-%m-%d")
         except ValueError:
-            # Try alternate format
             last_update = pd.to_datetime(self.last_update_date)
             current = pd.to_datetime(current_date)
 
@@ -140,7 +206,7 @@ class GraphBuilder:
 
     def get_update_dates(self, start_date: str, end_date: str) -> list[str]:
         if self.update_frequency_months == 0:
-            return [start_date]  # Just initial build
+            return [start_date]
 
         update_dates = []
         current = datetime.strptime(start_date, "%Y-%m-%d")
@@ -157,7 +223,7 @@ class GraphBuilder:
             return {"built": False}
 
         n_edges = self.current_edge_index.shape[1]
-        n_unique_edges = n_edges // 2  # Undirected, so divide by 2
+        n_unique_edges = n_edges // 2
 
         stats = {
             "built": True,

@@ -2,7 +2,7 @@
 Training and evaluation for MCI-GRU experiments.
 
 Modules:
-- trainer: Training loop with dynamic graph support
+- trainer: Training loop with early stopping and ensemble averaging
 - metrics: Evaluation metrics
 - losses: Custom loss functions (ICLoss, CombinedMSEICLoss)
 """
