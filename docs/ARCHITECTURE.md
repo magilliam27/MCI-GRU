@@ -100,10 +100,16 @@ Input: (batch, stocks, his_t, features)
 | Mode | Config | Behavior |
 |------|--------|----------|
 | Static | `update_frequency_months=0` | Built once before training. Fixed tensors. |
-| Dynamic | `update_frequency_months>0` | Rebuilt every N months per batch date. Requires `batch_size=1`. |
+| Dynamic | `update_frequency_months>0` | `GraphSchedule` precomputes snapshots every N months; collate does O(log n) lookup per sample. Any batch size works. |
 
 The graph is a Pearson-correlation adjacency: trailing `corr_lookback_days` (default 252)
 returns are used. Edges connect pairs with `|corr| > judge_value` (default 0.8).
+
+**`GraphSchedule`** (introduced in commit `f873f84`): when `update_frequency_months > 0`,
+`GraphBuilder.precompute_snapshots()` builds all graph snapshots up-front during
+`prepare_data()`. Each snapshot uses only data **before** its valid-from date (no lookahead).
+The `combined_collate_fn` resolves the correct snapshot per sample via `bisect`, eliminating
+the previous `batch_size=1` constraint.
 
 ## Config System (Hydra)
 
@@ -158,7 +164,7 @@ mci_gru/
 │   ├── credit.py        ← credit spread features from FRED
 │   └── regime.py        ← global regime similarity features
 ├── graph/
-│   └── builder.py       ← GraphBuilder (Pearson correlation, static/dynamic)
+│   └── builder.py       ← GraphBuilder + GraphSchedule (Pearson correlation, static/dynamic)
 └── training/
     ├── trainer.py       ← Trainer, train_multiple_models, early stopping
     ├── losses.py        ← ICLoss, CombinedMSEICLoss

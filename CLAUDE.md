@@ -41,7 +41,7 @@ See `docs/ARCHITECTURE.md` for the full version.
 ## Invariants
 
 1. **No lookahead** — normalization, graph, labels use train-period cutoffs only.
-2. **Dynamic graph requires `batch_size=1`** — enforced in `ExperimentConfig.__post_init__`.
+2. **Dynamic graph uses `GraphSchedule`** — precomputed snapshots indexed by date; any batch size works.
 3. **`combined_collate_fn` returns a 7-tuple** — `(time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates)`.
 4. **Ensemble** — `train_multiple_models` trains N models; prediction = mean.
 5. **Paper trade** — frozen checkpoints, no `GraphBuilder` import at inference.

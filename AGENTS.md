@@ -41,7 +41,7 @@ tests/               ← pytest suite + backtest scripts
 ## Invariants — Do Not Break
 
 1. **No lookahead**: normalization stats, graph edges, and labels use strict train-period cutoffs.
-2. **Dynamic graph requires `batch_size=1`**: enforced in `ExperimentConfig.__post_init__`.
+2. **Dynamic graph uses `GraphSchedule`**: precomputed snapshots indexed by date; any batch size works.
 3. **`combined_collate_fn` returns a 7-tuple**: `(time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates)`.
 4. **Ensemble averaging**: `train_multiple_models` trains N independent models; prediction = mean.
 5. **Paper-trade inference does not use `GraphBuilder`**: it loads a frozen `graph_data.pt`.
