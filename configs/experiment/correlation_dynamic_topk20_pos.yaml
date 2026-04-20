@@ -1,0 +1,16 @@
+# @package _global_
+# Experiment: Dynamic correlation graph with per-node top-K=20 selection by signed
+# correlation (positives only) plus 4-dim edge features [corr, |corr|, corr^2, rank_pct].
+#
+# This is the positive-only sibling of correlation_dynamic_topk20_signed. Compared
+# to baseline correlation_dynamic.yaml it isolates the lift from top-K selection
+# and multi-feature edges. Compared to the _signed variant it isolates the lift
+# from including negative correlations specifically.
+
+experiment_name: correlation_dynamic_topk20_pos
+
+graph:
+  update_frequency_months: 6
+  top_k: 20
+  top_k_metric: corr
+  use_multi_feature_edges: true

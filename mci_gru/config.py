@@ -199,14 +199,32 @@ class GraphConfig:
     Graph construction configuration.
 
     Attributes:
-        judge_value: Correlation threshold for edge creation
+        judge_value: Correlation threshold for edge creation (used only when top_k == 0)
         update_frequency_months: How often to update graph (0 = never)
         corr_lookback_days: Days of history for correlation computation
+        top_k: Per-node top-K neighbour selection. 0 = legacy global threshold path.
+            When > 0, judge_value is ignored and each row of the correlation matrix
+            keeps its top_k neighbours by ``top_k_metric``.
+        top_k_metric: How to rank neighbours when ``top_k > 0``.
+            - "corr": keep the K most-positive correlations (legacy positive-only behaviour).
+            - "abs_corr": keep the K largest by absolute correlation. This recovers
+              strong negative correlations (the "1b-lite" knob); the signed correlation
+              is still emitted in column 0 of the multi-feature edge tensor so the
+              GAT can tell co-movement from divergence.
+        use_multi_feature_edges: If True, ``GraphBuilder.build_edges`` returns a
+            (E, 4) edge feature tensor [corr, |corr|, corr^2, rank_pct] instead of
+            the legacy 1-D scalar weight. The model side reads this through
+            ``edge_feature_dim`` on the GAT blocks.
     """
 
     judge_value: float = 0.8
     update_frequency_months: int = 0
     corr_lookback_days: int = 252
+    top_k: int = 0
+    top_k_metric: str = "corr"
+    use_multi_feature_edges: bool = False
+
+    _VALID_TOP_K_METRICS = ("corr", "abs_corr")
 
     def __post_init__(self):
         if not (0 < self.judge_value < 1):
@@ -215,6 +233,13 @@ class GraphConfig:
             raise ValueError("update_frequency_months must be >= 0")
         if self.corr_lookback_days <= 0:
             raise ValueError("corr_lookback_days must be > 0")
+        if self.top_k < 0:
+            raise ValueError(f"top_k must be >= 0, got {self.top_k}")
+        if self.top_k_metric not in self._VALID_TOP_K_METRICS:
+            raise ValueError(
+                f"top_k_metric must be one of {self._VALID_TOP_K_METRICS}, "
+                f"got {self.top_k_metric!r}"
+            )
 
 
 @dataclass
@@ -429,6 +454,9 @@ class ExperimentConfig:
             # Graph
             "graph.judge_value": self.graph.judge_value,
             "graph.update_frequency_months": self.graph.update_frequency_months,
+            "graph.top_k": self.graph.top_k,
+            "graph.top_k_metric": self.graph.top_k_metric,
+            "graph.use_multi_feature_edges": self.graph.use_multi_feature_edges,
             # Model
             "model.his_t": self.model.his_t,
             "model.label_t": self.model.label_t,

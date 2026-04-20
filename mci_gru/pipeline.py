@@ -241,6 +241,9 @@ def prepare_data(
         judge_value=config.graph.judge_value,
         update_frequency_months=config.graph.update_frequency_months,
         corr_lookback_days=config.graph.corr_lookback_days,
+        top_k=config.graph.top_k,
+        top_k_metric=config.graph.top_k_metric,
+        use_multi_feature_edges=config.graph.use_multi_feature_edges,
     )
     edge_index, edge_weight = graph_builder.build_graph(df, kdcode_list, config.data.train_start)
 

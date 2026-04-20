@@ -185,8 +185,14 @@ def main(cfg: DictConfig):
 
     num_features = len(data["feature_cols"])
 
+    # The GAT must declare the same edge attribute width that GraphBuilder is
+    # emitting. 4 columns for multi-feature edges (corr, |corr|, corr^2, rank_pct);
+    # otherwise the legacy scalar weight (1).
+    edge_feature_dim = 4 if config.graph.use_multi_feature_edges else 1
+    model_cfg_dict = {**config.model.to_dict(), "edge_feature_dim": edge_feature_dim}
+
     def model_factory():
-        return create_model(num_features, config.model.to_dict())
+        return create_model(num_features, model_cfg_dict)
 
     logger.info("\n" + "=" * 80)
     logger.info("Training")

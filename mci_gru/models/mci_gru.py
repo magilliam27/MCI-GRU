@@ -189,10 +189,17 @@ class GATBlock(nn.Module):
     """
 
     def __init__(self, in_channels: int, hidden: int, out_channels: int,
-                 heads: int = 1, activation: str = "elu"):
+                 heads: int = 1, activation: str = "elu",
+                 edge_feature_dim: int = 1):
         super().__init__()
-        self.gat1 = GATConv(in_channels, hidden, heads=heads, concat=True, edge_dim=1)
-        self.gat2 = GATConv(hidden * heads, out_channels, heads=1, concat=False, edge_dim=1)
+        # edge_feature_dim must match the trailing dim of the edge_attr tensor passed
+        # to forward(). 1 = legacy scalar correlation weight (existing checkpoints);
+        # 4 = multi-feature edges [corr, |corr|, corr^2, rank_pct] from the top-K path.
+        self.edge_feature_dim = edge_feature_dim
+        self.gat1 = GATConv(in_channels, hidden, heads=heads, concat=True,
+                            edge_dim=edge_feature_dim)
+        self.gat2 = GATConv(hidden * heads, out_channels, heads=1, concat=False,
+                            edge_dim=edge_feature_dim)
         self.act = _make_activation(activation)
 
     def forward(self, x: torch.Tensor, edge_index: torch.Tensor,
@@ -328,6 +335,7 @@ class StockPredictionModel(nn.Module):
         use_self_attention: bool = True,
         activation: str = "elu",
         latent_init_scale: float = 0.02,
+        edge_feature_dim: int = 1,
     ):
         super(StockPredictionModel, self).__init__()
         if gru_hidden_sizes is None:
@@ -343,9 +351,13 @@ class StockPredictionModel(nn.Module):
         else:
             self.temporal_encoder = ImprovedGRU(input_size, hidden_sizes=gru_hidden_sizes)
         gru_output_size = self.temporal_encoder.output_size
+        # edge_feature_dim threads from GraphConfig.use_multi_feature_edges (1 or 4)
+        # so both GATBlocks expect the same edge attribute shape as the dataloader emits.
+        self.edge_feature_dim = edge_feature_dim
         self.gat_layer = GATBlock(
             in_channels=input_size, hidden=hidden_size_gat1,
             out_channels=output_gat1, heads=gat_heads, activation=activation,
+            edge_feature_dim=edge_feature_dim,
         )
         self.align_dim = hidden_size_gat1
         self.proj_temporal = nn.Linear(gru_output_size, self.align_dim)
@@ -366,6 +378,7 @@ class StockPredictionModel(nn.Module):
         self.final_gat = GATBlock(
             in_channels=concat_size, hidden=hidden_size_gat2,
             out_channels=1, heads=gat_heads, activation=activation,
+            edge_feature_dim=edge_feature_dim,
         )
         self.output_act = _make_activation(activation)
         
@@ -414,4 +427,5 @@ def create_model(input_size: int, config: Dict[str, Any]) -> StockPredictionMode
         use_self_attention=config.get('use_self_attention', True),
         activation=config.get('activation', 'elu'),
         latent_init_scale=config.get('latent_init_scale', 0.02),
+        edge_feature_dim=config.get('edge_feature_dim', 1),
     )

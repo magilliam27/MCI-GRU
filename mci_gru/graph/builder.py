@@ -20,6 +20,11 @@ class GraphSchedule:
     Each snapshot covers the period from its ``valid_from`` date until the
     next snapshot's ``valid_from`` (or the end of time for the last entry).
     Lookups use bisect for O(log n) per query.
+
+    The third element of each snapshot tuple ("edge_weight") may be either a
+    1-D tensor of shape ``(E,)`` (legacy scalar edge weight) or a 2-D tensor
+    of shape ``(E, F)`` (multi-feature edges). The class is shape-agnostic;
+    consumers must handle both shapes.
     """
 
     def __init__(
@@ -33,7 +38,11 @@ class GraphSchedule:
         self._edge_weights: list[torch.Tensor] = [s[2] for s in snapshots]
 
     def get_graph_for_date(self, date: str) -> tuple[torch.Tensor, torch.Tensor]:
-        """Return (edge_index, edge_weight) valid for *date*."""
+        """Return (edge_index, edge_attr) valid for *date*.
+
+        ``edge_attr`` is shape ``(E,)`` in legacy mode and ``(E, F)`` in
+        multi-feature mode (see class docstring).
+        """
         idx = bisect.bisect_right(self._dates, date) - 1
         idx = max(idx, 0)
         return self._edge_indices[idx], self._edge_weights[idx]
@@ -52,15 +61,31 @@ class GraphSchedule:
 
 
 class GraphBuilder:
+    _VALID_TOP_K_METRICS = ("corr", "abs_corr")
+
     def __init__(
         self,
         judge_value: float = 0.8,
         update_frequency_months: int = 0,
         corr_lookback_days: int = 252,
+        top_k: int = 0,
+        top_k_metric: str = "corr",
+        use_multi_feature_edges: bool = False,
     ):
+        if top_k < 0:
+            raise ValueError(f"top_k must be >= 0, got {top_k}")
+        if top_k_metric not in self._VALID_TOP_K_METRICS:
+            raise ValueError(
+                f"top_k_metric must be one of {self._VALID_TOP_K_METRICS}, "
+                f"got {top_k_metric!r}"
+            )
+
         self.judge_value = judge_value
         self.update_frequency_months = update_frequency_months
         self.corr_lookback_days = corr_lookback_days
+        self.top_k = top_k
+        self.top_k_metric = top_k_metric
+        self.use_multi_feature_edges = use_multi_feature_edges
         self.last_update_date: str | None = None
         self.current_edge_index: torch.Tensor | None = None
         self.current_edge_weight: torch.Tensor | None = None
@@ -95,27 +120,140 @@ class GraphBuilder:
     def build_edges(
         self, corr_matrix: pd.DataFrame, kdcode_list: list[str], show_progress: bool = True
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Build edge tensors from a correlation matrix using vectorised numpy ops."""
+        """Build edge tensors from a correlation matrix using vectorised numpy ops.
+
+        Two selection paths and two output shapes are supported:
+
+        Selection (controlled by ``self.top_k``):
+        - ``top_k == 0`` (legacy): keep edges with ``corr > self.judge_value``.
+        - ``top_k > 0``: per-row K-nearest selection by ``self.top_k_metric``
+          ("corr" => K most-positive; "abs_corr" => K largest by |corr|, which
+          recovers strong negative correlations - the "1b-lite" path).
+
+        Output (controlled by ``self.use_multi_feature_edges``):
+        - ``False`` (legacy): returns ``(edge_index (2,E), edge_weight (E,))`` with
+          the signed correlation as the scalar weight.
+        - ``True``: returns ``(edge_index (2,E), edge_attr (E,4))`` with columns
+          ``[corr, |corr|, corr^2, rank_pct]``. ``corr`` is always signed so the
+          GAT can distinguish co-movement from divergence even under "abs_corr"
+          ranking. ``rank_pct in (0, 1]`` is the within-row percentile rank by
+          the active selection metric (1.0 = strongest neighbour). For the
+          legacy threshold path ``rank_pct`` is set to a constant 0 sentinel
+          because per-row ranking is poorly defined when the per-row count is
+          unbounded - the column is constant and the model learns to ignore it.
+        """
         corr = corr_matrix.values
+
+        if self.top_k > 0:
+            rows, cols, kept_corr, rank_pct = self._select_edges_topk(corr)
+        else:
+            rows, cols, kept_corr = self._select_edges_threshold(corr)
+            rank_pct = np.zeros_like(kept_corr)
+
+        if len(rows) == 0:
+            empty_attr = (
+                torch.zeros((0, 4), dtype=torch.float)
+                if self.use_multi_feature_edges
+                else torch.zeros(0, dtype=torch.float)
+            )
+            return torch.zeros((2, 0), dtype=torch.long), empty_attr
+
+        edge_index = torch.tensor(np.stack([rows, cols]), dtype=torch.long)
+
+        if self.use_multi_feature_edges:
+            edge_attr = np.stack(
+                [kept_corr, np.abs(kept_corr), kept_corr * kept_corr, rank_pct],
+                axis=1,
+            ).astype(np.float32)
+            return edge_index, torch.from_numpy(edge_attr)
+
+        return edge_index, torch.tensor(kept_corr, dtype=torch.float)
+
+    def _select_edges_threshold(
+        self, corr: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Legacy threshold-based selection: keep ``corr > judge_value`` off-diagonal."""
         mask = (~np.isnan(corr)) & (corr > self.judge_value)
         np.fill_diagonal(mask, False)
         rows, cols = np.where(mask)
+        kept_corr = corr[rows, cols].astype(np.float64)
+        return rows, cols, kept_corr
 
-        if len(rows) == 0:
-            return (
-                torch.zeros((2, 0), dtype=torch.long),
-                torch.zeros(0, dtype=torch.float),
-            )
+    def _select_edges_topk(
+        self, corr: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Per-row top-K neighbour selection by ``self.top_k_metric``.
 
-        edge_index = torch.tensor(np.stack([rows, cols]), dtype=torch.long)
-        edge_weight = torch.tensor(corr[rows, cols], dtype=torch.float)
-        return edge_index, edge_weight
+        Diagonal entries and NaNs are masked to ``-inf`` so they cannot win a
+        slot.  When a row has fewer than ``top_k`` valid candidates (rare; e.g.
+        a tiny universe), only the valid ones are kept and ``rank_pct`` is
+        scaled against the actual kept count.
+
+        Returns
+        -------
+        rows, cols : np.ndarray
+            Index pairs of kept directed edges.
+        kept_corr : np.ndarray
+            Signed correlation ``corr[row, col]`` for each kept edge.  This is
+            the *signed* value even when ``top_k_metric == "abs_corr"`` so that
+            column 0 of the multi-feature edge tensor preserves sign.
+        rank_pct : np.ndarray
+            Within-row percentile rank by the selection metric, in ``(0, 1]``,
+            with 1.0 = strongest neighbour in that row.
+        """
+        n = corr.shape[0]
+        score = np.where(np.isnan(corr), -np.inf, corr)
+        if self.top_k_metric == "abs_corr":
+            score = np.where(np.isfinite(score), np.abs(score), -np.inf)
+        np.fill_diagonal(score, -np.inf)
+
+        valid_mask = np.isfinite(score)
+        valid_per_row = valid_mask.sum(axis=1)
+        k_per_row = np.minimum(valid_per_row, self.top_k)
+
+        rows_out: list[np.ndarray] = []
+        cols_out: list[np.ndarray] = []
+        kept_corr_out: list[np.ndarray] = []
+        rank_pct_out: list[np.ndarray] = []
+
+        for i in range(n):
+            k_i = int(k_per_row[i])
+            if k_i == 0:
+                continue
+            row_score = score[i]
+            sorted_idx = np.argpartition(-row_score, kth=k_i - 1)[:k_i]
+            sorted_idx = sorted_idx[np.argsort(-row_score[sorted_idx])]
+
+            positions = np.arange(1, k_i + 1, dtype=np.float64)
+            rank_pct_row = (k_i - positions + 1) / k_i
+
+            rows_out.append(np.full(k_i, i, dtype=np.int64))
+            cols_out.append(sorted_idx.astype(np.int64))
+            kept_corr_out.append(corr[i, sorted_idx].astype(np.float64))
+            rank_pct_out.append(rank_pct_row)
+
+        if not rows_out:
+            empty_i = np.zeros(0, dtype=np.int64)
+            empty_f = np.zeros(0, dtype=np.float64)
+            return empty_i, empty_i, empty_f, empty_f
+
+        rows = np.concatenate(rows_out)
+        cols = np.concatenate(cols_out)
+        kept_corr = np.concatenate(kept_corr_out)
+        rank_pct = np.concatenate(rank_pct_out)
+        return rows, cols, kept_corr, rank_pct
 
     def build_graph(
         self, df: pd.DataFrame, kdcode_list: list[str], end_date: str, show_progress: bool = True
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        if self.top_k > 0:
+            mode = f"top_k={self.top_k} ({self.top_k_metric})"
+        else:
+            mode = f"judge_value={self.judge_value}"
+        feat_mode = "multi-feature(4)" if self.use_multi_feature_edges else "scalar"
         print(
-            f"Building graph (judge_value={self.judge_value}, lookback={self.corr_lookback_days} days)..."
+            f"Building graph ({mode}, lookback={self.corr_lookback_days} days, "
+            f"edges={feat_mode})..."
         )
         self.correlation_matrix = self.compute_correlation_matrix(df, kdcode_list, end_date)
         edge_index, edge_weight = self.build_edges(

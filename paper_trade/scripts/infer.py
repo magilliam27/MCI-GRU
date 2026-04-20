@@ -364,7 +364,11 @@ def main():
 
     his_t = metadata["his_t"]
     feature_cols = metadata["feature_cols"]
-    model_cfg = config["model"]
+    model_cfg = dict(config["model"])  # copy so we can inject edge_feature_dim
+    # Mirror the run_experiment.py derivation so checkpoints trained with
+    # multi-feature edges (4-d) load with matching GAT parameter shapes.
+    graph_cfg = config.get("graph", {})
+    model_cfg["edge_feature_dim"] = 4 if graph_cfg.get("use_multi_feature_edges", False) else 1
 
     # Determine the inference end date: max of requested date and CSV max date.
     csv_dates = pd.read_csv(str(csv_path), usecols=["dt"])["dt"]

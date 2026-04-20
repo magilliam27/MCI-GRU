@@ -351,3 +351,293 @@ class TestConfigNoConstraint:
             )
         msgs = [str(w.message) for w in caught if issubclass(w.category, UserWarning)]
         assert not any("batch_size" in m for m in msgs)
+
+
+# ---------------------------------------------------------------------------
+# Top-K neighbour selection (Lever 1a) and multi-feature edges (Lever 1c)
+# ---------------------------------------------------------------------------
+
+
+def _corr_df(matrix: np.ndarray) -> pd.DataFrame:
+    n = matrix.shape[0]
+    codes = [f"S{i}" for i in range(n)]
+    return pd.DataFrame(matrix, index=codes, columns=codes)
+
+
+class TestTopKEdges:
+    """top_k>0 must guarantee per-row out-degree <= top_k."""
+
+    def test_top_k_caps_outgoing_edges_per_row(self):
+        # 8x8 corr matrix with all off-diagonal values in (0.5, 0.95) so the
+        # legacy threshold path would keep all 56 directed edges.
+        rng = np.random.default_rng(0)
+        n = 8
+        m = rng.uniform(0.5, 0.95, size=(n, n))
+        m = (m + m.T) / 2
+        np.fill_diagonal(m, 1.0)
+
+        gb = GraphBuilder(judge_value=0.3, top_k=5, top_k_metric="corr")
+        ei, ew = gb.build_edges(_corr_df(m), [f"S{i}" for i in range(n)], show_progress=False)
+
+        out_degree = np.bincount(ei[0].numpy(), minlength=n)
+        assert (out_degree <= 5).all()
+        assert (out_degree == 5).all()  # every row has 5 valid candidates here
+        assert ei.shape[1] == n * 5
+
+    def test_top_k_with_few_valid_candidates(self):
+        # Tiny universe: only 3 stocks, top_k=5 -> per-row keeps min(2, 5) = 2.
+        n = 3
+        m = np.array(
+            [
+                [1.0, 0.6, 0.4],
+                [0.6, 1.0, 0.7],
+                [0.4, 0.7, 1.0],
+            ]
+        )
+        gb = GraphBuilder(judge_value=0.3, top_k=5, top_k_metric="corr")
+        ei, ew = gb.build_edges(_corr_df(m), [f"S{i}" for i in range(n)], show_progress=False)
+        out_degree = np.bincount(ei[0].numpy(), minlength=n)
+        # Each row has exactly 2 off-diagonal candidates, so top-5 reduces to 2.
+        assert (out_degree == 2).all()
+
+
+class TestMultiFeatureEdges:
+    """When use_multi_feature_edges=True the third return is (E, 4) [corr, |corr|, c^2, rank_pct]."""
+
+    def test_shape_and_columns(self):
+        n = 6
+        rng = np.random.default_rng(1)
+        m = rng.uniform(0.5, 0.95, size=(n, n))
+        m = (m + m.T) / 2
+        np.fill_diagonal(m, 1.0)
+
+        gb = GraphBuilder(
+            judge_value=0.3,
+            top_k=3,
+            top_k_metric="corr",
+            use_multi_feature_edges=True,
+        )
+        ei, ea = gb.build_edges(_corr_df(m), [f"S{i}" for i in range(n)], show_progress=False)
+
+        assert ea.dim() == 2
+        assert ea.shape[0] == ei.shape[1]
+        assert ea.shape[1] == 4
+
+        # Column 0 == signed corr at the kept (row, col).
+        rows = ei[0].numpy()
+        cols = ei[1].numpy()
+        np.testing.assert_allclose(ea[:, 0].numpy(), m[rows, cols], rtol=1e-5, atol=1e-6)
+        # Column 1 == |corr|.
+        np.testing.assert_allclose(ea[:, 1].numpy(), np.abs(m[rows, cols]), rtol=1e-5, atol=1e-6)
+        # Column 2 == corr^2.
+        np.testing.assert_allclose(
+            ea[:, 2].numpy(), m[rows, cols] ** 2, rtol=1e-5, atol=1e-6
+        )
+        # Column 3 (rank_pct) is in (0, 1] and the maximum rank in each row is 1.0.
+        assert ((ea[:, 3] > 0) & (ea[:, 3] <= 1.0 + 1e-6)).all()
+        for r in np.unique(rows):
+            assert np.isclose(ea[rows == r, 3].max().item(), 1.0)
+
+    def test_rank_pct_monotone_with_selection_metric(self):
+        """Within each source row, higher selection-metric -> higher rank_pct."""
+        n = 5
+        rng = np.random.default_rng(2)
+        m = rng.uniform(-0.9, 0.9, size=(n, n))
+        m = (m + m.T) / 2
+        np.fill_diagonal(m, 1.0)
+
+        gb = GraphBuilder(
+            judge_value=0.3,
+            top_k=3,
+            top_k_metric="abs_corr",
+            use_multi_feature_edges=True,
+        )
+        ei, ea = gb.build_edges(_corr_df(m), [f"S{i}" for i in range(n)], show_progress=False)
+
+        rows = ei[0].numpy()
+        for r in np.unique(rows):
+            mask = rows == r
+            sel_metric = ea[mask, 1].numpy()  # |corr| under abs_corr
+            ranks = ea[mask, 3].numpy()
+            # Sort by descending selection metric and assert ranks are descending too.
+            order = np.argsort(-sel_metric)
+            assert (ranks[order][:-1] >= ranks[order][1:] - 1e-6).all()
+
+    def test_legacy_path_preserves_1d_shape(self):
+        """use_multi_feature_edges=False (default) keeps the (E,) shape - backward compat."""
+        n = 5
+        rng = np.random.default_rng(3)
+        m = rng.uniform(0.5, 0.95, size=(n, n))
+        m = (m + m.T) / 2
+        np.fill_diagonal(m, 1.0)
+
+        gb = GraphBuilder(judge_value=0.3)  # default flags
+        ei, ew = gb.build_edges(_corr_df(m), [f"S{i}" for i in range(n)], show_progress=False)
+        assert ew.dim() == 1
+
+
+class TestSignedTopK:
+    """1b-lite: top_k_metric='abs_corr' must keep strong negatives that 'corr' excludes."""
+
+    def _matrix_with_strong_negative(self) -> np.ndarray:
+        # 4x4 matrix where (0,3) is the only strongly-negative pair.
+        # All other off-diagonals are positive but smaller in magnitude.
+        m = np.array(
+            [
+                [1.00, 0.30, 0.20, -0.90],
+                [0.30, 1.00, 0.40, 0.10],
+                [0.20, 0.40, 1.00, 0.15],
+                [-0.90, 0.10, 0.15, 1.00],
+            ]
+        )
+        return m
+
+    def test_abs_corr_keeps_strong_negative_with_signed_value(self):
+        m = self._matrix_with_strong_negative()
+        gb = GraphBuilder(
+            judge_value=0.3,
+            top_k=2,
+            top_k_metric="abs_corr",
+            use_multi_feature_edges=True,
+        )
+        ei, ea = gb.build_edges(_corr_df(m), [f"S{i}" for i in range(4)], show_progress=False)
+
+        rows = ei[0].numpy()
+        cols = ei[1].numpy()
+        edges = list(zip(rows.tolist(), cols.tolist()))
+        assert (0, 3) in edges
+        assert (3, 0) in edges
+        idx = edges.index((0, 3))
+        assert ea[idx, 0].item() == pytest.approx(-0.9, abs=1e-5)
+        assert ea[idx, 1].item() == pytest.approx(0.9, abs=1e-5)
+
+    def test_corr_metric_excludes_strong_negative(self):
+        m = self._matrix_with_strong_negative()
+        gb = GraphBuilder(
+            judge_value=0.3,
+            top_k=2,
+            top_k_metric="corr",
+            use_multi_feature_edges=True,
+        )
+        ei, _ea = gb.build_edges(_corr_df(m), [f"S{i}" for i in range(4)], show_progress=False)
+        edges = list(zip(ei[0].tolist(), ei[1].tolist()))
+        assert (0, 3) not in edges
+        assert (3, 0) not in edges
+
+
+class TestMultiFeatureSchedulePassthrough:
+    """GraphSchedule + collate must propagate (E, 4) edge tensors through batching."""
+
+    def test_collate_concats_2d_edge_features(self):
+        n_stocks = 3
+        ei_a = torch.tensor([[0, 1], [1, 0]], dtype=torch.long)
+        ea_a = torch.tensor(
+            [[0.9, 0.9, 0.81, 1.0], [0.9, 0.9, 0.81, 1.0]], dtype=torch.float
+        )
+        ei_b = torch.tensor([[0, 1, 1, 2], [1, 0, 2, 1]], dtype=torch.long)
+        ea_b = torch.tensor(
+            [
+                [0.9, 0.9, 0.81, 1.0],
+                [0.9, 0.9, 0.81, 1.0],
+                [0.85, 0.85, 0.7225, 0.5],
+                [0.85, 0.85, 0.7225, 0.5],
+            ],
+            dtype=torch.float,
+        )
+        schedule = GraphSchedule([
+            ("2020-01-01", ei_a, ea_a),
+            ("2020-07-01", ei_b, ea_b),
+        ])
+
+        ts, graph, labels = _make_small_arrays(n_days=4, n_stocks=n_stocks)
+        dates = ["2020-03-01", "2020-04-01", "2020-08-01", "2020-09-01"]
+        dataset = CombinedDataset(
+            torch.from_numpy(ts),
+            torch.from_numpy(graph),
+            torch.from_numpy(labels),
+            sample_dates=dates,
+        )
+
+        fallback_ei = torch.zeros((2, 0), dtype=torch.long)
+        fallback_ea = torch.zeros((0, 4), dtype=torch.float)
+
+        loader = DataLoader(
+            dataset,
+            batch_size=4,
+            shuffle=False,
+            collate_fn=partial(
+                combined_collate_fn,
+                edge_index=fallback_ei,
+                edge_weight=fallback_ea,
+                graph_schedule=schedule,
+            ),
+        )
+        batch = next(iter(loader))
+        _ts, _labels, _gf, b_ei, b_ea, ns, b_dates = batch
+        assert ns == n_stocks
+        assert b_ea.dim() == 2
+        assert b_ea.shape[1] == 4
+        assert b_ea.shape[0] == b_ei.shape[1]
+        # 2 + 2 + 4 + 4 = 12 directed edges across the 4 samples.
+        assert b_ei.shape[1] == 12
+
+
+# ---------------------------------------------------------------------------
+# GATBlock: edge_feature_dim threading (Lever 1c model side)
+# ---------------------------------------------------------------------------
+
+
+class TestGATBlockEdgeDim:
+    """GATBlock must accept (E, F) edge_attr when edge_feature_dim=F."""
+
+    def test_forward_with_4d_edge_attr(self):
+        from mci_gru.models.mci_gru import GATBlock
+
+        block = GATBlock(
+            in_channels=8,
+            hidden=4,
+            out_channels=2,
+            heads=2,
+            edge_feature_dim=4,
+        )
+        x = torch.randn(4, 8)
+        edge_index = torch.tensor(
+            [[0, 1, 2, 3, 0, 2], [1, 0, 3, 2, 2, 0]], dtype=torch.long
+        )
+        edge_attr = torch.randn(edge_index.shape[1], 4)
+
+        out = block(x, edge_index, edge_attr)
+        assert out.shape == (4, 2)
+
+    def test_forward_with_1d_edge_weight_default(self):
+        """Default edge_feature_dim=1 keeps legacy scalar-weight behaviour."""
+        from mci_gru.models.mci_gru import GATBlock
+
+        block = GATBlock(in_channels=6, hidden=3, out_channels=2, heads=2)
+        x = torch.randn(4, 6)
+        edge_index = torch.tensor([[0, 1, 2, 3], [1, 0, 3, 2]], dtype=torch.long)
+        edge_weight = torch.rand(edge_index.shape[1])
+
+        out = block(x, edge_index, edge_weight)
+        assert out.shape == (4, 2)
+
+
+# ---------------------------------------------------------------------------
+# GraphConfig validation for the new fields
+# ---------------------------------------------------------------------------
+
+
+class TestGraphConfigValidation:
+    def test_top_k_negative_rejected(self):
+        with pytest.raises(ValueError, match="top_k must be >= 0"):
+            GraphConfig(top_k=-1)
+
+    def test_top_k_metric_invalid_rejected(self):
+        with pytest.raises(ValueError, match="top_k_metric must be"):
+            GraphConfig(top_k_metric="bogus")
+
+    def test_default_flags_legacy(self):
+        cfg = GraphConfig()
+        assert cfg.top_k == 0
+        assert cfg.top_k_metric == "corr"
+        assert cfg.use_multi_feature_edges is False

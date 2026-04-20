@@ -1,0 +1,20 @@
+# @package _global_
+# Experiment: Dynamic correlation graph with per-node top-K=20 selection by |corr|
+# (1b-lite) plus 4-dim edge features [corr, |corr|, corr^2, rank_pct].
+#
+# Hypothesis: in the current high-dispersion regime, the strongest *negative*
+# correlations carry pair-divergence signal that the legacy threshold path
+# (corr > 0.8) throws away entirely. Top-K-by-|corr| keeps the K largest-magnitude
+# neighbours per stock so positives and negatives compete for the same budget,
+# adapting to dispersion automatically.
+#
+# Pair with correlation_dynamic_topk20_pos.yaml (top_k_metric=corr) to isolate
+# the negative-edge contribution from the top-K + multi-feature contribution.
+
+experiment_name: correlation_dynamic_topk20_signed
+
+graph:
+  update_frequency_months: 6
+  top_k: 20
+  top_k_metric: abs_corr
+  use_multi_feature_edges: true
