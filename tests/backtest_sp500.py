@@ -756,6 +756,58 @@ def calculate_forward_returns(df, label_t=5):
     return df
 
 
+def equal_weight_benchmark_daily_series(stock_data_df: pd.DataFrame) -> pd.Series:
+    """
+    Equal-weight mean open_to_open_return for each calendar dt in the panel.
+
+    Deterministic for a fixed OHLC dataset (does not depend on which prediction
+    days the strategy successfully trades).
+    """
+    if "open_to_open_return" not in stock_data_df.columns:
+        raise ValueError(
+            "stock_data_df must have 'open_to_open_return'. Run calculate_forward_returns() first."
+        )
+    return stock_data_df.groupby("dt", sort=True)["open_to_open_return"].mean().sort_index()
+
+
+def calendar_returns_for_evaluation_window(
+    stock_data_df: pd.DataFrame,
+    first_trade_date,
+    last_trade_date,
+    portfolio_returns: np.ndarray,
+    portfolio_dates: list,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Align strategy to full trading calendar: cash (0 return) on days with no trade row.
+
+    Benchmark is the equal-weight universe return on each calendar day in
+    stock_data between first_trade_date and last_trade_date (inclusive).
+
+    Returns parallel arrays: (calendar_dates, portfolio_padded, benchmark_returns).
+    """
+    bm = equal_weight_benchmark_daily_series(stock_data_df)
+    mask = (bm.index >= first_trade_date) & (bm.index <= last_trade_date)
+    bm_win = bm.loc[mask]
+    if len(bm_win) == 0:
+        return np.array([]), np.array([]), np.array([])
+
+    cal_dates = bm_win.index.to_numpy()
+    bm_vals = np.asarray(bm_win.to_numpy(dtype=np.float64), dtype=np.float64)
+    bm_vals = np.where(np.isfinite(bm_vals), bm_vals, 0.0)
+
+    port_by: dict[str, float] = {}
+    for d, r in zip(portfolio_dates, np.asarray(portfolio_returns, dtype=np.float64)):
+        port_by[str(d)] = float(r)
+
+    port_pad = np.zeros(len(cal_dates), dtype=np.float64)
+    for i, d in enumerate(cal_dates):
+        ds = str(d)
+        if ds in port_by:
+            port_pad[i] = port_by[ds]
+
+    return cal_dates, port_pad, bm_vals
+
+
 def load_predictions(predictions_dir):
     """
     Load model predictions from CSV files.
@@ -1022,6 +1074,8 @@ def simulate_trading_strategy(
             "stock_data_df must have 'daily_return' column. Run calculate_forward_returns() first!"
         )
 
+    bm_by_date = equal_weight_benchmark_daily_series(stock_data_df)
+
     # Tracking arrays
     gross_portfolio_returns = []  # Returns before transaction costs
     net_portfolio_returns = []  # Returns after transaction costs
@@ -1218,10 +1272,10 @@ def simulate_trading_strategy(
         # NET return = GROSS return - transaction costs
         net_return = gross_return - transaction_cost
 
-        # Benchmark return: open-to-open (same window as portfolio for apples-to-apples comparison)
-        # Equal-weighted across all stocks, measured over same period as portfolio
-        all_returns = entry_day_data["open_to_open_return"].dropna()
-        benchmark_return = all_returns.mean() if len(all_returns) > 0 else 0.0
+        # Benchmark: full-universe equal-weight for this calendar day (precomputed; stable vs path)
+        benchmark_return = float(bm_by_date.get(entry_date, np.nan))
+        if not np.isfinite(benchmark_return):
+            benchmark_return = 0.0
 
         # Store results
         gross_portfolio_returns.append(gross_return)
@@ -1396,6 +1450,8 @@ def simulate_trading_strategy_staggered(
             "stock_data_df must have 'daily_return' column. Run calculate_forward_returns() first!"
         )
 
+    bm_by_date = equal_weight_benchmark_daily_series(stock_data_df)
+
     # Per-tranche state: each tranche tracks its own holdings and rank history
     tranches = {
         tid: {
@@ -1531,9 +1587,9 @@ def simulate_trading_strategy_staggered(
 
         net_return = gross_return - portfolio_cost
 
-        # ---- Benchmark return (same as original: daily equal-weighted all stocks) ----
-        all_returns = entry_day_data["open_to_open_return"].dropna()
-        benchmark_return = all_returns.mean() if len(all_returns) > 0 else 0.0
+        benchmark_return = float(bm_by_date.get(entry_date, np.nan))
+        if not np.isfinite(benchmark_return):
+            benchmark_return = 0.0
 
         # ---- Store results ----
         gross_portfolio_returns.append(gross_return)
@@ -1749,6 +1805,8 @@ def simulate_trading_strategy_block(
             "stock_data_df must have 'daily_return' column. Run calculate_forward_returns() first!"
         )
 
+    bm_by_date = equal_weight_benchmark_daily_series(stock_data_df)
+
     # Single portfolio state
     current_holdings = set()
     prev_ranks = None
@@ -1788,8 +1846,9 @@ def simulate_trading_strategy_block(
                 continue
             gross_return = held_returns.mean()
             net_return = gross_return
-            all_ret = entry_day_data["open_to_open_return"].dropna()
-            benchmark_return = all_ret.mean() if len(all_ret) > 0 else 0.0
+            benchmark_return = float(bm_by_date.get(entry_date, np.nan))
+            if not np.isfinite(benchmark_return):
+                benchmark_return = 0.0
             gross_portfolio_returns.append(gross_return)
             net_portfolio_returns.append(net_return)
             benchmark_returns.append(benchmark_return)
@@ -1941,8 +2000,9 @@ def simulate_trading_strategy_block(
         gross_return = held_returns.mean()
         net_return = gross_return - (portfolio_cost if is_rebalance_day else 0.0)
 
-        all_ret = entry_day_data["open_to_open_return"].dropna()
-        benchmark_return = all_ret.mean() if len(all_ret) > 0 else 0.0
+        benchmark_return = float(bm_by_date.get(entry_date, np.nan))
+        if not np.isfinite(benchmark_return):
+            benchmark_return = 0.0
 
         gross_portfolio_returns.append(gross_return)
         net_portfolio_returns.append(net_return)
@@ -2117,16 +2177,28 @@ def evaluate(predictions_dir, config=None):
     mdd = calculate_mdd(portfolio_values)
     asr = calculate_asr(arr, avol)
     cr = calculate_cr(arr, mdd)
-    ir = calculate_ir(portfolio_returns, benchmark_returns)
+
+    # Full-calendar benchmark + padded portfolio (cash = 0 non-trade days) for stable IR / BM totals
+    _cal, port_cal, bm_cal = calendar_returns_for_evaluation_window(
+        stock_data, dates[0], dates[-1], portfolio_returns, dates
+    )
+    if len(bm_cal) > 0:
+        ir = calculate_ir(port_cal, bm_cal)
+        benchmark_total = float(np.prod(1.0 + bm_cal) - 1.0)
+        total_return_calendar = float(np.prod(1.0 + port_cal) - 1.0)
+        excess_return = total_return_calendar - benchmark_total
+    else:
+        ir = calculate_ir(portfolio_returns, benchmark_returns)
+        benchmark_total = float(np.prod(1.0 + benchmark_returns) - 1.0)
+        total_return_calendar = float(np.prod(1.0 + portfolio_returns) - 1.0)
+        excess_return = total_return_calendar - benchmark_total
 
     # Prediction accuracy metrics
     mse = calculate_mse(sim_results["predictions"], sim_results["actuals"])
     mae = calculate_mae(sim_results["predictions"], sim_results["actuals"])
 
-    # Additional metrics
+    # total_return: compound only on days with positions (legacy headline for strategy)
     total_return = portfolio_values[-1] - 1 if len(portfolio_values) > 0 else 0
-    benchmark_total = np.prod(1 + benchmark_returns) - 1
-    excess_return = total_return - benchmark_total
 
     results = {
         "ARR": arr,
@@ -2138,6 +2210,7 @@ def evaluate(predictions_dir, config=None):
         "MSE": mse,
         "MAE": mae,
         "total_return": total_return,
+        "total_return_calendar_aligned": total_return_calendar,
         "benchmark_return": benchmark_total,
         "excess_return": excess_return,
         "num_trading_days": len(dates),
@@ -2198,7 +2271,8 @@ def print_results(results, model_name="MCI-GRU", num_tests=1, adjustment_method=
     print("  BACKTESTING METHODOLOGY:")
     print("  " + "-" * 66)
     print("  Portfolio: Open-to-open returns (entry T+1 open, exit T+2 open)")
-    print("  Benchmark: Open-to-open returns (equal-weighted, same window)")
+    print("  Benchmark: Equal-weight open-to-open on full calendar in test window")
+    print("    (stable vs model run; excess uses cash=0 on non-trade days)")
     print("  Holding period: Intraday + overnight (realistic portfolio behavior)")
     print("  " + "-" * 66)
     print()
@@ -2274,6 +2348,11 @@ def print_results(results, model_name="MCI-GRU", num_tests=1, adjustment_method=
     print(
         f"  {'Benchmark Return':<25} {results['benchmark_return']:>12.4f}  ({results['benchmark_return'] * 100:.2f}%)"
     )
+    tr_cal = results.get("total_return_calendar_aligned")
+    if tr_cal is not None:
+        print(
+            f"  {'Portf. Return (calendar)':<25} {tr_cal:>12.4f}  ({tr_cal * 100:.2f}%)"
+        )
     print(
         f"  {'Excess Return':<25} {results['excess_return']:>12.4f}  ({results['excess_return'] * 100:.2f}%)"
     )
@@ -2907,9 +2986,21 @@ def plot_equity_curve(predictions_dir, stock_data, config, output_path=None):
             rank_drop_gate=rank_drop_config,
         )
 
-    dates = pd.to_datetime(sim_results["dates"])
-    portfolio_values = np.cumprod(1 + sim_results["portfolio_returns"])
-    benchmark_values = np.cumprod(1 + sim_results["benchmark_returns"])
+    cal_d, port_cal, bm_cal = calendar_returns_for_evaluation_window(
+        stock_data,
+        sim_results["dates"][0],
+        sim_results["dates"][-1],
+        sim_results["portfolio_returns"],
+        sim_results["dates"],
+    )
+    if len(bm_cal) > 0:
+        dates = pd.to_datetime(cal_d)
+        portfolio_values = np.cumprod(1.0 + port_cal)
+        benchmark_values = np.cumprod(1.0 + bm_cal)
+    else:
+        dates = pd.to_datetime(sim_results["dates"])
+        portfolio_values = np.cumprod(1 + sim_results["portfolio_returns"])
+        benchmark_values = np.cumprod(1 + sim_results["benchmark_returns"])
     excess_values = portfolio_values / benchmark_values
 
     # Determine plot title based on whether transaction costs are enabled
