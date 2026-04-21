@@ -1,0 +1,8 @@
+{
+  "tracking_uri": "file:///content/MCI-GRU/mlruns",
+  "experiment_name": "notebook_train_backtest",
+  "experiment_id": "909721358151816619",
+  "run_id": "fd627a167932478aaae05430858543fa",
+  "run_name": "notebook_train_backtest-20260420_020213",
+  "output_path": "/content/MCI-GRU/results/notebook_train_backtest/20260420_020213"
+}
