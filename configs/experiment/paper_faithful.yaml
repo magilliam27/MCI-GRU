@@ -11,5 +11,12 @@ model:
   activation: relu
   latent_init_scale: 0.02
 
+graph:
+  use_multi_feature_edges: false
+
 training:
   label_type: returns
+  loss_type: mse
+  selection_metric: val_loss
+  lr_scheduler: none
+  use_amp: false

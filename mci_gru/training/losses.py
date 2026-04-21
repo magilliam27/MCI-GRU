@@ -42,6 +42,19 @@ class ICLoss(nn.Module):
         return -ic.mean()
 
 
+def mean_information_coefficient(
+    pred: torch.Tensor, target: torch.Tensor, eps: float = 1e-8
+) -> torch.Tensor:
+    """Mean cross-sectional Pearson IC per batch row (same math as ``ICLoss``, positive = good)."""
+    pred_centered = pred - pred.mean(dim=-1, keepdim=True)
+    target_centered = target - target.mean(dim=-1, keepdim=True)
+    cov = (pred_centered * target_centered).sum(dim=-1)
+    pred_std = pred_centered.norm(dim=-1) + eps
+    target_std = target_centered.norm(dim=-1) + eps
+    ic = cov / (pred_std * target_std)
+    return ic.mean()
+
+
 class CombinedMSEICLoss(nn.Module):
     """
     Blends MSE and negative IC: (1 - alpha) * MSE + alpha * (-IC).

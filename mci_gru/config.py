@@ -5,7 +5,9 @@ This module provides structured configuration classes that work with Hydra
 for experiment configuration and management.
 """
 
+import warnings
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 
@@ -26,6 +28,8 @@ class DataConfig:
         val_end: Validation period end date
         test_start: Test period start date
         test_end: Test period end date
+        skip_embargo_check: If True, skip train/val and val/test label_t-day embargo validation
+            (not recommended; emits a warning when gaps are too small).
     """
 
     universe: str = "sp500"
@@ -35,10 +39,11 @@ class DataConfig:
     index_filename: str | None = None
     train_start: str = "2019-01-01"
     train_end: str = "2023-12-31"
-    val_start: str = "2024-01-01"
+    val_start: str = "2024-01-08"
     val_end: str = "2024-12-31"
-    test_start: str = "2025-01-01"
+    test_start: str = "2025-01-08"
     test_end: str = "2025-12-31"
+    skip_embargo_check: bool = False
 
     def __post_init__(self):
         if self.experiment_mode not in ("stock_level", "index_level"):
@@ -222,7 +227,7 @@ class GraphConfig:
     corr_lookback_days: int = 252
     top_k: int = 0
     top_k_metric: str = "corr"
-    use_multi_feature_edges: bool = False
+    use_multi_feature_edges: bool = True
 
     _VALID_TOP_K_METRICS = ("corr", "abs_corr")
 
@@ -324,6 +329,10 @@ class TrainingConfig:
                      "rank" for cross-sectional rank percentiles per day.
                      Rank labels use only same-day information so they
                      do not introduce look-ahead bias.
+        warmup_steps: Linear LR warmup steps (optimizer steps) before cosine decay
+        lr_scheduler: "cosine" (warmup + cosine) or "none" (constant LR)
+        use_amp: Enable CUDA autocast + GradScaler when device is CUDA
+        selection_metric: "val_ic" (maximize) or "val_loss" (minimize) for early stopping / checkpointing
     """
 
     batch_size: int = 32
@@ -333,12 +342,18 @@ class TrainingConfig:
     early_stopping_patience: int = 10
     weight_decay: float = 1e-3
     gradient_clip: float = 1.0
-    loss_type: str = "mse"
+    loss_type: str = "combined"
     ic_loss_alpha: float = 0.5
     label_type: str = "returns"
+    warmup_steps: int = 1000
+    lr_scheduler: str = "cosine"
+    use_amp: bool = True
+    selection_metric: str = "val_ic"
 
     _VALID_LOSS_TYPES = ("mse", "ic", "combined")
     _VALID_LABEL_TYPES = ("returns", "rank")
+    _VALID_LR_SCHEDULERS = ("none", "cosine")
+    _VALID_SELECTION_METRICS = ("val_loss", "val_ic")
 
     def __post_init__(self):
         if self.batch_size <= 0:
@@ -359,6 +374,17 @@ class TrainingConfig:
             raise ValueError(
                 f"label_type must be one of {self._VALID_LABEL_TYPES}, got {self.label_type!r}"
             )
+        if self.lr_scheduler not in self._VALID_LR_SCHEDULERS:
+            raise ValueError(
+                f"lr_scheduler must be one of {self._VALID_LR_SCHEDULERS}, got {self.lr_scheduler!r}"
+            )
+        if self.selection_metric not in self._VALID_SELECTION_METRICS:
+            raise ValueError(
+                f"selection_metric must be one of {self._VALID_SELECTION_METRICS}, "
+                f"got {self.selection_metric!r}"
+            )
+        if self.warmup_steps < 0:
+            raise ValueError("warmup_steps must be >= 0")
 
 
 @dataclass
@@ -376,7 +402,7 @@ class TrackingConfig:
             to avoid duplicating a large number of CSV artifacts)
     """
 
-    enabled: bool = False
+    enabled: bool = True
     tracking_uri: str = "mlruns"
     experiment_name: str | None = None
     run_name: str | None = None
@@ -413,6 +439,39 @@ class ExperimentConfig:
     experiment_name: str = "baseline"
     output_dir: str = "results"
     seed: int = 42
+
+    def __post_init__(self) -> None:
+        self._validate_embargo()
+
+    def _validate_embargo(self) -> None:
+        """Require calendar gaps > label_t between train/val and val/test to avoid label leakage."""
+        lt = self.model.label_t
+        train_end = datetime.strptime(self.data.train_end, "%Y-%m-%d").date()
+        val_start = datetime.strptime(self.data.val_start, "%Y-%m-%d").date()
+        val_end = datetime.strptime(self.data.val_end, "%Y-%m-%d").date()
+        test_start = datetime.strptime(self.data.test_start, "%Y-%m-%d").date()
+        gap_tv = (val_start - train_end).days
+        gap_test = (test_start - val_end).days
+        bad_tv = gap_tv <= lt
+        bad_test = gap_test <= lt
+        if not self.data.skip_embargo_check:
+            if bad_tv:
+                raise ValueError(
+                    f"Train/val gap ({gap_tv} days) must be > label_t ({lt}). "
+                    f"Shift data.val_start later (e.g. after {self.data.train_end} + {lt + 1} days) "
+                    f"or set data.skip_embargo_check=true (not recommended)."
+                )
+            if bad_test:
+                raise ValueError(
+                    f"Val/test gap ({gap_test} days) must be > label_t ({lt}). "
+                    f"Shift data.test_start later or set data.skip_embargo_check=true (not recommended)."
+                )
+        elif bad_tv or bad_test:
+            warnings.warn(
+                f"Embargo check skipped but gaps are tight: train->val={gap_tv}d, val->test={gap_test}d "
+                f"(label_t={lt}). Consider widening splits.",
+                stacklevel=2,
+            )
 
     def get_output_path(self) -> str:
         import os

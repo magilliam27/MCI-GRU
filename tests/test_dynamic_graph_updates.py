@@ -668,8 +668,8 @@ class TestGraphConfigValidation:
         with pytest.raises(ValueError, match="top_k_metric must be"):
             GraphConfig(top_k_metric="bogus")
 
-    def test_default_flags_legacy(self):
+    def test_default_flags_include_multi_feature_edges(self):
         cfg = GraphConfig()
         assert cfg.top_k == 0
         assert cfg.top_k_metric == "corr"
-        assert cfg.use_multi_feature_edges is False
+        assert cfg.use_multi_feature_edges is True

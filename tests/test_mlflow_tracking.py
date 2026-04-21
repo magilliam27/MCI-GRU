@@ -22,9 +22,9 @@ mlflow = pytest.importorskip("mlflow")
 from mlflow.tracking import MlflowClient  # noqa: E402
 
 
-def test_tracking_config_defaults_disabled():
+def test_tracking_config_defaults_local_mlflow_on():
     cfg = TrackingConfig()
-    assert cfg.enabled is False
+    assert cfg.enabled is True
     assert cfg.tracking_uri == "mlruns"
     assert cfg.log_artifacts is True
     assert cfg.log_checkpoints is True

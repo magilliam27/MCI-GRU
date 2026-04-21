@@ -9,6 +9,19 @@
 Scope audited: `mci_gru/` package, `run_experiment.py`, `configs/`, `paper_trade/`,
 `tests/`, and `docs/ARCHITECTURE.md` / `AGENTS.md` / `CLAUDE.md`.
 
+## Implementation status (April 2026)
+
+**Phase 1 (“free lunch”) from §9 is shipped.** The narrative sections below (§2–§7) were written as a *pre-change* audit; where they contradict this box, **this box wins**.
+
+- **Optimizer / schedule / AMP:** `AdamW`, linear warmup + cosine LR (`TrainingConfig.lr_scheduler`, `warmup_steps`), `torch.amp` + `GradScaler` when `use_amp` and CUDA (no gradient accumulation yet).
+- **Selection / loss:** `selection_metric` (default **`val_ic`**), combined MSE+IC loss default (`loss_type=combined`); `paper_faithful` pins paper-style MSE / scalar edges / MLflow off as needed.
+- **Graph:** `use_multi_feature_edges=true` by default; `(E, 4)` edge attributes.
+- **Splits / leakage:** `ExperimentConfig` enforces **> `label_t`** calendar-day gaps between train→val and val→test unless `data.skip_embargo_check=true`. `pipeline._build_tensors` aligns `stock_features_*` to label dates so embargo **gaps** do not misalign tensors vs graph inputs.
+- **Speed:** `generate_time_series_features` is **vectorised** (no `iterrows` hotspot).
+- **Repro / MLOps:** Per-ensemble-member seeds `seed + model_id`; `run_metadata.json` includes **`data_file_sha256`** (+ size, mtime) when `data.filename` exists; **MLflow `tracking.enabled=true`** by default.
+
+Remaining large items (still accurate in the sections below): **regularisation in the trunk**, **fused / vectorised temporal encoder**, **stronger cross-stream fusion**, **walk-forward training**, **survivorship / PIT universe**, **Sharpe on overlapping `label_t` returns**, **shared portfolio utilities**, **locked dependencies**.
+
 ## TL;DR
 
 The system is a clean, well-documented, four-stream ensemble over a dynamic
@@ -19,18 +32,15 @@ good and above the median for research code. The *learning stack itself*
 streams, label design, temporal encoder implementation) lags modern best
 practice and is where almost all the cheap alpha lives.
 
-Biggest single wins available, in rough ROI order:
+Highest remaining ROI (after Phase 1 — see **Implementation status** above), in rough order:
 
-1. **Replace vanilla Adam + no-scheduler** with AdamW + CosineAnnealingLR/ReduceLROnPlateau, mixed-precision, and gradient accumulation.
-2. **Add LayerNorm + Dropout + residuals** to the four-stream trunk. Currently none of the three exist in the model.
-3. **Early-stop on validation IC (rank correlation), not MSE.** The deployment objective is a cross-sectional ranker.
-4. **Make `use_multi_feature_edges=true` the default** — the 4-D edge tensor is strictly more informative than the scalar-corr path and the code already supports it.
-5. **Purge + embargo between splits** — with `label_t=5`, the last 5 days of `train` leak into `val`. Shift `val_start` by ≥ `label_t` calendar days.
-6. **Vectorise `AttentionResetGRUCell`** — the Python `for t in range(seq_len)` loop forfeits CuDNN fusion and dominates epoch time.
-7. **Add explicit cross-stream information transfer** — today A1 (temporal) and A2 (graph) only interact via concat+self-attn. A bilinear/cross-attention fusion is a well-known uplift.
-8. **Walk-forward retraining** instead of a single fixed split — required to claim anything about 2025/2026 live performance from training that ends in 2023.
+1. **Add LayerNorm + Dropout + residuals** to the four-stream trunk. Currently none of the three exist in the model.
+2. **Vectorise or replace `AttentionResetGRUCell`** — the Python `for t in range(seq_len)` loop forfeits CuDNN fusion and dominates epoch time at larger `his_t`.
+3. **Add explicit cross-stream information transfer** — A1 (temporal) and A2 (graph) still interact only via concat+self-attn; bilinear / cross-attention fusion is a well-known uplift.
+4. **Walk-forward retraining** instead of a single fixed split — required to claim robustness about forward windows; embargo validation alone does not replace refitting.
+5. **Gradient accumulation** (not yet) if you want larger effective batch on IC without blowing VRAM.
 
-The rest of the document justifies each of these.
+The rest of the document justifies the original audit findings; **§9** tracks what has already landed vs what is still open.
 
 ---
 
@@ -45,7 +55,7 @@ The rest of the document justifies each of these.
   - `apply_rank_labels` uses same-day cross-section only.
 - **Dynamic graph without `batch_size=1`.** `GraphSchedule.get_graph_for_date` + `combined_collate_fn` resolve edges per-sample via `bisect`, so any batch size works.
 - **Ensemble averaging.** `train_multiple_models` with `num_models=10` is a simple and robust variance reducer.
-- **MLflow integration** (opt-in) with parent/child runs, per-epoch metrics, checkpoint and prediction artefacts.
+- **MLflow integration** (**on by default**; disable with `tracking.enabled=false`) with parent/child runs, per-epoch metrics, checkpoint and prediction artefacts.
 - **Feature registry plugin pattern** (`momentum`, `volatility`, `credit`, `regime`) with typed config and pre-defined `FEATURE_SETS`.
 - **Backtest realism.** Transaction-cost accounting (`bid_ask=5bps`, `slippage=5bps`), turnover stats, gross/net ARR, rank-drop exit gate (`min_rank_drop=30`).
 - **Tests cover invariants.** Lookahead, regime data contract, momentum blend modes, dynamic graph wiring, output-management — not just "does it run".
@@ -171,13 +181,9 @@ negative-side saturation is a real bias.
 Recommendation: drop the final activation entirely. If you want a sigmoid-
 for-rank-labels path, add it explicitly when `label_type='rank'`.
 
-### 2.7 Edge attribute default is the weaker one
+### 2.7 Edge attributes (implemented April 2026)
 
-`GraphConfig.use_multi_feature_edges` defaults to `False`, which emits
-`(E,)` signed-correlation scalars. The `(E,4)` path `[corr, |corr|, corr²,
-rank_pct]` is strictly more informative and the model-side plumbing
-(`edge_feature_dim`) is already in place. Flip the default and update
-`configs/config.yaml` accordingly (the experiment configs already enable it).
+**Resolved:** `use_multi_feature_edges` now defaults to **`true`** in `GraphConfig` / `configs/config.yaml`, emitting `(E, 4)` `[corr, |corr|, corr², rank_pct]`. `configs/experiment/paper_faithful.yaml` pins **`false`** for paper-aligned runs. The `(E,)` scalar path remains for ablations.
 
 ---
 
@@ -185,81 +191,35 @@ rank_pct]` is strictly more informative and the model-side plumbing
 
 File: `mci_gru/training/trainer.py`.
 
-### 3.1 Optimizer and schedule are a decade old
+### 3.1 Optimizer and schedule (updated April 2026)
 
-- `optim.Adam`, **not** `AdamW`. With `weight_decay=1e-3`, Adam's coupled
-  decay effectively regularises the optimiser state instead of the weights
-  — known to be the wrong behaviour on attention models.
-- **No LR scheduler.** Constant `5e-5` for up to 100 epochs.
-- **No warmup.** Relevant for the attention blocks.
-- **No mixed precision** (no `torch.amp.autocast`, no `GradScaler`).
+**Shipped:** `AdamW`, **linear warmup + cosine** LR via `SequentialLR` stepped **per optimizer step** (`TrainingConfig.lr_scheduler`, `warmup_steps`), and **CUDA AMP** (`use_amp`, `autocast` + `GradScaler` with correct `unscale_` before grad clip).
 
-Drop-in upgrade (preserving all invariants):
+**Still open:** gradient accumulation for larger effective batch; `ReduceLROnPlateau` as an alternative schedule; optional second-pass cosine tied to epochs only (current design is step-based for short epochs).
 
-```python
-optimizer = optim.AdamW(self.model.parameters(), lr=lr, weight_decay=wd)
-scheduler = optim.lr_scheduler.CosineAnnealingLR(
-    optimizer, T_max=training_cfg.num_epochs, eta_min=lr * 0.01
-)
-scaler = torch.amp.GradScaler("cuda", enabled=self.device.type == "cuda")
-```
+### 3.2 Early stopping vs ranking objective (updated April 2026)
 
-Expected effect: same or better loss with 2× throughput on CUDA.
+**Shipped:** validation **IC (Spearman)** is computed each epoch; **`selection_metric`** chooses best checkpoint (`val_ic` vs `val_loss`). Default training still minimises the configured **loss** (often `combined`); checkpoint selection can prioritise IC.
 
-### 3.2 Early stopping uses MSE even when the objective is ranking
+**Residual risk:** if you force `selection_metric=val_loss` with `loss_type=mse`, you are back to the old behaviour — that is intentional for ablations / `paper_faithful`.
 
-`Trainer._validate` returns `criterion(outputs, labels)` — so if
-`loss_type=mse` (the default), you are selecting the checkpoint with the
-lowest MSE *on normalised forward returns*, not the one with the highest
-IC on the test distribution.
+### 3.3 Ensemble diversity
 
-Fix: compute a second validation metric (cross-sectional Pearson or
-Spearman between preds and labels) per epoch, track both, and expose a
-`selection_metric` config field (default `val_ic`).
+**Shipped:** each ensemble member calls **`set_seed(config.seed + model_id)`** before `train()`, so initial weights and Python/NumPy/Torch RNGs differ by construction.
 
-### 3.3 Ensemble diversity is only seed variance
+**Still open:** hyperparameter / architecture jitter and real **deep-ensemble** diversity (needs Phase 2 regularisation + DropEdge etc.). Averaging remains a variance reducer, not a full Bayesian model average.
 
-`train_multiple_models` trains N identical architectures with the same
-`config.seed` propagated through `set_seed(config.seed)` *once* at the
-entry point of `run_experiment.py`. Inside the loop, every model uses the
-same initial RNG state, so the only diversity between ensemble members
-comes from non-deterministic CUDA kernels (if any) and DataLoader
-ordering.
+### 3.4 Walk-forward vs single split
 
-Cheap fixes, increasing benefit:
-- **Seed each model** with `set_seed(config.seed + model_id)` inside the loop.
-- **Hyperparameter jitter**: sample `dropout ∈ U(0.05, 0.2)` and `learning_rate ∈ LogU(3e-5, 1e-4)` per ensemble member.
-- **Architecture jitter**: vary `num_hidden_states ∈ {16, 32, 64}` and `gat_heads ∈ {2, 4, 8}`.
+**Still the main structural gap:** training is still a **single** train/val/test configuration in typical runs. Production-style deployment wants rolling or expanding windows and concatenated OOS metrics.
 
-Current ensemble is closer to "variance of a bad estimator" than to a
-genuine deep ensemble.
+**Embargo (April 2026):** `ExperimentConfig.__post_init__` rejects configs whose **calendar gaps** between train/val and val/test are **not strictly greater than `model.label_t`**, unless `data.skip_embargo_check=true`. **YAML date ranges must be shifted** to satisfy this (e.g. val starts at least `label_t+1` calendar days after `train_end`). That removes the specific “last train labels peek into val calendar” footgun when dates are configured correctly; it does **not** replace walk-forward refits.
 
-### 3.4 No walk-forward evaluation
+### 3.5 Loss design (updated April 2026)
 
-Training is a single fixed split: 2019-01-01 → 2023-12-31 train,
-2024 val, 2025 test. For production deployment:
-
-- Refit every N months (e.g. 6) on a rolling or expanding window.
-- Report test metrics as a concatenation of each forward window's
-  out-of-sample predictions.
-- Embargo `label_t` days between train and val, and val and test.
-
-The current split violates the embargo rule: `train_end=2023-12-31`,
-`val_start=2024-01-01`, `label_t=5` means the last 5 training labels
-reference prices *inside* the validation period. Leakage is small in
-absolute terms but real.
-
-### 3.5 Loss design
-
-- **Default is MSE** on standardised forward returns. For a ranker, the
-  industry-standard default is `combined` with `alpha ≈ 0.3–0.5` (pure IC
-  loss is brittle at small cross-sections; MSE anchors the scale).
-- `ICLoss` averages per-day IC, which is correct cross-sectionally; good.
-- `CombinedMSEICLoss` is fine; the bug window is that `self.eps = 1e-8` is
-  reused regardless of feature scale.
-
-Recommend changing `configs/config.yaml` default from `loss_type: mse` to
-`loss_type: combined`, `ic_loss_alpha: 0.5`.
+- **Default is `combined`** with `ic_loss_alpha: 0.5` in `configs/config.yaml`. `paper_faithful` pins `loss_type: mse` for replication-style runs.
+- `ICLoss` averages per-day IC — still correct cross-sectionally.
+- `CombinedMSEICLoss` still uses a fixed `eps`; monitor scale if you change normalisation.
 
 ### 3.6 No HPO / sweep framework
 
@@ -281,8 +241,7 @@ python run_experiment.py --multirun \
     hydra/sweeper=optuna
 ```
 
-With `tracking.enabled=true`, MLflow will log each trial's metrics
-automatically.
+With MLflow **enabled by default**, each trial’s metrics are logged automatically (override with `tracking.enabled=false` if you want a silent sweep).
 
 ---
 
@@ -314,19 +273,9 @@ Mitigations (in increasing effort):
 - **Relax to per-split completeness.** A stock only needs complete data for the split(s) in which it's used.
 - **Point-in-time universes.** Use an as-of snapshot of the universe at each rebalance date, with proper delisting return treatment (Centre for Research in Security Prices convention).
 
-### 4.2 `generate_time_series_features` uses `df.iterrows()`
+### 4.2 Time-series feature tensor build (updated April 2026)
 
-```41:47:mci_gru/data/preprocessing.py
-for _, row in tqdm(df_subset.iterrows(), total=len(df_subset), desc="  Building pivot"):
-    kdcode = row["kdcode"]
-    dt = row["dt"]
-    if kdcode in stock_to_idx and dt in date_to_idx:
-```
-
-`iterrows()` on ~500 stocks × ~1500 days × N features is millions of
-Python-level attribute lookups. A 20-line vectorised replacement using
-`df.pivot_table(...)` or a `groupby`-reshape will run 50–200× faster. This
-is the single biggest `prepare_data` hotspot on large universes.
+**Resolved:** `generate_time_series_features` was rewritten to a **vectorised** path (pivot / unstack + `reindex` on the date × stock grid). The old `iterrows()` loop is gone; equivalence is covered by tests. **§4.3+** below still applies to NaN handling in `pipeline.py`.
 
 ### 4.3 NaN handling is lossy
 
@@ -475,9 +424,9 @@ backtest would remove ~300 LOC of duplication between
 
 ## 7. MLOps, reproducibility, and repo hygiene
 
-- **MLflow is opt-in.** For a research codebase that runs 10-model ensembles, `tracking.enabled` should probably default to `true` (local file `mlruns`).
+- **MLflow defaults on.** `tracking.enabled=true` in `configs/config.yaml`; set `tracking.enabled=false` for local smoke runs.
 - **No dependency lockfile.** `pyproject.toml` + `requirements.txt` without pinned hashes means CI / reproducibility is fragile. Add `uv.lock` or `poetry.lock`.
-- **No data versioning.** `run_metadata.json` records feature columns and norm stats but **not a content hash of `sp500_data.csv`**. If the CSV is updated, old checkpoints silently train on different data.
+- **Data fingerprint (April 2026).** `run_metadata.json` now records **`data_file_sha256`**, size, and mtime for `data.filename` when the file exists (graceful skip if missing).
 - **No CI config inspected.** `.github/` exists; a smoke-run job on every PR (`python run_experiment.py training.num_epochs=2 training.num_models=1`) should be near-free and would catch the kind of collate-tuple-shape regression that `AGENTS.md` invariant #3 warns about.
 - **Repo-root clutter.** `656_MTP_2026.pdf`, `Seed_test (1).ipynb` (99 KB), `lseg_env/`, and `_uncertain/` should live outside the package import path.
 - **Determinism.** `set_seed` covers `random`, `numpy`, `torch`, `torch.cuda`, but not `torch.backends.cudnn.deterministic` / `benchmark = False`. For exact reproducibility on CUDA, set both.
@@ -507,16 +456,16 @@ highest-leverage architecture changes, ranked:
 
 ### Phase 1 — "free lunch" (≤ 1 week, no model surgery)
 
-- [ ] `Adam → AdamW` + `CosineAnnealingLR` + 1000-step linear warmup.
-- [ ] Enable `torch.amp.autocast` + `GradScaler` on CUDA.
-- [ ] Early-stop on validation IC, not val MSE.
-- [ ] `loss_type: combined` with `ic_loss_alpha: 0.5` as default.
-- [ ] `use_multi_feature_edges: true` as default.
-- [ ] Seed each ensemble member with `config.seed + model_id`.
-- [ ] Embargo `label_t` days between train/val and val/test in `DataConfig.__post_init__`.
-- [ ] Vectorise `generate_time_series_features` (kill `iterrows`).
-- [ ] Record `sha256(sp500_data.csv)` in `run_metadata.json`.
-- [ ] `tracking.enabled: true` by default.
+- [x] `Adam → AdamW` + `CosineAnnealingLR` + 1000-step linear warmup.
+- [x] Enable `torch.amp.autocast` + `GradScaler` on CUDA.
+- [x] Early-stop on validation IC, not val MSE.
+- [x] `loss_type: combined` with `ic_loss_alpha: 0.5` as default.
+- [x] `use_multi_feature_edges: true` as default.
+- [x] Seed each ensemble member with `config.seed + model_id`.
+- [x] Embargo `label_t` days between train/val and val/test in `ExperimentConfig.__post_init__` (`data.skip_embargo_check` opt-out).
+- [x] Vectorise `generate_time_series_features` (kill `iterrows`).
+- [x] Record `sha256` (+ size, mtime) of `data.filename` in `run_metadata.json`.
+- [x] `tracking.enabled: true` by default.
 
 Expected combined effect: 15–40% faster training, better IC, fewer silent data-version footguns.
 
@@ -553,7 +502,7 @@ Expected combined effect: 15–40% faster training, better IC, fewer silent data
 - **Typed dataclass config.** Don't move to a looser dict-based config just because "it's simpler". The validation in `__post_init__` catches real bugs.
 - **`GraphSchedule` precomputation.** This was hard-won. Do not regress to per-batch rebuilds.
 - **`paper_trade/` isolation.** The rule that inference doesn't import `GraphBuilder` is worth keeping forever — it's the reason you can retire training code without breaking production.
-- **Ensemble averaging.** Once Phase 2 introduces real diversity (seed + dropout), this becomes a legitimate deep ensemble rather than seed-averaging.
+- **Ensemble averaging.** Per-member seeds (Phase 1) help; Phase 2 regularisation / DropEdge / jitter are still needed for a “real” deep ensemble.
 
 ---
 

@@ -64,19 +64,28 @@ python run_experiment.py +data=csv_sp500
 
 ## Default Settings
 
+Values below reflect **`configs/config.yaml`** merged with **`configs/data/sp500.yaml`** (Hydra `defaults`). Python dataclass defaults in `mci_gru/config.py` match these where duplicated.
+
 | Category | Setting | Default |
 |----------|---------|---------|
-| Data | source | lseg |
+| Data | source | `lseg` in `sp500.yaml` (use `data.source=csv` or `+data=csv_sp500` if Refinitiv is not installed) |
 | Data | train | 2019-01-01 to 2023-12-31 |
-| Data | val | 2024-01-01 to 2024-12-31 |
-| Data | test | 2025-01-01 to 2025-12-31 |
+| Data | val | 2024-01-08 to 2024-12-31 (gap after `train_end` **>** `label_t` days — label embargo) |
+| Data | test | 2025-01-08 to 2025-12-31 (gap after `val_end` **>** `label_t` days) |
+| Data | skip_embargo_check | `false` (`ExperimentConfig` raises if gaps are too small; set `true` only for legacy repro) |
 | Model | his_t | 10 |
 | Model | label_t | 5 |
 | Model | gru_hidden_sizes | [32, 10] |
+| Graph | use_multi_feature_edges | `true` (4-D edge features; `paper_faithful` preset pins `false`) |
 | Training | batch_size | 32 |
 | Training | learning_rate | 5e-5 |
 | Training | num_epochs | 100 |
 | Training | num_models | 10 |
+| Training | loss_type | `combined` (MSE + IC; `ic_loss_alpha` 0.5) |
+| Training | selection_metric | `val_ic` (checkpoint / early stopping; use `val_loss` to mirror loss only) |
+| Training | lr_scheduler | `cosine` (linear warmup `warmup_steps` then cosine decay; `none` disables) |
+| Training | use_amp | `true` on CUDA (no-op on CPU) |
+| Tracking | enabled | `true` (local `./mlruns`; set `tracking.enabled=false` to disable) |
 
 ## Common Configurations
 
@@ -95,8 +104,10 @@ python run_experiment.py output_dir=/content/drive/MyDrive/MCI-GRU-Experiments
 ### Quick Test Run
 
 ```bash
-python run_experiment.py experiment_name=quick_test training.num_epochs=2 training.num_models=1
+python run_experiment.py experiment_name=quick_test training.num_epochs=2 training.num_models=1 data.source=csv tracking.enabled=false
 ```
+
+Use `data.source=csv` when LSEG / `refinitiv-data` is unavailable; disable MLflow for a quieter smoke run if desired.
 
 ### Use CSV Data Source
 

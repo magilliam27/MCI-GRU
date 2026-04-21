@@ -8,7 +8,8 @@
 | Document | Purpose |
 |----------|---------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Model, pipeline, graph, data flow — the full system map |
-| [mci_gru_implementation_plan.md](mci_gru_implementation_plan.md) | Original implementation plan and design decisions |
+| [ARCHITECTURE_REVIEW.md](ARCHITECTURE_REVIEW.md) | Prioritized upgrade roadmap + audit notes (**§0** = post–Phase 1 status; **§9** checklist) |
+| [mci_gru_implementation_plan.md](mci_gru_implementation_plan.md) | Colab-oriented paper walkthrough; repo defaults differ — see ARCHITECTURE / CONFIGURATION_GUIDE |
 
 ## Configuration & Operations
 
@@ -24,4 +25,4 @@
 | Document | Purpose |
 |----------|---------|
 | [REGIME_DATA_CONTRACT.md](REGIME_DATA_CONTRACT.md) | Regime feature inputs, outputs, no-lookahead guarantees |
-| [BACKTEST_FAIRNESS_AUDIT.md](BACKTEST_FAIRNESS_AUDIT.md) | Backtest methodology, transaction costs, multiple testing |
+| [BACKTEST_FAIRNESS_AUDIT.md](BACKTEST_FAIRNESS_AUDIT.md) | Historical fairness audit (lookahead / return timing); line refs may predate refactors |

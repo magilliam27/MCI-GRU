@@ -24,13 +24,14 @@ Usage:
     python run_experiment.py +experiment=with_vix +data=russell1000 model.his_t=20
 """
 
+import hashlib
 import json
 import logging
 import os
-import random
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import hydra
 import numpy as np
@@ -54,14 +55,32 @@ from mci_gru.models import create_model
 from mci_gru.pipeline import prepare_data, prepare_data_index_level
 from mci_gru.tracking import MLflowTrackingManager
 from mci_gru.training import train_multiple_models
+from mci_gru.utils.seeding import set_seed
 
 
-def set_seed(seed: int):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
+def _data_file_fingerprint(relative_path: str, logger: logging.Logger) -> dict[str, Any]:
+    """SHA-256 and stat metadata for the configured CSV path (if present)."""
+    path = Path(relative_path)
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    if not path.is_file():
+        logger.warning("Data file not found at %s — skipping sha256", path)
+        return {
+            "data_file_sha256": None,
+            "data_file_size_bytes": None,
+            "data_file_mtime_iso": None,
+        }
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    st = path.stat()
+    mtime = datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat()
+    return {
+        "data_file_sha256": digest.hexdigest(),
+        "data_file_size_bytes": st.st_size,
+        "data_file_mtime_iso": mtime,
+    }
 
 
 def setup_logging(output_dir: str, experiment_name: str) -> logging.Logger:
@@ -146,6 +165,7 @@ def main(cfg: DictConfig):
         "seed": config.seed,
         "train_end": config.data.train_end,
         "data_file": config.data.filename,
+        **_data_file_fingerprint(config.data.filename, logger),
     }
     metadata_path = os.path.join(output_path, "run_metadata.json")
     with open(metadata_path, "w") as f:
@@ -241,11 +261,14 @@ def main(cfg: DictConfig):
         )
 
         best_val_losses = [r.best_val_loss for r in results]
+        best_val_ics = [r.best_val_ic for r in results]
         training_summary = {
             "experiment_name": config.experiment_name,
             "models_trained": len(results),
             "best_val_losses": best_val_losses,
+            "best_val_ics": best_val_ics,
             "mean_best_val_loss": float(np.mean(best_val_losses)) if best_val_losses else None,
+            "mean_best_val_ic": float(np.mean(best_val_ics)) if best_val_ics else None,
         }
         training_summary_path = os.path.join(output_path, "training_summary.json")
         with open(training_summary_path, "w") as f:
@@ -257,6 +280,7 @@ def main(cfg: DictConfig):
                 {
                     "models_trained": len(results),
                     "mean_best_val_loss": training_summary["mean_best_val_loss"],
+                    "mean_best_val_ic": training_summary["mean_best_val_ic"],
                 },
                 prefix="training.",
             )
@@ -282,7 +306,9 @@ def main(cfg: DictConfig):
         logger.info(f"Experiment: {config.experiment_name}")
         logger.info(f"Models trained: {len(results)}")
         logger.info(f"Best validation losses: {best_val_losses}")
+        logger.info(f"Best validation ICs: {best_val_ics}")
         logger.info(f"Mean best val loss: {np.mean(best_val_losses):.6f}")
+        logger.info(f"Mean best val IC: {np.mean(best_val_ics):.6f}")
         logger.info(f"Results saved to: {output_path}")
         logger.info("=" * 80)
     except Exception:

@@ -263,14 +263,18 @@ class MLflowTrackingManager:
         epoch: int,
         train_loss: float,
         val_loss: float,
+        val_ic: float,
         best_val_loss: float,
+        best_val_ic: float,
     ):
         """Standard per-epoch training metrics."""
         self.log_metrics(
             {
                 "train_loss": train_loss,
                 "val_loss": val_loss,
+                "val_ic": val_ic,
                 "best_val_loss": best_val_loss,
+                "best_val_ic": best_val_ic,
             },
             step=epoch,
         )

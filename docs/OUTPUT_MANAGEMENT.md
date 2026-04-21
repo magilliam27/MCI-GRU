@@ -8,10 +8,11 @@ This guide explains how training outputs are organized and persisted, including 
 
 ## MLflow Integration
 
-The project also supports **optional local MLflow tracking**.
-MLflow is **disabled by default** -- enable it with `tracking.enabled=true`.
-It complements the filesystem outputs documented here rather than replacing them.
-See `docs/MLFLOW_TRACKING.md` for setup, tracking behavior, and UI usage.
+The project supports **local MLflow tracking** alongside Hydra run folders.
+In **`configs/config.yaml`**, `tracking.enabled` defaults to **`true`** (store under `tracking_uri`, usually `./mlruns`).
+Disable logging for a run with `tracking.enabled=false`.
+Filesystem outputs (`config.yaml`, `run_metadata.json`, checkpoints, predictions) remain the source of truth for paper-trade inference.
+See `docs/MLFLOW_TRACKING.md` for setup, metrics, and UI usage.
 
 ## Output Directory Structure
 
@@ -41,7 +42,7 @@ results/
 |------|-------------|
 | `config.yaml` | Full Hydra configuration (merged from all sources) |
 | `training_{timestamp}.log` | Complete training logs |
-| `run_metadata.json` | Normalization means/stds, feature_cols, kdcode_list, his_t, label_t (required for inference) |
+| `run_metadata.json` | Norm stats, feature_cols, kdcode_list, his_t, label_t, `data_file`, **`data_file_sha256`**, **`data_file_size_bytes`**, **`data_file_mtime_iso`** (hash may be `null` if the path is missing, e.g. LSEG-only runs) — required for inference |
 | `graph_data.pt` | Edge index and edge weight tensors (required for inference) |
 | `checkpoints/model_{i}_best.pth` | Best checkpoint for each model in the ensemble |
 | `predictions_model_{i}/{date}.csv` | Per-model daily predictions |

@@ -22,7 +22,7 @@ The **canonical regime inputs** file consumed by the training pipeline must have
 
 - **Decision time:** Model inputs for date `T` must use only information that would have been available at or before the close of day `T` (or at a defined cutoff, e.g. previous close).
 - **Recommended:** Apply a **1-day lag** to all macro/commodity series before merging: the value assigned to date `T` is the value as of `T-1`. This avoids look-ahead when data is published with a delay.
-- **Config:** When using the CSV override, an optional `regime_enforce_lag_days` (default 0) can be set to 1 so the loader shifts the loaded CSV by that many calendar days before use. If the CSV was already built with lag applied (e.g. in Colab reconciliation), set to 0.
+- **Config:** When using the CSV override, an optional `features.regime_enforce_lag_days` (default 0) can be set to 1 so the loader shifts the loaded regime columns by that many calendar days before use. If the CSV was already built with lag applied (e.g. in Colab reconciliation), set to 0.
 
 ## Local LSEG Export (Partial File)
 

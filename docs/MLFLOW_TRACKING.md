@@ -1,6 +1,6 @@
 # MLflow Tracking Guide
 
-This project supports **optional local MLflow tracking** for training and backtesting.
+This project supports **local MLflow tracking** for training and backtesting (enabled by default in base Hydra config; optional in the sense that you can turn it off).
 
 ## Philosophy
 
@@ -15,12 +15,12 @@ MLflow adds searchable experiment history, metrics, and artifact browsing on top
 
 ## Default behavior
 
-MLflow is **disabled by default**.
+Base **`configs/config.yaml`** sets **`tracking.enabled: true`**, so a normal `python run_experiment.py` run logs to the local store (`tracking_uri`, default `mlruns`).
 
-To enable it for a training run:
+To **disable** MLflow for a run:
 
 ```bash
-python run_experiment.py tracking.enabled=true
+python run_experiment.py tracking.enabled=false
 ```
 
 ## Training with MLflow
@@ -28,7 +28,7 @@ python run_experiment.py tracking.enabled=true
 ### Basic local usage
 
 ```bash
-python run_experiment.py tracking.enabled=true
+python run_experiment.py
 ```
 
 This will:
@@ -41,7 +41,6 @@ This will:
 
 ```bash
 python run_experiment.py \
-  tracking.enabled=true \
   tracking.experiment_name=mci-gru-sp500 \
   tracking.run_name=baseline-seed42
 ```
@@ -50,7 +49,6 @@ python run_experiment.py \
 
 ```bash
 python run_experiment.py \
-  tracking.enabled=true \
   tracking.log_artifacts=true \
   tracking.log_checkpoints=true \
   tracking.log_predictions=false
@@ -100,9 +98,9 @@ Then open `http://127.0.0.1:5000`.
 ### Training
 
 - Flattened run configuration
-- Parent training run metadata
-- Per-epoch child-run metrics: `train_loss`, `val_loss`, `best_val_loss`
-- Final child-run metrics: `best_val_loss`, `final_train_loss`, `epochs_trained`
+- Parent training run metadata (parent run also receives aggregated `mean_best_val_loss` / `mean_best_val_ic` in `training_summary` logging when enabled)
+- Per-epoch child-run metrics: `train_loss`, `val_loss`, `val_ic`, `best_val_loss`, `best_val_ic`
+- Final child-run metrics: `best_val_loss`, `best_val_ic`, `final_train_loss`, `epochs_trained`
 - Selected run artifacts: `config.yaml`, `run_metadata.json`, `graph_data.pt`, training logs, checkpoints (if enabled)
 
 ### Backtest

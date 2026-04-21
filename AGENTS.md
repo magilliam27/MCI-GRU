@@ -7,7 +7,7 @@
 
 ```bash
 python -m pytest tests/ -v                         # run all tests
-python run_experiment.py training.num_epochs=2 training.num_models=1  # smoke run
+python run_experiment.py training.num_epochs=2 training.num_models=1 data.source=csv tracking.enabled=false  # smoke run (CSV + no MLflow)
 python paper_trade/scripts/run_nightly.py           # nightly paper-trade pipeline
 ```
 
@@ -84,7 +84,7 @@ The file `.cursor/plans/graph_signal_upgrades_c28cf640.plan.md` has two layers: 
 - **Dynamic schedule**: If `graph.update_frequency_months > 0`, `prepare_data` in `mci_gru/pipeline.py` calls `GraphBuilder.precompute_snapshots(...)` and passes `graph_schedule` into `create_data_loaders(..., dynamic_graph=True)`. Each batch resolves edges for the sample date via the schedule (see `mci_gru/data/data_manager.py` `combined_collate_fn`).
 - **Lever 1a (partial)**: `GraphConfig.top_k` and `GraphConfig.top_k_metric` (`"corr"` or `"abs_corr"`). `top_k == 0` keeps the legacy global threshold `corr > judge_value`. `top_k > 0` selects per-node top-K neighbours (`mci_gru/graph/builder.py` `build_edges` / `_select_edges_topk`).
 - **Lever 1c (partial vs plan)**: `GraphConfig.use_multi_feature_edges` makes `build_edges` return a **4-D** edge tensor `[corr, |corr|, corr^2, rank_pct]` instead of a scalar `(E,)`. The plan text also mentioned a 5th channel (`snapshot_age_days`) and `edge_dim=5`; the codebase uses **four** features and `run_experiment.py` sets `edge_feature_dim` to **4** or **1** when constructing the model. GAT blocks consume that width via `create_model(..., edge_feature_dim=...)`.
-- **Experiments**: Use Hydra includes such as `configs/experiment/correlation_dynamic.yaml` (6-month updates) or `correlation_dynamic_topk20_pos.yaml` (top-K + multi-feature + updates) rather than relying on base `configs/config.yaml` alone (defaults: static graph, `top_k=0`, `use_multi_feature_edges=false`).
+- **Experiments**: Use Hydra includes such as `configs/experiment/correlation_dynamic.yaml` (6-month updates) or `correlation_dynamic_topk20_pos.yaml` (top-K + multi-feature + updates) for dynamic-graph presets. Base `configs/config.yaml` defaults: static graph, `top_k=0`, `use_multi_feature_edges=true`.
 
 **Still roadmap / not implemented as described in that plan**
 

@@ -113,6 +113,22 @@ def _apply_normalisation(
     return df
 
 
+def _stock_feature_row_slice(
+    all_dates: list[str], his_t: int, label_dates: list[str]
+) -> tuple[int, int]:
+    """Map consecutive label dates to [start, end) row indices in ``stock_features``.
+
+    Row ``r`` corresponds to the window ending at ``all_dates[r + his_t - 1]``, so the
+    label date ``D`` (aligned with ``train_dates[his_t:]``, ``val_dates``, ``test_dates``)
+    sits at row ``all_dates.index(D) - his_t``.
+    """
+    if not label_dates:
+        return 0, 0
+    start = all_dates.index(label_dates[0]) - his_t
+    end = start + len(label_dates)
+    return start, end
+
+
 def _build_tensors(
     df_filtered: pd.DataFrame,
     kdcode_list: list[str],
@@ -131,13 +147,16 @@ def _build_tensors(
     """Build time-series tensors, graph features, and labels."""
     print("Generating time series features...")
     stock_features = generate_time_series_features(df_filtered, kdcode_list, feature_cols, his_t)
-    effective_train_days = len(train_dates) - his_t
+    all_dates = sorted(df_filtered["dt"].unique())
 
-    stock_features_train = stock_features[:effective_train_days]
-    stock_features_val = stock_features[
-        effective_train_days : effective_train_days + len(val_dates)
-    ]
-    stock_features_test = stock_features[effective_train_days + len(val_dates) :]
+    train_label_dates = train_dates[his_t:]
+    tr0, tr1 = _stock_feature_row_slice(all_dates, his_t, train_label_dates)
+    va0, va1 = _stock_feature_row_slice(all_dates, his_t, val_dates)
+    te0, te1 = _stock_feature_row_slice(all_dates, his_t, test_dates)
+
+    stock_features_train = stock_features[tr0:tr1]
+    stock_features_val = stock_features[va0:va1]
+    stock_features_test = stock_features[te0:te1]
 
     print("Generating graph features...")
     x_graph_train = generate_graph_features(

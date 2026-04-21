@@ -31,7 +31,7 @@ graph:
   corr_lookback_days: 252      # Days for correlation computation
   top_k: 0                     # 0 = legacy global threshold; >0 = per-node top-K neighbours
   top_k_metric: corr           # corr | abs_corr (only when top_k > 0)
-  use_multi_feature_edges: false  # true => (E,4) edge_attr; false => scalar (E,)
+  use_multi_feature_edges: true   # true => (E,4) edge_attr; false => scalar (E,)
 
 # Training configuration
 training:
@@ -42,13 +42,17 @@ training:
   early_stopping_patience: 10
   weight_decay: 1e-3            # L2 regularization
   gradient_clip: 1.0            # Max gradient norm
-  loss_type: mse               # mse, ic, or combined
+  loss_type: combined            # mse, ic, or combined
   ic_loss_alpha: 0.5           # Weight for IC component (only for combined)
   label_type: returns          # returns (raw) or rank (cross-sectional percentile)
+  warmup_steps: 1000           # Linear LR warmup (optimizer steps) before cosine
+  lr_scheduler: cosine         # cosine | none
+  use_amp: true                # CUDA autocast + GradScaler (no-op on CPU)
+  selection_metric: val_ic     # val_ic | val_loss — early stopping / checkpoint
 
-# Optional local MLflow tracking (disabled by default)
+# Local MLflow tracking (file store under tracking_uri)
 tracking:
-  enabled: false
+  enabled: true
   tracking_uri: mlruns
   experiment_name: null
   run_name: null

@@ -23,9 +23,16 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.amp import GradScaler, autocast
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 
 from mci_gru.config import ExperimentConfig
-from mci_gru.training.losses import CombinedMSEICLoss, ICLoss
+from mci_gru.training.losses import (
+    CombinedMSEICLoss,
+    ICLoss,
+    mean_information_coefficient,
+)
+from mci_gru.utils.seeding import set_seed
 
 if TYPE_CHECKING:
     from mci_gru.tracking import MLflowTrackingManager
@@ -34,10 +41,38 @@ if TYPE_CHECKING:
 @dataclass
 class TrainingResult:
     best_val_loss: float
+    best_val_ic: float
     final_train_loss: float
     epochs_trained: int
     best_model_path: str
     predictions: np.ndarray | None = None
+
+
+def _build_lr_scheduler(
+    optimizer: optim.Optimizer,
+    training_cfg,
+    steps_per_epoch: int,
+):
+    """Per-step warmup + cosine, or None when ``lr_scheduler`` is ``none``."""
+    if training_cfg.lr_scheduler == "none":
+        return None
+
+    total_steps = max(1, training_cfg.num_epochs * max(1, steps_per_epoch))
+    warmup_steps = min(training_cfg.warmup_steps, total_steps)
+    eta_min = training_cfg.learning_rate * 0.01
+    cosine_steps = max(1, total_steps - warmup_steps)
+
+    if warmup_steps > 0:
+        warmup = LinearLR(
+            optimizer,
+            start_factor=1e-8,
+            end_factor=1.0,
+            total_iters=warmup_steps,
+        )
+        cosine = CosineAnnealingLR(optimizer, T_max=cosine_steps, eta_min=eta_min)
+        return SequentialLR(optimizer, [warmup, cosine], milestones=[warmup_steps])
+
+    return CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=eta_min)
 
 
 class Trainer:
@@ -83,6 +118,7 @@ class Trainer:
 
         # Training state
         self.best_val_loss = float("inf")
+        self.best_val_ic = float("-inf")
         self.patience_counter = 0
         self.epoch = 0
 
@@ -90,20 +126,21 @@ class Trainer:
         self,
         train_loader,
         val_loader,
-        epoch_callback: Callable[[int, float, float, float], None] | None = None,
+        epoch_callback: Callable[..., None] | None = None,
     ) -> TrainingResult:
         """
         Args:
             train_loader: Training data loader
             val_loader: Validation data loader
-            epoch_callback: Optional per-epoch callback (epoch, train_loss, val_loss, best_val_loss)
+            epoch_callback: Optional per-epoch callback; receives
+                (epoch, train_loss, val_loss, val_ic, best_val_loss, best_val_ic).
 
         Returns:
             TrainingResult with training metrics
         """
         training_cfg = self.config.training
 
-        optimizer = optim.Adam(
+        optimizer = optim.AdamW(
             self.model.parameters(),
             lr=training_cfg.learning_rate,
             weight_decay=training_cfg.weight_decay,
@@ -115,6 +152,12 @@ class Trainer:
         else:
             criterion = nn.MSELoss()
 
+        steps_per_epoch = len(train_loader)
+        scheduler = _build_lr_scheduler(optimizer, training_cfg, steps_per_epoch)
+
+        use_amp = training_cfg.use_amp and self.device.type == "cuda"
+        scaler = GradScaler("cuda", enabled=use_amp)
+
         output_path = self.output_path
         os.makedirs(output_path, exist_ok=True)
         best_model_path = (
@@ -125,6 +168,7 @@ class Trainer:
         os.makedirs(os.path.dirname(best_model_path), exist_ok=True)
 
         self.best_val_loss = float("inf")
+        self.best_val_ic = float("-inf")
         self.patience_counter = 0
         final_train_loss = 0.0
 
@@ -137,26 +181,43 @@ class Trainer:
                 else ""
             )
         )
+        print(f"  Selection metric: {training_cfg.selection_metric}")
+        print(f"  LR scheduler: {training_cfg.lr_scheduler}")
+        print(f"  AMP (CUDA): {use_amp}")
         print(f"  Max epochs: {training_cfg.num_epochs}")
         print(f"  Early stopping patience: {training_cfg.early_stopping_patience}")
 
         for epoch in range(training_cfg.num_epochs):
             self.epoch = epoch
 
-            train_loss = self._train_epoch(train_loader, optimizer, criterion)
+            train_loss = self._train_epoch(
+                train_loader, optimizer, criterion, scaler, scheduler, use_amp
+            )
             final_train_loss = train_loss
 
-            val_loss = self._validate(val_loader, criterion)
+            val_loss, val_ic = self._validate(val_loader, criterion, use_amp)
 
             print(
-                f"Epoch [{epoch + 1}/{training_cfg.num_epochs}] - Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}"
+                f"Epoch [{epoch + 1}/{training_cfg.num_epochs}] - Train Loss: {train_loss:.6f}, "
+                f"Val Loss: {val_loss:.6f}, Val IC: {val_ic:.6f}"
             )
 
-            if val_loss < self.best_val_loss:
+            improved = False
+            if training_cfg.selection_metric == "val_ic":
+                if val_ic > self.best_val_ic:
+                    improved = True
+            else:
+                if val_loss < self.best_val_loss:
+                    improved = True
+
+            if improved:
                 self.best_val_loss = val_loss
+                self.best_val_ic = val_ic
                 self.patience_counter = 0
                 torch.save(self.model.state_dict(), best_model_path)
-                print(f"  -> New best model saved (val_loss={self.best_val_loss:.6f})")
+                print(
+                    f"  -> New best model saved (val_loss={self.best_val_loss:.6f}, val_ic={self.best_val_ic:.6f})"
+                )
             else:
                 self.patience_counter += 1
                 if self.patience_counter >= training_cfg.early_stopping_patience:
@@ -164,20 +225,35 @@ class Trainer:
                         f"Early stopping at epoch {epoch + 1} (patience={training_cfg.early_stopping_patience})"
                     )
                     if epoch_callback is not None:
-                        epoch_callback(epoch + 1, train_loss, val_loss, self.best_val_loss)
+                        epoch_callback(
+                            epoch + 1,
+                            train_loss,
+                            val_loss,
+                            val_ic,
+                            self.best_val_loss,
+                            self.best_val_ic,
+                        )
                     break
 
             if epoch_callback is not None:
-                epoch_callback(epoch + 1, train_loss, val_loss, self.best_val_loss)
+                epoch_callback(
+                    epoch + 1,
+                    train_loss,
+                    val_loss,
+                    val_ic,
+                    self.best_val_loss,
+                    self.best_val_ic,
+                )
 
         return TrainingResult(
             best_val_loss=self.best_val_loss,
+            best_val_ic=self.best_val_ic,
             final_train_loss=final_train_loss,
             epochs_trained=epoch + 1,
             best_model_path=best_model_path,
         )
 
-    def _train_epoch(self, train_loader, optimizer, criterion) -> float:
+    def _train_epoch(self, train_loader, optimizer, criterion, scaler, scheduler, use_amp) -> float:
         self.model.train()
         total_loss = 0.0
         num_samples = 0
@@ -199,27 +275,35 @@ class Trainer:
             edge_index = edge_index.to(self.device)
             edge_weight = edge_weight.to(self.device)
 
-            optimizer.zero_grad()
-            outputs = self.model(time_series, graph_features, edge_index, edge_weight, n_stocks)
-            loss = criterion(outputs, labels)
-            loss.backward()
+            optimizer.zero_grad(set_to_none=True)
+            with autocast("cuda", enabled=use_amp):
+                outputs = self.model(time_series, graph_features, edge_index, edge_weight, n_stocks)
+                loss = criterion(outputs, labels)
+
+            scaler.scale(loss).backward()
 
             if self.config.training.gradient_clip > 0:
+                scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(
                     self.model.parameters(),
                     self.config.training.gradient_clip,
                 )
 
-            optimizer.step()
+            scaler.step(optimizer)
+            scaler.update()
+
+            if scheduler is not None:
+                scheduler.step()
 
             total_loss += loss.item() * batch_size
             num_samples += batch_size
 
         return total_loss / num_samples if num_samples > 0 else 0.0
 
-    def _validate(self, val_loader, criterion) -> float:
+    def _validate(self, val_loader, criterion, use_amp) -> tuple[float, float]:
         self.model.eval()
         total_loss = 0.0
+        total_ic = 0.0
         num_samples = 0
 
         with torch.no_grad():
@@ -240,13 +324,18 @@ class Trainer:
                 edge_index = edge_index.to(self.device)
                 edge_weight = edge_weight.to(self.device)
 
-                outputs = self.model(time_series, graph_features, edge_index, edge_weight, n_stocks)
-                loss = criterion(outputs, labels)
+                with autocast("cuda", enabled=use_amp):
+                    outputs = self.model(time_series, graph_features, edge_index, edge_weight, n_stocks)
+                    loss = criterion(outputs, labels)
+                ic = mean_information_coefficient(outputs, labels)
 
                 total_loss += loss.item() * batch_size
+                total_ic += ic.item() * batch_size
                 num_samples += batch_size
 
-        return total_loss / num_samples if num_samples > 0 else 0.0
+        mean_loss = total_loss / num_samples if num_samples > 0 else 0.0
+        mean_ic = total_ic / num_samples if num_samples > 0 else 0.0
+        return mean_loss, mean_ic
 
     def predict(self, test_loader, kdcode_list: list[str], test_dates: list[str]) -> np.ndarray:
         """
@@ -258,6 +347,7 @@ class Trainer:
         Returns:
             Predictions array of shape (n_dates, n_stocks)
         """
+        use_amp = self.config.training.use_amp and self.device.type == "cuda"
         self.model.eval()
         all_predictions = []
 
@@ -276,7 +366,8 @@ class Trainer:
                 edge_index = edge_index.to(self.device)
                 edge_weight = edge_weight.to(self.device)
 
-                outputs = self.model(time_series, graph_features, edge_index, edge_weight, n_stocks)
+                with autocast("cuda", enabled=use_amp):
+                    outputs = self.model(time_series, graph_features, edge_index, edge_weight, n_stocks)
                 predictions = outputs.squeeze().cpu().numpy()
                 all_predictions.append(predictions)
 
@@ -348,7 +439,7 @@ def train_multiple_models(
         val_loader: Validation data loader
         test_loader: Test data loader
         kdcode_list: Stock codes
-        test_dates: Test dates
+        test_dates: List of test dates
         output_path: Optional output path override (for Hydra managed paths)
         tracking_manager: Optional MLflow tracking manager
 
@@ -368,6 +459,8 @@ def train_multiple_models(
         print(f"\n{'=' * 60}")
         print(f"Training Model {model_id + 1}/{config.training.num_models}")
         print(f"{'=' * 60}")
+
+        set_seed(config.seed + model_id)
 
         model = model_factory()
         model_checkpoint_path = os.path.join(checkpoint_dir, f"model_{model_id}_best.pth")
@@ -399,7 +492,8 @@ def train_multiple_models(
             all_results.append(result)
 
             print(
-                f"Model {model_id + 1} training complete. Best val loss: {result.best_val_loss:.6f}"
+                f"Model {model_id + 1} training complete. Best val loss: {result.best_val_loss:.6f}, "
+                f"best val IC: {result.best_val_ic:.6f}"
             )
 
             trainer.last_best_model_path = result.best_model_path
@@ -414,6 +508,7 @@ def train_multiple_models(
                 child_tracking.log_metrics(
                     {
                         "best_val_loss": result.best_val_loss,
+                        "best_val_ic": result.best_val_ic,
                         "final_train_loss": result.final_train_loss,
                         "epochs_trained": result.epochs_trained,
                     }

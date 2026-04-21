@@ -10,6 +10,7 @@ Contains pure data-transformation functions extracted from run_experiment.py:
 
 import numpy as np
 import pandas as pd
+from numpy.lib.stride_tricks import sliding_window_view
 from tqdm import tqdm
 
 
@@ -30,26 +31,29 @@ def generate_time_series_features(
 
     print(f"  Allocating feature array: ({num_usable_days}, {num_stocks}, {his_t}, {num_features})")
 
-    stock_features = np.zeros((num_usable_days, num_stocks, his_t, num_features), dtype=np.float32)
-
-    stock_to_idx = {stock: idx for idx, stock in enumerate(kdcode_list)}
-    date_to_idx = {date: idx for idx, date in enumerate(all_dates)}
-
     df_subset = df[df["kdcode"].isin(kdcode_list)][["kdcode", "dt"] + feature_cols].copy()
+    # Last row wins for duplicate (dt, kdcode), matching legacy iterrows overwrite semantics.
+    df_subset = df_subset.drop_duplicates(subset=["dt", "kdcode"], keep="last")
+
     pivot_data = np.zeros((len(all_dates), num_stocks, num_features), dtype=np.float32)
+    for fi, col in enumerate(
+        tqdm(feature_cols, desc="  Building pivot (per-feature)", leave=False)
+    ):
+        wide = df_subset.pivot_table(
+            index="dt",
+            columns="kdcode",
+            values=col,
+            aggfunc="last",
+            fill_value=0.0,
+        )
+        wide = wide.reindex(index=all_dates, columns=kdcode_list, fill_value=0.0)
+        pivot_data[:, :, fi] = wide.to_numpy(dtype=np.float32, copy=False)
 
-    for _, row in tqdm(df_subset.iterrows(), total=len(df_subset), desc="  Building pivot"):
-        kdcode = row["kdcode"]
-        dt = row["dt"]
-        if kdcode in stock_to_idx and dt in date_to_idx:
-            stock_idx = stock_to_idx[kdcode]
-            date_idx = date_to_idx[dt]
-            pivot_data[date_idx, stock_idx, :] = row[feature_cols].values.astype(np.float32)
-
-    for day_offset in tqdm(range(num_usable_days), desc="  Processing days"):
-        stock_features[day_offset, :, :, :] = pivot_data[
-            day_offset : day_offset + his_t, :, :
-        ].transpose(1, 0, 2)
+    # (T, S, F) -> sliding windows along time -> (T - his_t + 1, S, F, his_t) -> keep num_usable_days
+    windows = sliding_window_view(pivot_data, his_t, axis=0)
+    windows = windows[:num_usable_days, ...]
+    # (num_usable_days, S, F, his_t) -> (num_usable_days, S, his_t, F)
+    stock_features = np.transpose(windows, (0, 1, 3, 2)).astype(np.float32, copy=False)
 
     return stock_features
 

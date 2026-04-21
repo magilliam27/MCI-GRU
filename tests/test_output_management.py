@@ -17,12 +17,6 @@ from datetime import datetime
 # Add project to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Windows console encoding fix
-if sys.platform == "win32":
-    import io
-
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-
 
 def test_output_structure():
     """Test that output directories are created correctly."""

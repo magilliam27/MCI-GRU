@@ -6,6 +6,8 @@ This document provides a step-by-step implementation plan for the MCI-GRU stock 
 
 **Paper Reference:** "MCI-GRU: Stock Prediction Model Based on Multi-Head Cross-Attention and Improved GRU" (Neurocomputing 2025)
 
+**Repo note (April 2026):** The maintained training stack lives under `mci_gru/` and `run_experiment.py` (Hydra configs, **AdamW** + warmup/cosine LR, optional AMP, IC-aware checkpointing, combined loss defaults, MLflow on by default). Treat this Colab-oriented plan as a **pedagogical / paper-aligned** walkthrough; for production behaviour see `docs/ARCHITECTURE.md` and `docs/CONFIGURATION_GUIDE.md`.
+
 ---
 
 ## 1. Environment Setup

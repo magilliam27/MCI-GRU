@@ -5,7 +5,8 @@ source: csv
 filename: data/raw/market/sp500_2019_universe_data_through_2026.csv
 train_start: "2019-01-01"
 train_end: "2023-12-31"
-val_start: "2024-01-01"
+# val/test starts: >21 calendar days after prior split end (embargo vs model.label_t up to 21)
+val_start: "2024-01-22"
 val_end: "2024-12-31"
-test_start: "2025-01-01"
+test_start: "2025-01-22"
 test_end: "2025-12-31"

@@ -27,22 +27,22 @@ CSV / LSEG / FRED
 
 3. **Normalization** — `pipeline.py` computes per-feature z-score stats using **training dates
    only**, then applies 3-sigma clipping + standardization across all splits.
-   Stats are persisted in `run_metadata.json` for inference reuse.
+   Stats (plus **`data_file_sha256`** / size / mtime for `data.filename` when the file exists) are persisted in `run_metadata.json` for inference reuse and data provenance.
 
 4. **Windowing** — Sliding windows of shape `(days, stocks, his_t, features)` are constructed.
    Labels are `label_t`-day forward returns (or rank percentiles if `label_type=rank`).
 
 5. **Graph construction** — `GraphBuilder` computes Pearson correlation over trailing returns.
-   Pairs with `|corr| > judge_value` get edges. Static mode builds once; dynamic mode
-   rebuilds every N months per batch date.
+   Pairs with `|corr| > judge_value` get edges (or top-K selection when `top_k > 0`).
+   By default **`use_multi_feature_edges=true`**: edge attributes are `(E, 4)` `[corr, |corr|, corr², rank_pct]`; legacy `(E,)` scalars when `false`.
+   Static mode builds once; dynamic mode rebuilds every N months per batch date.
 
 6. **DataLoaders** — `create_data_loaders` wraps tensors in `CombinedDataset`.
    The `combined_collate_fn` returns a 7-tuple:
    `(time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates)`.
    `batch_dates` is `None` in static mode.
 
-7. **Training** — `Trainer.train()` runs the training loop with early stopping.
-   `train_multiple_models` repeats this N times for ensemble averaging.
+7. **Training** — `Trainer.train()` uses **AdamW**, optional **cosine LR schedule** with linear warmup (`TrainingConfig.lr_scheduler`, `warmup_steps`), **CUDA AMP** when `use_amp` and a GPU are available, and early stopping / checkpoint selection by **`selection_metric`** (`val_ic` or `val_loss`). Default training loss is **`combined`** (MSE + IC). `train_multiple_models` repeats training **N** times with **`set_seed(seed + model_id)`** per member, then averages predictions.
 
 8. **Inference** — Each model produces per-stock scalar scores. The ensemble mean is the
    final prediction, saved as CSV files in `averaged_predictions/`.
@@ -103,7 +103,7 @@ Input: (batch, stocks, his_t, features)
 | Dynamic | `update_frequency_months>0` | `GraphSchedule` precomputes snapshots every N months; collate does O(log n) lookup per sample. Any batch size works. |
 
 The graph is a Pearson-correlation adjacency: trailing `corr_lookback_days` (default 252)
-returns are used. Edges connect pairs with `|corr| > judge_value` (default 0.8).
+returns are used. When `graph.top_k == 0`, edges connect pairs with `|corr| > judge_value` (default 0.8); when `top_k > 0`, each node keeps its top-K neighbours by `top_k_metric`.
 
 **`GraphSchedule`** (introduced in commit `f873f84`): when `update_frequency_months > 0`,
 `GraphBuilder.precompute_snapshots()` builds all graph snapshots up-front during
@@ -123,7 +123,7 @@ configs/
 
 All configs map to typed dataclasses in `mci_gru/config.py`. `ExperimentConfig` is the
 root, containing `DataConfig`, `FeatureConfig`, `GraphConfig`, `ModelConfig`,
-`TrainingConfig`, and `TrackingConfig`.
+`TrainingConfig`, and `TrackingConfig`. On construction, **`ExperimentConfig` validates calendar gaps** between train/val and val/test are **strictly greater than `model.label_t`** days unless `data.skip_embargo_check=true` (discouraged). **`pipeline._build_tensors`** aligns `stock_features_*` rows to label dates so embargo gaps do not desynchronize time-series tensors from graph features.
 
 Override from CLI: `python run_experiment.py model.his_t=20 training.loss_type=ic`
 
@@ -150,7 +150,7 @@ mci_gru/
 │   └── mci_gru.py       ← StockPredictionModel, GATBlock, ImprovedGRU, MarketLatentStateLearner
 ├── data/
 │   ├── data_manager.py  ← DataManager, CombinedDataset, combined_collate_fn, create_data_loaders
-│   ├── preprocessing.py ← build_time_series_tensors, compute_labels
+│   ├── preprocessing.py ← generate_time_series_features, generate_graph_features, compute_labels
 │   ├── lseg_loader.py   ← LSEG/Refinitiv API data fetching
 │   ├── fred_loader.py   ← FRED API data fetching (credit, macro)
 │   ├── reshape.py       ← LSEG data reshape utilities

@@ -5,6 +5,13 @@
 > references apply to the codebase as it existed at audit time. Some issues
 > documented here may have been addressed in subsequent commits.
 
+> **Note (April 2026):** Training splits now enforce **label-time embargo gaps**
+> in `ExperimentConfig` (calendar days between train/val and val/test **> `label_t`**,
+> unless `data.skip_embargo_check=true`). That addresses **training-label leakage
+> across split boundaries**; it does **not** by itself fix any **execution-timing**
+> issues in a backtest P&L simulator (e.g. open vs close attribution), which is what
+> §1 below is about.
+
 **Date:** February 4, 2026
 **Reviewed Files:** evaluate_sp500.py, run_experiment.py, trainer.py, data_manager.py
 **Overall Assessment:** CRITICAL ISSUES FOUND - Backtest has look-ahead bias

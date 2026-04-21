@@ -3,8 +3,11 @@
 ## Training
 
 ```bash
-# Local
+# Local (MLflow on by default; LSEG default data source in sp500.yaml)
 python run_experiment.py
+
+# Smoke: CSV data + short run + no MLflow
+python run_experiment.py training.num_epochs=2 training.num_models=1 data.source=csv tracking.enabled=false
 
 # Custom output directory
 python run_experiment.py output_dir=/path/to/output
@@ -13,6 +16,8 @@ python run_experiment.py output_dir=/path/to/output
 **Outputs:** `{output_dir}/{experiment_name}/{timestamp}/`
 - `config.yaml` - Full configuration
 - `training_*.log` - Training logs
+- `run_metadata.json` - Norm stats, features, **`data_file_sha256`** (when file exists), etc.
+- `graph_data.pt` - Static edge tensors for inference
 - `checkpoints/` - Model checkpoints
 - `averaged_predictions/` - Ensemble predictions
 
