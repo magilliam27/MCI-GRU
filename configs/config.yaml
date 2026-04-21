@@ -26,9 +26,12 @@ model:
 
 # Graph configuration
 graph:
-  judge_value: 0.8             # Correlation threshold for edges
+  judge_value: 0.8             # Correlation threshold for edges (used when top_k == 0)
   update_frequency_months: 0   # 0 = static, 6 = update every 6 months
   corr_lookback_days: 252      # Days for correlation computation
+  top_k: 0                     # 0 = legacy global threshold; >0 = per-node top-K neighbours
+  top_k_metric: corr           # corr | abs_corr (only when top_k > 0)
+  use_multi_feature_edges: false  # true => (E,4) edge_attr; false => scalar (E,)
 
 # Training configuration
 training:

@@ -334,6 +334,38 @@ class TestCreateDataLoaders:
 
 
 # ---------------------------------------------------------------------------
+# Notebook: legacy_baseline graph profile (no GraphSchedule / static graph)
+# ---------------------------------------------------------------------------
+
+
+class TestNotebookLegacyBaselineGraphProfile:
+    """Parity with ``GRAPH_PROFILE='legacy_baseline'`` in ``train_test_backtest_workflow.ipynb``.
+
+    That profile forces ``update_frequency_months=0`` (no dynamic snapshots),
+    ``top_k=0`` (threshold edges), and ``use_multi_feature_edges=False`` (scalar
+    edge weights), matching ``run_experiment``'s ``dynamic_graph = months > 0``.
+    """
+
+    def test_legacy_baseline_graph_config_disables_dynamic_gate(self):
+        g = GraphConfig(
+            judge_value=0.8,
+            update_frequency_months=0,
+            corr_lookback_days=252,
+            top_k=0,
+            top_k_metric="corr",
+            use_multi_feature_edges=False,
+        )
+        assert not (g.update_frequency_months > 0)
+
+    def test_legacy_baseline_train_loader_is_static_mode(self):
+        """Same loader contract as ``dynamic_graph=False`` with no per-day graph."""
+        train_loader, _, _ = TestCreateDataLoaders()._loaders(
+            dynamic_graph=False, batch_size=4, graph_schedule=None
+        )
+        assert train_loader.dataset.sample_dates is None
+
+
+# ---------------------------------------------------------------------------
 # ExperimentConfig: batch_size no longer constrained for dynamic graph
 # ---------------------------------------------------------------------------
 
