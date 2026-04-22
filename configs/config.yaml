@@ -17,12 +17,18 @@ model:
   hidden_size_gat2: 32         # Second GAT hidden size
   num_hidden_states: 32        # Number of latent state vectors
   cross_attn_heads: 4          # Cross-attention heads
-  slow_kernel: 5               # Multi-scale temporal kernel size
-  slow_stride: 2               # Multi-scale temporal stride
-  use_multi_scale: true        # false = plain ImprovedGRU (paper-faithful)
-  use_self_attention: true     # Self-attention before final GAT (from original code)
-  activation: elu              # elu or relu
-  latent_init_scale: 0.02      # Latent state init std (original code used 1.0)
+  slow_kernel: 5                # Multi-scale temporal kernel size
+  slow_stride: 2                # Multi-scale temporal stride
+  use_multi_scale: true         # false = plain ImprovedGRU (paper-faithful)
+  use_self_attention: true      # Self-attention before final GAT (from original code)
+  activation: elu               # elu or relu (GAT internals)
+  output_activation: "none"    # none | elu | relu | sigmoid (final head; quote "none" — bare none is YAML null)
+  latent_init_scale: 0.02       # Latent state init std (original code used 1.0)
+  use_group_type_embed: true    # four-stream type embedding in SelfAttention
+  use_trunk_regularisation: true
+  trunk_dropout: 0.1
+  use_nn_multihead_attention: true
+  temporal_encoder: gru_attn    # legacy = paper cell + Python loop; gru_attn = fused GRU
 
 # Graph configuration
 graph:
@@ -30,8 +36,9 @@ graph:
   update_frequency_months: 0   # 0 = static, 6 = update every 6 months
   corr_lookback_days: 252      # Days for correlation computation
   top_k: 0                     # 0 = legacy global threshold; >0 = per-node top-K neighbours
-  top_k_metric: corr           # corr | abs_corr (only when top_k > 0)
-  use_multi_feature_edges: true   # true => (E,4) edge_attr; false => scalar (E,)
+  top_k_metric: corr            # corr | abs_corr (only when top_k > 0)
+  use_multi_feature_edges: true  # true => (E,4) edge_attr; false => scalar (E,)
+  drop_edge_p: 0.1              # train-time GAT edge dropout; 0 disables
 
 # Training configuration
 training:

@@ -12,11 +12,12 @@ Components (all in mci_gru.models.mci_gru):
 from mci_gru.models.mci_gru import (
     StockPredictionModel,
     ImprovedGRU,
+    GRUWithAttention,
     MultiScaleTemporalEncoder,
     AttentionResetGRUCell,
     GATBlock,
-    GATLayer,      # backward-compatible alias for GATBlock
-    GATLayer_1,    # backward-compatible alias for GATBlock
+    GATLayer,  # backward-compatible alias for GATBlock
+    GATLayer_1,  # backward-compatible alias for GATBlock
     SelfAttention,
     MarketLatentStateLearner,
     create_model,
@@ -25,6 +26,7 @@ from mci_gru.models.mci_gru import (
 __all__ = [
     "StockPredictionModel",
     "ImprovedGRU",
+    "GRUWithAttention",
     "MultiScaleTemporalEncoder",
     "AttentionResetGRUCell",
     "GATBlock",

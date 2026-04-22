@@ -673,3 +673,8 @@ class TestGraphConfigValidation:
         assert cfg.top_k == 0
         assert cfg.top_k_metric == "corr"
         assert cfg.use_multi_feature_edges is True
+        assert cfg.drop_edge_p == 0.0
+
+    def test_drop_edge_p_out_of_range_rejected(self):
+        with pytest.raises(ValueError, match="drop_edge_p"):
+            GraphConfig(drop_edge_p=1.0)

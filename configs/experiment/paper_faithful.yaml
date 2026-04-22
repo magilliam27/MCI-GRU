@@ -9,10 +9,18 @@ model:
   use_multi_scale: false
   use_self_attention: false
   activation: relu
+  # Final head matched pre-Phase-2: same activation name as GAT (relu here)
+  output_activation: relu
+  use_group_type_embed: false
+  use_trunk_regularisation: false
+  trunk_dropout: 0.0
+  use_nn_multihead_attention: false
+  temporal_encoder: legacy
   latent_init_scale: 0.02
 
 graph:
   use_multi_feature_edges: false
+  drop_edge_p: 0.0
 
 training:
   label_type: returns

@@ -220,6 +220,7 @@ class GraphConfig:
             (E, 4) edge feature tensor [corr, |corr|, corr^2, rank_pct] instead of
             the legacy 1-D scalar weight. The model side reads this through
             ``edge_feature_dim`` on the GAT blocks.
+        drop_edge_p: Train-time edge dropout probability for GAT (0 disables).
     """
 
     judge_value: float = 0.8
@@ -228,6 +229,8 @@ class GraphConfig:
     top_k: int = 0
     top_k_metric: str = "corr"
     use_multi_feature_edges: bool = True
+    # Default 0: legacy-safe; set in configs/config.yaml for train-time regularisation
+    drop_edge_p: float = 0.0
 
     _VALID_TOP_K_METRICS = ("corr", "abs_corr")
 
@@ -245,6 +248,8 @@ class GraphConfig:
                 f"top_k_metric must be one of {self._VALID_TOP_K_METRICS}, "
                 f"got {self.top_k_metric!r}"
             )
+        if not 0.0 <= self.drop_edge_p < 1.0:
+            raise ValueError(f"drop_edge_p must be in [0, 1), got {self.drop_edge_p}")
 
 
 @dataclass
@@ -266,8 +271,17 @@ class ModelConfig:
         slow_stride: Stride for slow temporal downsampling
         use_multi_scale: Use MultiScaleTemporalEncoder (True) or plain ImprovedGRU (False)
         use_self_attention: Apply self-attention before final prediction GAT
-        activation: Activation function ("elu" or "relu")
+        activation: Activation function for GAT internals ("elu" or "relu")
+        output_activation: Final head activation — none, elu, relu, sigmoid
         latent_init_scale: Std for latent state initialisation (original code used 1.0)
+        use_group_type_embed: If True, add a learned (4, align_dim) type embedding
+            in SelfAttention to distinguish the A1/A2/B1/B2 streams
+        use_trunk_regularisation: If True, apply LayerNorm + Dropout in the trunk
+        trunk_dropout: Dropout probability (used when use_trunk_regularisation)
+        use_nn_multihead_attention: If True, use ``nn.MultiheadAttention`` in
+            MarketLatentStateLearner instead of the legacy 8-Linear MHA
+        temporal_encoder: "legacy" = AttentionResetGRUCell + Python loop; "gru_attn" =
+            CuDNN-fused ``nn.GRU`` + per-step post-hoc attention
     """
 
     his_t: int = 10
@@ -284,13 +298,35 @@ class ModelConfig:
     use_multi_scale: bool = True
     use_self_attention: bool = True
     activation: str = "elu"
+    output_activation: str = "none"
     latent_init_scale: float = 0.02
+    # Defaults are legacy-safe for partial / old saved configs; enable Phase 2 in configs/config.yaml
+    use_group_type_embed: bool = False
+    use_trunk_regularisation: bool = False
+    trunk_dropout: float = 0.1
+    use_nn_multihead_attention: bool = False
+    temporal_encoder: str = "legacy"
+
+    _VALID_OUTPUT_ACTIVATIONS = ("none", "elu", "relu", "sigmoid")
+    _VALID_TEMPORAL_ENCODERS = ("legacy", "gru_attn")
 
     def __post_init__(self):
         if self.activation not in ("elu", "relu"):
             raise ValueError(f"activation must be 'elu' or 'relu', got {self.activation!r}")
+        if self.output_activation not in self._VALID_OUTPUT_ACTIVATIONS:
+            raise ValueError(
+                f"output_activation must be one of {self._VALID_OUTPUT_ACTIVATIONS}, "
+                f"got {self.output_activation!r}"
+            )
+        if self.temporal_encoder not in self._VALID_TEMPORAL_ENCODERS:
+            raise ValueError(
+                f"temporal_encoder must be one of {self._VALID_TEMPORAL_ENCODERS}, "
+                f"got {self.temporal_encoder!r}"
+            )
         if self.latent_init_scale <= 0:
             raise ValueError("latent_init_scale must be > 0")
+        if not 0.0 <= self.trunk_dropout < 1.0:
+            raise ValueError(f"trunk_dropout must be in [0, 1), got {self.trunk_dropout}")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -306,7 +342,13 @@ class ModelConfig:
             "use_multi_scale": self.use_multi_scale,
             "use_self_attention": self.use_self_attention,
             "activation": self.activation,
+            "output_activation": self.output_activation,
             "latent_init_scale": self.latent_init_scale,
+            "use_group_type_embed": self.use_group_type_embed,
+            "use_trunk_regularisation": self.use_trunk_regularisation,
+            "trunk_dropout": self.trunk_dropout,
+            "use_nn_multihead_attention": self.use_nn_multihead_attention,
+            "temporal_encoder": self.temporal_encoder,
         }
 
 

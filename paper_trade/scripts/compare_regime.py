@@ -253,6 +253,7 @@ def main():
     # multi-feature edges (4-d) load with matching GAT parameter shapes.
     graph_cfg = config.get("graph", {})
     model_cfg["edge_feature_dim"] = 4 if graph_cfg.get("use_multi_feature_edges", False) else 1
+    model_cfg["drop_edge_p"] = float(graph_cfg.get("drop_edge_p", 0.0))
 
     dates = get_trading_dates(csv_path, args.days)
     print(f"\n  Model:       {model_dir.name}")

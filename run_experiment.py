@@ -209,7 +209,11 @@ def main(cfg: DictConfig):
     # emitting. 4 columns for multi-feature edges (corr, |corr|, corr^2, rank_pct);
     # otherwise the legacy scalar weight (1).
     edge_feature_dim = 4 if config.graph.use_multi_feature_edges else 1
-    model_cfg_dict = {**config.model.to_dict(), "edge_feature_dim": edge_feature_dim}
+    model_cfg_dict = {
+        **config.model.to_dict(),
+        "edge_feature_dim": edge_feature_dim,
+        "drop_edge_p": config.graph.drop_edge_p,
+    }
 
     def model_factory():
         return create_model(num_features, model_cfg_dict)

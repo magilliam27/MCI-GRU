@@ -20,7 +20,9 @@ Scope audited: `mci_gru/` package, `run_experiment.py`, `configs/`, `paper_trade
 - **Speed:** `generate_time_series_features` is **vectorised** (no `iterrows` hotspot).
 - **Repro / MLOps:** Per-ensemble-member seeds `seed + model_id`; `run_metadata.json` includes **`data_file_sha256`** (+ size, mtime) when `data.filename` exists; **MLflow `tracking.enabled=true`** by default.
 
-Remaining large items (still accurate in the sections below): **regularisation in the trunk**, **fused / vectorised temporal encoder**, **stronger cross-stream fusion**, **walk-forward training**, **survivorship / PIT universe**, **Sharpe on overlapping `label_t` returns**, **shared portfolio utilities**, **locked dependencies**.
+Remaining large items (still accurate in the sections below where not superseded by the Phase 2 box below): **cross-stream fusion (A1↔A2 cross-attention)**, **walk-forward training**, **survivorship / PIT universe**, **Sharpe on overlapping `label_t` returns**, **shared portfolio utilities**, **locked dependencies**.
+
+**Phase 2 (April 2026):** Trunk `LayerNorm` + `Dropout` + inter-GAT dropout behind `model.use_trunk_regularisation`; `nn.MultiheadAttention` path behind `model.use_nn_multihead_attention`; `GRUWithAttention` (`nn.GRU` + post-hoc attention) behind `model.temporal_encoder=gru_attn` (legacy path unchanged); train-time `dropout_edge` via `graph.drop_edge_p`; optional `model.output_activation` (quote `"none"` in YAML); optional `use_group_type_embed` in `SelfAttention`. `configs/config.yaml` enables Phase 2 flags; `configs/experiment/paper_faithful.yaml` pins all legacy paths. **Deferred to Phase 3:** A1↔A2 cross-attention, walk-forward loop, Transformer temporal encoder.
 
 ## TL;DR
 
@@ -32,13 +34,15 @@ good and above the median for research code. The *learning stack itself*
 streams, label design, temporal encoder implementation) lags modern best
 practice and is where almost all the cheap alpha lives.
 
-Highest remaining ROI (after Phase 1 — see **Implementation status** above), in rough order:
+Highest remaining ROI (after Phase 1 + Phase 2 trunk — see **Implementation status**), in rough order:
 
-1. **Add LayerNorm + Dropout + residuals** to the four-stream trunk. Currently none of the three exist in the model.
-2. **Vectorise or replace `AttentionResetGRUCell`** — the Python `for t in range(seq_len)` loop forfeits CuDNN fusion and dominates epoch time at larger `his_t`.
-3. **Add explicit cross-stream information transfer** — A1 (temporal) and A2 (graph) still interact only via concat+self-attn; bilinear / cross-attention fusion is a well-known uplift.
-4. **Walk-forward retraining** instead of a single fixed split — required to claim robustness about forward windows; embargo validation alone does not replace refitting.
-5. **Gradient accumulation** (not yet) if you want larger effective batch on IC without blowing VRAM.
+1. **Cross-stream fusion** — A1 (temporal) and A2 (graph) still interact only via concat+self-attn; **cross-attention** `A2' = CrossAttn(Q=A2, KV=A1_seq)` (Phase 3).
+2. **Walk-forward retraining** instead of a single fixed split — required to claim robustness about forward windows (Phase 3).
+3. **Gradient accumulation** if you want larger effective batch on IC without blowing VRAM (still open).
+4. **Phase 3 data/graph** — lead-lag edges, rank-gauss, survivorship / PIT universe (see §9 Phase 3).
+5. **Transformer temporal encoder** option vs `gru_attn` (optional Phase 3 experiment).
+
+**Done in Phase 2 (config-gated):** trunk `LayerNorm` + `Dropout`, `nn.MultiheadAttention` latent path, `GRUWithAttention` temporal path, DropEdge, group-type embedding, configurable final `output_activation`.
 
 The rest of the document justifies the original audit findings; **§9** tracks what has already landed vs what is still open.
 
@@ -471,12 +475,13 @@ Expected combined effect: 15–40% faster training, better IC, fewer silent data
 
 ### Phase 2 — architecture uplift (1–3 weeks)
 
-- [ ] `LayerNorm` + `Dropout(0.1)` in the trunk (`proj_temporal`, `proj_cross`, before final GAT).
-- [ ] Replace custom `MarketLatentStateLearner` with `nn.MultiheadAttention`.
-- [ ] Replace `AttentionResetGRUCell` Python loop with either (a) native `nn.GRU` + a single post-hoc attention head or (b) a Transformer encoder with causal mask.
-- [ ] Add cross-attention between A1 and A2 (`A2' = CrossAttn(Q=A2, KV=A1_seq)`).
-- [ ] Add DropEdge at train time for the GAT.
-- [ ] Ship walk-forward retraining in `run_experiment.py` (new `training.walkforward` config block).
+- [x] `LayerNorm` + `Dropout` in the trunk (`ln_a1`, `ln_a2`, `ln_z`, `drop_z`, optional inter-`GATBlock` dropout) — gated by `model.use_trunk_regularisation` + `model.trunk_dropout`; `paper_faithful` pins off.
+- [x] Replace custom `MarketLatentStateLearner` with `nn.MultiheadAttention` — gated by `model.use_nn_multihead_attention`; legacy 8-`Linear` path retained; `paper_faithful` pins legacy.
+- [x] Add `GRUWithAttention` path (native `nn.GRU` + post-hoc attention readout) — gated by `model.temporal_encoder=gru_attn` vs `legacy`; `MultiScaleTemporalEncoder` respects the same flag; `paper_faithful` pins `legacy`. *Transformer encoder still open.*
+- [ ] Add cross-attention between A1 and A2 (`A2' = CrossAttn(Q=A2, KV=A1_seq)`) — **deferred to Phase 3.**
+- [x] Add DropEdge at train time — `graph.drop_edge_p`, applied once per forward in `StockPredictionModel` when `self.training`; `paper_faithful` pins `0.0`.
+- [ ] Ship walk-forward retraining in `run_experiment.py` (new `training.walkforward` config block) — **deferred;** see Phase 3 plan.
+- [x] Optional: `model.output_activation` (`none` / `elu` / `relu` / `sigmoid`) and `use_group_type_embed` in `SelfAttention` — **shipped**; `paper_faithful` pins `output_activation: relu` and `use_group_type_embed: false` to match pre-Phase-2 behaviour.
 
 ### Phase 3 — data and graph modernisation (2–4 weeks)
 
