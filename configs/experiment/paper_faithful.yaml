@@ -8,6 +8,7 @@ experiment_name: paper_faithful
 model:
   use_multi_scale: false
   use_self_attention: false
+  use_a1_a2_cross_attention: false
   activation: relu
   # Final head matched pre-Phase-2: same activation name as GAT (relu here)
   output_activation: relu
@@ -21,6 +22,9 @@ model:
 graph:
   use_multi_feature_edges: false
   drop_edge_p: 0.0
+  append_snapshot_age_days: false
+  use_lead_lag_features: false
+  use_sector_relation: false
 
 training:
   label_type: returns

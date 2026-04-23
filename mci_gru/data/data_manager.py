@@ -7,6 +7,7 @@ different sources (CSV, LSEG) and preparing it for model training.
 
 from __future__ import annotations
 
+from datetime import datetime
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -426,6 +427,39 @@ class DataManager:
         self.kdcode_list = kdcode_list
         return df_filtered, kdcode_list
 
+    def filter_complete_stocks_per_split(self, df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+        """Keep stocks that appear on every trading day within train, val, and test separately."""
+        print("Filtering stocks with per-split complete data...")
+
+        train_mask = (df["dt"] >= self.config.train_start) & (df["dt"] <= self.config.train_end)
+        val_mask = (df["dt"] >= self.config.val_start) & (df["dt"] <= self.config.val_end)
+        test_mask = (df["dt"] >= self.config.test_start) & (df["dt"] <= self.config.test_end)
+
+        def _complete_kdcodes(mask: pd.Series) -> set[str]:
+            sub = df[mask]
+            dates = sorted(sub["dt"].unique())
+            if not dates:
+                return set()
+            n = len(dates)
+            counts = sub["kdcode"].value_counts()
+            return set(counts[counts == n].index.astype(str))
+
+        k_train = _complete_kdcodes(train_mask)
+        k_val = _complete_kdcodes(val_mask)
+        k_test = _complete_kdcodes(test_mask)
+        kdcode_list = sorted(k_train & k_val & k_test)
+
+        print(f"  Train-complete: {len(k_train)}, val-complete: {len(k_val)}, test-complete: {len(k_test)}")
+        print(f"  Intersection (usable in all splits): {len(kdcode_list)}")
+
+        if len(kdcode_list) == 0:
+            raise ValueError("No stocks have complete data in every split after per-split filtering!")
+
+        df_filtered = df[df["kdcode"].isin(kdcode_list)].copy()
+        df_filtered = df_filtered.sort_values(["dt", "kdcode"]).reset_index(drop=True)
+        self.kdcode_list = kdcode_list
+        return df_filtered, kdcode_list
+
     def split_by_period(self, df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """
         Split data into train/val/test periods.
@@ -482,7 +516,23 @@ class CombinedDataset(Dataset):
         return item
 
 
-def combined_collate_fn(batch, edge_index, edge_weight, graph_schedule=None):
+def _snapshot_age_days(sample_date: str, valid_from: str) -> float:
+    ds = datetime.strptime(sample_date[:10], "%Y-%m-%d").date()
+    dv = datetime.strptime(valid_from[:10], "%Y-%m-%d").date()
+    return float((ds - dv).days)
+
+
+def combined_collate_fn(
+    batch,
+    edge_index,
+    edge_weight,
+    graph_schedule=None,
+    append_snapshot_age_days: bool = False,
+    static_graph_valid_from: str | None = None,
+    edge_index_sector: torch.Tensor | None = None,
+    edge_weight_sector: torch.Tensor | None = None,
+    use_sector_relation: bool = False,
+):
     """
     Custom collate function to create properly batched graph data.
 
@@ -494,22 +544,13 @@ def combined_collate_fn(batch, edge_index, edge_weight, graph_schedule=None):
     *edge_index* / *edge_weight* are replicated across the batch (static
     mode).
 
-    Args:
-        batch: List of dicts with 'time_series', 'graph_features', 'label'
-               and optional 'date' string.
-        edge_index: Fallback edge index tensor (2, num_edges) used when
-                    graph_schedule is None or samples have no date.
-        edge_weight: Fallback edge weight tensor (num_edges,).
-        graph_schedule: Optional GraphSchedule for per-sample graph lookup.
+    When ``append_snapshot_age_days`` is True, appends one column to 2-D
+    ``edge_weight`` (multi-feature edges only) using calendar age from the
+    active snapshot ``valid_from`` to the sample date.
 
-    Returns:
-        time_series: (batch_size, num_stocks, seq_len, features)
-        labels: (batch_size, num_stocks)
-        graph_features: (batch_size * num_stocks, features)
-        batched_edge_index: (2, total_edges_across_batch)
-        batched_edge_weight: (total_edges_across_batch,)
-        num_stocks: int
-        batch_dates: List[str] of length batch_size, or None
+    Returns a **9-tuple** (trainer contract): the first seven entries match
+    the historical layout; entries 7–8 are optional sector ``edge_index``
+    and ``edge_weight`` batched the same way (or ``None`` when disabled).
     """
     num_stocks = batch[0]["graph_features"].shape[0]
 
@@ -528,8 +569,15 @@ def combined_collate_fn(batch, edge_index, edge_weight, graph_schedule=None):
 
         if use_schedule:
             ei, ew = graph_schedule.get_graph_for_date(item["date"])
+            valid_from = graph_schedule.snapshot_valid_from_for_date(item["date"])
         else:
             ei, ew = edge_index, edge_weight
+            valid_from = static_graph_valid_from
+
+        if append_snapshot_age_days and ew.dim() == 2 and valid_from is not None and has_dates:
+            age = _snapshot_age_days(item["date"], valid_from)
+            col = torch.full((ew.shape[0], 1), age, dtype=ew.dtype, device=ew.device)
+            ew = torch.cat([ew, col], dim=-1)
 
         edge_index_list.append(ei + (i * num_stocks))
         edge_weight_list.append(ew)
@@ -540,6 +588,17 @@ def combined_collate_fn(batch, edge_index, edge_weight, graph_schedule=None):
 
     batch_dates = [item["date"] for item in batch] if has_dates else None
 
+    batched_ei_sec = None
+    batched_ew_sec = None
+    if use_sector_relation and edge_index_sector is not None and edge_weight_sector is not None:
+        esi_list = []
+        esw_list = []
+        for i in range(len(batch)):
+            esi_list.append(edge_index_sector + (i * num_stocks))
+            esw_list.append(edge_weight_sector)
+        batched_ei_sec = torch.cat(esi_list, dim=1)
+        batched_ew_sec = torch.cat(esw_list, dim=0)
+
     return (
         time_series,
         labels,
@@ -548,6 +607,8 @@ def combined_collate_fn(batch, edge_index, edge_weight, graph_schedule=None):
         batched_edge_weight,
         num_stocks,
         batch_dates,
+        batched_ei_sec,
+        batched_ew_sec,
     )
 
 
@@ -568,6 +629,11 @@ def create_data_loaders(
     test_dates: list[str] | None = None,
     dynamic_graph: bool = False,
     graph_schedule: GraphSchedule | None = None,
+    append_snapshot_age_days: bool = False,
+    static_graph_valid_from: str | None = None,
+    edge_index_sector: torch.Tensor | None = None,
+    edge_weight_sector: torch.Tensor | None = None,
+    use_sector_relation: bool = False,
 ) -> tuple:
     """
     Create train/val/test data loaders.
@@ -592,9 +658,14 @@ def create_data_loaders(
         graph_schedule: Precomputed graph snapshots.  When provided, each
                         sample's graph is resolved by date in the collate
                         function, allowing batch_size > 1 in dynamic mode.
+        append_snapshot_age_days: Append one ``edge_attr`` column from snapshot age (multi-feature only).
+        static_graph_valid_from: ``valid_from`` string for static graphs when snapshot age is on.
+        edge_index_sector / edge_weight_sector: Static sector-branch graph (optional).
+        use_sector_relation: When True, batch sector edges as tuple slots 7–8.
 
     Returns:
-        Tuple of (train_loader, val_loader, test_loader)
+        Tuple of (train_loader, val_loader, test_loader). Each batch is a **9-tuple**
+        from ``combined_collate_fn`` (see that function's docstring).
     """
     print("Creating data loaders...")
 
@@ -614,23 +685,24 @@ def create_data_loaders(
     print(f"  Val: ts={X_val_ts.shape}, graph={X_val_graph.shape}, labels={y_val.shape}")
     print(f"  Test: ts={X_test_ts.shape}, graph={X_test_graph.shape}")
 
+    attach_dates = dynamic_graph or append_snapshot_age_days
     train_dataset = CombinedDataset(
         X_train_ts,
         X_train_graph,
         y_train,
-        sample_dates=train_dates if dynamic_graph else None,
+        sample_dates=train_dates if attach_dates else None,
     )
     val_dataset = CombinedDataset(
         X_val_ts,
         X_val_graph,
         y_val,
-        sample_dates=val_dates if dynamic_graph else None,
+        sample_dates=val_dates if attach_dates else None,
     )
     test_dataset = CombinedDataset(
         X_test_ts,
         X_test_graph,
         y_test_dummy,
-        sample_dates=test_dates if dynamic_graph else None,
+        sample_dates=test_dates if attach_dates else None,
     )
 
     collate_fn = partial(
@@ -638,6 +710,11 @@ def create_data_loaders(
         edge_index=edge_index,
         edge_weight=edge_weight,
         graph_schedule=graph_schedule,
+        append_snapshot_age_days=append_snapshot_age_days,
+        static_graph_valid_from=static_graph_valid_from,
+        edge_index_sector=edge_index_sector,
+        edge_weight_sector=edge_weight_sector,
+        use_sector_relation=use_sector_relation,
     )
 
     train_loader = torch.utils.data.DataLoader(

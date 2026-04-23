@@ -18,12 +18,15 @@ import torch
 
 from mci_gru.data.data_manager import DataManager
 from mci_gru.data.preprocessing import (
+    apply_rank_gaussian,
     apply_rank_labels,
     compute_labels,
+    fit_rank_gaussian_reference,
     generate_graph_features,
     generate_time_series_features,
 )
 from mci_gru.graph import GraphBuilder
+from mci_gru.graph.sector_edges import build_sector_edges, load_sector_map_csv
 
 if TYPE_CHECKING:
     from mci_gru.config import ExperimentConfig
@@ -95,6 +98,20 @@ def _compute_norm_stats(
     return means, stds
 
 
+def _apply_pit_universe(df: pd.DataFrame, csv_path: str) -> pd.DataFrame:
+    """Filter rows to kdcode/date pairs covered by [valid_from, valid_to] in *csv_path*."""
+    pit = pd.read_csv(csv_path)
+    pit.columns = [str(c).strip().lower() for c in pit.columns]
+    if not {"kdcode", "valid_from", "valid_to"}.issubset(pit.columns):
+        raise ValueError("pit_universe_csv must have columns kdcode, valid_from, valid_to")
+    pit["vf"] = pd.to_datetime(pit["valid_from"]).dt.strftime("%Y-%m-%d")
+    pit["vt"] = pd.to_datetime(pit["valid_to"]).dt.strftime("%Y-%m-%d")
+    merged = df.merge(pit[["kdcode", "vf", "vt"]], on="kdcode", how="inner")
+    mask = (merged["dt"] >= merged["vf"]) & (merged["dt"] <= merged["vt"])
+    out = merged.loc[mask, df.columns]
+    return out.reset_index(drop=True)
+
+
 def _apply_normalisation(
     df: pd.DataFrame,
     feature_cols: list[str],
@@ -143,10 +160,13 @@ def _build_tensors(
     train_df: pd.DataFrame,
     val_df: pd.DataFrame,
     test_df: pd.DataFrame,
+    use_polars: bool = False,
 ) -> dict[str, Any]:
     """Build time-series tensors, graph features, and labels."""
     print("Generating time series features...")
-    stock_features = generate_time_series_features(df_filtered, kdcode_list, feature_cols, his_t)
+    stock_features = generate_time_series_features(
+        df_filtered, kdcode_list, feature_cols, his_t, use_polars=use_polars
+    )
     all_dates = sorted(df_filtered["dt"].unique())
 
     train_label_dates = train_dates[his_t:]
@@ -227,12 +247,30 @@ def prepare_data(
     del parts
     gc.collect()
 
-    means, stds = _compute_norm_stats(df_filled, feature_cols, config.data.train_end)
-    df_norm = _apply_normalisation(df_filled, feature_cols, means, stds)
+    if config.data.use_pit_universe and config.data.pit_universe_csv:
+        print("Applying PIT universe filter...")
+        df_filled = _apply_pit_universe(df_filled, config.data.pit_universe_csv)
+
+    rank_gauss_reference: dict[str, np.ndarray] | None = None
+    if config.data.normalisation == "zscore":
+        means, stds = _compute_norm_stats(df_filled, feature_cols, config.data.train_end)
+        df_norm = _apply_normalisation(df_filled, feature_cols, means, stds)
+    elif config.data.normalisation == "rank_gauss":
+        print("Applying rank-Gaussian normalisation (train fit)...")
+        train_mask = df_filled["dt"] <= config.data.train_end
+        train_slice = df_filled.loc[train_mask]
+        rank_gauss_reference = fit_rank_gaussian_reference(train_slice, feature_cols)
+        df_norm = apply_rank_gaussian(df_filled, feature_cols, rank_gauss_reference)
+        means, stds = {}, {}
+    else:
+        raise ValueError(f"Unknown normalisation: {config.data.normalisation!r}")
     del df_filled
     gc.collect()
 
-    df_filtered, kdcode_list = data_manager.filter_complete_stocks(df_norm)
+    if config.data.filter_stocks_per_split:
+        df_filtered, kdcode_list = data_manager.filter_complete_stocks_per_split(df_norm)
+    else:
+        df_filtered, kdcode_list = data_manager.filter_complete_stocks(df_norm)
     train_df, val_df, test_df = data_manager.split_by_period(df_filtered)
 
     train_dates = sorted(train_df["dt"].unique())
@@ -253,6 +291,7 @@ def prepare_data(
         train_df,
         val_df,
         test_df,
+        use_polars=config.data.use_polars,
     )
 
     print("Building correlation graph...")
@@ -263,6 +302,8 @@ def prepare_data(
         top_k=config.graph.top_k,
         top_k_metric=config.graph.top_k_metric,
         use_multi_feature_edges=config.graph.use_multi_feature_edges,
+        use_lead_lag_features=config.graph.use_lead_lag_features,
+        lead_lag_days=config.graph.lead_lag_days,
     )
     edge_index, edge_weight = graph_builder.build_graph(df, kdcode_list, config.data.train_start)
 
@@ -270,6 +311,16 @@ def prepare_data(
     if config.graph.update_frequency_months > 0:
         graph_schedule = graph_builder.precompute_snapshots(
             df, kdcode_list, config.data.train_start, config.data.test_end
+        )
+
+    edge_index_sector = None
+    edge_weight_sector = None
+    if config.graph.use_sector_relation and config.graph.sector_map_csv:
+        sector_map = load_sector_map_csv(config.graph.sector_map_csv)
+        edge_index_sector, edge_weight_sector = build_sector_edges(
+            kdcode_list,
+            sector_map,
+            config.graph.sector_top_k,
         )
 
     return {
@@ -282,6 +333,10 @@ def prepare_data(
         "df": df,
         "norm_means": means,
         "norm_stds": stds,
+        "graph_static_valid_from": config.data.train_start,
+        "edge_index_sector": edge_index_sector,
+        "edge_weight_sector": edge_weight_sector,
+        "rank_gauss_reference": rank_gauss_reference,
     }
 
 
@@ -349,6 +404,7 @@ def prepare_data_index_level(
         train_df,
         val_df,
         test_df,
+        use_polars=config.data.use_polars,
     )
 
     edge_index = torch.empty(2, 0, dtype=torch.long)
@@ -361,7 +417,12 @@ def prepare_data_index_level(
         "edge_weight": edge_weight,
         "feature_cols": feature_cols,
         "graph_builder": None,
+        "graph_schedule": None,
         "df": df_filtered,
         "norm_means": means,
         "norm_stds": stds,
+        "graph_static_valid_from": config.data.train_start,
+        "edge_index_sector": None,
+        "edge_weight_sector": None,
+        "rank_gauss_reference": None,
     }

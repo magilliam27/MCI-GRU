@@ -95,6 +95,21 @@ class ImprovedGRU(nn.Module):
             layer_input = torch.stack(outputs, dim=2)
         return layer_input[:, :, -1, :]
 
+    def forward_sequence(self, x: torch.Tensor) -> torch.Tensor:
+        """Return all time steps from the final layer, shape ``(B, N, T, H)``."""
+        batch_size, num_stocks, seq_len, _ = x.shape
+        device = x.device
+        layer_input = x
+        for layer_idx, layer in enumerate(self.layers):
+            hidden_size = self.hidden_sizes[layer_idx]
+            h = torch.zeros(batch_size, num_stocks, hidden_size, device=device)
+            outputs = []
+            for t in range(seq_len):
+                h = layer(layer_input[:, :, t, :], h)
+                outputs.append(h)
+            layer_input = torch.stack(outputs, dim=2)
+        return layer_input
+
 
 class GRUWithAttention(nn.Module):
     """
@@ -132,6 +147,56 @@ class GRUWithAttention(nn.Module):
         y = self.ln(h_t + ctx)
         return y.view(batch, num_stocks, -1)
 
+    def forward_sequence(self, x: torch.Tensor) -> torch.Tensor:
+        """GRU hidden states at every step (before attention readout), ``(B, N, T, H)``."""
+        batch, num_stocks, tlen, f_in = x.shape
+        x2 = x.reshape(batch * num_stocks, tlen, f_in)
+        out, _ = self.gru(x2)
+        return out.view(batch, num_stocks, tlen, -1)
+
+
+class CausalTransformerEncoder(nn.Module):
+    """Causal Transformer over the fast temporal path (Phase 3)."""
+
+    def __init__(
+        self,
+        input_size: int,
+        d_model: int,
+        nhead: int = 4,
+        num_layers: int = 2,
+        dropout: float = 0.1,
+    ):
+        super().__init__()
+        self.input_proj = nn.Linear(input_size, d_model)
+        enc_layer = nn.TransformerEncoderLayer(
+            d_model,
+            nhead,
+            dim_feedforward=4 * d_model,
+            dropout=dropout,
+            batch_first=True,
+        )
+        self.encoder = nn.TransformerEncoder(enc_layer, num_layers=num_layers)
+        self.d_model = d_model
+        self.output_size = d_model
+
+    def forward_sequence(self, x: torch.Tensor) -> torch.Tensor:
+        batch, num_stocks, tlen, f_in = x.shape
+        z = self.input_proj(x).reshape(batch * num_stocks, tlen, self.d_model)
+        try:
+            out = self.encoder(z, is_causal=True)
+        except TypeError:
+            t = tlen
+            causal = torch.triu(
+                torch.full((t, t), float("-inf"), device=z.device, dtype=z.dtype),
+                diagonal=1,
+            )
+            out = self.encoder(z, mask=causal)
+        return out.view(batch, num_stocks, tlen, self.d_model)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        seq = self.forward_sequence(x)
+        return seq[:, :, -1, :]
+
 
 class MultiScaleTemporalEncoder(nn.Module):
     """
@@ -139,7 +204,8 @@ class MultiScaleTemporalEncoder(nn.Module):
 
     The ``temporal_encoder`` string selects the recurrent backbone:
     ``"legacy"`` = :class:`ImprovedGRU` (paper cell, Python loop);
-    ``"gru_attn"`` = :class:`GRUWithAttention` (CuDNN-fused + attention readout).
+    ``"gru_attn"`` = :class:`GRUWithAttention` (CuDNN-fused + attention readout);
+    ``"transformer"`` = causal :class:`CausalTransformerEncoder` on the fast path.
     """
 
     def __init__(
@@ -161,6 +227,10 @@ class MultiScaleTemporalEncoder(nn.Module):
         if temporal_encoder == "legacy":
             self.fast_gru = ImprovedGRU(input_size, hidden_sizes)
             self.slow_gru = ImprovedGRU(input_size, hidden_sizes)
+        elif temporal_encoder == "transformer":
+            d_h = hidden_sizes[-1]
+            self.fast_gru = CausalTransformerEncoder(input_size, d_h)
+            self.slow_gru = GRUWithAttention(input_size, hidden_sizes)
         else:
             self.fast_gru = GRUWithAttention(input_size, hidden_sizes)
             self.slow_gru = GRUWithAttention(input_size, hidden_sizes)
@@ -187,6 +257,14 @@ class MultiScaleTemporalEncoder(nn.Module):
         slow_out = self.slow_gru(x_slow)
         combined = torch.cat([fast_out, slow_out], dim=-1)
         return self.combiner(combined)
+
+    def forward_fast_sequence(self, x: torch.Tensor) -> torch.Tensor:
+        """Fast-branch sequence ``(B, N, T, H)`` for cross-stream attention."""
+        if hasattr(self.fast_gru, "forward_sequence"):
+            return self.fast_gru.forward_sequence(x)
+        if isinstance(self.fast_gru, CausalTransformerEncoder):
+            return self.fast_gru.forward_sequence(x)
+        raise TypeError("Fast temporal module does not expose forward_sequence")
 
 
 def _make_activation(name: str) -> nn.Module:
@@ -456,6 +534,9 @@ class StockPredictionModel(nn.Module):
         use_nn_multihead_attention: bool = False,
         temporal_encoder: str = "legacy",
         drop_edge_p: float = 0.0,
+        use_sector_relation: bool = False,
+        use_a1_a2_cross_attention: bool = False,
+        cross_a2_num_heads: int = 4,
     ):
         super(StockPredictionModel, self).__init__()
         if gru_hidden_sizes is None:
@@ -466,6 +547,8 @@ class StockPredictionModel(nn.Module):
         tdrop = trunk_dropout if tr else 0.0
         self._use_trunk_regularisation = tr
         gat_inter_drop = tdrop if tr else 0.0
+        self.use_sector_relation = use_sector_relation
+        self.use_a1_a2_cross_attention = use_a1_a2_cross_attention
 
         # Temporal: legacy ImprovedGRU vs GRU+attention (or multi-scale variants)
         if use_multi_scale:
@@ -478,6 +561,10 @@ class StockPredictionModel(nn.Module):
             )
         elif temporal_encoder == "legacy":
             self.temporal_encoder = ImprovedGRU(input_size, hidden_sizes=gru_hidden_sizes)
+        elif temporal_encoder == "transformer":
+            self.temporal_encoder = CausalTransformerEncoder(
+                input_size, gru_hidden_sizes[-1]
+            )
         else:
             self.temporal_encoder = GRUWithAttention(input_size, gru_hidden_sizes)
 
@@ -492,9 +579,36 @@ class StockPredictionModel(nn.Module):
             edge_feature_dim=edge_feature_dim,
             inter_layer_dropout=gat_inter_drop,
         )
+        if use_sector_relation:
+            self.gat_layer_sector = GATBlock(
+                in_channels=input_size,
+                hidden=hidden_size_gat1,
+                out_channels=output_gat1,
+                heads=gat_heads,
+                activation=activation,
+                edge_feature_dim=1,
+                inter_layer_dropout=gat_inter_drop,
+            )
+            self.gat_stream_fuse = nn.Linear(output_gat1 * 2, output_gat1)
+        else:
+            self.gat_layer_sector = None
+            self.gat_stream_fuse = None
+
         self.align_dim = hidden_size_gat1
         self.proj_temporal = nn.Linear(gru_output_size, self.align_dim)
         self.proj_cross = nn.Linear(output_gat1, self.align_dim)
+
+        if use_a1_a2_cross_attention:
+            self.proj_a1_seq = nn.Linear(gru_output_size, self.align_dim)
+            self.cross_a1_a2 = nn.MultiheadAttention(
+                self.align_dim,
+                cross_a2_num_heads,
+                batch_first=True,
+                dropout=tdrop,
+            )
+        else:
+            self.proj_a1_seq = None
+            self.cross_a1_a2 = None
 
         self.ln_a1 = _maybe_ln_ch(self.align_dim, tr)
         self.ln_a2 = _maybe_ln_ch(self.align_dim, tr)
@@ -532,6 +646,14 @@ class StockPredictionModel(nn.Module):
         self.output_act = _make_output_activation(output_activation)
         self.drop_edge_p = float(drop_edge_p)
 
+    def _temporal_fast_sequence(self, x_time_series: torch.Tensor) -> torch.Tensor:
+        enc = self.temporal_encoder
+        if isinstance(enc, MultiScaleTemporalEncoder):
+            return enc.forward_fast_sequence(x_time_series)
+        if hasattr(enc, "forward_sequence"):
+            return enc.forward_sequence(x_time_series)
+        raise TypeError("Temporal encoder does not expose a sequence for cross-attention")
+
     def forward(
         self,
         x_time_series: torch.Tensor,
@@ -539,11 +661,25 @@ class StockPredictionModel(nn.Module):
         edge_index: torch.Tensor,
         edge_weight: torch.Tensor,
         num_stocks: Optional[int] = None,
+        edge_index_sector: Optional[torch.Tensor] = None,
+        edge_weight_sector: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         training = self.training
         e_idx, e_wt = _apply_edge_dropout(
             edge_index, edge_weight, self.drop_edge_p, training=training
         )
+        if (
+            self.use_sector_relation
+            and self.gat_layer_sector is not None
+            and edge_index_sector is not None
+            and edge_weight_sector is not None
+        ):
+            e_idx_s, e_wt_s = _apply_edge_dropout(
+                edge_index_sector, edge_weight_sector, self.drop_edge_p, training=training
+            )
+        else:
+            e_idx_s, e_wt_s = None, None
+
         batch_size = x_time_series.shape[0]
         if num_stocks is None:
             num_stocks = x_time_series.shape[1]
@@ -553,8 +689,23 @@ class StockPredictionModel(nn.Module):
         a1 = self.proj_temporal(a1_raw)
         a1 = self.ln_a1(a1)
 
-        a2_raw = self.gat_layer(x_graph, e_idx, e_wt)
+        a2_corr = self.gat_layer(x_graph, e_idx, e_wt)
+        if self.gat_layer_sector is not None and e_idx_s is not None and e_wt_s is not None:
+            a2_sec = self.gat_layer_sector(x_graph, e_idx_s, e_wt_s)
+            a2_raw = self.gat_stream_fuse(torch.cat([a2_corr, a2_sec], dim=-1))
+        else:
+            a2_raw = a2_corr
+
         a2 = self.proj_cross(a2_raw)
+        if self.use_a1_a2_cross_attention and self.cross_a1_a2 is not None and self.proj_a1_seq is not None:
+            seq = self._temporal_fast_sequence(x_time_series)
+            seq = self.proj_a1_seq(seq)
+            bn = batch_size * num_stocks
+            tlen = seq.shape[2]
+            q = a2.view(batch_size, num_stocks, -1).reshape(bn, 1, self.align_dim)
+            kv = seq.reshape(bn, tlen, self.align_dim)
+            cross_out, _ = self.cross_a1_a2(q, kv, kv, need_weights=False)
+            a2 = a2 + cross_out.reshape(batch_size * num_stocks, -1)
         a2 = self.ln_a2(a2)
 
         b1, b2 = self.latent_learner(a1, a2)
@@ -608,4 +759,7 @@ def create_model(input_size: int, config: Dict[str, Any]) -> StockPredictionMode
         use_nn_multihead_attention=config.get("use_nn_multihead_attention", False),
         temporal_encoder=config.get("temporal_encoder", "legacy"),
         drop_edge_p=float(config.get("drop_edge_p", 0.0)),
+        use_sector_relation=bool(config.get("use_sector_relation", False)),
+        use_a1_a2_cross_attention=bool(config.get("use_a1_a2_cross_attention", False)),
+        cross_a2_num_heads=int(config.get("cross_a2_num_heads", 4)),
     )

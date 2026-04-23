@@ -4,7 +4,8 @@ Tests for dynamic correlation graph wiring.
 Covers:
 - update_frequency_months=0: static path; update_if_needed never triggers; collate returns None dates.
 - update_frequency_months>0: GraphSchedule precomputation, per-date lookup, and no-lookahead.
-- combined_collate_fn: per-sample graph lookup via GraphSchedule; 7-tuple contract.
+- combined_collate_fn: per-sample graph lookup via GraphSchedule; 9-tuple contract
+  (7 core fields + optional sector edge tensors).
 - create_data_loaders: shuffle=False when dynamic_graph=True, batch_size NOT clamped to 1.
 """
 
@@ -85,9 +86,10 @@ class TestStaticGraph:
             collate_fn=partial(combined_collate_fn, edge_index=ei, edge_weight=ew),
         )
         batch = next(iter(loader))
-        assert len(batch) == 7
+        assert len(batch) == 9
         batch_dates = batch[6]
         assert batch_dates is None
+        assert batch[7] is None and batch[8] is None
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +139,7 @@ class TestDynamicGraph:
             collate_fn=partial(combined_collate_fn, edge_index=ei, edge_weight=ew),
         )
         batch = next(iter(loader))
-        assert len(batch) == 7
+        assert len(batch) == 9
         batch_dates = batch[6]
         assert batch_dates == ["2021-01-01", "2021-01-02"]
 
@@ -259,8 +261,8 @@ class TestCollateWithSchedule:
             ),
         )
         batch = next(iter(loader))
-        assert len(batch) == 7
-        _ts, _labels, _gf, b_ei, b_ew, ns, b_dates = batch
+        assert len(batch) == 9
+        _ts, _labels, _gf, b_ei, b_ew, ns, b_dates, _ei_s, _ew_s = batch
         assert ns == n_stocks
         assert b_dates == dates
 
@@ -322,10 +324,10 @@ class TestCreateDataLoaders:
 
         assert isinstance(train_loader.sampler, SequentialSampler)
 
-    def test_batch_yields_7_tuple(self):
+    def test_batch_yields_9_tuple(self):
         train_loader, _, _ = self._loaders(dynamic_graph=True, batch_size=4)
         batch = next(iter(train_loader))
-        assert len(batch) == 7
+        assert len(batch) == 9
 
     def test_batch_dates_not_none_in_dynamic_mode(self):
         train_loader, _, _ = self._loaders(dynamic_graph=True, batch_size=4)
@@ -605,7 +607,7 @@ class TestMultiFeatureSchedulePassthrough:
             ),
         )
         batch = next(iter(loader))
-        _ts, _labels, _gf, b_ei, b_ea, ns, b_dates = batch
+        _ts, _labels, _gf, b_ei, b_ea, ns, b_dates, _s1, _s2 = batch
         assert ns == n_stocks
         assert b_ea.dim() == 2
         assert b_ea.shape[1] == 4

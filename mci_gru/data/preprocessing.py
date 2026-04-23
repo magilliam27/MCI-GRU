@@ -11,7 +11,45 @@ Contains pure data-transformation functions extracted from run_experiment.py:
 import numpy as np
 import pandas as pd
 from numpy.lib.stride_tricks import sliding_window_view
+from scipy import stats
 from tqdm import tqdm
+
+
+def fit_rank_gaussian_reference(
+    train_df: pd.DataFrame,
+    feature_cols: list[str],
+) -> dict[str, np.ndarray]:
+    """Sorted train values per feature for rank-Gaussian inverse-CDF mapping."""
+    ref: dict[str, np.ndarray] = {}
+    for col in feature_cols:
+        if col not in train_df.columns:
+            continue
+        arr = train_df[col].dropna().to_numpy(dtype=np.float64)
+        if arr.size == 0:
+            continue
+        ref[col] = np.sort(arr)
+    return ref
+
+
+def apply_rank_gaussian(
+    df: pd.DataFrame,
+    feature_cols: list[str],
+    reference: dict[str, np.ndarray],
+) -> pd.DataFrame:
+    """Map each feature through empirical rank → Gaussian quantiles (train ``reference``)."""
+    out = df.copy()
+    for col in feature_cols:
+        if col not in reference or col not in out.columns:
+            continue
+        sv = reference[col]
+        n = len(sv)
+        if n == 0:
+            continue
+        vals = out[col].to_numpy(dtype=np.float64)
+        ranks = np.searchsorted(sv, vals, side="right").astype(np.float64)
+        u = np.clip((ranks + 0.5) / (n + 1.0), 1e-6, 1.0 - 1e-6)
+        out[col] = stats.norm.ppf(u)
+    return out
 
 
 def generate_time_series_features(
@@ -19,6 +57,7 @@ def generate_time_series_features(
     kdcode_list: list[str],
     feature_cols: list[str],
     his_t: int,
+    use_polars: bool = False,
 ) -> np.ndarray:
     """Build sliding-window feature tensors for all stocks.
 
@@ -36,18 +75,38 @@ def generate_time_series_features(
     df_subset = df_subset.drop_duplicates(subset=["dt", "kdcode"], keep="last")
 
     pivot_data = np.zeros((len(all_dates), num_stocks, num_features), dtype=np.float32)
+    pl = None
+    if use_polars:
+        try:
+            import polars as pl_mod  # noqa: PLC0415
+
+            pl = pl_mod
+        except ImportError:
+            pl = None
+
     for fi, col in enumerate(
         tqdm(feature_cols, desc="  Building pivot (per-feature)", leave=False)
     ):
-        wide = df_subset.pivot_table(
-            index="dt",
-            columns="kdcode",
-            values=col,
-            aggfunc="last",
-            fill_value=0.0,
-        )
-        wide = wide.reindex(index=all_dates, columns=kdcode_list, fill_value=0.0)
-        pivot_data[:, :, fi] = wide.to_numpy(dtype=np.float32, copy=False)
+        if pl is not None:
+            pdf = pl.from_pandas(df_subset[["dt", "kdcode", col]].copy())
+            wide = pdf.pivot(on="kdcode", index="dt", values=col, aggregate_function="last")
+            wide = wide.fill_null(0.0)
+            wide_pd = wide.to_pandas()
+            if "dt" in wide_pd.columns:
+                wide_pd = wide_pd.set_index("dt")
+            wide_pd = wide_pd.reindex(index=all_dates)
+            wide_pd = wide_pd.reindex(columns=kdcode_list, fill_value=0.0)
+            pivot_data[:, :, fi] = wide_pd.to_numpy(dtype=np.float32, copy=False)
+        else:
+            wide = df_subset.pivot_table(
+                index="dt",
+                columns="kdcode",
+                values=col,
+                aggfunc="last",
+                fill_value=0.0,
+            )
+            wide = wide.reindex(index=all_dates, columns=kdcode_list, fill_value=0.0)
+            pivot_data[:, :, fi] = wide.to_numpy(dtype=np.float32, copy=False)
 
     # (T, S, F) -> sliding windows along time -> (T - his_t + 1, S, F, his_t) -> keep num_usable_days
     windows = sliding_window_view(pivot_data, his_t, axis=0)

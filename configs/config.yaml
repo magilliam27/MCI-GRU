@@ -28,7 +28,9 @@ model:
   use_trunk_regularisation: true
   trunk_dropout: 0.1
   use_nn_multihead_attention: true
-  temporal_encoder: gru_attn    # legacy = paper cell + Python loop; gru_attn = fused GRU
+  temporal_encoder: gru_attn    # legacy | gru_attn | transformer
+  use_a1_a2_cross_attention: false
+  cross_a2_num_heads: 4
 
 # Graph configuration
 graph:
@@ -39,6 +41,12 @@ graph:
   top_k_metric: corr            # corr | abs_corr (only when top_k > 0)
   use_multi_feature_edges: true  # true => (E,4) edge_attr; false => scalar (E,)
   drop_edge_p: 0.1              # train-time GAT edge dropout; 0 disables
+  append_snapshot_age_days: false
+  use_lead_lag_features: false
+  lead_lag_days: [1, 2, 3, 5]
+  use_sector_relation: false
+  sector_map_csv: null
+  sector_top_k: 10
 
 # Training configuration
 training:
@@ -56,6 +64,14 @@ training:
   lr_scheduler: cosine         # cosine | none
   use_amp: true                # CUDA autocast + GradScaler (no-op on CPU)
   selection_metric: val_ic     # val_ic | val_loss — early stopping / checkpoint
+  walkforward:
+    enabled: false
+    window_train_years: 4
+    window_val_months: 6
+    test_span_months: 3
+    step_months: 6
+    expanding: false
+    max_windows: null
 
 # Local MLflow tracking (file store under tracking_uri)
 tracking:

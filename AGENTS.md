@@ -43,7 +43,7 @@ tests/               ← pytest suite + backtest scripts
 
 1. **No lookahead**: normalization stats, graph edges, and labels use strict train-period cutoffs.
 2. **Dynamic graph uses `GraphSchedule`**: precomputed snapshots indexed by date; any batch size works.
-3. **`combined_collate_fn` returns a 7-tuple**: `(time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates)`. Here `edge_weight` is either shape `(E,)` (legacy scalar weight) or `(E, 4)` when `graph.use_multi_feature_edges=true`; collate concatenates along dim 0.
+3. **`combined_collate_fn` returns a 9-tuple**: `(time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates, edge_index_sector, edge_weight_sector)`. The first seven entries match the historical contract; the last two are `None` unless `graph.use_sector_relation=true`. `edge_weight` is `(E,)`, `(E, 4)`, or wider when lead-lag / snapshot-age columns are enabled; collate concatenates along dim 0.
 4. **Ensemble averaging**: `train_multiple_models` trains N independent models; prediction = mean.
 5. **Paper-trade inference does not use `GraphBuilder`**: it loads a frozen `graph_data.pt`.
 
@@ -83,12 +83,12 @@ The file `.cursor/plans/graph_signal_upgrades_c28cf640.plan.md` has two layers: 
 
 - **Dynamic schedule**: If `graph.update_frequency_months > 0`, `prepare_data` in `mci_gru/pipeline.py` calls `GraphBuilder.precompute_snapshots(...)` and passes `graph_schedule` into `create_data_loaders(..., dynamic_graph=True)`. Each batch resolves edges for the sample date via the schedule (see `mci_gru/data/data_manager.py` `combined_collate_fn`).
 - **Lever 1a (partial)**: `GraphConfig.top_k` and `GraphConfig.top_k_metric` (`"corr"` or `"abs_corr"`). `top_k == 0` keeps the legacy global threshold `corr > judge_value`. `top_k > 0` selects per-node top-K neighbours (`mci_gru/graph/builder.py` `build_edges` / `_select_edges_topk`).
-- **Lever 1c (partial vs plan)**: `GraphConfig.use_multi_feature_edges` makes `build_edges` return a **4-D** edge tensor `[corr, |corr|, corr^2, rank_pct]` instead of a scalar `(E,)`. The plan text also mentioned a 5th channel (`snapshot_age_days`) and `edge_dim=5`; the codebase uses **four** features and `run_experiment.py` sets `edge_feature_dim` to **4** or **1** when constructing the model. GAT blocks consume that width via `create_model(..., edge_feature_dim=...)`.
+- **Lever 1c + Phase 3**: `GraphConfig.use_multi_feature_edges` makes `build_edges` return at least **4** channels `[corr, |corr|, corr^2, rank_pct]`, optionally **+2** lead–lag columns (`use_lead_lag_features`). `append_snapshot_age_days` adds **one** column at collate time. `run_experiment._edge_feature_dim` must match the final width passed to `create_model`.
 - **Experiments**: Use Hydra includes such as `configs/experiment/correlation_dynamic.yaml` (6-month updates) or `correlation_dynamic_topk20_pos.yaml` (top-K + multi-feature + updates) for dynamic-graph presets. Base `configs/config.yaml` defaults: static graph, `top_k=0`, `use_multi_feature_edges=true`.
 
 **Still roadmap / not implemented as described in that plan**
 
-- Signed two-relation / `RGATConv` (Lever 1b), lead–lag edges (Lever 2a), graph-aware temporal encoder (Lever 3a), shorter cadence defaults (Lever 4b), rate-of-change edge feature (Lever 4c), fifth edge feature column, and the optional graph-zeroed ablation workflow called out in the plan.
+- `RGATConv` / true multi-relation message passing (Phase 3 ships **dual GAT + fuse** for sector instead); graph-aware temporal encoder (Lever 3a), shorter cadence defaults (Lever 4b), rate-of-change edge feature (Lever 4c), and the optional graph-zeroed ablation workflow called out in the plan.
 
 **Diagnostic**
 

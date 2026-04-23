@@ -47,6 +47,12 @@ class GraphSchedule:
         idx = max(idx, 0)
         return self._edge_indices[idx], self._edge_weights[idx]
 
+    def snapshot_valid_from_for_date(self, date: str) -> str:
+        """Return the snapshot ``valid_from`` date string active on *date*."""
+        idx = bisect.bisect_right(self._dates, date) - 1
+        idx = max(idx, 0)
+        return self._dates[idx]
+
     def get_initial_graph(self) -> tuple[torch.Tensor, torch.Tensor]:
         """Return the first snapshot (used for graph_data.pt / static fallback)."""
         return self._edge_indices[0], self._edge_weights[0]
@@ -71,6 +77,8 @@ class GraphBuilder:
         top_k: int = 0,
         top_k_metric: str = "corr",
         use_multi_feature_edges: bool = False,
+        use_lead_lag_features: bool = False,
+        lead_lag_days: list[int] | None = None,
     ):
         if top_k < 0:
             raise ValueError(f"top_k must be >= 0, got {top_k}")
@@ -86,15 +94,17 @@ class GraphBuilder:
         self.top_k = top_k
         self.top_k_metric = top_k_metric
         self.use_multi_feature_edges = use_multi_feature_edges
+        self.use_lead_lag_features = use_lead_lag_features
+        self.lead_lag_days = list(lead_lag_days) if lead_lag_days is not None else [1, 2, 3, 5]
         self.last_update_date: str | None = None
         self.current_edge_index: torch.Tensor | None = None
         self.current_edge_weight: torch.Tensor | None = None
         self.correlation_matrix: pd.DataFrame | None = None
 
-    def compute_correlation_matrix(
+    def _daily_returns_pivot(
         self, df: pd.DataFrame, kdcode_list: list[str], end_date: str
     ) -> pd.DataFrame:
-        """Per paper Section 3.3.2: use past year of returns for correlation."""
+        """Aligned daily return matrix (dates × stocks) up to *end_date* (exclusive)."""
         df = df.copy()
 
         if "prev_close" in df.columns:
@@ -113,12 +123,21 @@ class GraphBuilder:
         pivot = df.pivot_table(index="dt", columns="kdcode", values="daily_return")
         pivot = pivot.reindex(columns=kdcode_list)
         pivot = pivot.fillna(0)
-        corr_matrix = pivot.corr()
+        return pivot
 
-        return corr_matrix
+    def compute_correlation_matrix(
+        self, df: pd.DataFrame, kdcode_list: list[str], end_date: str
+    ) -> pd.DataFrame:
+        """Per paper Section 3.3.2: use past year of returns for correlation."""
+        pivot = self._daily_returns_pivot(df, kdcode_list, end_date)
+        return pivot.corr()
 
     def build_edges(
-        self, corr_matrix: pd.DataFrame, kdcode_list: list[str], show_progress: bool = True
+        self,
+        corr_matrix: pd.DataFrame,
+        kdcode_list: list[str],
+        show_progress: bool = True,
+        returns_pivot: pd.DataFrame | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Build edge tensors from a correlation matrix using vectorised numpy ops.
 
@@ -133,14 +152,9 @@ class GraphBuilder:
         Output (controlled by ``self.use_multi_feature_edges``):
         - ``False`` (legacy): returns ``(edge_index (2,E), edge_weight (E,))`` with
           the signed correlation as the scalar weight.
-        - ``True``: returns ``(edge_index (2,E), edge_attr (E,4))`` with columns
-          ``[corr, |corr|, corr^2, rank_pct]``. ``corr`` is always signed so the
-          GAT can distinguish co-movement from divergence even under "abs_corr"
-          ranking. ``rank_pct in (0, 1]`` is the within-row percentile rank by
-          the active selection metric (1.0 = strongest neighbour). For the
-          legacy threshold path ``rank_pct`` is set to a constant 0 sentinel
-          because per-row ranking is poorly defined when the per-row count is
-          unbounded - the column is constant and the model learns to ignore it.
+        - ``True``: returns ``(edge_index (2,E), edge_attr (E,4+))`` with columns
+          ``[corr, |corr|, corr^2, rank_pct]`` plus optional lead–lag columns when
+          ``use_lead_lag_features`` and *returns_pivot* are set.
         """
         corr = corr_matrix.values
 
@@ -150,9 +164,12 @@ class GraphBuilder:
             rows, cols, kept_corr = self._select_edges_threshold(corr)
             rank_pct = np.zeros_like(kept_corr)
 
+        n_extra = 2 if (self.use_lead_lag_features and self.use_multi_feature_edges) else 0
+        base_f = 4
+
         if len(rows) == 0:
             empty_attr = (
-                torch.zeros((0, 4), dtype=torch.float)
+                torch.zeros((0, base_f + n_extra), dtype=torch.float)
                 if self.use_multi_feature_edges
                 else torch.zeros(0, dtype=torch.float)
             )
@@ -165,9 +182,57 @@ class GraphBuilder:
                 [kept_corr, np.abs(kept_corr), kept_corr * kept_corr, rank_pct],
                 axis=1,
             ).astype(np.float32)
+            if self.use_lead_lag_features and returns_pivot is not None:
+                lag_n, lag_c = self._lead_lag_columns(returns_pivot, rows, cols)
+                edge_attr = np.concatenate([edge_attr, lag_n[:, None], lag_c[:, None]], axis=1)
             return edge_index, torch.from_numpy(edge_attr)
 
         return edge_index, torch.tensor(kept_corr, dtype=torch.float)
+
+    def _lead_lag_columns(
+        self,
+        returns_pivot: pd.DataFrame,
+        rows: np.ndarray,
+        cols: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Best lag (among 0 and ``lead_lag_days``) by strongest |corr|; signed corr stored."""
+        vals = returns_pivot.to_numpy(dtype=np.float64)
+        if vals.size == 0:
+            z = np.zeros(len(rows), dtype=np.float32)
+            return z, z
+        max_lag = max(self.lead_lag_days) if self.lead_lag_days else 1
+        lag_norms = np.zeros(len(rows), dtype=np.float32)
+        lag_corrs = np.zeros(len(rows), dtype=np.float32)
+        for e, (ri, ci) in enumerate(zip(rows, cols)):
+            a = vals[:, int(ri)]
+            b = vals[:, int(ci)]
+            L = min(len(a), len(b))
+            if L < 5:
+                continue
+            a = a[:L]
+            b = b[:L]
+            best_abs = -1.0
+            best_lag = 0
+            best_c = 0.0
+            for lag in [0, *self.lead_lag_days]:
+                if lag == 0:
+                    aa, bb = a, b
+                else:
+                    if lag >= L:
+                        continue
+                    aa = a[: L - lag]
+                    bb = b[lag:L]
+                m = len(aa)
+                if m < 5 or np.std(aa) < 1e-12 or np.std(bb) < 1e-12:
+                    continue
+                cc = float(np.corrcoef(aa, bb)[0, 1])
+                if abs(cc) > best_abs:
+                    best_abs = abs(cc)
+                    best_lag = lag
+                    best_c = cc
+            lag_norms[e] = float(best_lag) / float(max_lag) if max_lag > 0 else 0.0
+            lag_corrs[e] = float(best_c)
+        return lag_norms, lag_corrs
 
     def _select_edges_threshold(
         self, corr: np.ndarray
@@ -250,14 +315,21 @@ class GraphBuilder:
             mode = f"top_k={self.top_k} ({self.top_k_metric})"
         else:
             mode = f"judge_value={self.judge_value}"
-        feat_mode = "multi-feature(4)" if self.use_multi_feature_edges else "scalar"
+        n_feat = 4
+        if self.use_multi_feature_edges and self.use_lead_lag_features:
+            n_feat += 2
+        feat_mode = (
+            f"multi-feature({n_feat})" if self.use_multi_feature_edges else "scalar"
+        )
         print(
             f"Building graph ({mode}, lookback={self.corr_lookback_days} days, "
             f"edges={feat_mode})..."
         )
-        self.correlation_matrix = self.compute_correlation_matrix(df, kdcode_list, end_date)
+        pivot = self._daily_returns_pivot(df, kdcode_list, end_date)
+        self.correlation_matrix = pivot.corr()
+        rp = pivot if self.use_lead_lag_features else None
         edge_index, edge_weight = self.build_edges(
-            self.correlation_matrix, kdcode_list, show_progress
+            self.correlation_matrix, kdcode_list, show_progress, returns_pivot=rp
         )
         self.last_update_date = end_date
         self.current_edge_index = edge_index

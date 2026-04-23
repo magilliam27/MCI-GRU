@@ -30,6 +30,12 @@ class DataConfig:
         test_end: Test period end date
         skip_embargo_check: If True, skip train/val and val/test label_t-day embargo validation
             (not recommended; emits a warning when gaps are too small).
+        normalisation: ``zscore`` (default) or ``rank_gauss`` (Gaussianised ranks fit on train).
+        use_polars: If True, use Polars in selected preprocessing hot paths (pandas in/out).
+        filter_stocks_per_split: If True, keep only stocks complete within each split
+            (train / val / test) and intersect; mitigates full-calendar survivorship bias.
+        use_pit_universe: If True, apply ``pit_universe_csv`` row validity when set.
+        pit_universe_csv: Optional CSV with kdcode, valid_from, valid_to for PIT filtering.
     """
 
     universe: str = "sp500"
@@ -44,6 +50,11 @@ class DataConfig:
     test_start: str = "2025-01-08"
     test_end: str = "2025-12-31"
     skip_embargo_check: bool = False
+    normalisation: str = "zscore"
+    use_polars: bool = False
+    filter_stocks_per_split: bool = False
+    use_pit_universe: bool = False
+    pit_universe_csv: str | None = None
 
     def __post_init__(self):
         if self.experiment_mode not in ("stock_level", "index_level"):
@@ -61,6 +72,10 @@ class DataConfig:
         for i in range(len(dates) - 1):
             if dates[i] > dates[i + 1]:
                 raise ValueError(f"Dates must be in chronological order: {dates}")
+        if self.normalisation not in ("zscore", "rank_gauss"):
+            raise ValueError(
+                f"normalisation must be 'zscore' or 'rank_gauss', got {self.normalisation!r}"
+            )
 
 
 @dataclass
@@ -217,10 +232,15 @@ class GraphConfig:
               is still emitted in column 0 of the multi-feature edge tensor so the
               GAT can tell co-movement from divergence.
         use_multi_feature_edges: If True, ``GraphBuilder.build_edges`` returns a
-            (E, 4) edge feature tensor [corr, |corr|, corr^2, rank_pct] instead of
-            the legacy 1-D scalar weight. The model side reads this through
-            ``edge_feature_dim`` on the GAT blocks.
+            (E, 4+) edge feature tensor [corr, |corr|, corr^2, rank_pct] plus optional
+            lead–lag columns; snapshot age is appended in collate when enabled.
         drop_edge_p: Train-time edge dropout probability for GAT (0 disables).
+        append_snapshot_age_days: Append days (sample date − snapshot valid_from) per edge.
+        use_lead_lag_features: Add best-lag normalised index and signed corr at that lag.
+        lead_lag_days: Candidate lags in days for lead–lag edge features.
+        use_sector_relation: Enable static sector branch (dual GAT + fuse in the model).
+        sector_map_csv: CSV with kdcode, sector when ``use_sector_relation``.
+        sector_top_k: Cap on sector neighbours per node.
     """
 
     judge_value: float = 0.8
@@ -231,6 +251,12 @@ class GraphConfig:
     use_multi_feature_edges: bool = True
     # Default 0: legacy-safe; set in configs/config.yaml for train-time regularisation
     drop_edge_p: float = 0.0
+    append_snapshot_age_days: bool = False
+    use_lead_lag_features: bool = False
+    lead_lag_days: list[int] = field(default_factory=lambda: [1, 2, 3, 5])
+    use_sector_relation: bool = False
+    sector_map_csv: str | None = None
+    sector_top_k: int = 10
 
     _VALID_TOP_K_METRICS = ("corr", "abs_corr")
 
@@ -250,6 +276,16 @@ class GraphConfig:
             )
         if not 0.0 <= self.drop_edge_p < 1.0:
             raise ValueError(f"drop_edge_p must be in [0, 1), got {self.drop_edge_p}")
+        if self.append_snapshot_age_days and not self.use_multi_feature_edges:
+            raise ValueError("append_snapshot_age_days requires graph.use_multi_feature_edges=True")
+        if self.use_lead_lag_features and not self.use_multi_feature_edges:
+            raise ValueError("use_lead_lag_features requires graph.use_multi_feature_edges=True")
+        if any(k <= 0 for k in self.lead_lag_days):
+            raise ValueError("lead_lag_days must contain only positive integers")
+        if self.use_sector_relation and not self.sector_map_csv:
+            raise ValueError("use_sector_relation=True requires graph.sector_map_csv")
+        if self.sector_top_k <= 0:
+            raise ValueError("sector_top_k must be > 0")
 
 
 @dataclass
@@ -281,7 +317,10 @@ class ModelConfig:
         use_nn_multihead_attention: If True, use ``nn.MultiheadAttention`` in
             MarketLatentStateLearner instead of the legacy 8-Linear MHA
         temporal_encoder: "legacy" = AttentionResetGRUCell + Python loop; "gru_attn" =
-            CuDNN-fused ``nn.GRU`` + per-step post-hoc attention
+            CuDNN-fused ``nn.GRU`` + per-step post-hoc attention; "transformer" =
+            causal ``nn.TransformerEncoder`` stack (Phase 3).
+        use_a1_a2_cross_attention: Fuse graph stream with temporal sequence via MHA (Q=A2, KV=A1).
+        cross_a2_num_heads: Heads for A1–A2 cross-attention (must divide ``hidden_size_gat1``).
     """
 
     his_t: int = 10
@@ -306,9 +345,11 @@ class ModelConfig:
     trunk_dropout: float = 0.1
     use_nn_multihead_attention: bool = False
     temporal_encoder: str = "legacy"
+    use_a1_a2_cross_attention: bool = False
+    cross_a2_num_heads: int = 4
 
     _VALID_OUTPUT_ACTIVATIONS = ("none", "elu", "relu", "sigmoid")
-    _VALID_TEMPORAL_ENCODERS = ("legacy", "gru_attn")
+    _VALID_TEMPORAL_ENCODERS = ("legacy", "gru_attn", "transformer")
 
     def __post_init__(self):
         if self.activation not in ("elu", "relu"):
@@ -327,6 +368,12 @@ class ModelConfig:
             raise ValueError("latent_init_scale must be > 0")
         if not 0.0 <= self.trunk_dropout < 1.0:
             raise ValueError(f"trunk_dropout must be in [0, 1), got {self.trunk_dropout}")
+        if self.use_a1_a2_cross_attention:
+            if self.hidden_size_gat1 % self.cross_a2_num_heads != 0:
+                raise ValueError(
+                    "hidden_size_gat1 must be divisible by cross_a2_num_heads when "
+                    "use_a1_a2_cross_attention=True"
+                )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -349,7 +396,34 @@ class ModelConfig:
             "trunk_dropout": self.trunk_dropout,
             "use_nn_multihead_attention": self.use_nn_multihead_attention,
             "temporal_encoder": self.temporal_encoder,
+            "use_a1_a2_cross_attention": self.use_a1_a2_cross_attention,
+            "cross_a2_num_heads": self.cross_a2_num_heads,
         }
+
+
+@dataclass
+class WalkforwardConfig:
+    """Rolling or expanding train windows with sliding val/test (default off)."""
+
+    enabled: bool = False
+    window_train_years: int = 4
+    window_val_months: int = 6
+    test_span_months: int = 3
+    step_months: int = 6
+    expanding: bool = False
+    max_windows: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.window_train_years <= 0:
+            raise ValueError("window_train_years must be > 0")
+        if self.window_val_months <= 0:
+            raise ValueError("window_val_months must be > 0")
+        if self.test_span_months <= 0:
+            raise ValueError("test_span_months must be > 0")
+        if self.step_months <= 0:
+            raise ValueError("step_months must be > 0")
+        if self.max_windows is not None and self.max_windows <= 0:
+            raise ValueError("max_windows must be > 0 when set")
 
 
 @dataclass
@@ -375,6 +449,7 @@ class TrainingConfig:
         lr_scheduler: "cosine" (warmup + cosine) or "none" (constant LR)
         use_amp: Enable CUDA autocast + GradScaler when device is CUDA
         selection_metric: "val_ic" (maximize) or "val_loss" (minimize) for early stopping / checkpointing
+        walkforward: Optional rolling / expanding window orchestration (see :class:`WalkforwardConfig`).
     """
 
     batch_size: int = 32
@@ -391,6 +466,7 @@ class TrainingConfig:
     lr_scheduler: str = "cosine"
     use_amp: bool = True
     selection_metric: str = "val_ic"
+    walkforward: WalkforwardConfig = field(default_factory=WalkforwardConfig)
 
     _VALID_LOSS_TYPES = ("mse", "ic", "combined")
     _VALID_LABEL_TYPES = ("returns", "rank")
@@ -398,6 +474,11 @@ class TrainingConfig:
     _VALID_SELECTION_METRICS = ("val_loss", "val_ic")
 
     def __post_init__(self):
+        wf = self.walkforward
+        if isinstance(wf, dict):
+            self.walkforward = WalkforwardConfig(**wf)
+        elif not isinstance(wf, WalkforwardConfig):
+            self.walkforward = WalkforwardConfig()
         if self.batch_size <= 0:
             raise ValueError("batch_size must be > 0")
         if self.learning_rate <= 0:

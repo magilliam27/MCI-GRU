@@ -8,8 +8,8 @@ This module provides the Trainer class that handles:
 - Inference
 
 Graph resolution is handled upstream by the collate function (via
-``GraphSchedule``), so the Trainer simply consumes the 7-tuple batches
-produced by the data loaders.
+``GraphSchedule``), so the Trainer consumes the 9-tuple batches
+(7 core tensors + optional sector ``edge_index`` / ``edge_weight``) from the loaders.
 """
 
 import os
@@ -36,6 +36,48 @@ from mci_gru.utils.seeding import set_seed
 
 if TYPE_CHECKING:
     from mci_gru.tracking import MLflowTrackingManager
+
+
+def _unpack_loader_batch(batch, device: torch.device):
+    """Move graph batch tensors to *device*; supports 7- or 9-tuple collate output."""
+    if len(batch) == 7:
+        time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates = batch
+        edge_index_sector = None
+        edge_weight_sector = None
+    else:
+        (
+            time_series,
+            labels,
+            graph_features,
+            edge_index,
+            edge_weight,
+            n_stocks,
+            batch_dates,
+            edge_index_sector,
+            edge_weight_sector,
+        ) = batch
+
+    time_series = time_series.to(device)
+    labels = labels.to(device)
+    graph_features = graph_features.to(device)
+    edge_index = edge_index.to(device)
+    edge_weight = edge_weight.to(device)
+    if edge_index_sector is not None:
+        edge_index_sector = edge_index_sector.to(device)
+    if edge_weight_sector is not None:
+        edge_weight_sector = edge_weight_sector.to(device)
+
+    return (
+        time_series,
+        labels,
+        graph_features,
+        edge_index,
+        edge_weight,
+        n_stocks,
+        batch_dates,
+        edge_index_sector,
+        edge_weight_sector,
+    )
 
 
 @dataclass
@@ -258,26 +300,31 @@ class Trainer:
         total_loss = 0.0
         num_samples = 0
 
-        for (
-            time_series,
-            labels,
-            graph_features,
-            edge_index,
-            edge_weight,
-            n_stocks,
-            _batch_dates,
-        ) in train_loader:
+        for batch in train_loader:
+            (
+                time_series,
+                labels,
+                graph_features,
+                edge_index,
+                edge_weight,
+                n_stocks,
+                _batch_dates,
+                edge_index_sector,
+                edge_weight_sector,
+            ) = _unpack_loader_batch(batch, self.device)
             batch_size = time_series.shape[0]
-
-            time_series = time_series.to(self.device)
-            labels = labels.to(self.device)
-            graph_features = graph_features.to(self.device)
-            edge_index = edge_index.to(self.device)
-            edge_weight = edge_weight.to(self.device)
 
             optimizer.zero_grad(set_to_none=True)
             with autocast("cuda", enabled=use_amp):
-                outputs = self.model(time_series, graph_features, edge_index, edge_weight, n_stocks)
+                outputs = self.model(
+                    time_series,
+                    graph_features,
+                    edge_index,
+                    edge_weight,
+                    n_stocks,
+                    edge_index_sector=edge_index_sector,
+                    edge_weight_sector=edge_weight_sector,
+                )
                 loss = criterion(outputs, labels)
 
             scaler.scale(loss).backward()
@@ -307,25 +354,30 @@ class Trainer:
         num_samples = 0
 
         with torch.no_grad():
-            for (
-                time_series,
-                labels,
-                graph_features,
-                edge_index,
-                edge_weight,
-                n_stocks,
-                _batch_dates,
-            ) in val_loader:
+            for batch in val_loader:
+                (
+                    time_series,
+                    labels,
+                    graph_features,
+                    edge_index,
+                    edge_weight,
+                    n_stocks,
+                    _batch_dates,
+                    edge_index_sector,
+                    edge_weight_sector,
+                ) = _unpack_loader_batch(batch, self.device)
                 batch_size = time_series.shape[0]
 
-                time_series = time_series.to(self.device)
-                labels = labels.to(self.device)
-                graph_features = graph_features.to(self.device)
-                edge_index = edge_index.to(self.device)
-                edge_weight = edge_weight.to(self.device)
-
                 with autocast("cuda", enabled=use_amp):
-                    outputs = self.model(time_series, graph_features, edge_index, edge_weight, n_stocks)
+                    outputs = self.model(
+                        time_series,
+                        graph_features,
+                        edge_index,
+                        edge_weight,
+                        n_stocks,
+                        edge_index_sector=edge_index_sector,
+                        edge_weight_sector=edge_weight_sector,
+                    )
                     loss = criterion(outputs, labels)
                 ic = mean_information_coefficient(outputs, labels)
 
@@ -352,22 +404,29 @@ class Trainer:
         all_predictions = []
 
         with torch.no_grad():
-            for (
-                time_series,
-                _,
-                graph_features,
-                edge_index,
-                edge_weight,
-                n_stocks,
-                _batch_dates,
-            ) in test_loader:
-                time_series = time_series.to(self.device)
-                graph_features = graph_features.to(self.device)
-                edge_index = edge_index.to(self.device)
-                edge_weight = edge_weight.to(self.device)
+            for batch in test_loader:
+                (
+                    time_series,
+                    _,
+                    graph_features,
+                    edge_index,
+                    edge_weight,
+                    n_stocks,
+                    _batch_dates,
+                    edge_index_sector,
+                    edge_weight_sector,
+                ) = _unpack_loader_batch(batch, self.device)
 
                 with autocast("cuda", enabled=use_amp):
-                    outputs = self.model(time_series, graph_features, edge_index, edge_weight, n_stocks)
+                    outputs = self.model(
+                        time_series,
+                        graph_features,
+                        edge_index,
+                        edge_weight,
+                        n_stocks,
+                        edge_index_sector=edge_index_sector,
+                        edge_weight_sector=edge_weight_sector,
+                    )
                 predictions = outputs.squeeze().cpu().numpy()
                 all_predictions.append(predictions)
 

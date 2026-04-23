@@ -20,9 +20,11 @@ Scope audited: `mci_gru/` package, `run_experiment.py`, `configs/`, `paper_trade
 - **Speed:** `generate_time_series_features` is **vectorised** (no `iterrows` hotspot).
 - **Repro / MLOps:** Per-ensemble-member seeds `seed + model_id`; `run_metadata.json` includes **`data_file_sha256`** (+ size, mtime) when `data.filename` exists; **MLflow `tracking.enabled=true`** by default.
 
-Remaining large items (still accurate in the sections below where not superseded by the Phase 2 box below): **cross-stream fusion (A1↔A2 cross-attention)**, **walk-forward training**, **survivorship / PIT universe**, **Sharpe on overlapping `label_t` returns**, **shared portfolio utilities**, **locked dependencies**.
+Remaining large items (still accurate in the sections below where not superseded above): **Sharpe on overlapping `label_t` returns**, **shared portfolio utilities**, **locked dependencies**; optional Phase 3 flags default off until promoted after A/B vs `paper_faithful`.
 
-**Phase 2 (April 2026):** Trunk `LayerNorm` + `Dropout` + inter-GAT dropout behind `model.use_trunk_regularisation`; `nn.MultiheadAttention` path behind `model.use_nn_multihead_attention`; `GRUWithAttention` (`nn.GRU` + post-hoc attention) behind `model.temporal_encoder=gru_attn` (legacy path unchanged); train-time `dropout_edge` via `graph.drop_edge_p`; optional `model.output_activation` (quote `"none"` in YAML); optional `use_group_type_embed` in `SelfAttention`. `configs/config.yaml` enables Phase 2 flags; `configs/experiment/paper_faithful.yaml` pins all legacy paths. **Deferred to Phase 3:** A1↔A2 cross-attention, walk-forward loop, Transformer temporal encoder.
+**Phase 2 (April 2026):** Trunk `LayerNorm` + `Dropout` + inter-GAT dropout behind `model.use_trunk_regularisation`; `nn.MultiheadAttention` path behind `model.use_nn_multihead_attention`; `GRUWithAttention` (`nn.GRU` + post-hoc attention) behind `model.temporal_encoder=gru_attn` (legacy path unchanged); train-time `dropout_edge` via `graph.drop_edge_p`; optional `model.output_activation` (quote `"none"` in YAML); optional `use_group_type_embed` in `SelfAttention`. `configs/config.yaml` enables Phase 2 flags; `configs/experiment/paper_faithful.yaml` pins all legacy paths.
+
+**Phase 3 (April 2026):** Optional `model.use_a1_a2_cross_attention` + `model.cross_a2_num_heads` (fast temporal sequence as KV); `training.walkforward` rolling/expanding windows in `run_experiment.py` with nested MLflow child runs; `graph.append_snapshot_age_days` (collate appends age column), `graph.use_lead_lag_features` + `graph.lead_lag_days`, `graph.use_sector_relation` + dual `GATBlock` fuse (sector map CSV); `data.normalisation` `zscore` | `rank_gauss`; `data.filter_stocks_per_split`; `data.use_polars` / `use_pit_universe` + `pit_universe_csv`; `model.temporal_encoder=transformer` (`CausalTransformerEncoder`). Collate returns a **9-tuple** (optional sector edges). `paper_faithful` pins Phase 3 flags off.
 
 ## TL;DR
 
@@ -36,11 +38,11 @@ practice and is where almost all the cheap alpha lives.
 
 Highest remaining ROI (after Phase 1 + Phase 2 trunk — see **Implementation status**), in rough order:
 
-1. **Cross-stream fusion** — A1 (temporal) and A2 (graph) still interact only via concat+self-attn; **cross-attention** `A2' = CrossAttn(Q=A2, KV=A1_seq)` (Phase 3).
-2. **Walk-forward retraining** instead of a single fixed split — required to claim robustness about forward windows (Phase 3).
+1. **Cross-stream fusion** — shipped behind `model.use_a1_a2_cross_attention` (default off); ablate vs concat+self-attn path.
+2. **Walk-forward retraining** — shipped behind `training.walkforward.enabled` (default off); aggregates `walkforward_summary.json` when enabled.
 3. **Gradient accumulation** if you want larger effective batch on IC without blowing VRAM (still open).
-4. **Phase 3 data/graph** — lead-lag edges, rank-gauss, survivorship / PIT universe (see §9 Phase 3).
-5. **Transformer temporal encoder** option vs `gru_attn` (optional Phase 3 experiment).
+4. **Phase 3 data/graph** — lead-lag + snapshot age + sector branch + rank-gauss + per-split filter + optional Polars/PIT shipped behind flags (§9 Phase 3).
+5. **Transformer temporal encoder** — `model.temporal_encoder=transformer` (default remains `gru_attn` in base YAML).
 
 **Done in Phase 2 (config-gated):** trunk `LayerNorm` + `Dropout`, `nn.MultiheadAttention` latent path, `GRUWithAttention` temporal path, DropEdge, group-type embedding, configurable final `output_activation`.
 
@@ -478,25 +480,26 @@ Expected combined effect: 15–40% faster training, better IC, fewer silent data
 - [x] `LayerNorm` + `Dropout` in the trunk (`ln_a1`, `ln_a2`, `ln_z`, `drop_z`, optional inter-`GATBlock` dropout) — gated by `model.use_trunk_regularisation` + `model.trunk_dropout`; `paper_faithful` pins off.
 - [x] Replace custom `MarketLatentStateLearner` with `nn.MultiheadAttention` — gated by `model.use_nn_multihead_attention`; legacy 8-`Linear` path retained; `paper_faithful` pins legacy.
 - [x] Add `GRUWithAttention` path (native `nn.GRU` + post-hoc attention readout) — gated by `model.temporal_encoder=gru_attn` vs `legacy`; `MultiScaleTemporalEncoder` respects the same flag; `paper_faithful` pins `legacy`. *Transformer encoder still open.*
-- [ ] Add cross-attention between A1 and A2 (`A2' = CrossAttn(Q=A2, KV=A1_seq)`) — **deferred to Phase 3.**
+- [x] Add cross-attention between A1 and A2 (`A2' = CrossAttn(Q=A2, KV=A1_seq)`) — **shipped** behind `model.use_a1_a2_cross_attention`; `paper_faithful` pins off.
 - [x] Add DropEdge at train time — `graph.drop_edge_p`, applied once per forward in `StockPredictionModel` when `self.training`; `paper_faithful` pins `0.0`.
-- [ ] Ship walk-forward retraining in `run_experiment.py` (new `training.walkforward` config block) — **deferred;** see Phase 3 plan.
+- [x] Ship walk-forward retraining in `run_experiment.py` (`training.walkforward` config block; nested MLflow child runs per window).
 - [x] Optional: `model.output_activation` (`none` / `elu` / `relu` / `sigmoid`) and `use_group_type_embed` in `SelfAttention` — **shipped**; `paper_faithful` pins `output_activation: relu` and `use_group_type_embed: false` to match pre-Phase-2 behaviour.
 
 ### Phase 3 — data and graph modernisation (2–4 weeks)
 
-- [ ] Lead-lag edges (lever 2a from the graph plan) and `snapshot_age_days` edge feature.
-- [ ] Multi-relation graph via `RGATConv` (correlation + sector).
-- [ ] Rank-gauss normaliser alongside the existing 3-sigma z-score.
-- [ ] Point-in-time universe (relax survivorship filter to per-split, then to CRSP-style).
-- [ ] Polars-backed feature engineering for universes > 1000 stocks.
+- [x] Lead-lag edge columns (`graph.use_lead_lag_features`, lags in `graph.lead_lag_days`) and `graph.append_snapshot_age_days` (collate appends calendar age to multi-feature `edge_attr`).
+- [x] Sector relation branch: static same-sector edges + **dual `GATBlock` + linear fuse** in `StockPredictionModel` (not `RGATConv`; avoids PyG relation API friction).
+- [x] Rank-Gaussian normaliser (`data.normalisation: rank_gauss`) fit on train-only sorted reference per feature.
+- [x] Survivorship mitigation: `data.filter_stocks_per_split` (per-split completeness then intersect); optional `data.use_pit_universe` + `pit_universe_csv` row filter.
+- [x] Polars-backed pivot path behind `data.use_polars` in `generate_time_series_features` (pandas default unchanged).
+- [x] Causal Transformer temporal encoder (`model.temporal_encoder: transformer`) for fast path inside `MultiScaleTemporalEncoder`.
 
 ### Phase 4 — eval and MLOps (parallelisable)
 
 - [ ] Block-bootstrap CIs on per-day IC and top-k return, logged to MLflow.
 - [ ] Shared `portfolio.py` used by both `tests/backtest_sp500.py` and `paper_trade/`.
 - [ ] Optuna sweep config + example over `his_t`, `learning_rate`, `top_k`, `ic_loss_alpha`.
-- [ ] CI smoke-run on PR: 2-epoch, 1-model sanity check that asserts the 7-tuple collate shape.
+- [ ] CI smoke-run on PR: 2-epoch, 1-model sanity check that asserts the 9-tuple collate shape (7 core + optional sector edges).
 - [ ] Distribution-shift monitor on live features (KS / PSI vs. train window) surfaced in the nightly `report.py` output.
 
 ---

@@ -42,7 +42,7 @@ See `docs/ARCHITECTURE.md` for the full version.
 
 1. **No lookahead** — normalization, graph, labels use train-period cutoffs only.
 2. **Dynamic graph uses `GraphSchedule`** — precomputed snapshots indexed by date; any batch size works.
-3. **`combined_collate_fn` returns a 7-tuple** — `(time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates)`.
+3. **`combined_collate_fn` returns a 9-tuple** — seven core fields plus optional `edge_index_sector` / `edge_weight_sector` (see `AGENTS.md`).
 4. **Ensemble** — `train_multiple_models` trains N models; prediction = mean.
 5. **Paper trade** — frozen checkpoints, no `GraphBuilder` import at inference.
 6. **FRED_API_KEY** required for credit spread / regime features.
