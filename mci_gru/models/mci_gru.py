@@ -156,6 +156,24 @@ class GRUWithAttention(nn.Module):
         return out.view(batch, num_stocks, tlen, -1)
 
 
+def _transformer_nhead_for_d_model(d_model: int, requested_nhead: int) -> int:
+    """
+    Largest nhead with ``1 <= nhead <= min(requested_nhead, d_model)`` and
+    ``d_model % nhead == 0`` (required by ``nn.MultiheadAttention``).
+    """
+    if d_model < 1:
+        raise ValueError(f"d_model must be >= 1, got {d_model}")
+    if requested_nhead < 1:
+        raise ValueError(
+            f"transformer nhead must be >= 1, got {requested_nhead}"
+        )
+    cap = min(requested_nhead, d_model)
+    for h in range(cap, 0, -1):
+        if d_model % h == 0:
+            return h
+    return 1
+
+
 class CausalTransformerEncoder(nn.Module):
     """Causal Transformer over the fast temporal path (Phase 3)."""
 
@@ -168,10 +186,20 @@ class CausalTransformerEncoder(nn.Module):
         dropout: float = 0.1,
     ):
         super().__init__()
+        nhead_r = _transformer_nhead_for_d_model(d_model, nhead)
+        if nhead_r != nhead:
+            warnings.warn(
+                f"CausalTransformerEncoder: d_model={d_model} is not divisible by "
+                f"nhead={nhead}; using nhead={nhead_r} for nn.TransformerEncoder. "
+                "Set gru_hidden_sizes last value or nhead so they match.",
+                UserWarning,
+                stacklevel=2,
+            )
+        self.nhead = nhead_r
         self.input_proj = nn.Linear(input_size, d_model)
         enc_layer = nn.TransformerEncoderLayer(
             d_model,
-            nhead,
+            nhead_r,
             dim_feedforward=4 * d_model,
             dropout=dropout,
             batch_first=True,
