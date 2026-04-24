@@ -1,7 +1,9 @@
 """Phase 2 model flags: self-attention type embed, MHA path shapes, encoders."""
+import pytest
 import torch
 
 from mci_gru.models import create_model, GRUWithAttention, ImprovedGRU, MarketLatentStateLearner
+from mci_gru.models.mci_gru import CausalTransformerEncoder, MultiScaleTemporalEncoder
 
 
 def test_group_type_embed_on_has_embedding_params():
@@ -109,3 +111,40 @@ def test_forward_smoke_with_drop_edge_p():
     m.eval()
     y2 = m(x, g, ei, ew, 3)
     assert y2.shape == (1, 3)
+
+
+def test_causal_transformer_d_model_10_does_not_crash():
+    """Default gru last layer 10 with nhead=4 must not fail init (MHA needs d%h==0)."""
+    with pytest.warns(UserWarning, match="nhead"):
+        e = CausalTransformerEncoder(5, d_model=10, nhead=4)
+    assert e.nhead == 2
+    b, n, t, f = 1, 2, 4, 5
+    x = torch.randn(b, n, t, f)
+    y = e(x)
+    assert y.shape == (b, n, 10)
+
+
+def test_create_model_temporal_transformer_paper_default_hidden():
+    with pytest.warns(UserWarning, match="nhead"):
+        m = create_model(
+            6,
+            {
+                "gru_hidden_sizes": [32, 10],
+                "hidden_size_gat1": 8,
+                "use_multi_scale": False,
+                "use_self_attention": False,
+                "use_trunk_regularisation": False,
+                "use_nn_multihead_attention": False,
+                "temporal_encoder": "transformer",
+            },
+        )
+    assert m.temporal_encoder.nhead == 2
+
+
+def test_multiscale_temporal_transformer_paper_default_hidden():
+    with pytest.warns(UserWarning, match="nhead"):
+        enc = MultiScaleTemporalEncoder(6, [32, 10], temporal_encoder="transformer")
+    assert enc.fast_gru.nhead == 2
+    x = torch.randn(1, 2, 4, 6)
+    o = enc(x)
+    assert o.shape == (1, 2, 10)
