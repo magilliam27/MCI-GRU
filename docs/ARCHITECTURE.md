@@ -47,6 +47,11 @@ CSV / LSEG / FRED
 8. **Inference** — Each model produces per-stock scalar scores. The ensemble mean is the
    final prediction, saved as CSV files in `averaged_predictions/`.
 
+9. **Evaluation trust layer** — `mci_gru/evaluation/` provides shared IC,
+   Newey-West Sharpe, moving-block bootstrap CIs, top-k returns, rank-drop
+   decisions, and feature-drift metrics. `run_experiment.py` writes
+   `evaluation_summary.json` and train-only `feature_reference.json`.
+
 ## Model Architecture (mci_gru/models/mci_gru.py)
 
 Four parallel streams whose outputs are concatenated before the final predictor:
@@ -135,8 +140,10 @@ Uses **frozen** checkpoints from `paper_trade/Model/`. The inference path:
    and `graph_data.pt` (precomputed static graph). It does **not** call `GraphBuilder`.
 2. `portfolio.py` applies the rank-drop gate: only sell if rank drops ≥ 30 places.
 3. `track.py` records fills and computes open-to-open returns.
-4. `report.py` generates daily markdown reports.
-5. `run_nightly.py` orchestrates all steps in order.
+4. `monitor.py` compares latest normalized inference features to the train-window
+   feature reference and writes `feature_drift.json` / `feature_drift.csv`.
+5. `report.py` generates daily markdown reports, including feature drift when available.
+6. `run_nightly.py` orchestrates all steps in order.
 
 ## Package Layout
 
@@ -165,6 +172,10 @@ mci_gru/
 │   └── regime.py        ← global regime similarity features
 ├── graph/
 │   └── builder.py       ← GraphBuilder + GraphSchedule (Pearson correlation, static/dynamic)
+├── evaluation/
+│   ├── statistics.py    ← IC, Newey-West Sharpe, moving-block bootstrap CIs
+│   ├── portfolio.py     ← top-k returns, turnover, rank-drop gate
+│   └── drift.py         ← PSI / KS-style feature drift metrics
 └── training/
     ├── trainer.py       ← Trainer, train_multiple_models, early stopping
     ├── losses.py        ← ICLoss, CombinedMSEICLoss

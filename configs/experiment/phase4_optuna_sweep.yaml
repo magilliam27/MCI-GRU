@@ -1,0 +1,22 @@
+# Phase 4 Optuna/Hydra sweep example.
+# Requires hydra-optuna-sweeper and optuna to be installed before use.
+
+defaults:
+  - override /hydra/sweeper: optuna
+
+experiment_name: phase4_optuna_sweep
+
+tracking:
+  enabled: true
+  experiment_name: phase4_optuna_sweep
+
+hydra:
+  sweeper:
+    direction: maximize
+    study_name: phase4_optuna_sweep
+    n_trials: 36
+    params:
+      model.his_t: choice(10,20,40)
+      training.learning_rate: choice(3e-5,5e-5,1e-4)
+      graph.top_k: choice(0,10,20)
+      training.ic_loss_alpha: choice(0.25,0.5,0.75)

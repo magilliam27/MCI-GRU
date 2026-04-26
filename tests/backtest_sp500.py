@@ -91,6 +91,7 @@ from mci_gru.tracking import (  # noqa: E402
     MLflowTrackingManager,
     load_run_metadata_from_predictions_dir,
 )
+from mci_gru.evaluation.portfolio import calculate_turnover as shared_calculate_turnover  # noqa: E402
 
 # ============================================================================
 # CONFIGURATION (Paper Section 4.1.1 and 4.1.2)
@@ -895,7 +896,7 @@ def calculate_turnover(prev_holdings, curr_holdings, target_k=None):
     k = max(k, 1)
 
     # One-way turnover: average of sell/buy notional as a fraction of portfolio
-    one_way_turnover = traded_names / (2 * k)
+    one_way_turnover = shared_calculate_turnover(prev_set, curr_set, target_k=k)
     # Two-way turnover: total traded notional fraction (sell + buy)
     two_way_turnover = traded_names / k
 

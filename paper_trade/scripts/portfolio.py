@@ -13,16 +13,22 @@ Usage:
     python paper_trade/scripts/portfolio.py --top-k 20 --min-rank-drop 30
 """
 
+# ruff: noqa: E402, I001
+
 import argparse
 import json
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
+
+from mci_gru.evaluation.portfolio import (  # noqa: E402
+    rank_scores,
+    apply_rank_drop_gate as shared_apply_rank_drop_gate,
+)
 
 DEFAULT_SCORES_DIR = "paper_trade/results"
 DEFAULT_STATE_DIR = "paper_trade/state"
@@ -39,10 +45,7 @@ def load_scores(scores_path: Path) -> pd.DataFrame:
     if missing:
         raise ValueError(f"Scores CSV missing columns: {missing}")
 
-    df = df.sort_values(["score", "kdcode"], ascending=[False, True]).reset_index(drop=True)
-    df["rank"] = np.arange(1, len(df) + 1, dtype=int)
-
-    return df
+    return rank_scores(df)
 
 
 def load_state(state_dir: Path) -> tuple:
@@ -107,76 +110,13 @@ def apply_rank_drop_gate(
     Returns dict with keys:
         target_stocks, survivors, exits, new_entries, exit_details
     """
-    current_ranks = scores_df.set_index("kdcode")["rank"].to_dict()
-
-    if prev_holdings is None or prev_ranks is None:
-        target_stocks = scores_df.head(top_k)["kdcode"].tolist()
-        return {
-            "target_stocks": target_stocks,
-            "survivors": [],
-            "exits": [],
-            "new_entries": target_stocks,
-            "exit_details": [],
-            "is_initial": True,
-        }
-
-    held_kdcodes = [h["kdcode"] for h in prev_holdings]
-    current_held = [kd for kd in held_kdcodes if kd in current_ranks]
-
-    survivors = []
-    exits = []
-    exit_details = []
-
-    for kdcode in current_held:
-        prev_rank = prev_ranks.get(kdcode)
-        curr_rank = current_ranks.get(kdcode)
-
-        if prev_rank is None or curr_rank is None:
-            survivors.append(kdcode)
-            continue
-
-        rank_drop = curr_rank - prev_rank
-        if rank_drop >= min_rank_drop:
-            exits.append(kdcode)
-            exit_details.append(
-                {
-                    "kdcode": kdcode,
-                    "prev_rank": prev_rank,
-                    "curr_rank": curr_rank,
-                    "rank_drop": rank_drop,
-                }
-            )
-        else:
-            survivors.append(kdcode)
-
-    dropped_from_universe = [kd for kd in held_kdcodes if kd not in current_ranks]
-    if dropped_from_universe:
-        exits.extend(dropped_from_universe)
-        for kd in dropped_from_universe:
-            exit_details.append(
-                {
-                    "kdcode": kd,
-                    "prev_rank": prev_ranks.get(kd),
-                    "curr_rank": None,
-                    "rank_drop": None,
-                    "reason": "dropped_from_universe",
-                }
-            )
-
-    survivor_set = set(survivors)
-    refill_candidates = [kd for kd in scores_df["kdcode"].tolist() if kd not in survivor_set]
-    slots_needed = max(0, top_k - len(survivors))
-    new_entries = refill_candidates[:slots_needed]
-    target_stocks = survivors + new_entries
-
-    return {
-        "target_stocks": target_stocks,
-        "survivors": survivors,
-        "exits": exits,
-        "new_entries": new_entries,
-        "exit_details": exit_details,
-        "is_initial": False,
-    }
+    return shared_apply_rank_drop_gate(
+        scores_df=scores_df,
+        prev_holdings=prev_holdings,
+        prev_ranks=prev_ranks,
+        top_k=top_k,
+        min_rank_drop=min_rank_drop,
+    )
 
 
 def build_target_portfolio(

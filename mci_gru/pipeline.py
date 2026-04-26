@@ -98,6 +98,35 @@ def _compute_norm_stats(
     return means, stds
 
 
+def _build_feature_reference(
+    train_df: pd.DataFrame,
+    feature_cols: list[str],
+) -> dict[str, Any]:
+    """Build train-only quantile bins and histogram counts for drift monitoring."""
+    features: dict[str, Any] = {}
+    for col in feature_cols:
+        if col not in train_df.columns:
+            continue
+        values = pd.to_numeric(train_df[col], errors="coerce").dropna().to_numpy(dtype=np.float64)
+        if values.size == 0:
+            continue
+        bins = np.quantile(values, np.linspace(0.0, 1.0, 11))
+        if np.unique(bins).size < 2:
+            center = float(bins[0])
+            bins = np.linspace(center - 1e-6, center + 1e-6, 11)
+        else:
+            bins = np.maximum.accumulate(bins)
+            for i in range(1, len(bins)):
+                if bins[i] <= bins[i - 1]:
+                    bins[i] = bins[i - 1] + 1e-9
+        counts, _ = np.histogram(values, bins=bins)
+        features[col] = {
+            "bins": [float(v) for v in bins],
+            "counts": [int(v) for v in counts],
+        }
+    return {"features": features}
+
+
 def _apply_pit_universe(df: pd.DataFrame, csv_path: str) -> pd.DataFrame:
     """Filter rows to kdcode/date pairs covered by [valid_from, valid_to] in *csv_path*."""
     pit = pd.read_csv(csv_path)
@@ -188,11 +217,13 @@ def _build_tensors(
     print("Computing labels...")
     train_labels = compute_labels(df_for_labels, kdcode_list, train_dates[his_t:], label_t)
     val_labels = compute_labels(df_for_labels, kdcode_list, val_dates, label_t)
+    test_labels = compute_labels(df_for_labels, kdcode_list, test_dates, label_t)
 
     if label_type == "rank":
         print("Converting labels to cross-sectional rank percentiles...")
         train_labels = apply_rank_labels(train_labels)
         val_labels = apply_rank_labels(val_labels)
+        test_labels = apply_rank_labels(test_labels)
 
     return {
         "train_dates": train_dates[his_t:],
@@ -206,6 +237,7 @@ def _build_tensors(
         "x_graph_test": x_graph_test,
         "train_labels": train_labels,
         "val_labels": val_labels,
+        "test_labels": test_labels,
     }
 
 
@@ -272,6 +304,7 @@ def prepare_data(
     else:
         df_filtered, kdcode_list = data_manager.filter_complete_stocks(df_norm)
     train_df, val_df, test_df = data_manager.split_by_period(df_filtered)
+    feature_reference = _build_feature_reference(train_df, feature_cols)
 
     train_dates = sorted(train_df["dt"].unique())
     val_dates = sorted(val_df["dt"].unique())
@@ -337,6 +370,7 @@ def prepare_data(
         "edge_index_sector": edge_index_sector,
         "edge_weight_sector": edge_weight_sector,
         "rank_gauss_reference": rank_gauss_reference,
+        "feature_reference": feature_reference,
     }
 
 
@@ -380,11 +414,22 @@ def prepare_data_index_level(
     test_df = df_norm[
         (df_norm["dt"] >= config.data.test_start) & (df_norm["dt"] <= config.data.test_end)
     ]
-
     means, stds = _compute_norm_stats(df_norm, feature_cols, config.data.train_end)
     df_norm = _apply_normalisation(df_norm, feature_cols, means, stds)
 
     df_filtered = df_norm.copy()
+    train_df = df_filtered[
+        (df_filtered["dt"] >= config.data.train_start)
+        & (df_filtered["dt"] <= config.data.train_end)
+    ]
+    val_df = df_filtered[
+        (df_filtered["dt"] >= config.data.val_start) & (df_filtered["dt"] <= config.data.val_end)
+    ]
+    test_df = df_filtered[
+        (df_filtered["dt"] >= config.data.test_start)
+        & (df_filtered["dt"] <= config.data.test_end)
+    ]
+    feature_reference = _build_feature_reference(train_df, feature_cols)
 
     train_dates = sorted(train_df["dt"].unique())
     val_dates = sorted(val_df["dt"].unique())
@@ -425,4 +470,5 @@ def prepare_data_index_level(
         "edge_index_sector": None,
         "edge_weight_sector": None,
         "rank_gauss_reference": None,
+        "feature_reference": feature_reference,
     }

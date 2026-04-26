@@ -6,7 +6,8 @@ Single entry point that runs the full sequence:
   2. Track fills + compute returns for prior day's positions
   3. Run inference (score the full universe)
   4. Run portfolio decision (rank-drop gate, generate orders)
-  5. Generate daily report + equity curve
+  5. Run feature drift monitor
+  6. Generate daily report + equity curve
 
 The ordering matters:
   - refresh_data must run first so the CSV has today's bar
@@ -14,6 +15,7 @@ The ordering matters:
     and yesterday's open to compute prior-day returns
   - infer runs third, scoring the universe with data through today
   - portfolio runs fourth, comparing today's ranks to prior ranks
+  - monitor runs fifth, comparing inference features to train references
   - report runs last, consuming all the outputs above
 
 Usage:
@@ -39,13 +41,13 @@ STEPS = [
     {
         "name": "Data Refresh",
         "script": "refresh_data.py",
-        "phase": 2,
+        "phase": 1,
         "skippable": True,
     },
     {
         "name": "Execution Tracker",
         "script": "track.py",
-        "phase": 5,
+        "phase": 2,
         "skippable": False,
     },
     {
@@ -59,6 +61,12 @@ STEPS = [
         "script": "portfolio.py",
         "phase": 4,
         "skippable": False,
+    },
+    {
+        "name": "Feature Drift Monitor",
+        "script": "monitor.py",
+        "phase": 5,
+        "skippable": True,
     },
     {
         "name": "Daily Report",
@@ -272,6 +280,8 @@ def main():
         if step["script"] == "refresh_data.py" and args.dry_run:
             extra_args.append("--dry-run")
         if step["script"] == "infer.py":
+            extra_args.extend(["--model-dir", args.model_dir])
+        if step["script"] == "monitor.py":
             extra_args.extend(["--model-dir", args.model_dir])
 
         result = run_step(step, args.python, extra_args, dry_run=args.dry_run)

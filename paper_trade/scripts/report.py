@@ -132,6 +132,7 @@ def build_markdown_report(
     daily_return: pd.DataFrame,
     rolling: dict,
     state_dir: Path,
+    drift_summary: dict | None = None,
 ) -> str:
     """Build the full markdown report string."""
     lines = []
@@ -199,6 +200,31 @@ def build_markdown_report(
         lines.append(f"| Avg Daily Return | {rolling['avg_daily_return']:+.4%} |")
     else:
         lines.append("| Avg Daily Return | N/A |")
+    lines.append("")
+
+    # --- Feature Drift ---
+    lines.append("## Feature Drift")
+    lines.append("")
+    if drift_summary:
+        lines.append("| Metric | Value |")
+        lines.append("|--------|-------|")
+        lines.append(f"| Status | {drift_summary.get('overall_status', 'NOT_AVAILABLE')} |")
+        lines.append(f"| Warn Features | {drift_summary.get('warn_features', 0)} |")
+        lines.append(f"| Alert Features | {drift_summary.get('alert_features', 0)} |")
+        top_features = drift_summary.get("top_features", [])
+        if top_features:
+            lines.append("")
+            lines.append("| Feature | PSI | KS | Status |")
+            lines.append("|---------|-----|----|--------|")
+            for row in top_features[:10]:
+                lines.append(
+                    f"| {row.get('feature')} "
+                    f"| {row.get('psi', float('nan')):.4f} "
+                    f"| {row.get('ks', float('nan')):.4f} "
+                    f"| {row.get('status')} |"
+                )
+    else:
+        lines.append("*Feature drift data not available.*")
     lines.append("")
 
     # --- Portfolio Snapshot ---
@@ -297,6 +323,7 @@ def build_json_report(
     target_portfolio: pd.DataFrame,
     orders: pd.DataFrame,
     rolling: dict,
+    drift_summary: dict | None = None,
 ) -> dict:
     """Build the machine-readable JSON report."""
     has_perf = not perf_df.empty and "dt" in perf_df.columns
@@ -316,6 +343,7 @@ def build_json_report(
         if not target_portfolio.empty
         else [],
         "orders": orders.to_dict(orient="records") if not orders.empty else [],
+        "feature_drift": drift_summary or {"overall_status": "NOT_AVAILABLE"},
     }
 
     return report
@@ -383,6 +411,11 @@ def main():
     orders = load_csv_safe(day_dir / "orders.csv")
     holdings = load_csv_safe(day_dir / "holdings.csv")
     daily_return = load_csv_safe(day_dir / "daily_return.csv")
+    drift_summary = None
+    drift_path = day_dir / "feature_drift.json"
+    if drift_path.exists():
+        with open(drift_path) as f:
+            drift_summary = json.load(f)
 
     rolling = compute_rolling_stats(perf_df)
 
@@ -395,6 +428,7 @@ def main():
         daily_return,
         rolling,
         state_dir,
+        drift_summary,
     )
 
     day_dir.mkdir(parents=True, exist_ok=True)
@@ -403,7 +437,7 @@ def main():
         f.write(md_report)
     print(f"  Markdown report: {md_path}")
 
-    json_report = build_json_report(date, perf_df, target_portfolio, orders, rolling)
+    json_report = build_json_report(date, perf_df, target_portfolio, orders, rolling, drift_summary)
     json_path = day_dir / f"daily_report_{date}.json"
     with open(json_path, "w") as f:
         json.dump(json_report, f, indent=2, default=str)

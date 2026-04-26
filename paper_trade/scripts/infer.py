@@ -16,6 +16,7 @@ Usage:
 import argparse
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -32,6 +33,7 @@ from mci_gru.data.data_manager import (  # noqa: E402
     DataManager,
 )
 from mci_gru.features import FeatureEngineer  # noqa: E402
+from mci_gru.graph.utils import edge_feature_dim  # noqa: E402
 from mci_gru.models import create_model  # noqa: E402
 
 DEFAULT_MODEL_DIR = "paper_trade/Model/Seed73_trained_to_2062026"
@@ -128,6 +130,7 @@ def prepare_inference_data(
     his_t: int,
     target_date: str = None,
     regime_df=None,
+    return_observed_features: bool = False,
 ):
     """
     Load CSV, engineer features, normalize with saved stats, and build
@@ -226,6 +229,9 @@ def prepare_inference_data(
     print(f"  Lookback window: {lookback_dates[0]} to {lookback_dates[-1]}")
     print(f"  Stocks: {n_stocks}, Features: {n_features}")
 
+    if return_observed_features:
+        observed = graph_features[0].copy()
+        return time_series, graph_features, kdcode_list, target_date, observed
     return time_series, graph_features, kdcode_list, target_date
 
 
@@ -236,6 +242,9 @@ def run_inference(
     kdcode_list: list,
     model_cfg: dict,
     num_features: int,
+    pred_date: str,
+    append_snapshot_age_days: bool = False,
+    static_graph_valid_from: str | None = None,
 ) -> np.ndarray:
     """
     Load each checkpoint, run a forward pass, and average predictions.
@@ -251,6 +260,19 @@ def run_inference(
     graph_data = torch.load(str(graph_data_path), weights_only=True)
     edge_index = graph_data["edge_index"].to(device)
     edge_weight = graph_data["edge_weight"].to(device)
+    edge_index_sector = graph_data.get("edge_index_sector")
+    edge_weight_sector = graph_data.get("edge_weight_sector")
+    if edge_index_sector is not None:
+        edge_index_sector = edge_index_sector.to(device)
+    if edge_weight_sector is not None:
+        edge_weight_sector = edge_weight_sector.to(device)
+    if append_snapshot_age_days and edge_weight.dim() == 2 and static_graph_valid_from:
+        ds = datetime.strptime(pred_date[:10], "%Y-%m-%d").date()
+        dv = datetime.strptime(static_graph_valid_from[:10], "%Y-%m-%d").date()
+        age = float((ds - dv).days)
+        age_col = torch.full((edge_weight.shape[0], 1), age, dtype=edge_weight.dtype, device=device)
+        if edge_weight.shape[1] + 1 == int(model_cfg.get("edge_feature_dim", edge_weight.shape[1])):
+            edge_weight = torch.cat([edge_weight, age_col], dim=-1)
 
     ts_tensor = torch.from_numpy(time_series).float().to(device)
     gf_tensor = torch.from_numpy(graph_features).float().to(device)
@@ -276,7 +298,15 @@ def run_inference(
         model.eval()
 
         with torch.no_grad():
-            output = model(ts_tensor, batched_gf, batched_ei, batched_ew, n_stocks)
+            output = model(
+                ts_tensor,
+                batched_gf,
+                batched_ei,
+                batched_ew,
+                n_stocks,
+                edge_index_sector=edge_index_sector,
+                edge_weight_sector=edge_weight_sector,
+            )
             preds = output.squeeze().cpu().numpy()
 
         all_preds.append(preds)
@@ -318,6 +348,25 @@ def save_scores(
     print(df.tail().to_string(index=False))
 
     return df
+
+
+def save_normalized_features(
+    observed_features: np.ndarray,
+    kdcode_list: list,
+    feature_cols: list,
+    pred_date: str,
+    output_dir: Path,
+) -> Path:
+    """Save the normalized graph-day feature matrix used by inference."""
+    date_dir = output_dir / pred_date
+    date_dir.mkdir(parents=True, exist_ok=True)
+    df = pd.DataFrame(observed_features, columns=feature_cols)
+    df.insert(0, "kdcode", kdcode_list)
+    df.insert(1, "dt", pred_date)
+    out_path = date_dir / "normalized_features.csv"
+    df.to_csv(str(out_path), index=False)
+    print(f"Normalized features saved to {out_path}")
+    return out_path
 
 
 def main():
@@ -368,8 +417,9 @@ def main():
     # Mirror the run_experiment.py derivation so checkpoints trained with
     # multi-feature edges (4-d) load with matching GAT parameter shapes.
     graph_cfg = config.get("graph", {})
-    model_cfg["edge_feature_dim"] = 4 if graph_cfg.get("use_multi_feature_edges", False) else 1
+    model_cfg["edge_feature_dim"] = edge_feature_dim(graph_cfg)
     model_cfg["drop_edge_p"] = float(graph_cfg.get("drop_edge_p", 0.0))
+    model_cfg["use_sector_relation"] = bool(graph_cfg.get("use_sector_relation", False))
 
     # Determine the inference end date: max of requested date and CSV max date.
     csv_dates = pd.read_csv(str(csv_path), usecols=["dt"])["dt"]
@@ -388,13 +438,14 @@ def main():
             print(f"Warning: Could not load regime inputs: {exc}")
             print("Continuing with zero-filled regime features (soft-fail)")
 
-    time_series, graph_features, kdcode_list, pred_date = prepare_inference_data(
+    time_series, graph_features, kdcode_list, pred_date, observed_features = prepare_inference_data(
         csv_path=str(csv_path),
         metadata=metadata,
         features_cfg=features_cfg,
         his_t=his_t,
         target_date=args.date,
         regime_df=regime_df,
+        return_observed_features=True,
     )
 
     scores = run_inference(
@@ -404,9 +455,14 @@ def main():
         kdcode_list=kdcode_list,
         model_cfg=model_cfg,
         num_features=len(feature_cols),
+        pred_date=pred_date,
+        append_snapshot_age_days=bool(graph_cfg.get("append_snapshot_age_days", False)),
+        static_graph_valid_from=metadata.get("graph_static_valid_from")
+        or config.get("data", {}).get("train_start"),
     )
 
     save_scores(scores, kdcode_list, pred_date, output_dir)
+    save_normalized_features(observed_features, kdcode_list, feature_cols, pred_date, output_dir)
 
     print("\n" + "=" * 70)
     print("  Inference complete")

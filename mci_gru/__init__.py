@@ -11,6 +11,7 @@ A modular experiment framework for testing stock prediction models with:
 
 from mci_gru.config import (
     DataConfig,
+    EvaluationConfig,
     ExperimentConfig,
     FeatureConfig,
     GraphConfig,
@@ -22,6 +23,7 @@ from mci_gru.config import (
 __version__ = "0.1.0"
 __all__ = [
     "DataConfig",
+    "EvaluationConfig",
     "FeatureConfig",
     "GraphConfig",
     "ModelConfig",

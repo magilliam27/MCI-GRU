@@ -43,6 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from mci_gru.config import (
     DataConfig,
+    EvaluationConfig,
     ExperimentConfig,
     FeatureConfig,
     GraphConfig,
@@ -52,24 +53,13 @@ from mci_gru.config import (
 )
 from mci_gru.data.data_manager import create_data_loaders
 from mci_gru.features import FeatureEngineer
+from mci_gru.graph.utils import edge_feature_dim
 from mci_gru.models import create_model
 from mci_gru.pipeline import prepare_data, prepare_data_index_level
 from mci_gru.tracking import MLflowTrackingManager
-from mci_gru.training import train_multiple_models
+from mci_gru.training import evaluate_predictions, train_multiple_models
 from mci_gru.utils.seeding import set_seed
 from mci_gru.walkforward import generate_walkforward_configs, merge_walkforward_summary
-
-
-def _edge_feature_dim(graph_cfg: GraphConfig) -> int:
-    """Final GAT ``edge_dim`` after builder columns + optional collate snapshot age."""
-    if not graph_cfg.use_multi_feature_edges:
-        return 1
-    n = 4
-    if graph_cfg.use_lead_lag_features:
-        n += 2
-    if graph_cfg.append_snapshot_age_days:
-        n += 1
-    return n
 
 
 def _data_file_fingerprint(relative_path: str, logger: logging.Logger) -> dict[str, Any]:
@@ -97,6 +87,39 @@ def _data_file_fingerprint(relative_path: str, logger: logging.Logger) -> dict[s
     }
 
 
+def _resolved_evaluation_kwargs(config: ExperimentConfig) -> dict[str, Any]:
+    eval_cfg = config.evaluation
+    return {
+        "top_k_values": eval_cfg.top_k_values,
+        "label_t": config.model.label_t,
+        "bootstrap_enabled": eval_cfg.bootstrap_enabled,
+        "bootstrap_resamples": eval_cfg.bootstrap_resamples,
+        "bootstrap_seed": eval_cfg.bootstrap_seed,
+        "ci_level": eval_cfg.ci_level,
+        "block_size": eval_cfg.block_size or max(1, config.model.label_t),
+        "newey_west_lags": eval_cfg.newey_west_lags
+        if eval_cfg.newey_west_lags is not None
+        else max(0, config.model.label_t - 1),
+    }
+
+
+def _compute_evaluation_summary(
+    predictions: np.ndarray,
+    labels: np.ndarray,
+    config: ExperimentConfig,
+) -> dict[str, Any]:
+    metrics = evaluate_predictions(
+        predictions,
+        labels,
+        **_resolved_evaluation_kwargs(config),
+    )
+    return {
+        "label_t": config.model.label_t,
+        "top_k_values": config.evaluation.top_k_values,
+        "metrics": metrics,
+    }
+
+
 def setup_logging(output_dir: str, experiment_name: str) -> logging.Logger:
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -121,6 +144,7 @@ def dict_to_config(cfg: DictConfig) -> ExperimentConfig:
     graph_cfg = GraphConfig(**cfg_dict.get("graph", {}))
     model_cfg = ModelConfig(**cfg_dict.get("model", {}))
     training_cfg = TrainingConfig(**cfg_dict.get("training", {}))
+    evaluation_cfg = EvaluationConfig(**cfg_dict.get("evaluation", {}))
     tracking_cfg = TrackingConfig(**cfg_dict.get("tracking", {}))
 
     return ExperimentConfig(
@@ -129,6 +153,7 @@ def dict_to_config(cfg: DictConfig) -> ExperimentConfig:
         graph=graph_cfg,
         model=model_cfg,
         training=training_cfg,
+        evaluation=evaluation_cfg,
         tracking=tracking_cfg,
         experiment_name=cfg_dict.get("experiment_name", "baseline"),
         output_dir=cfg_dict.get("output_dir", "results"),
@@ -190,6 +215,7 @@ def main(cfg: DictConfig):
     )
 
     try:
+        objective_value = None
         if tracking_manager.enabled:
             tracking_manager.log_params(OmegaConf.to_container(cfg, resolve=True))
             mlflow_meta = tracking_manager.persist_run_metadata(
@@ -232,6 +258,8 @@ def main(cfg: DictConfig):
                 "train_end": cfg_w.data.train_end,
                 "data_file": cfg_w.data.filename,
                 "walkforward_window": wi,
+                "graph_static_valid_from": data.get("graph_static_valid_from"),
+                "feature_reference_path": "feature_reference.json",
                 **_data_file_fingerprint(cfg_w.data.filename, logger),
             }
             metadata_path = os.path.join(wpath, "run_metadata.json")
@@ -239,11 +267,18 @@ def main(cfg: DictConfig):
                 json.dump(metadata, f, indent=2)
             logger.info(f"Run metadata saved to: {metadata_path}")
 
+            feature_reference_path = os.path.join(wpath, "feature_reference.json")
+            with open(feature_reference_path, "w") as f:
+                json.dump(data.get("feature_reference", {"features": {}}), f, indent=2)
+            logger.info(f"Feature reference saved to: {feature_reference_path}")
+
             graph_data_path = os.path.join(wpath, "graph_data.pt")
             torch.save(
                 {
                     "edge_index": data["edge_index"],
                     "edge_weight": data["edge_weight"],
+                    "edge_index_sector": data.get("edge_index_sector"),
+                    "edge_weight_sector": data.get("edge_weight_sector"),
                 },
                 graph_data_path,
             )
@@ -276,10 +311,10 @@ def main(cfg: DictConfig):
             )
 
             num_features = len(data["feature_cols"])
-            edge_feature_dim = _edge_feature_dim(cfg_w.graph)
+            edge_dim = edge_feature_dim(cfg_w.graph)
             model_cfg_dict = {
                 **cfg_w.model.to_dict(),
-                "edge_feature_dim": edge_feature_dim,
+                "edge_feature_dim": edge_dim,
                 "drop_edge_p": cfg_w.graph.drop_edge_p,
                 "use_sector_relation": cfg_w.graph.use_sector_relation,
             }
@@ -329,6 +364,17 @@ def main(cfg: DictConfig):
                 with open(training_summary_path, "w") as f:
                     json.dump(training_summary, f, indent=2)
                 logger.info(f"Training summary saved to: {training_summary_path}")
+
+                evaluation_summary = _compute_evaluation_summary(
+                    avg_predictions,
+                    data["test_labels"],
+                    cfg_w,
+                )
+                evaluation_summary_path = os.path.join(wpath, "evaluation_summary.json")
+                with open(evaluation_summary_path, "w") as f:
+                    json.dump(evaluation_summary, f, indent=2)
+                logger.info(f"Evaluation summary saved to: {evaluation_summary_path}")
+                training_summary["evaluation"] = evaluation_summary["metrics"]
                 wf_summaries.append(training_summary)
 
                 if active_tracking.enabled:
@@ -340,8 +386,18 @@ def main(cfg: DictConfig):
                         },
                         prefix="training.",
                     )
+                    active_tracking.log_metrics(
+                        evaluation_summary["metrics"],
+                        prefix="evaluation.",
+                    )
                     if cfg_w.tracking.log_artifacts:
-                        for artifact in [metadata_path, graph_data_path, training_summary_path]:
+                        for artifact in [
+                            metadata_path,
+                            feature_reference_path,
+                            graph_data_path,
+                            training_summary_path,
+                            evaluation_summary_path,
+                        ]:
                             if os.path.isfile(artifact):
                                 active_tracking.log_artifact(artifact, artifact_path="run_artifacts")
                         for log_path in sorted(Path(wpath).glob("training_*.log")):
@@ -358,6 +414,9 @@ def main(cfg: DictConfig):
             with open(merged_path, "w") as f:
                 json.dump(merged, f, indent=2)
             logger.info("Walk-forward aggregate summary: %s", merged_path)
+            objective_value = merged.get("mean_best_val_ic_across_windows")
+        elif wf_summaries:
+            objective_value = wf_summaries[-1].get("mean_best_val_ic")
 
         logger.info("\n" + "=" * 80)
         logger.info("Experiment Complete")
@@ -371,6 +430,7 @@ def main(cfg: DictConfig):
         raise
     else:
         tracking_manager.close(status="FINISHED")
+        return objective_value
 
 
 if __name__ == "__main__":

@@ -42,3 +42,6 @@ jobs:
 
       - name: Run tests (skip data-dependent)
         run: python -m pytest tests/ -v -m "not requires_data and not requires_lseg" --timeout=120
+
+      - name: Run end-to-end smoke
+        run: python scripts/ci_smoke.py

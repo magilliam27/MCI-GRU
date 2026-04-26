@@ -368,12 +368,14 @@ class ModelConfig:
             raise ValueError("latent_init_scale must be > 0")
         if not 0.0 <= self.trunk_dropout < 1.0:
             raise ValueError(f"trunk_dropout must be in [0, 1), got {self.trunk_dropout}")
-        if self.use_a1_a2_cross_attention:
-            if self.hidden_size_gat1 % self.cross_a2_num_heads != 0:
-                raise ValueError(
-                    "hidden_size_gat1 must be divisible by cross_a2_num_heads when "
-                    "use_a1_a2_cross_attention=True"
-                )
+        if (
+            self.use_a1_a2_cross_attention
+            and self.hidden_size_gat1 % self.cross_a2_num_heads != 0
+        ):
+            raise ValueError(
+                "hidden_size_gat1 must be divisible by cross_a2_num_heads when "
+                "use_a1_a2_cross_attention=True"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -511,6 +513,39 @@ class TrainingConfig:
 
 
 @dataclass
+class EvaluationConfig:
+    """Evaluation and statistical confidence configuration."""
+
+    top_k_values: list[int] = field(default_factory=lambda: [10, 20, 50, 100])
+    bootstrap_enabled: bool = True
+    bootstrap_resamples: int = 1000
+    bootstrap_seed: int = 42
+    ci_level: float = 0.95
+    block_size: int | None = None
+    sharpe_method: str = "newey_west"
+    newey_west_lags: int | None = None
+
+    _VALID_SHARPE_METHODS = ("newey_west", "naive")
+
+    def __post_init__(self):
+        if not self.top_k_values or any(k <= 0 for k in self.top_k_values):
+            raise ValueError("evaluation.top_k_values must contain positive integers")
+        if self.bootstrap_resamples <= 0:
+            raise ValueError("evaluation.bootstrap_resamples must be > 0")
+        if not 0 < self.ci_level < 1:
+            raise ValueError("evaluation.ci_level must be in (0, 1)")
+        if self.block_size is not None and self.block_size <= 0:
+            raise ValueError("evaluation.block_size must be > 0 when set")
+        if self.sharpe_method not in self._VALID_SHARPE_METHODS:
+            raise ValueError(
+                f"evaluation.sharpe_method must be one of {self._VALID_SHARPE_METHODS}, "
+                f"got {self.sharpe_method!r}"
+            )
+        if self.newey_west_lags is not None and self.newey_west_lags < 0:
+            raise ValueError("evaluation.newey_west_lags must be >= 0 when set")
+
+
+@dataclass
 class TrackingConfig:
     """Optional MLflow experiment tracking configuration.
 
@@ -558,12 +593,15 @@ class ExperimentConfig:
     graph: GraphConfig = field(default_factory=GraphConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
+    evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
     experiment_name: str = "baseline"
     output_dir: str = "results"
     seed: int = 42
 
     def __post_init__(self) -> None:
+        if isinstance(self.evaluation, dict):
+            self.evaluation = EvaluationConfig(**self.evaluation)
         self._validate_embargo()
 
     def _validate_embargo(self) -> None:
@@ -650,6 +688,11 @@ class ExperimentConfig:
             "training.num_models": self.training.num_models,
             "training.loss_type": self.training.loss_type,
             "training.ic_loss_alpha": self.training.ic_loss_alpha,
+            # Evaluation
+            "evaluation.top_k_values": str(self.evaluation.top_k_values),
+            "evaluation.bootstrap_enabled": self.evaluation.bootstrap_enabled,
+            "evaluation.bootstrap_resamples": self.evaluation.bootstrap_resamples,
+            "evaluation.ci_level": self.evaluation.ci_level,
             # Tracking
             "tracking.enabled": self.tracking.enabled,
             "tracking.tracking_uri": self.tracking.tracking_uri,
@@ -734,6 +777,7 @@ def create_config_from_dict(config_dict: dict[str, Any]) -> ExperimentConfig:
     graph_dict = config_dict.get("graph", {})
     model_dict = config_dict.get("model", {})
     training_dict = config_dict.get("training", {})
+    evaluation_dict = config_dict.get("evaluation", {})
     tracking_dict = config_dict.get("tracking", {})
 
     return ExperimentConfig(
@@ -742,6 +786,7 @@ def create_config_from_dict(config_dict: dict[str, Any]) -> ExperimentConfig:
         graph=GraphConfig(**graph_dict) if graph_dict else GraphConfig(),
         model=ModelConfig(**model_dict) if model_dict else ModelConfig(),
         training=TrainingConfig(**training_dict) if training_dict else TrainingConfig(),
+        evaluation=EvaluationConfig(**evaluation_dict) if evaluation_dict else EvaluationConfig(),
         tracking=TrackingConfig(**tracking_dict) if tracking_dict else TrackingConfig(),
         experiment_name=config_dict.get("experiment_name", "baseline"),
         output_dir=config_dict.get("output_dir", "results"),

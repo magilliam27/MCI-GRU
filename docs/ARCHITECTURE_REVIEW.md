@@ -7,7 +7,7 @@
 > reasoned critique plus prioritised upgrade roadmap.
 
 Scope audited: `mci_gru/` package, `run_experiment.py`, `configs/`, `paper_trade/`,
-`tests/`, and `docs/ARCHITECTURE.md` / `AGENTS.md` / `CLAUDE.md`.
+`tests/`, and `docs/ARCHITECTURE.md` / `AGENTS.md` / `docs/agent_references/claude/CLAUDE.md`.
 
 ## Implementation status (April 2026)
 
@@ -25,6 +25,8 @@ Remaining large items (still accurate in the sections below where not superseded
 **Phase 2 (April 2026):** Trunk `LayerNorm` + `Dropout` + inter-GAT dropout behind `model.use_trunk_regularisation`; `nn.MultiheadAttention` path behind `model.use_nn_multihead_attention`; `GRUWithAttention` (`nn.GRU` + post-hoc attention) behind `model.temporal_encoder=gru_attn` (legacy path unchanged); train-time `dropout_edge` via `graph.drop_edge_p`; optional `model.output_activation` (quote `"none"` in YAML); optional `use_group_type_embed` in `SelfAttention`. `configs/config.yaml` enables Phase 2 flags; `configs/experiment/paper_faithful.yaml` pins all legacy paths.
 
 **Phase 3 (April 2026):** Optional `model.use_a1_a2_cross_attention` + `model.cross_a2_num_heads` (fast temporal sequence as KV); `training.walkforward` rolling/expanding windows in `run_experiment.py` with nested MLflow child runs; `graph.append_snapshot_age_days` (collate appends age column), `graph.use_lead_lag_features` + `graph.lead_lag_days`, `graph.use_sector_relation` + dual `GATBlock` fuse (sector map CSV); `data.normalisation` `zscore` | `rank_gauss`; `data.filter_stocks_per_split`; `data.use_polars` / `use_pit_universe` + `pit_universe_csv`; `model.temporal_encoder=transformer` (`CausalTransformerEncoder`). Collate returns a **9-tuple** (optional sector edges). `paper_faithful` pins Phase 3 flags off.
+
+**Phase 4 (April 2026):** `mci_gru/evaluation/` adds daily IC series, Newey-West Sharpe, moving-block bootstrap CIs, top-k return helpers, shared turnover / rank-drop portfolio utilities, and PSI / KS-style feature drift. `EvaluationConfig` + `configs/config.yaml` expose CI defaults; `run_experiment.py` writes `evaluation_summary.json` and train-only `feature_reference.json` and logs evaluation metrics to MLflow. `paper_trade/scripts/infer.py` persists normalized inference features, `monitor.py` emits feature-drift artifacts, and `report.py` surfaces drift status. `scripts/ci_smoke.py` and `.github/workflows/ci.yml` add a small end-to-end PR smoke. `configs/experiment/phase4_optuna_sweep.yaml` documents the Optuna/Hydra sweep surface.
 
 ## TL;DR
 
@@ -52,7 +54,7 @@ The rest of the document justifies the original audit findings; **§9** tracks w
 
 ## 1. What the system does well
 
-- **Separation of concerns.** `data/`, `features/`, `graph/`, `models/`, `training/` boundaries are respected. `pipeline.prepare_data` is the single orchestrator. `paper_trade/` is enforced as frozen-checkpoint-only via `.cursor/rules/paper-trade-isolation.mdc`.
+- **Separation of concerns.** `data/`, `features/`, `graph/`, `models/`, `training/` boundaries are respected. `pipeline.prepare_data` is the single orchestrator. `paper_trade/` is enforced as frozen-checkpoint-only via `docs/agent_references/cursor/rules/paper-trade-isolation.mdc`.
 - **Typed config surface.** `ExperimentConfig` + Hydra YAML + `__post_init__` validation catches bad runs before training starts.
 - **No-lookahead discipline.**
   - `_compute_norm_stats` uses `train_end` only.
@@ -227,24 +229,19 @@ File: `mci_gru/training/trainer.py`.
 - `ICLoss` averages per-day IC — still correct cross-sectionally.
 - `CombinedMSEICLoss` still uses a fixed `eps`; monitor scale if you change normalisation.
 
-### 3.6 No HPO / sweep framework
+### 3.6 HPO / sweep framework
 
-There is no Optuna, Ray Tune, or MLflow-driven sweep. `configs/experiment/`
-has a handful of presets (`lookback_sweep.yaml`, `paper_faithful.yaml`)
-that must be invoked manually via Hydra `--multirun`. Given that each run
-takes 10 × 100 = 1000 model-epochs, an automated sweep over `his_t`,
-`learning_rate`, `judge_value`, and `num_hidden_states` is the single
-biggest alpha lever available.
+Phase 4 adds an Optuna/Hydra sweep example in
+`configs/experiment/phase4_optuna_sweep.yaml`. Given that each full run can
+take 10 × 100 = 1000 model-epochs, start with reduced `num_models` /
+`num_epochs` while shaping the search space, then promote finalists to full
+walk-forward evaluation.
 
 Minimal recipe:
 
 ```bash
-pip install optuna
-python run_experiment.py --multirun \
-    model.his_t=10,20,40 \
-    training.learning_rate=3e-5,5e-5,1e-4 \
-    graph.top_k=0,10,20 \
-    hydra/sweeper=optuna
+pip install optuna hydra-optuna-sweeper
+python run_experiment.py +experiment=phase4_optuna_sweep --multirun
 ```
 
 With MLflow **enabled by default**, each trial’s metrics are logged automatically (override with `tracking.enabled=false` if you want a silent sweep).
@@ -350,7 +347,7 @@ File: `mci_gru/graph/builder.py`.
 
 ### 5.1 Only Pearson correlation on returns
 
-The plan (`.cursor/plans/graph_signal_upgrades_c28cf640.plan.md`) already
+The plan (`docs/agent_references/cursor/plans/graph_signal_upgrades_c28cf640.plan.md`) already
 acknowledges this and lists levers 1b (signed two-relation / RGATConv),
 2a (lead-lag edges), 3a (graph-aware temporal encoder), 4c (rate-of-change
 edge feature), and a 5th edge column (snapshot_age_days) as **pending**.
@@ -496,11 +493,11 @@ Expected combined effect: 15–40% faster training, better IC, fewer silent data
 
 ### Phase 4 — eval and MLOps (parallelisable)
 
-- [ ] Block-bootstrap CIs on per-day IC and top-k return, logged to MLflow.
-- [ ] Shared `portfolio.py` used by both `tests/backtest_sp500.py` and `paper_trade/`.
-- [ ] Optuna sweep config + example over `his_t`, `learning_rate`, `top_k`, `ic_loss_alpha`.
-- [ ] CI smoke-run on PR: 2-epoch, 1-model sanity check that asserts the 9-tuple collate shape (7 core + optional sector edges).
-- [ ] Distribution-shift monitor on live features (KS / PSI vs. train window) surfaced in the nightly `report.py` output.
+- [x] Block-bootstrap CIs on per-day IC and top-k return, logged to MLflow.
+- [x] Shared `portfolio.py` helpers used by paper-trade rank-drop logic and low-risk backtest turnover code.
+- [x] Optuna sweep config + example over `his_t`, `learning_rate`, `top_k`, `ic_loss_alpha`.
+- [x] CI smoke-run on PR: 1-epoch, 1-model sanity check plus direct 9-tuple collate assertion.
+- [x] Distribution-shift monitor on live features (KS / PSI vs. train window) surfaced in nightly `report.py` output.
 
 ---
 

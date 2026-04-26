@@ -5,11 +5,26 @@ This module provides metrics for evaluating stock prediction models.
 """
 
 import numpy as np
-from scipy import stats
+
+from mci_gru.evaluation.portfolio import top_k_returns
+from mci_gru.evaluation.statistics import (
+    daily_ic_series,
+    moving_block_bootstrap_ci,
+    newey_west_sharpe,
+)
 
 
 def compute_metrics(
-    predictions: np.ndarray, true_returns: np.ndarray, top_k: int = 50
+    predictions: np.ndarray,
+    true_returns: np.ndarray,
+    top_k: int = 50,
+    label_t: int = 1,
+    bootstrap_enabled: bool = False,
+    bootstrap_resamples: int = 1000,
+    bootstrap_seed: int = 42,
+    ci_level: float = 0.95,
+    block_size: int | None = None,
+    newey_west_lags: int | None = None,
 ) -> dict[str, float]:
     """
     Compute evaluation metrics for predictions.
@@ -33,47 +48,58 @@ def compute_metrics(
     metrics["mae"] = float(np.mean(np.abs(predictions - true_returns)))
 
     # Correlation metrics
-    correlations = []
-    for i in range(len(predictions)):
-        if len(predictions[i]) > 1:
-            corr, _ = stats.spearmanr(predictions[i], true_returns[i])
-            if not np.isnan(corr):
-                correlations.append(corr)
+    correlations = daily_ic_series(predictions, true_returns, method="spearman")
 
-    if correlations:
+    if len(correlations) > 0:
         metrics["avg_spearman_corr"] = float(np.mean(correlations))
         metrics["median_spearman_corr"] = float(np.median(correlations))
 
     # Information Coefficient (Pearson correlation)
-    ic_values = []
-    for i in range(len(predictions)):
-        if len(predictions[i]) > 1:
-            corr, _ = stats.pearsonr(predictions[i], true_returns[i])
-            if not np.isnan(corr):
-                ic_values.append(corr)
+    ic_values = daily_ic_series(predictions, true_returns, method="pearson")
 
-    if ic_values:
+    if len(ic_values) > 0:
         metrics["avg_ic"] = float(np.mean(ic_values))
         metrics["ic_ir"] = float(
             np.mean(ic_values) / (np.std(ic_values) + 1e-8)
         )  # Information Ratio
+        if bootstrap_enabled:
+            ci = moving_block_bootstrap_ci(
+                ic_values,
+                statistic=np.mean,
+                block_size=block_size or max(1, label_t),
+                n_resamples=bootstrap_resamples,
+                seed=bootstrap_seed,
+                ci_level=ci_level,
+            )
+            metrics["avg_ic_ci_lower"] = ci["lower"]
+            metrics["avg_ic_ci_upper"] = ci["upper"]
 
     # Portfolio metrics (top-k selection)
-    portfolio_returns = []
-    for i in range(len(predictions)):
-        # Select top-k stocks by prediction
-        top_indices = np.argsort(predictions[i])[-top_k:]
-        portfolio_return = np.mean(true_returns[i][top_indices])
-        portfolio_returns.append(portfolio_return)
+    portfolio_returns = top_k_returns(predictions, true_returns, top_k=top_k)
 
-    if portfolio_returns:
-        portfolio_returns = np.array(portfolio_returns)
+    if len(portfolio_returns) > 0:
+        nw_lags = max(0, label_t - 1) if newey_west_lags is None else newey_west_lags
         metrics["top_k"] = top_k
         metrics["avg_portfolio_return"] = float(np.mean(portfolio_returns))
         metrics["cumulative_return"] = float(np.sum(portfolio_returns))
-        metrics["sharpe_ratio"] = float(
+        naive_sharpe = float(
             np.mean(portfolio_returns) / (np.std(portfolio_returns) + 1e-8) * np.sqrt(252)
         )
+        nw_sharpe = newey_west_sharpe(portfolio_returns, lags=nw_lags)
+        metrics["sharpe_ratio"] = nw_sharpe if label_t > 1 else naive_sharpe
+        metrics["sharpe_naive"] = naive_sharpe
+        metrics["sharpe_newey_west"] = nw_sharpe
+        if bootstrap_enabled:
+            ci = moving_block_bootstrap_ci(
+                portfolio_returns,
+                statistic=np.mean,
+                block_size=block_size or max(1, label_t),
+                n_resamples=bootstrap_resamples,
+                seed=bootstrap_seed + top_k,
+                ci_level=ci_level,
+            )
+            metrics[f"top_{top_k}_return_ci_lower"] = ci["lower"]
+            metrics[f"top_{top_k}_return_ci_upper"] = ci["upper"]
 
     return metrics
 
@@ -146,7 +172,16 @@ def compute_rank_metrics(
 
 
 def evaluate_predictions(
-    predictions: np.ndarray, true_returns: np.ndarray, top_k_values: list[int] = None
+    predictions: np.ndarray,
+    true_returns: np.ndarray,
+    top_k_values: list[int] = None,
+    label_t: int = 1,
+    bootstrap_enabled: bool = False,
+    bootstrap_resamples: int = 1000,
+    bootstrap_seed: int = 42,
+    ci_level: float = 0.95,
+    block_size: int | None = None,
+    newey_west_lags: int | None = None,
 ) -> dict[str, float]:
     """
     Comprehensive evaluation of predictions.
@@ -165,7 +200,17 @@ def evaluate_predictions(
     metrics = {}
 
     # Basic metrics
-    basic = compute_metrics(predictions, true_returns)
+    basic = compute_metrics(
+        predictions,
+        true_returns,
+        label_t=label_t,
+        bootstrap_enabled=bootstrap_enabled,
+        bootstrap_resamples=bootstrap_resamples,
+        bootstrap_seed=bootstrap_seed,
+        ci_level=ci_level,
+        block_size=block_size,
+        newey_west_lags=newey_west_lags,
+    )
     metrics.update(basic)
 
     # Hit rate
@@ -177,9 +222,25 @@ def evaluate_predictions(
 
     # Multiple top-k evaluations
     for k in top_k_values:
-        k_metrics = compute_metrics(predictions, true_returns, top_k=k)
+        k_metrics = compute_metrics(
+            predictions,
+            true_returns,
+            top_k=k,
+            label_t=label_t,
+            bootstrap_enabled=bootstrap_enabled,
+            bootstrap_resamples=bootstrap_resamples,
+            bootstrap_seed=bootstrap_seed,
+            ci_level=ci_level,
+            block_size=block_size,
+            newey_west_lags=newey_west_lags,
+        )
         metrics[f"return_top_{k}"] = k_metrics["avg_portfolio_return"]
         metrics[f"sharpe_top_{k}"] = k_metrics["sharpe_ratio"]
+        metrics[f"sharpe_top_{k}_naive"] = k_metrics["sharpe_naive"]
+        metrics[f"sharpe_top_{k}_newey_west"] = k_metrics["sharpe_newey_west"]
+        if f"top_{k}_return_ci_lower" in k_metrics:
+            metrics[f"top_{k}_return_ci_lower"] = k_metrics[f"top_{k}_return_ci_lower"]
+            metrics[f"top_{k}_return_ci_upper"] = k_metrics[f"top_{k}_return_ci_upper"]
 
     return metrics
 
