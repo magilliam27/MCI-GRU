@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> This file is the **table of contents** for any AI agent working in this repository.
+> This file is the **Codex-first table of contents** for agents working in this repository.
 > It is intentionally short (~100 lines). Deep details live in the files linked below.
 
 ## Quick Commands
@@ -15,7 +15,6 @@ python paper_trade/scripts/run_nightly.py           # nightly paper-trade pipeli
 
 ```
 AGENTS.md            ← you are here (start point for all agents)
-CLAUDE.md            ← Claude-specific guidance (extends this file)
 docs/
 ├── ARCHITECTURE.md  ← model, pipeline, graph, data flow (READ THIS FIRST)
 ├── CONFIGURATION_GUIDE.md
@@ -26,7 +25,9 @@ docs/
 ├── MLFLOW_TRACKING.md
 └── mci_gru_implementation_plan.md
 configs/             ← Hydra YAML (config.yaml is the base; graph experiments under configs/experiment/)
-.cursor/plans/graph_signal_upgrades_c28cf640.plan.md  ← dynamic-graph audit + roadmap (levers 1–4)
+docs/agent_references/
+├── claude/CLAUDE.md  ← Claude-specific guidance, retained for reference
+└── cursor/plans/graph_signal_upgrades_c28cf640.plan.md  ← dynamic-graph audit + roadmap (levers 1–4)
 mci_gru/             ← core Python package
 ├── config.py        ← typed dataclass configs (ExperimentConfig)
 ├── pipeline.py      ← central orchestrator: load → features → normalize → window → graph
@@ -58,7 +59,7 @@ tests/               ← pytest suite + backtest scripts
 
 - **Before editing**, read `docs/ARCHITECTURE.md` for the data flow and model structure.
 - **Before adding features**, read `mci_gru/features/registry.py` for the plugin pattern.
-- **Before changing the graph**, read `mci_gru/graph/builder.py`, `docs/ARCHITECTURE.md` (Graph section), and `.cursor/plans/graph_signal_upgrades_c28cf640.plan.md` (audit + roadmap).
+- **Before changing the graph**, read `mci_gru/graph/builder.py`, `docs/ARCHITECTURE.md` (Graph section), and `docs/agent_references/cursor/plans/graph_signal_upgrades_c28cf640.plan.md` (audit + roadmap).
 - **Before touching paper_trade/**, understand that it uses frozen checkpoints — do not import `GraphBuilder`.
 - **Run tests** after every change: `python -m pytest tests/ -v`
 - **Config changes** go through Hydra YAML in `configs/` — see `docs/CONFIGURATION_GUIDE.md`.
@@ -77,7 +78,7 @@ regime data contracts, backtest fairness, output management, MLflow tracking.
 
 ## Correlation graph: plan vs implementation
 
-The file `.cursor/plans/graph_signal_upgrades_c28cf640.plan.md` has two layers: (1) an **audit** that the dynamic graph is wired end-to-end (no lookahead; `GraphSchedule.get_graph_for_date` in `combined_collate_fn` when `graph.update_frequency_months > 0`; `run_experiment.py` sets `dynamic_graph` from that flag), and (2) a **roadmap** of levers 1–4. The YAML frontmatter todos there are still largely *pending* relative to that roadmap.
+The file `docs/agent_references/cursor/plans/graph_signal_upgrades_c28cf640.plan.md` has two layers: (1) an **audit** that the dynamic graph is wired end-to-end (no lookahead; `GraphSchedule.get_graph_for_date` in `combined_collate_fn` when `graph.update_frequency_months > 0`; `run_experiment.py` sets `dynamic_graph` from that flag), and (2) a **roadmap** of levers 1–4. The YAML frontmatter todos there are still largely *pending* relative to that roadmap.
 
 **Implemented today (code, not the whole roadmap)**
 

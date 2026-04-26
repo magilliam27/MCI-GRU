@@ -37,9 +37,9 @@ isProject: false
 
 # Phase 3 — Fusion, Walk-Forward, Data & Graph Modernisation
 
-**Source of truth:** [docs/ARCHITECTURE_REVIEW.md](docs/ARCHITECTURE_REVIEW.md) §9 Phase 3 bullets, TL;DR rows 1–2 and 4–5, §3.4 walk-forward gap, §8 table row 1, Phase 2 deferrals in Implementation status box.
+**Source of truth:** [docs/ARCHITECTURE_REVIEW.md](../../../ARCHITECTURE_REVIEW.md) §9 Phase 3 bullets, TL;DR rows 1–2 and 4–5, §3.4 walk-forward gap, §8 table row 1, Phase 2 deferrals in Implementation status box.
 
-**Relationship to Phase 2:** [`.cursor/plans/phase-2-trunk-surgery_a4da800c.plan.md`](phase-2-trunk-surgery_a4da800c.plan.md) shipped trunk regularisation, `nn.MultiheadAttention`, `GRUWithAttention`, DropEdge, group-type embed, output activation. Phase 3 picks up **cross-attention**, **walk-forward**, **Transformer encoder (optional)**, plus the **§9 Phase 3 data/graph** list.
+**Relationship to Phase 2:** [`phase-2-trunk-surgery_a4da800c.plan.md`](phase-2-trunk-surgery_a4da800c.plan.md) shipped trunk regularisation, `nn.MultiheadAttention`, `GRUWithAttention`, DropEdge, group-type embed, output activation. Phase 3 picks up **cross-attention**, **walk-forward**, **Transformer encoder (optional)**, plus the **§9 Phase 3 data/graph** list.
 
 ## Goals (ranked by audit ROI)
 
@@ -53,9 +53,9 @@ isProject: false
 
 ## Invariants (do not regress)
 
-- **7-tuple collate** — `edge_weight` remains `(E,)` legacy or `(E, F)` multi-feature; any new edge columns bump `F` consistently in `GATConv(..., edge_dim=F)`, collate, and tests ([AGENTS.md](AGENTS.md) invariant on tuple shape).
-- **No lookahead** — graph snapshots, norm stats, labels, embargo semantics unchanged in spirit; walk-forward windows must respect same rules per window ([`.cursor/rules/no-lookahead.mdc`](.cursor/rules/no-lookahead.mdc)).
-- **Paper-trade isolation** — `paper_trade/` still consumes frozen `graph_data.pt` / checkpoint path only; no training imports in inference bundle ([`.cursor/rules/paper-trade-isolation.mdc`](.cursor/rules/paper-trade-isolation.mdc)).
+- **7-tuple collate** — `edge_weight` remains `(E,)` legacy or `(E, F)` multi-feature; any new edge columns bump `F` consistently in `GATConv(..., edge_dim=F)`, collate, and tests ([AGENTS.md](../../../../AGENTS.md) invariant on tuple shape).
+- **No lookahead** — graph snapshots, norm stats, labels, embargo semantics unchanged in spirit; walk-forward windows must respect same rules per window ([`no-lookahead.mdc`](../rules/no-lookahead.mdc)).
+- **Paper-trade isolation** — `paper_trade/` still consumes frozen `graph_data.pt` / checkpoint path only; no training imports in inference bundle ([`paper-trade-isolation.mdc`](../rules/paper-trade-isolation.mdc)).
 - **paper_faithful** — every new model/graph/data flag gets a **legacy pin** so replication configs stay bitwise-stable vs prior checkpoints where required (same pattern as Phase 2).
 
 ## Success criteria

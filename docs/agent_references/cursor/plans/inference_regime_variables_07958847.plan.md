@@ -108,4 +108,4 @@ Either way, **do not copy** `compute_regime_monthly_features` / merge logic into
 ## Out of scope (unless you explicitly want it)
 
 - Retraining or changing `graph_data.pt` / checkpoints.
-- Changing the dynamic-graph plan in [`.cursor/plans/dynamic_graph_wiring_1842b591.plan.md`](.cursor/plans/dynamic_graph_wiring_1842b591.plan.md).
+- Changing the dynamic-graph plan in [`dynamic_graph_wiring_1842b591.plan.md`](dynamic_graph_wiring_1842b591.plan.md).
