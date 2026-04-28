@@ -33,3 +33,20 @@ def test_ablation_colab_notebook_requests_gpu_runtime_metadata() -> None:
     notebook = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
 
     assert notebook["metadata"]["accelerator"] == "GPU"
+
+
+def test_ablation_colab_notebook_has_finalist_confirmation_section() -> None:
+    sources = _cell_sources()
+    combined = "\n".join(sources)
+
+    assert "## 10. Finalist Confirmation" in combined
+    assert "RUN_FINALIST_CONFIRMATION = False" in combined
+    assert "FINALIST_CONFIRMATION_ROOT" in combined
+    assert "finalist_confirmation" in combined
+    assert "'modern_defaults'" in combined
+    assert "'topk10_abs_graph'" in combined
+    assert "'topk20_abs_graph'" in combined
+    assert "'topk30_abs_graph'" in combined
+    assert "'topk20_pos_graph'" in combined
+    assert "CONFIRMATION_NUM_MODELS = 3" in combined
+    assert "CONFIRMATION_NUM_EPOCHS = 20" in combined
