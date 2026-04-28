@@ -50,3 +50,26 @@ def test_ablation_colab_notebook_has_finalist_confirmation_section() -> None:
     assert "'topk20_pos_graph'" in combined
     assert "CONFIRMATION_NUM_MODELS = 3" in combined
     assert "CONFIRMATION_NUM_EPOCHS = 20" in combined
+
+
+def test_ablation_colab_notebook_has_final_confirmation_signal_check() -> None:
+    sources = _cell_sources()
+    combined = "\n".join(sources)
+
+    assert "## 11. Final Confirmation: Signal Survival Check" in combined
+    assert "RUN_FINAL_CONFIRMATION = False" in combined
+    assert "FINAL_CONFIRMATION_ROOT" in combined
+    assert "final_confirmation" in combined
+    assert "FINAL_CONFIRMATION_PRIMARY_RUNS" in combined
+    assert "'modern_defaults'" in combined
+    assert "'topk30_abs_graph'" in combined
+    assert "INCLUDE_RETURN_CHALLENGER = True" in combined
+    assert "'topk10_abs_graph'" in combined
+    assert "training.walkforward.enabled=true" in combined
+    assert "FINAL_CONFIRMATION_MAX_WINDOWS = 5" in combined
+    assert "FINAL_CONFIRMATION_NUM_MODELS = 5" in combined
+    assert "FINAL_CONFIRMATION_NUM_EPOCHS = 50" in combined
+    assert "FINAL_CONFIRMATION_BOOTSTRAP_RESAMPLES = 1000" in combined
+    assert "ic_ci_pass" in combined
+    assert "top20_ci_pass" in combined
+    assert "continuation_recommendation" in combined
