@@ -1,518 +1,371 @@
-# MCI-GRU Architecture Review (2026-04)
+# MCI-GRU Architecture Review (Updated 2026-04)
 
-> Grand-overview evaluation of the MCI-GRU codebase against current ML best
-> practices, with a focus on model design, information transfer between
-> sub-systems, training dynamics, and MLOps hygiene. Sister document to
-> `docs/ARCHITECTURE.md` (which describes **what is**); this document is a
-> reasoned critique plus prioritised upgrade roadmap.
+This document is the current architecture review for the MCI-GRU codebase. It
+replaces the original pre-change audit with a status-oriented review: what the
+system now does, what has been fixed since the first review, and where the next
+engineering and research work should go.
 
-Scope audited: `mci_gru/` package, `run_experiment.py`, `configs/`, `paper_trade/`,
-`tests/`, and `docs/ARCHITECTURE.md` / `AGENTS.md` / `docs/agent_references/claude/CLAUDE.md`.
+Sister document: `docs/ARCHITECTURE.md` describes the system as built. This
+review is the critique and roadmap.
 
-## Implementation status (April 2026)
-
-**Phase 1 (“free lunch”) from §9 is shipped.** The narrative sections below (§2–§7) were written as a *pre-change* audit; where they contradict this box, **this box wins**.
-
-- **Optimizer / schedule / AMP:** `AdamW`, linear warmup + cosine LR (`TrainingConfig.lr_scheduler`, `warmup_steps`), `torch.amp` + `GradScaler` when `use_amp` and CUDA (no gradient accumulation yet).
-- **Selection / loss:** `selection_metric` (default **`val_ic`**), combined MSE+IC loss default (`loss_type=combined`); `paper_faithful` pins paper-style MSE / scalar edges / MLflow off as needed.
-- **Graph:** `use_multi_feature_edges=true` by default; `(E, 4)` edge attributes.
-- **Splits / leakage:** `ExperimentConfig` enforces **> `label_t`** calendar-day gaps between train→val and val→test unless `data.skip_embargo_check=true`. `pipeline._build_tensors` aligns `stock_features_*` to label dates so embargo **gaps** do not misalign tensors vs graph inputs.
-- **Speed:** `generate_time_series_features` is **vectorised** (no `iterrows` hotspot).
-- **Repro / MLOps:** Per-ensemble-member seeds `seed + model_id`; `run_metadata.json` includes **`data_file_sha256`** (+ size, mtime) when `data.filename` exists; **MLflow `tracking.enabled=true`** by default.
-
-Remaining large items (still accurate in the sections below where not superseded above): **Sharpe on overlapping `label_t` returns**, **shared portfolio utilities**, **locked dependencies**; optional Phase 3 flags default off until promoted after A/B vs `paper_faithful`.
-
-**Phase 2 (April 2026):** Trunk `LayerNorm` + `Dropout` + inter-GAT dropout behind `model.use_trunk_regularisation`; `nn.MultiheadAttention` path behind `model.use_nn_multihead_attention`; `GRUWithAttention` (`nn.GRU` + post-hoc attention) behind `model.temporal_encoder=gru_attn` (legacy path unchanged); train-time `dropout_edge` via `graph.drop_edge_p`; optional `model.output_activation` (quote `"none"` in YAML); optional `use_group_type_embed` in `SelfAttention`. `configs/config.yaml` enables Phase 2 flags; `configs/experiment/paper_faithful.yaml` pins all legacy paths.
-
-**Phase 3 (April 2026):** Optional `model.use_a1_a2_cross_attention` + `model.cross_a2_num_heads` (fast temporal sequence as KV); `training.walkforward` rolling/expanding windows in `run_experiment.py` with nested MLflow child runs; `graph.append_snapshot_age_days` (collate appends age column), `graph.use_lead_lag_features` + `graph.lead_lag_days`, `graph.use_sector_relation` + dual `GATBlock` fuse (sector map CSV); `data.normalisation` `zscore` | `rank_gauss`; `data.filter_stocks_per_split`; `data.use_polars` / `use_pit_universe` + `pit_universe_csv`; `model.temporal_encoder=transformer` (`CausalTransformerEncoder`). Collate returns a **9-tuple** (optional sector edges). `paper_faithful` pins Phase 3 flags off.
-
-**Phase 4 (April 2026):** `mci_gru/evaluation/` adds daily IC series, Newey-West Sharpe, moving-block bootstrap CIs, top-k return helpers, shared turnover / rank-drop portfolio utilities, and PSI / KS-style feature drift. `EvaluationConfig` + `configs/config.yaml` expose CI defaults; `run_experiment.py` writes `evaluation_summary.json` and train-only `feature_reference.json` and logs evaluation metrics to MLflow. `paper_trade/scripts/infer.py` persists normalized inference features, `monitor.py` emits feature-drift artifacts, and `report.py` surfaces drift status. `scripts/ci_smoke.py` and `.github/workflows/ci.yml` add a small end-to-end PR smoke. `configs/experiment/phase4_optuna_sweep.yaml` documents the Optuna/Hydra sweep surface.
+Scope reviewed: `mci_gru/`, `run_experiment.py`, `configs/`, `paper_trade/`,
+`scripts/`, `tests/`, `.github/workflows/ci.yml`, and the architecture docs.
 
 ## TL;DR
 
-The system is a clean, well-documented, four-stream ensemble over a dynamic
-correlation graph. The *plumbing* (Hydra configs, typed dataclasses,
-GraphSchedule, paper-trade isolation, no-lookahead discipline) is genuinely
-good and above the median for research code. The *learning stack itself*
-(optimizer, scheduler, normalisation layers, information flow between
-streams, label design, temporal encoder implementation) lags modern best
-practice and is where almost all the cheap alpha lives.
-
-Highest remaining ROI (after Phase 1 + Phase 2 trunk — see **Implementation status**), in rough order:
-
-1. **Cross-stream fusion** — shipped behind `model.use_a1_a2_cross_attention` (default off); ablate vs concat+self-attn path.
-2. **Walk-forward retraining** — shipped behind `training.walkforward.enabled` (default off); aggregates `walkforward_summary.json` when enabled.
-3. **Gradient accumulation** if you want larger effective batch on IC without blowing VRAM (still open).
-4. **Phase 3 data/graph** — lead-lag + snapshot age + sector branch + rank-gauss + per-split filter + optional Polars/PIT shipped behind flags (§9 Phase 3).
-5. **Transformer temporal encoder** — `model.temporal_encoder=transformer` (default remains `gru_attn` in base YAML).
-
-**Done in Phase 2 (config-gated):** trunk `LayerNorm` + `Dropout`, `nn.MultiheadAttention` latent path, `GRUWithAttention` temporal path, DropEdge, group-type embedding, configurable final `output_activation`.
-
-The rest of the document justifies the original audit findings; **§9** tracks what has already landed vs what is still open.
-
----
-
-## 1. What the system does well
-
-- **Separation of concerns.** `data/`, `features/`, `graph/`, `models/`, `training/` boundaries are respected. `pipeline.prepare_data` is the single orchestrator. `paper_trade/` is enforced as frozen-checkpoint-only via `docs/agent_references/cursor/rules/paper-trade-isolation.mdc`.
-- **Typed config surface.** `ExperimentConfig` + Hydra YAML + `__post_init__` validation catches bad runs before training starts.
-- **No-lookahead discipline.**
-  - `_compute_norm_stats` uses `train_end` only.
-  - `GraphSchedule` snapshots use data *strictly before* their valid-from date.
-  - `compute_labels` uses `close[t+label_t]/close[t+1] - 1` (first forward day is *after* prediction date).
-  - `apply_rank_labels` uses same-day cross-section only.
-- **Dynamic graph without `batch_size=1`.** `GraphSchedule.get_graph_for_date` + `combined_collate_fn` resolve edges per-sample via `bisect`, so any batch size works.
-- **Ensemble averaging.** `train_multiple_models` with `num_models=10` is a simple and robust variance reducer.
-- **MLflow integration** (**on by default**; disable with `tracking.enabled=false`) with parent/child runs, per-epoch metrics, checkpoint and prediction artefacts.
-- **Feature registry plugin pattern** (`momentum`, `volatility`, `credit`, `regime`) with typed config and pre-defined `FEATURE_SETS`.
-- **Backtest realism.** Transaction-cost accounting (`bid_ask=5bps`, `slippage=5bps`), turnover stats, gross/net ARR, rank-drop exit gate (`min_rank_drop=30`).
-- **Tests cover invariants.** Lookahead, regime data contract, momentum blend modes, dynamic graph wiring, output-management — not just "does it run".
-
-These are the reasons the system deserves an upgrade rather than a rewrite.
-
----
-
-## 2. Model architecture — issues and opportunities
-
-File: `mci_gru/models/mci_gru.py`.
-
-### 2.1 Missing modern regularisation primitives
-
-`rg -n 'LayerNorm|BatchNorm|Dropout' mci_gru/models` returns **zero** hits.
-For a 4-stream model that processes noisy, fat-tailed financial data with a
-stacked attention + GAT trunk, this is surprising.
-
-Recommended minimum:
-- `nn.LayerNorm(self.align_dim)` on the output of `proj_temporal` and `proj_cross`.
-- `nn.LayerNorm(concat_size)` before the final GAT.
-- `nn.Dropout(p ≈ 0.1-0.2)` on the concat `Z` before `self_attention`, and between the two GAT layers in `GATBlock`.
-- Consider residual projection: `A1 = A1 + proj_temporal(A1_raw)` (requires matched dims, which you already have via `align_dim`).
-
-Expected effect: smaller generalisation gap, less seed-to-seed variance.
-
-### 2.2 `AttentionResetGRUCell` is Python-loop, not fused
-
-```71:107:mci_gru/models/mci_gru.py
-class ImprovedGRU(nn.Module):
-    ...
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        ...
-        for t in range(seq_len):
-            h = layer(layer_input[:, :, t, :], h)
-            outputs.append(h)
-```
+The repo has moved from a clean research implementation with several known
+training, evaluation, and MLOps gaps into a much more credible experimentation
+platform. The largest upgrades are now in place:
+
+- Modern training defaults: `AdamW`, warmup plus cosine scheduling, CUDA AMP,
+  validation-IC checkpoint selection, combined MSE+IC loss, and per-member
+  ensemble seeds.
+- Model uplift: trunk `LayerNorm` and dropout, fused `nn.GRU` plus attention,
+  optional transformer encoder, optional `nn.MultiheadAttention` latent learner,
+  optional stream type embeddings, output activation control, DropEdge, sector
+  branch, and optional A1/A2 cross-stream attention.
+- Graph and data upgrades: multi-feature edge attributes, top-k graph mode,
+  lead-lag edge features, snapshot-age features, per-split completeness filtering,
+  optional PIT universe filtering, optional Polars hot path, and rank-Gaussian
+  normalisation.
+- Evaluation and production trust layer: daily IC series, Newey-West Sharpe,
+  moving-block bootstrap CIs, shared portfolio utilities, feature drift metrics,
+  MLflow defaults, run metadata fingerprints, and CI smoke coverage.
+
+The remaining work is less about "basic hygiene" and more about proving which
+new knobs deserve to become defaults. The next highest-ROI work is controlled
+A/B testing against `configs/experiment/paper_faithful.yaml`, improving missing
+data handling, adding graph snapshot caching, adding gradient accumulation, and
+hardening dependency/reproducibility locks.
+
+## Current Architecture Posture
+
+The codebase now has a good separation between research, evaluation, and
+paper-trade concerns.
+
+- `mci_gru/pipeline.py` is still the central orchestration layer for feature
+  generation, normalisation, split handling, graph construction, tensor creation,
+  and feature-reference creation.
+- `mci_gru/models/mci_gru.py` contains the full model family behind config flags:
+  legacy paper-style GRU, fused GRU+attention, causal transformer, GAT streams,
+  latent market state learner, four-stream fusion, optional sector branch, and
+  final prediction GAT.
+- `mci_gru/graph/builder.py` owns graph schedule construction and edge feature
+  generation. `GraphSchedule` preserves dynamic graphs without forcing
+  `batch_size=1`.
+- `mci_gru/evaluation/` is now the statistical trust layer for IC, Sharpe,
+  bootstrap intervals, top-k returns, turnover, rank-drop selection, and feature
+  drift.
+- `paper_trade/scripts/` remains isolated around frozen checkpoints and live
+  inference/monitoring workflows.
+- `configs/config.yaml` is the modern default surface; `paper_faithful.yaml`
+  preserves legacy behavior for replication and ablation.
+
+The overall direction is right: retain the original four-stream MCI-GRU
+inductive bias, but wrap it in better training dynamics, more realistic graph
+signals, and statistically defensible evaluation.
+
+## Shipped Since The Original Review
+
+### Phase 1: Training, Leakage, and Reproducibility
+
+Status: shipped.
+
+- Replaced plain Adam with `AdamW`.
+- Added linear warmup plus cosine LR scheduling through `TrainingConfig`.
+- Added CUDA AMP with `torch.amp.autocast` and `GradScaler`.
+- Added validation IC computation and `selection_metric=val_ic` checkpointing.
+- Made combined MSE+IC loss the default (`loss_type=combined`,
+  `ic_loss_alpha=0.5`).
+- Defaulted graph edges to multi-feature attributes instead of scalar
+  correlation only.
+- Seeded ensemble members with `seed + model_id`.
+- Added strict calendar embargo checks between train/val and val/test based on
+  `label_t`, with an explicit opt-out.
+- Vectorised time-series feature tensor construction.
+- Added data file metadata and SHA-256 fingerprinting to run metadata when the
+  source file is available.
+- Enabled MLflow tracking by default.
+
+Impact: the platform is now faster, less leak-prone, easier to reproduce, and
+better aligned with the ranking objective used downstream.
+
+### Phase 2: Model Trunk Uplift
+
+Status: shipped behind config flags, with modern defaults enabled in
+`configs/config.yaml` where appropriate.
+
+- Added trunk `LayerNorm` and dropout through `model.use_trunk_regularisation`
+  and `model.trunk_dropout`.
+- Added inter-GAT dropout inside `GATBlock`.
+- Added fused `GRUWithAttention` using `nn.GRU` plus post-hoc attention readout.
+- Preserved the original `AttentionResetGRUCell` path as `temporal_encoder:
+  legacy`.
+- Added optional `nn.MultiheadAttention` path in `MarketLatentStateLearner`.
+- Added learned four-stream type embeddings in `SelfAttention`.
+- Added configurable final output activation with `"none"` as the modern
+  default.
+- Added train-time DropEdge via `graph.drop_edge_p`.
+- Added optional A1/A2 cross-stream attention:
+  `A2 = A2 + CrossAttn(Q=A2, KV=A1_sequence)`.
+
+Impact: the model no longer relies only on the slow Python-loop GRU and
+late-concat fusion. It can now use fused recurrent kernels, stronger
+regularisation, richer stream identity, and direct temporal-to-graph transfer.
+
+### Phase 3: Data and Graph Modernisation
+
+Status: shipped, mostly optional.
+
+- Added lead-lag graph edge features through `graph.use_lead_lag_features` and
+  `graph.lead_lag_days`.
+- Added snapshot age features through `graph.append_snapshot_age_days`.
+- Added top-k graph mode with signed correlation preservation and optional
+  absolute-correlation ranking.
+- Added static sector relation support via a second GAT branch and linear fuse.
+- Added rank-Gaussian normalisation fit only on the train period.
+- Added per-split stock completeness filtering as a survivorship-bias mitigation.
+- Added optional PIT universe filtering through `data.use_pit_universe` and
+  `pit_universe_csv`.
+- Added optional Polars-backed pivot path for selected preprocessing hot paths.
+- Added causal transformer temporal encoder behind `model.temporal_encoder:
+  transformer`.
+- Added walk-forward orchestration through `training.walkforward`.
+
+Impact: the graph can now carry more than same-day Pearson correlation, and the
+data pipeline has knobs for more realistic universe handling. Most of these
+features should remain gated until tested against the paper-faithful baseline.
+
+### Phase 4: Evaluation, Monitoring, and CI
+
+Status: shipped.
+
+- Added daily IC series and top-k return helpers.
+- Added Newey-West Sharpe for overlapping forward-return windows.
+- Added moving-block bootstrap confidence intervals.
+- Added shared portfolio helpers for rank sorting, top-k selection, turnover,
+  and rank-drop gates.
+- Added feature-reference artifacts from the train window.
+- Added PSI and KS-style feature drift checks.
+- Updated paper-trade inference to persist normalized inference features.
+- Added monitor and report drift outputs.
+- Added Optuna/Hydra sweep example config.
+- Added GitHub Actions lint, tests, and end-to-end smoke via
+  `scripts/ci_smoke.py`.
 
-This forfeits CuDNN kernels and Python-level dispatch per timestep. At
-`his_t=10` it's tolerable; at `his_t=60` (a sweep recommended below) it is
-the dominant cost.
+Impact: evaluation is no longer only a point-estimate exercise. The repo can now
+ask "did this change help with uncertainty attached?" and CI is much more likely
+to catch broken wiring.
 
-Options (from least to most invasive):
+## What Is Strong Now
 
-1. **Quick win.** Replace `ImprovedGRU` with `nn.GRU(..., num_layers=2, batch_first=True)` on the `(batch*stocks, seq, features)` tensor and post-hoc add a single scaled-dot-product attention head on the final hidden state. Empirically keeps the spirit of the paper's reset-gate-as-attention idea at a fraction of the cost.
-2. **Vectorised custom cell.** Unroll the cell into a batched tensor op by pre-computing `W_k(x), W_v(x), W_h(x)` for all `t`, then doing a streaming reduction. Retains exact math.
-3. **Transformer encoder.** Swap `ImprovedGRU` for `nn.TransformerEncoder` (2 layers, 4 heads). Causal mask keeps no-lookahead. On small sequences (`his_t ≤ 60`) this is competitive with GRUs and easier to scale.
+- The four-stream design is still intact and now better regularised.
+- The paper-faithful config gives a stable baseline for ablations.
+- Dynamic graph lookup is precomputed and batch-safe.
+- Training defaults match modern PyTorch practice much more closely.
+- Validation selection aligns with the cross-sectional ranking goal.
+- Evaluation now handles overlapping `label_t` return windows more honestly.
+- Paper-trade monitoring has a real feature-drift surface.
+- Tests cover model phase flags, dynamic graph behavior, preprocessing, drift,
+  portfolio helpers, MLflow, and paper-trade monitor behavior.
+- CI now runs lint, unit tests, and a small end-to-end smoke.
 
-The "reset-gate attention" is really `sigmoid(q·k / √d) * v` — a single-key
-attention. Calling it attention is a stretch; your own code comment
-acknowledges this (`# The score is a scalar ... softmax would always yield 1.0`).
+These are meaningful changes. The repo is no longer just a model script; it is
+becoming an experimentation system.
 
-### 2.3 Cross-stream information transfer is weak
+## Remaining Gaps
 
-The four streams share information only via `torch.cat([A1, A2, B1, B2])` and
-a single self-attention over the *set* of four group vectors per stock. This
-is roughly a "late fusion" pattern.
+### 1. Prove Which Phase 2/3 Features Should Be Defaults
 
-Concrete improvements:
+Many upgrades are implemented, but not all should be promoted blindly. The
+project still needs a disciplined ablation table comparing:
 
-- **Bilinear / cross-attention fusion.** Let the graph stream attend over the
-  temporal stream: `A2' = CrossAttn(query=A2, kv=A1)`. Today the GAT only
-  sees the most recent day's features for each node; letting it attend over
-  the full temporal representation is a strictly richer signal with minimal
-  compute cost.
-- **Group-type embedding in `SelfAttention`.** The 4-group sequence
-  `[A1, A2, B1, B2]` is treated as a permutation-invariant set. Add a learned
-  `nn.Embedding(4, concat_size)` type-embed and add it before self-attention
-  so the model can *tell which stream a vector came from*.
-- **Regime/VIX as conditioning, not as per-stock feature.** Right now global
-  scalars (VIX, credit, regime_global_score) are broadcast to every
-  `(stock, day)` row and then z-scored along with stock features. This
-  inflates feature count and forces the model to re-discover that these
-  values are identical across stocks. Better: use FiLM on the latent states
-  `R1/R2` conditioned on a market token. That's 1 embedding per batch, not
-  `num_stocks` copies.
+- `paper_faithful`
+- modern defaults
+- modern defaults plus A1/A2 cross-attention
+- modern defaults plus transformer encoder
+- top-k graph variants
+- lead-lag and snapshot-age graph variants
+- sector relation branch
+- rank-Gaussian normalisation
+- per-split or PIT universe filtering
 
-### 2.4 `MarketLatentStateLearner` re-implements MultiheadAttention
+Decision criterion should be out-of-sample IC, top-k return, Newey-West Sharpe,
+turnover, and bootstrap confidence intervals, preferably under walk-forward
+evaluation.
 
-The class is structurally `nn.MultiheadAttention` with learned queries. A
-one-liner swap (`nn.MultiheadAttention(embed_dim=align_dim,
-num_heads=cross_attn_heads, batch_first=True)`) gives you:
+### 2. Missing Data Handling Is Still Too Crude
 
-- Fused kernels (faster).
-- Native flash-attention when available.
-- Automatic weight init (currently you rely on default `nn.Linear` init on
-  8 projections).
-- Automatic broadcasting semantics.
+`pipeline.py` still fills feature NaNs by same-day cross-sectional mean and then
+falls back to zero. In the inference path, missing feature values are filled with
+zero. This is simple and stable, but it loses information and can leak
+cross-sectional structure into imputed values.
 
-Keep the learned `R1, R2` as the `key/value` tensor passed in.
+Recommended next step:
 
-### 2.5 `SelfAttention` has no masking or scaling factor bug
+- Forward-fill within each `kdcode` first.
+- Use cross-sectional median/mean only as fallback.
+- Add `{feature}_is_missing` indicator columns for high-value feature groups.
+- Persist imputation policy metadata in run artifacts.
 
-```236:245:mci_gru/models/mci_gru.py
-self.scale = embed_dim ** -0.5
-...
-attn_weights = F.softmax(
-    torch.matmul(q, k.transpose(-2, -1)) * self.scale, dim=-1
-)
-```
+This is one of the remaining high-impact data-quality improvements.
 
-Two small issues:
+### 3. Graph Snapshots Are Not Cached Across Runs
 
-- `self.scale = embed_dim ** -0.5` — but the correct scale for multi-head is
-  `head_dim ** -0.5`. `SelfAttention` here is single-headed on the full
-  `concat_size` embedding, so `embed_dim` and `head_dim` coincide and the
-  code is correct — but this will silently break if anyone makes it
-  multi-head. Worth documenting.
-- Applied across the stock dimension (N ≈ 500). At larger universes this is
-  `O(N²)` per batch element. Consider `FlashAttention` or a chunked variant
-  above N≈2k.
+`GraphBuilder.precompute_snapshots()` rebuilds graph schedules inside each data
+prep run. That is correct but wasteful for sweeps over model and training
+parameters.
 
-### 2.6 Final activation clips predictions asymmetrically
+Recommended next step:
 
-```409|out = self.output_act(out)```
+- Add a content-addressed graph cache under `data/cache/graphs/`.
+- Key by universe/date range, `kdcode_list` hash, graph config, and source data
+  fingerprint.
+- Include edge feature dimensionality and lead-lag settings in the cache key.
+- Log cache hits/misses in run metadata.
 
-Default activation is `elu`, which floors scores at `-1` and is
-asymmetrically saturating on the negative side. For a **ranking** model
-that is later sorted cross-sectionally, any monotonic transform is a
-no-op; for a **regression** model (MSE loss against forward returns), the
-negative-side saturation is a real bias.
+This will matter once Optuna or walk-forward sweeps become routine.
 
-Recommendation: drop the final activation entirely. If you want a sigmoid-
-for-rank-labels path, add it explicitly when `label_type='rank'`.
+### 4. Gradient Accumulation Is Still Missing
 
-### 2.7 Edge attributes (implemented April 2026)
+AMP and scheduling are in place, but there is no gradient accumulation. Larger
+effective batches can reduce IC noise without requiring larger GPU memory.
 
-**Resolved:** `use_multi_feature_edges` now defaults to **`true`** in `GraphConfig` / `configs/config.yaml`, emitting `(E, 4)` `[corr, |corr|, corr², rank_pct]`. `configs/experiment/paper_faithful.yaml` pins **`false`** for paper-aligned runs. The `(E,)` scalar path remains for ablations.
+Recommended next step:
 
----
+- Add `training.gradient_accumulation_steps`.
+- Scale loss before backward.
+- Step optimizer, scheduler, and scaler only on accumulation boundaries.
+- Preserve current behavior when the value is `1`.
 
-## 3. Training loop — issues and opportunities
+### 5. Dependency Reproducibility Is Not Locked
 
-File: `mci_gru/training/trainer.py`.
+`pyproject.toml` and `requirements.txt` specify ranges, not a lockfile. CI and
+local experiments can drift as PyTorch, PyG, pandas, scipy, or Hydra versions
+move.
 
-### 3.1 Optimizer and schedule (updated April 2026)
+Recommended next step:
 
-**Shipped:** `AdamW`, **linear warmup + cosine** LR via `SequentialLR` stepped **per optimizer step** (`TrainingConfig.lr_scheduler`, `warmup_steps`), and **CUDA AMP** (`use_amp`, `autocast` + `GradScaler` with correct `unscale_` before grad clip).
+- Add `uv.lock` or another explicit lockfile.
+- Document CPU CI install versus CUDA training install.
+- Pin known-good PyTorch/PyG compatibility in docs.
 
-**Still open:** gradient accumulation for larger effective batch; `ReduceLROnPlateau` as an alternative schedule; optional second-pass cosine tied to epochs only (current design is step-based for short epochs).
+### 6. Universe Bias Is Mitigated, Not Solved
 
-### 3.2 Early stopping vs ranking objective (updated April 2026)
+Per-split completeness and PIT universe filtering are important improvements,
+but the default still depends on how the input dataset was assembled. If the raw
+source is already survivorship-biased, config flags cannot fully repair it.
 
-**Shipped:** validation **IC (Spearman)** is computed each epoch; **`selection_metric`** chooses best checkpoint (`val_ic` vs `val_loss`). Default training still minimises the configured **loss** (often `combined`); checkpoint selection can prioritise IC.
+Recommended next step:
 
-**Residual risk:** if you force `selection_metric=val_loss` with `loss_type=mse`, you are back to the old behaviour — that is intentional for ablations / `paper_faithful`.
+- Prefer PIT universe files for serious backtests.
+- Record nominal universe size, filtered universe size, and dropped tickers in
+  run metadata.
+- Treat backtests without PIT data as research diagnostics, not production-grade
+  claims.
 
-### 3.3 Ensemble diversity
+### 7. Global Regime Features Are Still Broadcast Per Stock
 
-**Shipped:** each ensemble member calls **`set_seed(config.seed + model_id)`** before `train()`, so initial weights and Python/NumPy/Torch RNGs differ by construction.
+Global regime, VIX, and credit variables are still feature columns that get
+broadcast into each stock row. That works, but it is parameter-inefficient and
+forces the model to rediscover that those values are market-level.
 
-**Still open:** hyperparameter / architecture jitter and real **deep-ensemble** diversity (needs Phase 2 regularisation + DropEdge etc.). Averaging remains a variance reducer, not a full Bayesian model average.
+Recommended next step:
 
-### 3.4 Walk-forward vs single split
+- Add an optional market-token or FiLM conditioning path.
+- Feed global features once per batch/date.
+- Modulate A1/A2/B1/B2 latent states instead of repeating global scalars across
+  all stocks.
 
-**Still the main structural gap:** training is still a **single** train/val/test configuration in typical runs. Production-style deployment wants rolling or expanding windows and concatenated OOS metrics.
+This is a good Phase 5 model experiment after the current flags are ablated.
 
-**Embargo (April 2026):** `ExperimentConfig.__post_init__` rejects configs whose **calendar gaps** between train/val and val/test are **not strictly greater than `model.label_t`**, unless `data.skip_embargo_check=true`. **YAML date ranges must be shifted** to satisfy this (e.g. val starts at least `label_t+1` calendar days after `train_end`). That removes the specific “last train labels peek into val calendar” footgun when dates are configured correctly; it does **not** replace walk-forward refits.
+### 8. The Graph Stream Still Sees One Cross-Section Per Date
 
-### 3.5 Loss design (updated April 2026)
+The temporal stream sees `his_t` days. The graph stream still receives a single
+feature vector per stock for the prediction date. This matches the paper more
+closely, but it leaves temporal context mostly outside message passing.
 
-- **Default is `combined`** with `ic_loss_alpha: 0.5` in `configs/config.yaml`. `paper_faithful` pins `loss_type: mse` for replication-style runs.
-- `ICLoss` averages per-day IC — still correct cross-sectionally.
-- `CombinedMSEICLoss` still uses a fixed `eps`; monitor scale if you change normalisation.
+Recommended next step:
 
-### 3.6 HPO / sweep framework
+- Add an optional graph input summarizer: last-day, rolling mean, rolling
+  volatility, or learned pooling over the last `k` days.
+- Keep the default last-day path for paper comparison.
+- Compare pooled graph input against A1/A2 cross-attention; they may be
+  complementary.
 
-Phase 4 adds an Optuna/Hydra sweep example in
-`configs/experiment/phase4_optuna_sweep.yaml`. Given that each full run can
-take 10 × 100 = 1000 model-epochs, start with reduced `num_models` /
-`num_epochs` while shaping the search space, then promote finalists to full
-walk-forward evaluation.
+### 9. Repo Hygiene Still Needs Attention
 
-Minimal recipe:
+The package is workable, but the repo root still contains generated or bulky
+artifacts such as PDFs, notebooks, cached bytecode, `_uncertain/`, and large
+seed outputs.
 
-```bash
-pip install optuna hydra-optuna-sweeper
-python run_experiment.py +experiment=phase4_optuna_sweep --multirun
-```
+Recommended next step:
 
-With MLflow **enabled by default**, each trial’s metrics are logged automatically (override with `tracking.enabled=false` if you want a silent sweep).
+- Move generated experiment artifacts out of the import/repo root path.
+- Keep only curated benchmark outputs under version control.
+- Consider Git LFS or external artifact storage for PDFs and large result
+  bundles.
+- Move script-like backtests out of `tests/` if they are not intended as pytest
+  tests.
 
----
+## Updated Roadmap
 
-## 4. Data and feature pipeline — issues and opportunities
+### Near Term: Make The Current System Measurable
 
-Files: `mci_gru/pipeline.py`, `mci_gru/data/data_manager.py`,
-`mci_gru/data/preprocessing.py`, `mci_gru/features/*`.
+- [ ] Build an ablation matrix around `paper_faithful` vs modern defaults.
+- [ ] Run at least one walk-forward comparison with bootstrap CIs.
+- [ ] Record results in a small decision table under `docs/` or `seed_results/`.
+- [ ] Promote only statistically supported flags into default configs.
 
-### 4.1 Survivorship bias is the #1 data hazard
+### Near Term: Data Robustness
 
-```394:427:mci_gru/data/data_manager.py
-def filter_complete_stocks(self, df):
-    ...
-    kdcode_list = kdcode_counts[kdcode_counts == len(period_dates)].index.tolist()
-```
+- [ ] Improve NaN handling with same-stock forward fill plus missing indicators.
+- [ ] Add universe/drop-count metadata to each run.
+- [ ] Prefer PIT universe filters for any headline backtest.
 
-This keeps only stocks with **every single day present** across the entire
-train+val+test period. Effects:
+### Mid Term: Runtime And Sweep Efficiency
 
-- Dropped stocks are exactly the ones that failed, were acquired, delisted,
-  or changed ticker — the *informative* tail of return distributions.
-- Test-period metrics are upward-biased by the amount of negative tail
-  survivorship.
-- A Russell-1000 universe effectively collapses to ~700 names with this
-  filter.
+- [ ] Add graph snapshot caching.
+- [ ] Add gradient accumulation.
+- [ ] Add dependency lockfile and environment notes.
+- [ ] Add a reduced-cost Optuna profile for quick search and a full-cost profile
+  for final verification.
 
-Mitigations (in increasing effort):
-- **Document.** Add a warning in `run_metadata.json` noting survivorship universe size vs. nominal universe.
-- **Relax to per-split completeness.** A stock only needs complete data for the split(s) in which it's used.
-- **Point-in-time universes.** Use an as-of snapshot of the universe at each rebalance date, with proper delisting return treatment (Centre for Research in Security Prices convention).
+### Mid Term: Model Research
 
-### 4.2 Time-series feature tensor build (updated April 2026)
+- [ ] Test A1/A2 cross-attention as an enabled default.
+- [ ] Compare `gru_attn` versus `transformer` under identical walk-forward
+  windows.
+- [ ] Test graph pooled temporal summaries.
+- [ ] Add market-token or FiLM conditioning for regime/macro features.
+- [ ] Explore multi-horizon heads for 1d/5d/20d auxiliary supervision.
 
-**Resolved:** `generate_time_series_features` was rewritten to a **vectorised** path (pivot / unstack + `reindex` on the date × stock grid). The old `iterrows()` loop is gone; equivalence is covered by tests. **§4.3+** below still applies to NaN handling in `pipeline.py`.
+### Later: Production-Grade Backtesting
 
-### 4.3 NaN handling is lossy
+- [ ] Add sector/factor neutralisation options to portfolio construction.
+- [ ] Add long/short portfolio evaluation, not only long top-k.
+- [ ] Add volatility targeting and exposure constraints.
+- [ ] Align paper-trade, research backtest, and training evaluation around one
+  shared portfolio interface where practical.
 
-```200:207:mci_gru/pipeline.py
-for _, df_day in df.groupby("dt"):
-    df_day = df_day.copy()
-    for col in feature_cols:
-        if col in df_day.columns:
-            df_day[col] = df_day[col].fillna(df_day[col].mean())
-    df_day = df_day.fillna(0.0)
-    parts.append(df_day)
-```
+## What Not To Change Yet
 
-For a missing momentum value on stock X, you substitute the
-cross-sectional mean — which is always close to 0 for z-scored momentum.
-For features that can be strongly directional cross-sectionally (e.g.
-`regime_similar_subsequent_return_1m`), mean-imputation injects
-cross-stock contamination.
+- Do not remove the four-stream A1/A2/B1/B2 structure. It remains a useful
+  inductive bias and a good experimental scaffold.
+- Do not remove `paper_faithful.yaml`; it is the control group.
+- Do not collapse typed dataclass config into loose dictionaries. The validation
+  has already paid for itself through embargo, graph, and model-shape checks.
+- Do not regress dynamic graphs to per-batch graph rebuilds.
+- Do not let paper-trade inference depend on training-time graph construction.
+- Do not promote every new flag into the default config without ablation.
 
-Better pattern:
-- Forward-fill within `kdcode` first (same-stock history is the right prior).
-- Then cross-sectional mean as a fallback.
-- Add a `{feature}_isnan` indicator column so the model can learn to treat
-  imputed rows differently.
+## Bottom Line
 
-### 4.4 Normalisation scheme
+The first architecture review identified basic modernization gaps. Most of
+those are now fixed. The new challenge is evidence: deciding which of the
+implemented upgrades actually improve out-of-sample behavior after costs,
+turnover, overlapping-return corrections, and uncertainty intervals.
 
-Currently: `3-sigma clip → z-score` using train-period mean/std. This is
-fine for OHLCV but poor for fat-tailed return-like features (momentum,
-credit spreads, VIX changes). A rank-gauss (Gaussian-quantile transform on
-per-stock or per-day ranks) transform is the de-facto standard for
-quantitative cross-sectional models because it is invariant to monotone
-re-scalings and robust to outliers without losing ordering.
-
-### 4.5 Feature engineering is 100% pandas
-
-All feature modules (`momentum.py`, `volatility.py`, `credit.py`,
-`regime.py`) operate on pandas DataFrames. For Russell 3000 or daily-
-refreshed MSCI World universes, `polars` or `pyarrow`-backed pandas would
-give 5–20× speed-up at no model-side cost.
-
-### 4.6 Graph stream only sees the latest day
-
-```142:148:mci_gru/pipeline.py
-x_graph_train = generate_graph_features(
-    train_df, kdcode_list, feature_cols, train_dates[his_t:]
-)
-```
-
-`generate_graph_features` returns a `(num_dates, num_stocks, num_features)`
-tensor — a single snapshot per date. The GAT (stream A2) therefore only
-sees a one-day cross-section per prediction, while the temporal encoder
-(stream A1) sees `his_t` days. This asymmetry is by design in the paper,
-but it means most of the temporal signal is forced through one 10-feature
-vector per stock at the graph layer.
-
-Two upgrades:
-- Pass the GAT a *pooled* temporal summary (e.g. last 5-day mean of features) instead of just the last day.
-- Stream a small temporal window through the GAT using `TemporalGATConv` (each node has a seq, message passing happens at each timestep, then reduce).
-
----
-
-## 5. Graph module — issues and opportunities
-
-File: `mci_gru/graph/builder.py`.
-
-### 5.1 Only Pearson correlation on returns
-
-The plan (`docs/agent_references/cursor/plans/graph_signal_upgrades_c28cf640.plan.md`) already
-acknowledges this and lists levers 1b (signed two-relation / RGATConv),
-2a (lead-lag edges), 3a (graph-aware temporal encoder), 4c (rate-of-change
-edge feature), and a 5th edge column (snapshot_age_days) as **pending**.
-
-These are real uplifts and the plan is correct. Priority order in my view:
-
-1. **Lead-lag edges** (`2a`). Cross-correlation at lag=1,5 between pairs. Recovers ETF-rebalance and mean-reversion patterns that same-day Pearson misses.
-2. **Sector / industry one-hot edges** as a separate relation (RGATConv with 2 relations: correlation + sector).
-3. **`snapshot_age_days`** as a 5th edge feature column — lets the model down-weight stale graphs during long holding periods.
-4. **DropEdge regularisation** at train time (`rg -n 'dropout_edge' mci_gru` → no hits).
-
-### 5.2 Graph cadence is too slow by default
-
-`update_frequency_months=0` (static) in `configs/config.yaml`, and the
-typical "dynamic" configs use 6 months. With `corr_lookback_days=252`
-(1 year), a 6-month cadence means the graph is up to 18 months stale at
-the end of its validity window. Monthly cadence with a 63-day lookback
-is more reactive and closer to standard industry practice; the audit in
-the plan file (`correlation_dynamic_topk20_*.yaml`) is a good starting
-point but should be promoted to the default dynamic preset.
-
-### 5.3 Graph snapshots are not cached across runs
-
-`precompute_snapshots` runs inside `prepare_data()` every time. For a
-hyperparameter sweep over `model.*` and `training.*` (which do not touch
-the graph), this is wasted work. A content-addressable cache keyed on
-`(kdcode_list_hash, corr_lookback_days, judge_value/top_k, update_dates)`
-stored under `data/cache/graphs/` would collapse sweep wall-clock time
-significantly.
-
----
-
-## 6. Evaluation and metrics
-
-File: `mci_gru/training/metrics.py`.
-
-### 6.1 Sharpe annualisation is wrong for `label_t > 1`
-
-```74:76:mci_gru/training/metrics.py
-metrics["sharpe_ratio"] = float(
-    np.mean(portfolio_returns) / (np.std(portfolio_returns) + 1e-8) * np.sqrt(252)
-)
-```
-
-This is correct for daily returns but wrong for `label_t=5` forward
-returns computed on overlapping daily windows: the returns are
-auto-correlated (overlapping), so `std` is deflated and Sharpe is
-inflated. Options:
-
-- Use non-overlapping evaluation windows (take every 5th day).
-- Newey-West correct the variance with `q = label_t - 1` lags.
-- Annualise by `sqrt(252 / label_t)` and explicitly document that the
-  resulting number is a lower bound on overlapping-Sharpe.
-
-### 6.2 No uncertainty quantification on metrics
-
-Single-point metrics per run. Bootstrap the per-day IC / portfolio return
-series (block bootstrap with block size = `label_t`) and report 95% CIs
-in the training summary — makes "did this change actually help?" a
-testable question rather than a vibe.
-
-### 6.3 Portfolio logic is simplistic
-
-`compute_metrics` top-k = equal-weighted mean of the top 50 predictions.
-There is no:
-- Vol targeting / risk budgeting.
-- Sector or factor neutralisation.
-- Short side (only long top-k).
-
-This is acceptable for the training loop's internal metric but is the
-reason paper-trade and backtest have to re-implement everything. A shared
-`portfolio.py` utility used both inside training metrics and in the
-backtest would remove ~300 LOC of duplication between
-`tests/backtest_sp500.py` and `paper_trade/scripts/portfolio.py`.
-
----
-
-## 7. MLOps, reproducibility, and repo hygiene
-
-- **MLflow defaults on.** `tracking.enabled=true` in `configs/config.yaml`; set `tracking.enabled=false` for local smoke runs.
-- **No dependency lockfile.** `pyproject.toml` + `requirements.txt` without pinned hashes means CI / reproducibility is fragile. Add `uv.lock` or `poetry.lock`.
-- **Data fingerprint (April 2026).** `run_metadata.json` now records **`data_file_sha256`**, size, and mtime for `data.filename` when the file exists (graceful skip if missing).
-- **No CI config inspected.** `.github/` exists; a smoke-run job on every PR (`python run_experiment.py training.num_epochs=2 training.num_models=1`) should be near-free and would catch the kind of collate-tuple-shape regression that `AGENTS.md` invariant #3 warns about.
-- **Repo-root clutter.** `656_MTP_2026.pdf`, `Seed_test (1).ipynb` (99 KB), `lseg_env/`, and `_uncertain/` should live outside the package import path.
-- **Determinism.** `set_seed` covers `random`, `numpy`, `torch`, `torch.cuda`, but not `torch.backends.cudnn.deterministic` / `benchmark = False`. For exact reproducibility on CUDA, set both.
-- **`tests/` mixes unit tests and scripts.** `backtest_sp500.py` (133 KB) is not a pytest test; move to `scripts/` so `pytest tests/` runs fast.
-
----
-
-## 8. Information-transfer opportunities (summary)
-
-Because the user specifically asked about information transfers, the
-highest-leverage architecture changes, ranked:
-
-| # | Change | Where | Cost | Upside |
-|---|--------|-------|------|--------|
-| 1 | Cross-attention `A2' = CrossAttn(Q=A2, KV=A1_full_seq)` | `StockPredictionModel.forward` | Low | High — graph stream gains temporal context |
-| 2 | FiLM-condition `R1, R2` on a market/regime token | `MarketLatentStateLearner` | Low | Medium — latent states specialise by regime |
-| 3 | Group-type embedding in `SelfAttention` | `SelfAttention` | Trivial | Medium — model can distinguish streams |
-| 4 | Multi-relation graph (correlation + sector + lead-lag) via `RGATConv` | `graph/builder.py` + `GATBlock` | High | High — modality-diverse edges |
-| 5 | Multi-horizon prediction head (1d/5d/20d shared trunk) | `StockPredictionModel` + loss | Medium | Medium — regularises encoder |
-| 6 | Global macro tokens as conditioning, not per-stock features | `FeatureEngineer` + model | Medium | Medium — parameter-efficient |
-| 7 | Pool last `k` days into graph stream instead of 1 day | `generate_graph_features` | Low | Medium — evens up A1/A2 depth |
-| 8 | Cross-sectional self-attention with relative-rank bias | `SelfAttention` | Medium | Low-Medium — rank-aware prior |
-
----
-
-## 9. Concrete, ordered upgrade roadmap
-
-### Phase 1 — "free lunch" (≤ 1 week, no model surgery)
-
-- [x] `Adam → AdamW` + `CosineAnnealingLR` + 1000-step linear warmup.
-- [x] Enable `torch.amp.autocast` + `GradScaler` on CUDA.
-- [x] Early-stop on validation IC, not val MSE.
-- [x] `loss_type: combined` with `ic_loss_alpha: 0.5` as default.
-- [x] `use_multi_feature_edges: true` as default.
-- [x] Seed each ensemble member with `config.seed + model_id`.
-- [x] Embargo `label_t` days between train/val and val/test in `ExperimentConfig.__post_init__` (`data.skip_embargo_check` opt-out).
-- [x] Vectorise `generate_time_series_features` (kill `iterrows`).
-- [x] Record `sha256` (+ size, mtime) of `data.filename` in `run_metadata.json`.
-- [x] `tracking.enabled: true` by default.
-
-Expected combined effect: 15–40% faster training, better IC, fewer silent data-version footguns.
-
-### Phase 2 — architecture uplift (1–3 weeks)
-
-- [x] `LayerNorm` + `Dropout` in the trunk (`ln_a1`, `ln_a2`, `ln_z`, `drop_z`, optional inter-`GATBlock` dropout) — gated by `model.use_trunk_regularisation` + `model.trunk_dropout`; `paper_faithful` pins off.
-- [x] Replace custom `MarketLatentStateLearner` with `nn.MultiheadAttention` — gated by `model.use_nn_multihead_attention`; legacy 8-`Linear` path retained; `paper_faithful` pins legacy.
-- [x] Add `GRUWithAttention` path (native `nn.GRU` + post-hoc attention readout) — gated by `model.temporal_encoder=gru_attn` vs `legacy`; `MultiScaleTemporalEncoder` respects the same flag; `paper_faithful` pins `legacy`. *Transformer encoder still open.*
-- [x] Add cross-attention between A1 and A2 (`A2' = CrossAttn(Q=A2, KV=A1_seq)`) — **shipped** behind `model.use_a1_a2_cross_attention`; `paper_faithful` pins off.
-- [x] Add DropEdge at train time — `graph.drop_edge_p`, applied once per forward in `StockPredictionModel` when `self.training`; `paper_faithful` pins `0.0`.
-- [x] Ship walk-forward retraining in `run_experiment.py` (`training.walkforward` config block; nested MLflow child runs per window).
-- [x] Optional: `model.output_activation` (`none` / `elu` / `relu` / `sigmoid`) and `use_group_type_embed` in `SelfAttention` — **shipped**; `paper_faithful` pins `output_activation: relu` and `use_group_type_embed: false` to match pre-Phase-2 behaviour.
-
-### Phase 3 — data and graph modernisation (2–4 weeks)
-
-- [x] Lead-lag edge columns (`graph.use_lead_lag_features`, lags in `graph.lead_lag_days`) and `graph.append_snapshot_age_days` (collate appends calendar age to multi-feature `edge_attr`).
-- [x] Sector relation branch: static same-sector edges + **dual `GATBlock` + linear fuse** in `StockPredictionModel` (not `RGATConv`; avoids PyG relation API friction).
-- [x] Rank-Gaussian normaliser (`data.normalisation: rank_gauss`) fit on train-only sorted reference per feature.
-- [x] Survivorship mitigation: `data.filter_stocks_per_split` (per-split completeness then intersect); optional `data.use_pit_universe` + `pit_universe_csv` row filter.
-- [x] Polars-backed pivot path behind `data.use_polars` in `generate_time_series_features` (pandas default unchanged).
-- [x] Causal Transformer temporal encoder (`model.temporal_encoder: transformer`) for fast path inside `MultiScaleTemporalEncoder`.
-
-### Phase 4 — eval and MLOps (parallelisable)
-
-- [x] Block-bootstrap CIs on per-day IC and top-k return, logged to MLflow.
-- [x] Shared `portfolio.py` helpers used by paper-trade rank-drop logic and low-risk backtest turnover code.
-- [x] Optuna sweep config + example over `his_t`, `learning_rate`, `top_k`, `ic_loss_alpha`.
-- [x] CI smoke-run on PR: 1-epoch, 1-model sanity check plus direct 9-tuple collate assertion.
-- [x] Distribution-shift monitor on live features (KS / PSI vs. train window) surfaced in nightly `report.py` output.
-
----
-
-## 10. What NOT to change (at least not yet)
-
-- **Four-stream structure.** Even with the issues above, the `[A1, A2, B1, B2]` concat+self-attn pattern is a defensible inductive bias (temporal × cross-sectional × latent). Don't rip it out; augment it.
-- **Typed dataclass config.** Don't move to a looser dict-based config just because "it's simpler". The validation in `__post_init__` catches real bugs.
-- **`GraphSchedule` precomputation.** This was hard-won. Do not regress to per-batch rebuilds.
-- **`paper_trade/` isolation.** The rule that inference doesn't import `GraphBuilder` is worth keeping forever — it's the reason you can retire training code without breaking production.
-- **Ensemble averaging.** Per-member seeds (Phase 1) help; Phase 2 regularisation / DropEdge / jitter are still needed for a “real” deep ensemble.
-
----
-
-*Reviewer note.* This is a code-level architecture review; it does not
-claim to predict P&L. The Phase-1 changes are almost all strict Pareto
-improvements (same code paths, better defaults). Phase 2+ should be
-gated on A/B backtests against the current `paper_faithful` baseline
-using block-bootstrap CIs before being promoted to the default config.
+The repo is ready for new feature work, but the best next feature is probably
+not another model knob. It is a tight ablation and evaluation loop that tells us
+which knobs deserve to stay on.
