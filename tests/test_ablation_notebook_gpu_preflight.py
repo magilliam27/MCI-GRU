@@ -67,9 +67,41 @@ def test_ablation_colab_notebook_has_final_confirmation_signal_check() -> None:
     assert "'topk10_abs_graph'" in combined
     assert "training.walkforward.enabled=true" in combined
     assert "FINAL_CONFIRMATION_MAX_WINDOWS = 5" in combined
-    assert "FINAL_CONFIRMATION_NUM_MODELS = 5" in combined
-    assert "FINAL_CONFIRMATION_NUM_EPOCHS = 50" in combined
+    assert "FINAL_CONFIRMATION_NUM_MODELS = 20" in combined
+    assert "FINAL_CONFIRMATION_NUM_EPOCHS = 100" in combined
+    assert "FINAL_CONFIRMATION_EARLY_STOPPING_PATIENCE = 15" in combined
+    assert "training.early_stopping_patience={FINAL_CONFIRMATION_EARLY_STOPPING_PATIENCE}" in combined
     assert "FINAL_CONFIRMATION_BOOTSTRAP_RESAMPLES = 1000" in combined
     assert "ic_ci_pass" in combined
     assert "top20_ci_pass" in combined
     assert "continuation_recommendation" in combined
+
+
+def test_ablation_colab_notebook_has_2026_holdout_confirmation() -> None:
+    sources = _cell_sources()
+    combined = "\n".join(sources)
+
+    assert "## 12. 2026 Holdout Confirmation" in combined
+    assert "RUN_2026_HOLDOUT = False" in combined
+    assert "HOLDOUT_2026_ROOT" in combined
+    assert "holdout_2026" in combined
+    assert "PREFERRED_2026_DATA_FILE" in combined
+    assert "sp500_2019_universe_data_through_2026.csv" in combined
+    assert "HOLDOUT_TRAIN_END = '2024-12-31'" in combined
+    assert "HOLDOUT_VAL_START = '2025-01-08'" in combined
+    assert "HOLDOUT_VAL_END = '2025-12-31'" in combined
+    assert "HOLDOUT_TEST_START = '2026-01-08'" in combined
+    assert "HOLDOUT_TEST_END = '2026-04-30'" in combined
+    assert "HOLDOUT_2026_RUNS" in combined
+    assert "HOLDOUT_2026_NUM_MODELS = 20" in combined
+    assert "HOLDOUT_2026_NUM_EPOCHS = 100" in combined
+    assert "HOLDOUT_2026_EARLY_STOPPING_PATIENCE = 15" in combined
+    assert "training.early_stopping_patience={HOLDOUT_2026_EARLY_STOPPING_PATIENCE}" in combined
+    assert "'modern_defaults'" in combined
+    assert "'topk30_abs_graph'" in combined
+    assert "HOLDOUT_INCLUDE_RETURN_CHALLENGER = False" in combined
+    assert "'topk10_abs_graph'" in combined
+    assert "training.walkforward.enabled=false" in combined
+    assert "holdout_2026_recommendation" in combined
+    assert "holdout_ic_ci_pass" in combined
+    assert "holdout_top20_ci_pass" in combined
