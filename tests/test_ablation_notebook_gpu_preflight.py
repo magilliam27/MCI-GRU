@@ -3,10 +3,16 @@ from pathlib import Path
 
 
 NOTEBOOK_PATH = Path("notebooks/ablation_evaluation_loop_colab.ipynb")
+FULL_FACTORIAL_NOTEBOOK_PATH = Path("notebooks/full_feature_factorial_ablation_colab.ipynb")
 
 
 def _cell_sources() -> list[str]:
     notebook = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
+    return ["".join(cell.get("source", [])) for cell in notebook["cells"]]
+
+
+def _full_factorial_cell_sources() -> list[str]:
+    notebook = json.loads(FULL_FACTORIAL_NOTEBOOK_PATH.read_text(encoding="utf-8"))
     return ["".join(cell.get("source", [])) for cell in notebook["cells"]]
 
 
@@ -105,3 +111,17 @@ def test_ablation_colab_notebook_has_2026_holdout_confirmation() -> None:
     assert "holdout_2026_recommendation" in combined
     assert "holdout_ic_ci_pass" in combined
     assert "holdout_top20_ci_pass" in combined
+
+
+def test_full_factorial_notebook_recovers_only_failed_regime_runs() -> None:
+    sources = _full_factorial_cell_sources()
+    combined = "\n".join(sources)
+
+    assert "RECOVERY_RUN_TAG = '20260429_024346'" in combined
+    assert "RUN_ONLY_FAILED_REGIME_RUNS = True" in combined
+    assert "SKIP_COMPLETED_RUNS = True" in combined
+    assert "run_queue = ABLATIONS" in combined
+    assert "if RUN_ONLY_FAILED_REGIME_RUNS:" in combined
+    assert "'regime_current_only', 'regime_with_forward_context'" in combined
+    assert "ablation.get('regime_factor') in failed_regime_factors" in combined
+    assert "for ablation in run_queue:" in combined

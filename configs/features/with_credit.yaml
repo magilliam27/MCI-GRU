@@ -27,8 +27,11 @@ regime_lseg_copper_ric: .MXCOPPFE
 regime_lseg_yield_10y_ric: US10YT=RR
 regime_lseg_yield_3m_ric: US3MT=RR
 regime_lseg_oil_ric: CLc1
+regime_lseg_vix_ric: VIX
 regime_inputs_csv: null
 regime_enforce_lag_days: 0
+regime_include_subsequent_returns: true
+regime_subsequent_return_horizons: [1, 3]
 include_rsi: false
 include_ma_features: false
 include_price_features: false
