@@ -451,6 +451,9 @@ class TrainingConfig:
         lr_scheduler: "cosine" (warmup + cosine) or "none" (constant LR)
         use_amp: Enable CUDA autocast + GradScaler when device is CUDA
         selection_metric: "val_ic" (maximize) or "val_loss" (minimize) for early stopping / checkpointing
+        shuffle_train: Optional override for training DataLoader shuffling. ``None`` keeps
+                       the historical behavior: shuffled for static graphs, sequential for
+                       dynamic graphs.
         walkforward: Optional rolling / expanding window orchestration (see :class:`WalkforwardConfig`).
     """
 
@@ -468,6 +471,7 @@ class TrainingConfig:
     lr_scheduler: str = "cosine"
     use_amp: bool = True
     selection_metric: str = "val_ic"
+    shuffle_train: bool | None = None
     walkforward: WalkforwardConfig = field(default_factory=WalkforwardConfig)
 
     _VALID_LOSS_TYPES = ("mse", "ic", "combined")
@@ -508,6 +512,8 @@ class TrainingConfig:
                 f"selection_metric must be one of {self._VALID_SELECTION_METRICS}, "
                 f"got {self.selection_metric!r}"
             )
+        if self.shuffle_train is not None and not isinstance(self.shuffle_train, bool):
+            raise ValueError("shuffle_train must be true, false, or null")
         if self.warmup_steps < 0:
             raise ValueError("warmup_steps must be >= 0")
 
@@ -688,6 +694,7 @@ class ExperimentConfig:
             "training.num_models": self.training.num_models,
             "training.loss_type": self.training.loss_type,
             "training.ic_loss_alpha": self.training.ic_loss_alpha,
+            "training.shuffle_train": self.training.shuffle_train,
             # Evaluation
             "evaluation.top_k_values": str(self.evaluation.top_k_values),
             "evaluation.bootstrap_enabled": self.evaluation.bootstrap_enabled,

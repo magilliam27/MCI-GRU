@@ -629,6 +629,7 @@ def create_data_loaders(
     test_dates: list[str] | None = None,
     dynamic_graph: bool = False,
     graph_schedule: GraphSchedule | None = None,
+    shuffle_train: bool | None = None,
     append_snapshot_age_days: bool = False,
     static_graph_valid_from: str | None = None,
     edge_index_sector: torch.Tensor | None = None,
@@ -658,6 +659,8 @@ def create_data_loaders(
         graph_schedule: Precomputed graph snapshots.  When provided, each
                         sample's graph is resolved by date in the collate
                         function, allowing batch_size > 1 in dynamic mode.
+        shuffle_train: Optional explicit training shuffle override. ``None``
+                       preserves legacy behavior: static shuffles, dynamic does not.
         append_snapshot_age_days: Append one ``edge_attr`` column from snapshot age (multi-feature only).
         static_graph_valid_from: ``valid_from`` string for static graphs when snapshot age is on.
         edge_index_sector / edge_weight_sector: Static sector-branch graph (optional).
@@ -717,10 +720,11 @@ def create_data_loaders(
         use_sector_relation=use_sector_relation,
     )
 
+    train_shuffle = (not dynamic_graph) if shuffle_train is None else shuffle_train
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=batch_size,
-        shuffle=not dynamic_graph,
+        shuffle=train_shuffle,
         drop_last=False,
         collate_fn=collate_fn,
     )

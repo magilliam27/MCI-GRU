@@ -303,6 +303,7 @@ def main(cfg: DictConfig):
                 test_dates=data["test_dates"],
                 dynamic_graph=dynamic_graph,
                 graph_schedule=data.get("graph_schedule"),
+                shuffle_train=cfg_w.training.shuffle_train,
                 append_snapshot_age_days=cfg_w.graph.append_snapshot_age_days,
                 static_graph_valid_from=data.get("graph_static_valid_from"),
                 edge_index_sector=data.get("edge_index_sector"),

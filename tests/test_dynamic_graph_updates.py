@@ -278,7 +278,7 @@ class TestCollateWithSchedule:
 
 
 class TestCreateDataLoaders:
-    def _loaders(self, dynamic_graph, batch_size=8, graph_schedule=None):
+    def _loaders(self, dynamic_graph, batch_size=8, graph_schedule=None, shuffle_train=None):
         n_days, n_stocks, seq_len, n_features = 20, 5, 5, 3
         ts, graph, labels = _make_small_arrays(n_days, n_stocks, seq_len, n_features)
         ei = torch.zeros((2, 0), dtype=torch.long)
@@ -301,6 +301,7 @@ class TestCreateDataLoaders:
             test_dates=dates,
             dynamic_graph=dynamic_graph,
             graph_schedule=graph_schedule,
+            shuffle_train=shuffle_train,
         )
 
     def test_static_train_loader_shuffles(self):
@@ -320,6 +321,22 @@ class TestCreateDataLoaders:
 
     def test_dynamic_loader_no_shuffle(self):
         train_loader, _, _ = self._loaders(dynamic_graph=True, batch_size=4)
+        from torch.utils.data import SequentialSampler
+
+        assert isinstance(train_loader.sampler, SequentialSampler)
+
+    def test_dynamic_loader_can_shuffle_when_explicitly_enabled(self):
+        train_loader, _, _ = self._loaders(
+            dynamic_graph=True, batch_size=4, shuffle_train=True
+        )
+        from torch.utils.data import RandomSampler
+
+        assert isinstance(train_loader.sampler, RandomSampler)
+
+    def test_static_loader_can_disable_shuffle_when_explicitly_disabled(self):
+        train_loader, _, _ = self._loaders(
+            dynamic_graph=False, batch_size=4, shuffle_train=False
+        )
         from torch.utils.data import SequentialSampler
 
         assert isinstance(train_loader.sampler, SequentialSampler)

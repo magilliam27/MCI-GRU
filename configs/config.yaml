@@ -64,6 +64,7 @@ training:
   lr_scheduler: cosine         # cosine | none
   use_amp: true                # CUDA autocast + GradScaler (no-op on CPU)
   selection_metric: val_ic     # val_ic | val_loss — early stopping / checkpoint
+  shuffle_train: null          # null = legacy default (static shuffles, dynamic sequential); true/false overrides
   walkforward:
     enabled: false
     window_train_years: 4
