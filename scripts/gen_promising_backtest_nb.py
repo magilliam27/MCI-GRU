@@ -279,6 +279,7 @@ cells = [
                 '--adjustment_method', 'bhy',
                 '--auto_save',
                 '--plot',
+                '--disable_mlflow_autolink',
                 '--backtest_suffix', suffix,
             ]
             if scenario['transaction_costs']:

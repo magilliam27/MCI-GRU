@@ -2864,6 +2864,7 @@ def setup_backtest_tracking(
     predictions_dir: str,
     config: dict,
     enable_mlflow: bool = False,
+    disable_mlflow_autolink: bool = False,
     tracking_uri: str = None,
     experiment_name: str = None,
     backtest_suffix: str = "",
@@ -2873,7 +2874,11 @@ def setup_backtest_tracking(
     If the predictions directory belongs to a tracked training run, the
     backtest automatically links itself beneath that parent run.
     """
-    linked_metadata = load_run_metadata_from_predictions_dir(predictions_dir)
+    linked_metadata = (
+        None
+        if disable_mlflow_autolink
+        else load_run_metadata_from_predictions_dir(predictions_dir)
+    )
     tracking_enabled = enable_mlflow or linked_metadata is not None
 
     if not tracking_enabled:
@@ -3242,6 +3247,13 @@ def main():
         "run if mlflow_run.json exists in the predictions directory.",
     )
     parser.add_argument(
+        "--disable_mlflow_autolink",
+        action="store_true",
+        help="Do not auto-enable MLflow tracking from mlflow_run.json beside the "
+        "predictions directory. Use this for portable Drive/Colab backtests where "
+        "the original training MLflow run may not exist in the current file store.",
+    )
+    parser.add_argument(
         "--mlflow_tracking_uri",
         type=str,
         default=None,
@@ -3324,6 +3336,7 @@ def main():
         predictions_dir=args.predictions_dir,
         config=config,
         enable_mlflow=args.enable_mlflow,
+        disable_mlflow_autolink=args.disable_mlflow_autolink,
         tracking_uri=args.mlflow_tracking_uri,
         experiment_name=args.mlflow_experiment_name,
         backtest_suffix=args.backtest_suffix,
