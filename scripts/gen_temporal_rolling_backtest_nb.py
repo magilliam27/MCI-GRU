@@ -130,7 +130,7 @@ cells = [
         REGIME_STRICT = True
         REGIME_ENFORCE_LAG_DAYS = 0
 
-        NUM_MODELS = 10
+        NUM_MODELS = 20
         NUM_EPOCHS = 100
         EARLY_STOPPING_PATIENCE = 15
         BATCH_SIZE = 32
@@ -240,7 +240,6 @@ cells = [
                 shutil.copy2(src, dst)
             preview = pd.read_csv(dst, usecols=['dt', 'kdcode'])
             preview['dt'] = pd.to_datetime(preview['dt'])
-            window['repo_data_path'] = dst.relative_to(REPO_DIR).as_posix()
             print(
                 f"{window['test_year']}: {dst.name} | "
                 f"rows={len(preview):,}, stocks={preview.kdcode.nunique():,}, "
@@ -265,6 +264,7 @@ cells = [
     code(
         r"""
         import itertools
+        import pandas as pd
         import re
 
         BASE_OVERRIDES = [
@@ -317,13 +317,24 @@ cells = [
                 return cleaned
             return cleaned[:max_len]
 
+        def repo_data_path_for(window: dict) -> str:
+            repo_path = REPO_DIR / 'data' / 'raw' / 'market' / window['data_filename']
+            if not repo_path.exists():
+                drive_path = GDRIVE_DATA_DIR / window['data_filename']
+                raise FileNotFoundError(
+                    f"Market CSV for test year {window['test_year']} is not available at {repo_path}. "
+                    f"Run the Data Availability Check cell first, or confirm the Drive file exists at {drive_path}."
+                )
+            return repo_path.relative_to(REPO_DIR).as_posix()
+
         TRAINING_JOBS = []
         for window in TEMPORAL_WINDOWS:
             name = safe_name(f"{MODEL_RECIPE['name']}__test-{window['test_year']}")
+            repo_data_path = repo_data_path_for(window)
             overrides = [
                 *BASE_OVERRIDES,
                 f"data={window['data_config']}",
-                f"data.filename={window['repo_data_path']}",
+                f"data.filename={repo_data_path}",
                 f"data.train_start={window['train_start']}",
                 f"data.train_end={window['train_end']}",
                 f"data.val_start={window['val_start']}",
@@ -333,7 +344,7 @@ cells = [
                 f"output_dir={TRAINING_OUTPUT_DIR.as_posix()}",
                 f"experiment_name={name}",
             ]
-            TRAINING_JOBS.append({**window, 'name': name, 'overrides': overrides})
+            TRAINING_JOBS.append({**window, 'repo_data_path': repo_data_path, 'name': name, 'overrides': overrides})
 
         matrix_df = pd.DataFrame(TRAINING_JOBS)
         display(matrix_df[['test_year', 'name', 'data_config', 'data_filename', 'train_start', 'train_end', 'val_start', 'val_end', 'test_start', 'test_end']])
