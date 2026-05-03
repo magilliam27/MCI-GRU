@@ -42,7 +42,7 @@ CSV / LSEG / FRED
    `(time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates)`.
    `batch_dates` is `None` in static mode.
 
-7. **Training** — `Trainer.train()` uses **AdamW**, optional **cosine LR schedule** with linear warmup (`TrainingConfig.lr_scheduler`, `warmup_steps`), **CUDA AMP** when `use_amp` and a GPU are available, and early stopping / checkpoint selection by **`selection_metric`** (`val_ic` or `val_loss`). Default training loss is **`combined`** (MSE + IC). `train_multiple_models` repeats training **N** times with **`set_seed(seed + model_id)`** per member, then averages predictions.
+7. **Training** — `Trainer.train()` uses **AdamW**, optional **cosine LR schedule** with linear warmup (`TrainingConfig.lr_scheduler`, `warmup_steps`), **CUDA AMP** when `use_amp` and a GPU are available, and early stopping / checkpoint selection by **`selection_metric`** (`val_ic` or `val_loss`). Default training loss is **`combined`** (MSE + IC). `train_multiple_models` treats `config.seed` as a base seed, repeats training **N** times with **`set_seed(config.seed + model_id)`** per member, then averages predictions.
 
 8. **Inference** — Each model produces per-stock scalar scores. The ensemble mean is the
    final prediction, saved as CSV files in `averaged_predictions/`.

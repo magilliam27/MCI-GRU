@@ -486,6 +486,7 @@ def train_multiple_models(
 ) -> tuple[list[TrainingResult], np.ndarray]:
     """
     Per paper Section 4.1.2: Train num_models and average predictions.
+    Each ensemble member is independently initialized with ``config.seed + model_id``.
 
     Graph snapshots are already baked into the data loaders via
     ``GraphSchedule``; each model simply consumes batches whose edge
@@ -519,7 +520,9 @@ def train_multiple_models(
         print(f"Training Model {model_id + 1}/{config.training.num_models}")
         print(f"{'=' * 60}")
 
-        set_seed(config.seed + model_id)
+        model_seed = config.seed + model_id
+        print(f"Model seed: {model_seed}")
+        set_seed(model_seed)
 
         model = model_factory()
         model_checkpoint_path = os.path.join(checkpoint_dir, f"model_{model_id}_best.pth")

@@ -142,7 +142,7 @@ evaluation:
   top_k_values: [10, 20, 50, 100]
   bootstrap_enabled: true
   bootstrap_resamples: 1000
-  bootstrap_seed: 42
+  bootstrap_seed: 1729
   ci_level: 0.95
   block_size: null
   sharpe_method: newey_west
@@ -159,7 +159,7 @@ tracking:
 
 experiment_name: baseline
 output_dir: results
-seed: 42
+seed: 1729
 
 hydra:
   run:
@@ -195,7 +195,7 @@ python -u run_experiment.py \
   evaluation.bootstrap_resamples=1000 \
   tracking.enabled=true \
   tracking.log_predictions=false \
-  seed=42 \
+  seed=1729 \
   experiment_name=holdout_2026_modern_defaults
 ```
 
@@ -371,4 +371,3 @@ configs/data/sp500.yaml
 configs/features/with_momentum.yaml
 docs/ARCHITECTURE.md
 ```
-

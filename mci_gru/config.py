@@ -437,7 +437,7 @@ class TrainingConfig:
         batch_size: Training batch size
         learning_rate: Optimizer learning rate
         num_epochs: Maximum number of training epochs
-        num_models: Number of models to train (for averaging)
+        num_models: Number of independently seeded models to train (for averaging)
         early_stopping_patience: Epochs to wait before early stopping
         weight_decay: L2 regularization weight
         gradient_clip: Maximum gradient norm (0 = no clipping)
@@ -525,7 +525,7 @@ class EvaluationConfig:
     top_k_values: list[int] = field(default_factory=lambda: [10, 20, 50, 100])
     bootstrap_enabled: bool = True
     bootstrap_resamples: int = 1000
-    bootstrap_seed: int = 42
+    bootstrap_seed: int = 1729
     ci_level: float = 0.95
     block_size: int | None = None
     sharpe_method: str = "newey_west"
@@ -591,7 +591,7 @@ class ExperimentConfig:
         tracking: MLflow tracking configuration
         experiment_name: Name for this experiment
         output_dir: Directory for saving outputs
-        seed: Random seed for reproducibility
+        seed: Base random seed; ensemble member ``model_id`` uses ``seed + model_id``
     """
 
     data: DataConfig = field(default_factory=DataConfig)
@@ -603,7 +603,7 @@ class ExperimentConfig:
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
     experiment_name: str = "baseline"
     output_dir: str = "results"
-    seed: int = 42
+    seed: int = 1729
 
     def __post_init__(self) -> None:
         if isinstance(self.evaluation, dict):
@@ -797,5 +797,5 @@ def create_config_from_dict(config_dict: dict[str, Any]) -> ExperimentConfig:
         tracking=TrackingConfig(**tracking_dict) if tracking_dict else TrackingConfig(),
         experiment_name=config_dict.get("experiment_name", "baseline"),
         output_dir=config_dict.get("output_dir", "results"),
-        seed=config_dict.get("seed", 42),
+        seed=config_dict.get("seed", 1729),
     )

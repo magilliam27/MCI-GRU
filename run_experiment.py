@@ -180,7 +180,7 @@ def main(cfg: DictConfig):
     logger.info("\n" + OmegaConf.to_yaml(cfg))
     config = dict_to_config(cfg)
     set_seed(config.seed)
-    logger.info(f"\nRandom seed: {config.seed}")
+    logger.info(f"\nBase random seed: {config.seed}")
     logger.info(f"Output directory: {output_path}")
     config_path = os.path.join(output_path, "config.yaml")
     OmegaConf.save(cfg, config_path)

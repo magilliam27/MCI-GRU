@@ -96,7 +96,7 @@ Keep matrices small enough to answer the stated question.
 Run names should be deterministic, readable, and path-safe:
 
 ```text
-static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__seed-42
+static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble
 ```
 
 ## Hydra Overrides

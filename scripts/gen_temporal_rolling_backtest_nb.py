@@ -139,8 +139,8 @@ cells = [
 
         # Frozen recipe from the 2026-05-02 fairness handoff.
         MODEL_RECIPE = {
-            'name': 'static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__seed-42__drop-edge-0p1',
-            'seed': 42,
+            'name': 'static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1',
+            'seed': 1729,
             'label_t': 5,
             'loss_type': 'ic',
             'label_type': 'returns',
@@ -306,7 +306,7 @@ cells = [
             'training.selection_metric=val_ic',
             'model.label_t=5',
             'graph.drop_edge_p=0.1',
-            'seed=42',
+            f"seed={MODEL_RECIPE['seed']}",
         ]
         if REGIME_INPUTS_CSV:
             BASE_OVERRIDES.append(f'features.regime_inputs_csv={REGIME_INPUTS_CSV}')

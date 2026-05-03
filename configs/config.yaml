@@ -53,7 +53,7 @@ training:
   batch_size: 32
   learning_rate: 5e-5
   num_epochs: 100
-  num_models: 10               # Number of models for averaging
+  num_models: 10               # Number of independently seeded models for averaging
   early_stopping_patience: 10
   weight_decay: 1e-3            # L2 regularization
   gradient_clip: 1.0            # Max gradient norm
@@ -79,7 +79,7 @@ evaluation:
   top_k_values: [10, 20, 50, 100]
   bootstrap_enabled: true
   bootstrap_resamples: 1000
-  bootstrap_seed: 42
+  bootstrap_seed: 1729
   ci_level: 0.95
   block_size: null
   sharpe_method: newey_west
@@ -98,7 +98,7 @@ tracking:
 # Experiment metadata
 experiment_name: baseline
 output_dir: results
-seed: 42
+seed: 1729                     # Base RNG seed; ensemble member i uses seed + i
 
 # Hydra configuration for output management
 hydra:

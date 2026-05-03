@@ -42,7 +42,7 @@ This will:
 ```bash
 python run_experiment.py \
   tracking.experiment_name=mci-gru-sp500 \
-  tracking.run_name=baseline-seed42
+  tracking.run_name=baseline-ensemble
 ```
 
 ### Artifact options
