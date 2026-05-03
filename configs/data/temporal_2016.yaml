@@ -1,0 +1,11 @@
+# Temporal experiment: 2016 baseline
+# Train: 2016-2020 (5 years), Val: 2021, Test: 2022
+universe: sp500
+source: csv
+filename: data/raw/market/sp500_2016_universe_data.csv
+train_start: "2016-01-01"
+train_end: "2020-12-31"
+val_start: "2021-01-22"
+val_end: "2021-12-31"
+test_start: "2022-01-22"
+test_end: "2022-12-31"
