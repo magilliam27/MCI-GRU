@@ -96,7 +96,23 @@ cells = [
             raise RuntimeError('No CUDA GPU is visible. In Colab, switch Runtime -> Change runtime type -> GPU.')
         """
     ),
-    md("## 2. Configuration"),
+    md("## 2. FRED API Key"),
+    code(
+        r"""
+        # Paste your FRED API key here, or set FRED_API_KEY in the notebook environment.
+        # Required when REGIME_STRICT=True and REGIME_INPUTS_CSV is blank.
+        MY_FRED_KEY = ''
+
+        if MY_FRED_KEY.strip():
+            os.environ['FRED_API_KEY'] = MY_FRED_KEY.strip()
+
+        if os.environ.get('FRED_API_KEY'):
+            print('FRED_API_KEY is set.')
+        else:
+            print('FRED_API_KEY is not set yet. Paste it into MY_FRED_KEY before running training, or set REGIME_INPUTS_CSV in the configuration cell.')
+        """
+    ),
+    md("## 3. Configuration"),
     code(
         r"""
         from datetime import datetime
@@ -202,7 +218,7 @@ cells = [
         print('Backtest scenarios:', [s['scenario'] for s in BACKTEST_SCENARIOS])
         """
     ),
-    md("## 3. Data Availability Check"),
+    md("## 4. Data Availability Check"),
     code(
         r"""
         import json
@@ -245,7 +261,7 @@ cells = [
             raise RuntimeError('REGIME_STRICT=True and REGIME_INPUTS_CSV is blank, so set FRED_API_KEY before running.')
         """
     ),
-    md("## 4. Matrix Definition"),
+    md("## 5. Matrix Definition"),
     code(
         r"""
         import itertools
@@ -323,7 +339,7 @@ cells = [
         display(matrix_df[['test_year', 'name', 'data_config', 'data_filename', 'train_start', 'train_end', 'val_start', 'val_end', 'test_start', 'test_end']])
         """
     ),
-    md("## 5. Run, Collect, And Score Helpers"),
+    md("## 6. Run, Collect, And Score Helpers"),
     code(
         r"""
         import hashlib
@@ -475,7 +491,7 @@ cells = [
             return out
         """
     ),
-    md("## 6. Matrix Execution"),
+    md("## 7. Matrix Execution"),
     code(
         r"""
         manifest_path = RUN_ROOT / 'rolling_temporal_backtest_manifest.json'
@@ -551,7 +567,7 @@ cells = [
         print('Decision table:', decision_path)
         """
     ),
-    md("## 7. Main-Effect And Interaction Analysis"),
+    md("## 8. Main-Effect And Interaction Analysis"),
     code(
         r"""
         effect_dir = RUN_ROOT / 'effects'
@@ -581,7 +597,7 @@ cells = [
             display(interaction)
         """
     ),
-    md("## 8. Visualization"),
+    md("## 9. Visualization"),
     code(
         r"""
         import matplotlib.pyplot as plt
@@ -638,7 +654,7 @@ cells = [
             print('Equity curves:', equity_plot_path)
         """
     ),
-    md("## 9. Failed-Run Inspection"),
+    md("## 10. Failed-Run Inspection"),
     code(
         r"""
         def print_tail(path: str, n_chars: int = 4000):
@@ -664,7 +680,7 @@ cells = [
             display(failed_backtests[['test_year', 'scenario', 'stdout_tail', 'stderr_tail']])
         """
     ),
-    md("## 10. Summary Report Export"),
+    md("## 11. Summary Report Export"),
     code(
         r"""
         def fmt_pct(value):
@@ -727,7 +743,7 @@ cells = [
         print('Summary report:', report_path)
         """
     ),
-    md("## 11. Zip Results"),
+    md("## 12. Zip Results"),
     code(
         r"""
         archive_path = shutil.make_archive(str(RUN_ROOT), 'zip', root_dir=str(RUN_ROOT.parent), base_dir=RUN_ROOT.name)
