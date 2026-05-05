@@ -1,0 +1,20 @@
+{
+  "start": "2016-01-01",
+  "end": "2026-05-04",
+  "index_ric": ".SPX",
+  "chain_ric": "0#.SPX",
+  "current_members": 503,
+  "change_rows": 501,
+  "joiners": 250,
+  "leavers": 251,
+  "interval_rows": 754,
+  "snapshot_dates": 229,
+  "min_members_per_snapshot": 503,
+  "max_members_per_snapshot": 509,
+  "outputs": {
+    "current_members": "data\\raw\\constituents\\sp500_pit_joiner_leaver_20160101_20260504_current_members.csv",
+    "changes": "data\\raw\\constituents\\sp500_pit_joiner_leaver_20160101_20260504_changes.csv",
+    "intervals": "data\\raw\\constituents\\sp500_pit_joiner_leaver_20160101_20260504_intervals.csv",
+    "snapshots": "data\\raw\\constituents\\sp500_pit_joiner_leaver_20160101_20260504_snapshots.csv"
+  }
+}

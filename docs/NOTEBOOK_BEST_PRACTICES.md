@@ -1,6 +1,6 @@
 # Notebook Best Practices
 
-Last updated: 2026-05-01
+Last updated: 2026-05-03
 
 This guide documents the notebook conventions used for MCI-GRU Colab experiment
 notebooks. Follow it when creating or modifying notebooks under `notebooks/`.
@@ -13,11 +13,17 @@ package and use notebooks to:
 
 - mount Google Drive,
 - clone or update the repo,
-- select data and experiment settings,
+- stage Drive data into the local Colab VM,
+- select local data paths and experiment settings,
 - define a small, explicit run matrix,
 - call `run_experiment.py` with Hydra overrides,
 - collect standardized outputs,
-- export decision tables, plots, logs, and a Markdown summary.
+- export decision tables, plots, logs, and a Markdown summary back to Drive.
+
+Treat Google Drive as durable storage, not as the notebook's active working
+filesystem. Mounted Drive is convenient but quota-limited; notebooks should do
+high-volume reads and writes on the Colab VM and copy compact artifacts to Drive
+at well-defined checkpoints.
 
 ## Required Structure
 
@@ -26,14 +32,15 @@ Use the same high-level sections as the ablation notebooks:
 1. Title and intent.
 2. Mount Drive, clone repo, and install dependencies.
 3. Configuration cell with all user-editable knobs.
-4. Data availability check.
-5. Matrix definition.
-6. Run, collect, and score helpers.
-7. Matrix execution.
-8. Main-effect and interaction analysis.
-9. Visualization.
-10. Failed-run inspection.
-11. Summary report export.
+4. Data archive discovery and local VM staging.
+5. Data availability check against local paths.
+6. Matrix definition.
+7. Run, collect, and score helpers.
+8. Matrix execution using local scratch outputs.
+9. Main-effect and interaction analysis.
+10. Visualization.
+11. Failed-run inspection.
+12. Compact artifact sync and summary report export.
 
 Keep markdown cells short and operational. A notebook should tell the runner what
 the next cell does and what output to expect.
@@ -50,6 +57,8 @@ Put all run-time knobs in one early code cell:
 - strict regime settings,
 - optional feature flags,
 - output root and run tag.
+- local scratch root,
+- Drive export root.
 
 Use full-budget defaults only for final confirmation notebooks:
 
@@ -61,6 +70,49 @@ evaluation.bootstrap_resamples = 1000
 ```
 
 For scouting notebooks, keep the quick-run knobs visible and label them clearly.
+
+Use separate roots for work and persistence:
+
+```text
+LOCAL_WORK_ROOT = "/content/mci_gru_work/<experiment_name>/<run_tag>"
+DRIVE_EXPORT_ROOT = "/content/drive/MyDrive/MCI-GRU-Ablations/<experiment_name>/<run_tag>"
+```
+
+During execution, write logs, predictions, intermediate CSVs, and temporary
+files under `LOCAL_WORK_ROOT`. Sync only selected final artifacts to
+`DRIVE_EXPORT_ROOT`.
+
+## Google Drive Quota Safety
+
+Colab notebooks can hit Google Drive operation or bandwidth quotas, especially
+when reading many small files, repeatedly scanning mounted directories, writing
+large log streams, or using a popular shared Drive file. Failures may surface as
+`Input/output error` from mounted Drive paths.
+
+Design notebooks around this rule:
+
+```text
+Drive is the source and sink. /content is the workspace.
+```
+
+Required practices:
+
+- Keep datasets on Drive as a small number of archives such as `.zip` or
+  `.tar.gz`.
+- Copy the selected archive from Drive to `/content` once at notebook startup.
+- Unarchive into a local VM directory such as `/content/mci_gru_data/<run_tag>`.
+- Point `data.csv_path`, `REGIME_INPUTS_CSV`, and other experiment inputs at
+  local `/content` paths.
+- Write per-run logs, checkpoints, predictions, and temporary outputs locally.
+- Copy only compact final artifacts back to Drive after runs finish.
+- Avoid loops that call `os.listdir`, `glob`, `read_csv`, `torch.load`, or
+  similar file operations directly against many mounted Drive files.
+- Avoid writing every stdout/stderr line directly to Drive during training.
+
+If a Drive quota failure occurs, do not immediately rerun the same notebook
+against mounted Drive paths. First stage the needed data locally, reduce the
+number of Drive file operations, or wait for quota reset if the file itself is
+quota-limited.
 
 ## Data and Lookahead Safety
 
@@ -81,6 +133,16 @@ features.regime_strict=true
 
 If FRED access is unavailable, set `REGIME_INPUTS_CSV` to a file that follows
 `docs/REGIME_DATA_CONTRACT.md`.
+
+For Colab data setup, prefer this flow:
+
+```text
+Drive archive -> local /content archive copy -> local extracted data -> Hydra local paths
+```
+
+Do not train directly from a directory of many small files in mounted Drive. If a
+shared source file is popular or quota-limited, make a private Drive copy first
+and use that private copy as the notebook input.
 
 ## Matrix Design
 
@@ -146,8 +208,24 @@ Write outputs to Google Drive under:
 /content/drive/MyDrive/MCI-GRU-Ablations/<experiment_name>/<run_tag>
 ```
 
-The manifest should include the run matrix, baseline overrides, filters, and
-budget settings.
+The full run should execute under a local scratch folder first, for example:
+
+```text
+/content/mci_gru_work/<experiment_name>/<run_tag>
+```
+
+The Drive folder should receive final artifacts only. Prefer copying these
+outputs in one sync/export cell after matrix execution:
+
+- manifest JSON,
+- raw and decision CSVs,
+- plots,
+- failed-run log tails or compressed logs,
+- Markdown summary report,
+- a compressed archive of detailed logs when needed.
+
+The manifest should include the run matrix, baseline overrides, filters, budget
+settings, local work root, Drive export root, and data archive used for staging.
 
 ## Scoring and Reporting
 
@@ -174,6 +252,11 @@ Never hide failed runs.
 - Add a final failed-run inspection cell that prints log tails.
 - Keep failed rows in the raw and decision tables with `status=FAILED`.
 - Treat recurring failures as experiment findings, not notebook noise.
+- If logs are large, keep full logs locally during execution and export
+  compressed logs or relevant tails to Drive.
+- Classify Drive `Input/output error` failures separately from model or data
+  failures; they usually indicate a notebook I/O pattern or Drive quota issue,
+  not an experiment result.
 
 ## Review Checklist
 
@@ -182,6 +265,12 @@ Before pushing a notebook:
 - Open it as JSON or run `ConvertFrom-Json` to verify it is valid.
 - Confirm the first setup cell clones the intended branch.
 - Confirm output paths include a timestamped run tag.
+- Confirm data is staged from Drive to local `/content` before training.
+- Confirm Hydra data paths point at local `/content` files, not mounted Drive
+  files, during execution.
+- Confirm detailed logs and intermediate outputs are written locally first.
+- Confirm the final Drive sync exports compact artifacts rather than streaming
+  every intermediate file to Drive.
 - Confirm every factor has row metadata.
 - Confirm strict regime behavior is intentional.
 - Confirm no secrets are committed.

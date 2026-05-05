@@ -1,0 +1,17 @@
+{
+  "start": "2018-01-02",
+  "end": "2026-05-04",
+  "frequency": "adaptive",
+  "chain_ric": "0#.SPX",
+  "fallback_ric": ".SPX",
+  "snapshot_dates_requested": 101,
+  "snapshot_dates_fetched": 101,
+  "unique_constituents": 503,
+  "min_constituents_per_snapshot": 503,
+  "max_constituents_per_snapshot": 503,
+  "failures": [],
+  "outputs": {
+    "snapshots": "data\\raw\\constituents\\sp500_pit_adaptive_20180102_20260504_snapshots.csv",
+    "intervals": "data\\raw\\constituents\\sp500_pit_adaptive_20180102_20260504_intervals.csv"
+  }
+}

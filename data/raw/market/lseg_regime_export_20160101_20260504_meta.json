@@ -1,0 +1,17 @@
+{
+  "start": "2016-01-01",
+  "end": "2026-05-04",
+  "rics": {
+    "regime_copper": ".MXCOPPFE",
+    "regime_oil": "CLc1"
+  },
+  "row_counts": {
+    "regime_copper": 2619,
+    "regime_oil": 2600
+  },
+  "columns_exported": [
+    "dt",
+    "regime_copper",
+    "regime_oil"
+  ]
+}
