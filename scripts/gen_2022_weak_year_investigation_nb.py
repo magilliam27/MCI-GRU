@@ -36,16 +36,13 @@ cells = [
 
         This notebook is a guided test harness for explaining why 2022 was weak in the latest completed backtest proof grid. It is designed to be rerunnable: each section states a hypothesis, reproduces the relevant evidence, and records a `PASS`, `WARN`, or `FAIL` style result.
 
-        Primary artifacts expected in Colab:
+        Primary artifacts discovered in Drive:
 
-        - `/content/drive/MyDrive/MCI-GRU-Ablations/weak_year_diagnostic/completed_proof_decision_table.csv`
-        - `/content/drive/MyDrive/MCI-GRU-Ablations/weak_year_diagnostic/completed_pooled_daily_returns.csv`
-        - `/content/drive/MyDrive/MCI-GRU-Ablations/weak_year_diagnostic/20260505_030758.zip`
+        - `/content/drive/MyDrive/MCI-GRU-Ablations/performance_proof_missing_grid/20260505_030758/completed_proof_decision_table.csv`
+        - `/content/drive/MyDrive/MCI-GRU-Ablations/performance_proof_missing_grid/20260505_030758/completed_pooled_daily_returns.csv`
+        - `/content/drive/MyDrive/MCI-GRU-Ablations/performance_proof_missing_grid/20260505_030758/20260505_030758.zip`
 
-        If you only have the original run zip, put it at either
-        `/content/drive/MyDrive/MCI-GRU-Ablations/weak_year_diagnostic/20260505_030758.zip`
-        or `/content/drive/MyDrive/MCI-GRU-Ablations/performance_proof_tests/20260505_030758.zip`.
-        The setup cell will extract the two completed CSVs into the weak-year diagnostic folder.
+        If you move artifacts, set `WEAK_YEAR_ARTIFACT_DIR` to the folder containing the two CSVs, or set `WEAK_YEAR_ZIP` to a zip containing those CSVs.
 
         Working vocabulary:
 
@@ -97,6 +94,8 @@ cells = [
             'completed_proof_decision_table.csv',
             'completed_pooled_daily_returns.csv',
         ]
+        RUN_TAG = '20260505_030758'
+        DEFAULT_RUN_DIR = DRIVE_ROOT / 'performance_proof_missing_grid' / RUN_TAG
         DEFAULT_WEAK_YEAR_DIR = DRIVE_ROOT / 'weak_year_diagnostic'
         ARTIFACT_DIR_OVERRIDE = os.environ.get('WEAK_YEAR_ARTIFACT_DIR', '').strip()
         ZIP_PATH_OVERRIDE = os.environ.get('WEAK_YEAR_ZIP', '').strip()
@@ -105,8 +104,8 @@ cells = [
         if ARTIFACT_DIR_OVERRIDE:
             artifact_candidates.append(Path(ARTIFACT_DIR_OVERRIDE))
         artifact_candidates.extend([
+            DEFAULT_RUN_DIR,
             DEFAULT_WEAK_YEAR_DIR,
-            DRIVE_ROOT / 'performance_proof_tests' / '20260505_030758',
             REPO_DIR / 'drive_outputs' / 'weak_year_diagnostic',
         ])
 
@@ -119,12 +118,13 @@ cells = [
                 zip_candidates.append(Path(ZIP_PATH_OVERRIDE))
             for candidate in candidates:
                 zip_candidates.extend([
-                    candidate / '20260505_030758.zip',
+                    candidate / f'{RUN_TAG}.zip',
                     candidate.with_suffix('.zip'),
                 ])
             zip_candidates.extend([
-                DRIVE_ROOT / 'performance_proof_tests' / '20260505_030758.zip',
-                DRIVE_ROOT / 'weak_year_diagnostic' / '20260505_030758.zip',
+                DRIVE_ROOT / 'performance_proof_missing_grid' / RUN_TAG / f'{RUN_TAG}.zip',
+                DRIVE_ROOT / 'performance_proof_missing_grid' / f'{RUN_TAG}.zip',
+                DRIVE_ROOT / 'weak_year_diagnostic' / f'{RUN_TAG}.zip',
             ])
             for candidate in zip_candidates:
                 if candidate.exists():
@@ -156,15 +156,17 @@ cells = [
                 raise FileNotFoundError(f'Zip did not contain required weak-year CSVs: {ZIP_PATH}')
 
         if ARTIFACT_DIR is None:
-            ARTIFACT_DIR = DEFAULT_WEAK_YEAR_DIR
-            print('No complete weak-year artifact directory found yet.')
-            print('Searched:')
-            for candidate in artifact_candidates:
-                print('  -', candidate)
-            print('Set WEAK_YEAR_ARTIFACT_DIR or WEAK_YEAR_ZIP, or copy artifacts into:', ARTIFACT_DIR)
+            searched = '\n'.join(f'  - {candidate}' for candidate in artifact_candidates)
+            raise FileNotFoundError(
+                'Missing weak-year artifacts. Expected both '
+                f"{', '.join(REQUIRED_ARTIFACT_FILES)}. Searched artifact dirs:\n"
+                f'{searched}\n'
+                'Set WEAK_YEAR_ARTIFACT_DIR to the folder containing the CSVs, '
+                'or set WEAK_YEAR_ZIP to a zip containing them.'
+            )
 
         if ZIP_PATH is None:
-            ZIP_PATH = ARTIFACT_DIR / '20260505_030758.zip'
+            ZIP_PATH = ARTIFACT_DIR / f'{RUN_TAG}.zip'
 
         DECISION_CSV = ARTIFACT_DIR / 'completed_proof_decision_table.csv'
         DAILY_CSV = ARTIFACT_DIR / 'completed_pooled_daily_returns.csv'
