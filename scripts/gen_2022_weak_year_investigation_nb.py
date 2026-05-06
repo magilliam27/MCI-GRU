@@ -36,11 +36,16 @@ cells = [
 
         This notebook is a guided test harness for explaining why 2022 was weak in the latest completed backtest proof grid. It is designed to be rerunnable: each section states a hypothesis, reproduces the relevant evidence, and records a `PASS`, `WARN`, or `FAIL` style result.
 
-        Primary artifacts expected:
+        Primary artifacts expected in Colab:
 
-        - `drive_outputs/weak_year_diagnostic/completed_proof_decision_table.csv`
-        - `drive_outputs/weak_year_diagnostic/completed_pooled_daily_returns.csv`
-        - `drive_outputs/weak_year_diagnostic/20260505_030758.zip`
+        - `/content/drive/MyDrive/MCI-GRU-Ablations/weak_year_diagnostic/completed_proof_decision_table.csv`
+        - `/content/drive/MyDrive/MCI-GRU-Ablations/weak_year_diagnostic/completed_pooled_daily_returns.csv`
+        - `/content/drive/MyDrive/MCI-GRU-Ablations/weak_year_diagnostic/20260505_030758.zip`
+
+        If you only have the original run zip, put it at either
+        `/content/drive/MyDrive/MCI-GRU-Ablations/weak_year_diagnostic/20260505_030758.zip`
+        or `/content/drive/MyDrive/MCI-GRU-Ablations/performance_proof_tests/20260505_030758.zip`.
+        The setup cell will extract the two completed CSVs into the weak-year diagnostic folder.
 
         Working vocabulary:
 
@@ -55,6 +60,7 @@ cells = [
         from pathlib import Path
         import os
         import re
+        import subprocess
         import sys
         import zipfile
 
@@ -68,21 +74,107 @@ cells = [
         if IN_COLAB:
             drive.mount('/content/drive')
 
-        # Edit these if your artifact folder lives somewhere else.
+        REPO_URL = 'https://github.com/magilliam27/MCI-GRU.git'
+        BRANCH = 'main'
         REPO_DIR = Path('/content/MCI-GRU') if IN_COLAB else Path.cwd()
         if not (REPO_DIR / 'AGENTS.md').exists() and Path.cwd().name == 'notebooks':
             REPO_DIR = Path.cwd().parent
+
+        if IN_COLAB:
+            if not REPO_DIR.exists():
+                subprocess.run(['git', 'clone', '--branch', BRANCH, REPO_URL, str(REPO_DIR)], check=True)
+            else:
+                subprocess.run(['git', '-C', str(REPO_DIR), 'fetch', 'origin'], check=True)
+                subprocess.run(['git', '-C', str(REPO_DIR), 'checkout', BRANCH], check=True)
+                subprocess.run(['git', '-C', str(REPO_DIR), 'pull', 'origin', BRANCH], check=True)
+
         os.chdir(REPO_DIR)
 
-        ARTIFACT_DIR = REPO_DIR / 'drive_outputs' / 'weak_year_diagnostic'
-        ZIP_PATH = ARTIFACT_DIR / '20260505_030758.zip'
+        DRIVE_ROOT = Path('/content/drive/MyDrive/MCI-GRU-Ablations') if IN_COLAB else REPO_DIR / 'drive_outputs'
+        DRIVE_ROOT.mkdir(parents=True, exist_ok=True)
+
+        REQUIRED_ARTIFACT_FILES = [
+            'completed_proof_decision_table.csv',
+            'completed_pooled_daily_returns.csv',
+        ]
+        DEFAULT_WEAK_YEAR_DIR = DRIVE_ROOT / 'weak_year_diagnostic'
+        ARTIFACT_DIR_OVERRIDE = os.environ.get('WEAK_YEAR_ARTIFACT_DIR', '').strip()
+        ZIP_PATH_OVERRIDE = os.environ.get('WEAK_YEAR_ZIP', '').strip()
+
+        artifact_candidates = []
+        if ARTIFACT_DIR_OVERRIDE:
+            artifact_candidates.append(Path(ARTIFACT_DIR_OVERRIDE))
+        artifact_candidates.extend([
+            DEFAULT_WEAK_YEAR_DIR,
+            DRIVE_ROOT / 'performance_proof_tests' / '20260505_030758',
+            REPO_DIR / 'drive_outputs' / 'weak_year_diagnostic',
+        ])
+
+        def has_required_artifacts(path: Path) -> bool:
+            return all((path / name).exists() for name in REQUIRED_ARTIFACT_FILES)
+
+        def first_existing_zip(candidates: list[Path]) -> Path | None:
+            zip_candidates = []
+            if ZIP_PATH_OVERRIDE:
+                zip_candidates.append(Path(ZIP_PATH_OVERRIDE))
+            for candidate in candidates:
+                zip_candidates.extend([
+                    candidate / '20260505_030758.zip',
+                    candidate.with_suffix('.zip'),
+                ])
+            zip_candidates.extend([
+                DRIVE_ROOT / 'performance_proof_tests' / '20260505_030758.zip',
+                DRIVE_ROOT / 'weak_year_diagnostic' / '20260505_030758.zip',
+            ])
+            for candidate in zip_candidates:
+                if candidate.exists():
+                    return candidate
+            return None
+
+        def extract_required_artifacts(zip_path: Path, destination: Path) -> bool:
+            destination.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(zip_path) as zf:
+                names = zf.namelist()
+                for required in REQUIRED_ARTIFACT_FILES:
+                    matches = [
+                        name for name in names
+                        if name == required or name.endswith('/' + required)
+                    ]
+                    if not matches:
+                        return False
+                    with zf.open(matches[0]) as src, (destination / required).open('wb') as dst:
+                        dst.write(src.read())
+            return True
+
+        ARTIFACT_DIR = next((p for p in artifact_candidates if has_required_artifacts(p)), None)
+        ZIP_PATH = first_existing_zip(artifact_candidates)
+
+        if ARTIFACT_DIR is None and ZIP_PATH is not None:
+            ARTIFACT_DIR = DEFAULT_WEAK_YEAR_DIR
+            extracted = extract_required_artifacts(ZIP_PATH, ARTIFACT_DIR)
+            if not extracted:
+                raise FileNotFoundError(f'Zip did not contain required weak-year CSVs: {ZIP_PATH}')
+
+        if ARTIFACT_DIR is None:
+            ARTIFACT_DIR = DEFAULT_WEAK_YEAR_DIR
+            print('No complete weak-year artifact directory found yet.')
+            print('Searched:')
+            for candidate in artifact_candidates:
+                print('  -', candidate)
+            print('Set WEAK_YEAR_ARTIFACT_DIR or WEAK_YEAR_ZIP, or copy artifacts into:', ARTIFACT_DIR)
+
+        if ZIP_PATH is None:
+            ZIP_PATH = ARTIFACT_DIR / '20260505_030758.zip'
+
         DECISION_CSV = ARTIFACT_DIR / 'completed_proof_decision_table.csv'
         DAILY_CSV = ARTIFACT_DIR / 'completed_pooled_daily_returns.csv'
         OUTPUT_DIR = ARTIFACT_DIR / 'notebook_outputs'
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
         print('Repo:', REPO_DIR)
+        print('Drive output root:', DRIVE_ROOT)
         print('Artifact dir:', ARTIFACT_DIR)
+        print('Zip path:', ZIP_PATH)
         print('Output dir:', OUTPUT_DIR)
         """
     ),
