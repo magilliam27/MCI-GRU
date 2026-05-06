@@ -16,13 +16,14 @@ The **canonical regime inputs** file consumed by the training pipeline must have
 | `regime_stock_bond_corr` | float | Rolling correlation of market returns vs 10Y yield changes (e.g. 63d, min 21). |
 
 - No extra columns are required; optional columns (e.g. `yield_10y`, `yield_3m`) may be present but are ignored by the regime feature module.
-- Missing values may be present; the pipeline will forward-fill/backfill as in existing logic. Rows with all regime values missing for a date should be avoided where possible.
+- Missing values may be present; the CSV loader forward-fills only. It never backfills because that would copy future observations into earlier dates. Rows with all regime values missing for a date should be avoided where possible.
 
 ## Lag Policy (No Look-Ahead)
 
 - **Decision time:** Model inputs for date `T` must use only information that would have been available at or before the close of day `T` (or at a defined cutoff, e.g. previous close).
 - **Recommended:** Apply a **1-day lag** to all macro/commodity series before merging: the value assigned to date `T` is the value as of `T-1`. This avoids look-ahead when data is published with a delay.
 - **Config:** When using the CSV override, an optional `features.regime_enforce_lag_days` (default 0) can be set to 1 so the loader shifts the loaded regime columns by that many calendar days before use. If the CSV was already built with lag applied (e.g. in Colab reconciliation), set to 0.
+- **Leading lag gaps:** When `features.regime_enforce_lag_days > 0`, the first shifted rows have no point-in-time observation and remain missing. Later missing values are filled from the most recent prior observation only. Downstream regime feature columns are neutral-filled after as-of merging, not by backfilling raw inputs.
 
 ## Local LSEG Export (Partial File)
 

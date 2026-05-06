@@ -240,7 +240,8 @@ class DataManager:
                 base[col] = pd.to_numeric(base[col], errors="coerce")
             if regime_enforce_lag_days > 0:
                 base[REGIME_VARIABLES] = base[REGIME_VARIABLES].shift(regime_enforce_lag_days)
-            base[REGIME_VARIABLES] = base[REGIME_VARIABLES].ffill().bfill()
+            # Forward-fill only; backfill would leak future values into leading lag gaps.
+            base[REGIME_VARIABLES] = base[REGIME_VARIABLES].ffill()
             base["dt"] = base["dt"].dt.strftime("%Y-%m-%d")
             self.regime_df = base
             return base
