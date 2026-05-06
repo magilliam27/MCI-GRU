@@ -6,7 +6,6 @@ import json
 import textwrap
 from pathlib import Path
 
-
 OUT = Path("notebooks/2022_weak_year_investigation.ipynb")
 
 
