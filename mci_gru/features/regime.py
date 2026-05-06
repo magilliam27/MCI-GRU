@@ -215,8 +215,6 @@ def compute_regime_monthly_features(
         indexed_distances.sort(key=lambda item: item[1])
         distances = np.array([distance for _, distance in indexed_distances], dtype=float)
         q_count = max(1, int(np.floor(len(indexed_distances) * similarity_quantile)))
-        similar_indices = [hist_idx for hist_idx, _ in indexed_distances[:q_count]]
-        dissimilar_indices = [hist_idx for hist_idx, _ in indexed_distances[-q_count:]]
         similar = distances[:q_count]
         dissimilar = distances[-q_count:]
 
@@ -230,13 +228,34 @@ def compute_regime_monthly_features(
             "regime_similarity_spread": dis_mean - sim_mean,
         }
         for horizon in horizons:
+            horizon_distances = [
+                (hist_idx, distance)
+                for hist_idx, distance in indexed_distances
+                if hist_idx + horizon <= idx
+            ]
+            if len(horizon_distances) < min_history_months:
+                row[f"regime_similar_subsequent_return_{horizon}m"] = np.nan
+                if horizon == 1:
+                    row["regime_subsequent_return_spread_1m"] = np.nan
+                continue
+
+            horizon_q_count = max(
+                1,
+                int(np.floor(len(horizon_distances) * similarity_quantile)),
+            )
+            horizon_similar_indices = [
+                hist_idx for hist_idx, _ in horizon_distances[:horizon_q_count]
+            ]
+            horizon_dissimilar_indices = [
+                hist_idx for hist_idx, _ in horizon_distances[-horizon_q_count:]
+            ]
             horizon_returns = forward_returns[horizon]
             row[f"regime_similar_subsequent_return_{horizon}m"] = _nanmean_or_nan(
-                horizon_returns.iloc[similar_indices].to_numpy(dtype=float)
+                horizon_returns.iloc[horizon_similar_indices].to_numpy(dtype=float)
             )
             if horizon == 1:
                 dissimilar_ret_1m = _nanmean_or_nan(
-                    horizon_returns.iloc[dissimilar_indices].to_numpy(dtype=float)
+                    horizon_returns.iloc[horizon_dissimilar_indices].to_numpy(dtype=float)
                 )
                 row["regime_subsequent_return_spread_1m"] = (
                     row["regime_similar_subsequent_return_1m"] - dissimilar_ret_1m

@@ -15,6 +15,7 @@ build/
 # Training outputs
 results/
 outputs/
+drive_outputs/
 models/
 mlruns/
 *.pt

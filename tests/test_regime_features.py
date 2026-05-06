@@ -117,6 +117,31 @@ def test_compute_regime_monthly_features_no_lookahead_exclusion_effect():
     )
 
 
+def test_regime_subsequent_return_horizon_excludes_future_window():
+    base = _make_regime_daily(start="2000-01-01", periods=2400)
+    changed = base.copy()
+    changed.loc[changed["dt"] == "2005-12-31", "regime_market"] *= 10.0
+
+    kwargs = {
+        "change_months": 1,
+        "norm_window_months": 12,
+        "exclusion_months": 1,
+        "similarity_quantile": 0.2,
+        "min_history_months": 12,
+        "subsequent_return_horizons": [3],
+    }
+    out_base = compute_regime_monthly_features(base, **kwargs)
+    out_changed = compute_regime_monthly_features(changed, **kwargs)
+
+    past_mask = out_base["dt"] < pd.Timestamp("2005-12-31")
+    col = "regime_similar_subsequent_return_3m"
+    pd.testing.assert_series_equal(
+        out_base.loc[past_mask, col].reset_index(drop=True),
+        out_changed.loc[past_mask, col].reset_index(drop=True),
+        check_names=False,
+    )
+
+
 def test_add_regime_features_broadcasts_without_row_change():
     stock_dates = pd.date_range("2018-01-01", periods=500, freq="B")
     stock_df = pd.DataFrame(
