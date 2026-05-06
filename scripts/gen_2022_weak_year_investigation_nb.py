@@ -239,7 +239,11 @@ cells = [
 
         decision = pd.concat([decision, decision['scenario'].apply(parse_scenario)], axis=1)
         daily_raw = pd.concat([daily_raw, daily_raw['scenario'].apply(parse_scenario)], axis=1)
-        daily_raw['date'] = pd.to_datetime(daily_raw['date']).dt.normalize()
+
+        def parse_mixed_dates(values) -> pd.Series:
+            return pd.to_datetime(values, format='mixed').dt.normalize()
+
+        daily_raw['date'] = parse_mixed_dates(daily_raw['date'])
         daily_raw['year_month'] = daily_raw['date'].dt.to_period('M').astype(str)
 
         def compound_return(values) -> float:
@@ -621,7 +625,7 @@ cells = [
 
         contexts = []
         for year, path in universe_files.items():
-            year_dates = set(pd.to_datetime(daily_raw.loc[daily_raw['test_year'] == year, 'date']).dt.normalize())
+            year_dates = set(parse_mixed_dates(daily_raw.loc[daily_raw['test_year'] == year, 'date']))
             contexts.append(raw_open_to_open_context(year, path, year_dates))
         market_context = pd.concat([c for c in contexts if not c.empty], ignore_index=True) if contexts else pd.DataFrame()
 
@@ -738,7 +742,7 @@ cells = [
     code(
         r"""
         if 'holdings' in globals() and not holdings.empty:
-            returns['date'] = pd.to_datetime(returns['date']).dt.normalize()
+            returns['date'] = parse_mixed_dates(returns['date'])
             worst_days = returns.sort_values('excess_return').head(8)
             display(worst_days[['date', 'portfolio_return', 'benchmark_return', 'excess_return']].style.format({
                 'portfolio_return': '{:.2%}',
@@ -746,7 +750,7 @@ cells = [
                 'excess_return': '{:.2%}',
             }))
 
-            holdings['entry_date'] = pd.to_datetime(holdings['entry_date']).dt.normalize()
+            holdings['entry_date'] = parse_mixed_dates(holdings['entry_date'])
             for dt in worst_days['date'].head(5):
                 pieces = holdings.loc[holdings['entry_date'] == dt].sort_values('contribution').head(8)
                 print('\\nWorst contributors on', dt.date())
@@ -790,7 +794,7 @@ cells = [
             if preds.empty or stock.empty:
                 return {}
             preds = preds.copy()
-            preds['dt'] = pd.to_datetime(preds['dt']).dt.normalize()
+            preds['dt'] = parse_mixed_dates(preds['dt'])
             stock_dates = sorted(stock['dt'].drop_duplicates())
             date_pos = {d: i for i, d in enumerate(stock_dates)}
             returns_by_date = {d: g.set_index('kdcode')['open_to_open_return'] for d, g in stock.groupby('dt')}
