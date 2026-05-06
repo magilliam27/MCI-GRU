@@ -1,6 +1,6 @@
 # Notebook Best Practices
 
-Last updated: 2026-05-03
+Last updated: 2026-05-06
 
 This guide documents the notebook conventions used for MCI-GRU Colab experiment
 notebooks. Follow it when creating or modifying notebooks under `notebooks/`.
@@ -24,6 +24,31 @@ Treat Google Drive as durable storage, not as the notebook's active working
 filesystem. Mounted Drive is convenient but quota-limited; notebooks should do
 high-volume reads and writes on the Colab VM and copy compact artifacts to Drive
 at well-defined checkpoints.
+
+## Drive Path Discovery
+
+Before creating or repairing a notebook that reads existing Drive artifacts, use
+the Google Drive skill/connector to ground the artifact location. Do not infer
+paths from memory, run tags, sibling notebook conventions, or local
+`drive_outputs/` mirrors.
+
+Required discovery flow:
+
+- Search Drive for one or two unique artifact names, such as a decision table
+  CSV, summary report, manifest, or run zip.
+- List the candidate run folder and confirm it contains the required files.
+- Read folder metadata and walk parents until the durable root folder is clear.
+- Translate only the verified Drive folder into the Colab mount path, usually
+  `/content/drive/MyDrive/<root>/<experiment>/<run_tag>`.
+- Record the confirmed path in the notebook markdown and setup cell.
+- Keep `*_DIR` and `*_ZIP` environment overrides for moved or copied artifacts.
+- If required artifacts are missing, fail in the setup cell with the searched
+  candidate folders instead of allowing a later loader cell to raise a generic
+  `FileNotFoundError`.
+
+When a user reports a notebook cannot find Drive files, start with Drive
+discovery again. The correct fix is usually the real Drive folder, not another
+guessed fallback.
 
 ## Required Structure
 
@@ -264,6 +289,8 @@ Before pushing a notebook:
 
 - Open it as JSON or run `ConvertFrom-Json` to verify it is valid.
 - Confirm the first setup cell clones the intended branch.
+- Confirm existing Drive artifact paths were verified with the Google Drive
+  skill/connector rather than guessed from local paths or prior notebooks.
 - Confirm output paths include a timestamped run tag.
 - Confirm data is staged from Drive to local `/content` before training.
 - Confirm Hydra data paths point at local `/content` files, not mounted Drive
