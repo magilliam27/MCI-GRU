@@ -151,9 +151,9 @@ cells.append(
         r"""
 ## 2. Market data CSV (and optional Colab upload)
 
-Regime inputs are **not** read from a file: `features=with_momentum` with `include_global_regime=true` leaves `regime_inputs_csv` null, so `load_regime_inputs` pulls macro series from the **FRED API**.
+Regime inputs are **not** read from a file: `features=with_momentum` with `include_global_regime=true` leaves `regime_inputs_csv` null, so `load_regime_inputs` pulls the seven-variable regime surface from the **FRED/LSEG live loader**.
 
-To use a prebuilt regime CSV instead, add e.g. `features.regime_inputs_csv=data/raw/market/your_file.csv` (full column contract in `docs/REGIME_DATA_CONTRACT.md`).
+`features.regime_inputs_csv` is a deprecated legacy escape hatch. Leave it unset for normal training and paper-trade-aligned runs.
 """
     )
 )

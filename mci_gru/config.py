@@ -114,8 +114,8 @@ class FeatureConfig:
         regime_lseg_yield_3m_ric: LSEG RIC for 3M yield fallback
         regime_lseg_oil_ric: LSEG RIC for oil fallback
         regime_lseg_vix_ric: LSEG RIC for volatility fallback
-        regime_inputs_csv: Optional path to canonical regime CSV (if set, bypass live API for regime)
-        regime_enforce_lag_days: If regime_inputs_csv set, shift dates by this many days (0 or 1) to avoid look-ahead
+        regime_inputs_csv: Deprecated legacy path to full seven-variable regime CSV (leave null to use live API)
+        regime_enforce_lag_days: If deprecated regime_inputs_csv is set, shift dates by this many days (0 or 1) to avoid look-ahead
         regime_include_subsequent_returns: Whether to emit post-similarity return features
         regime_subsequent_return_horizons: Forward monthly return horizons used for similarity-conditioned features
         include_rsi: Whether to add RSI features
@@ -368,10 +368,7 @@ class ModelConfig:
             raise ValueError("latent_init_scale must be > 0")
         if not 0.0 <= self.trunk_dropout < 1.0:
             raise ValueError(f"trunk_dropout must be in [0, 1), got {self.trunk_dropout}")
-        if (
-            self.use_a1_a2_cross_attention
-            and self.hidden_size_gat1 % self.cross_a2_num_heads != 0
-        ):
+        if self.use_a1_a2_cross_attention and self.hidden_size_gat1 % self.cross_a2_num_heads != 0:
             raise ValueError(
                 "hidden_size_gat1 must be divisible by cross_a2_num_heads when "
                 "use_a1_a2_cross_attention=True"

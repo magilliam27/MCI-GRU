@@ -62,6 +62,23 @@ filename: sp500_data.csv
 python run_experiment.py +data=csv_sp500
 ```
 
+## Regime Inputs
+
+Global regime features use the live FRED/LSEG-backed loader by default. Leave
+`features.regime_inputs_csv` unset or `null`; with `include_global_regime=true`,
+`DataManager.load_regime_inputs()` builds the full seven-variable regime surface:
+market, yield curve, oil, copper, stock-bond correlation, monetary policy, and
+volatility.
+
+Set `FRED_API_KEY` for the normal regime workflow. When `data.source=lseg`,
+configured LSEG RICs can supplement live market, copper, yield, oil, or VIX
+series where available.
+
+`features.regime_inputs_csv` is deprecated. It remains only as a legacy offline
+escape hatch, emits a `DeprecationWarning`, and requires `dt` plus all seven
+regime variables if used. Do not set it for production training, paper-trade
+inference, or notebook runs.
+
 ## Default Settings
 
 Values below reflect **`configs/config.yaml`** merged with **`configs/data/sp500.yaml`** (Hydra `defaults`). Python dataclass defaults in `mci_gru/config.py` match these where duplicated.
