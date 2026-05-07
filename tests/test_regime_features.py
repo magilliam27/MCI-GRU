@@ -4,6 +4,7 @@ import pytest
 
 from mci_gru.features.regime import (
     REGIME_FEATURES,
+    REGIME_OPTIONAL_VARIABLES,
     REGIME_REQUIRED_VARIABLES,
     REGIME_VARIABLES,
     add_regime_features,
@@ -192,52 +193,71 @@ def test_regime_input_contract_columns_present():
     assert set(["dt"] + REGIME_VARIABLES).issubset(set(regime_df.columns))
 
 
-def test_regime_csv_contract_required_columns():
-    """Canonical regime CSV must have dt + required regime inputs; optional variables can be absent."""
+def test_regime_csv_contract_is_deprecated_and_requires_full_seven_variable_surface():
+    """Deprecated CSV override must not silently drop paper-guided variables."""
+    import os
     import tempfile
 
     from mci_gru.config import DataConfig
     from mci_gru.data.data_manager import DataManager
 
-    good = _make_regime_daily(periods=10)[["dt"] + REGIME_REQUIRED_VARIABLES]
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
-        good.to_csv(f.name, index=False)
-        path = f.name
+    temp_paths = []
+
+    def write_temp_csv(df: pd.DataFrame) -> str:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            df.to_csv(f.name, index=False)
+            temp_paths.append(f.name)
+            return f.name
+
+    config = DataConfig(
+        train_start="2000-01-01",
+        train_end="2000-01-10",
+        val_start="2000-01-11",
+        val_end="2000-01-12",
+        test_start="2000-01-13",
+        test_end="2000-01-15",
+    )
+
     try:
-        config = DataConfig(
-            train_start="2000-01-01",
-            train_end="2000-01-10",
-            val_start="2000-01-11",
-            val_end="2000-01-12",
-            test_start="2000-01-13",
-            test_end="2000-01-15",
+        five_variable_csv = write_temp_csv(
+            _make_regime_daily(periods=10)[["dt"] + REGIME_REQUIRED_VARIABLES]
         )
         dm = DataManager(config)
-        out = dm.load_regime_inputs(regime_inputs_csv=path, regime_enforce_lag_days=0)
-        assert set(["dt"] + REGIME_VARIABLES).issubset(set(out.columns))
-        assert len(out) >= 1
-        assert out["regime_monetary_policy"].isna().all()
-        assert out["regime_volatility"].isna().all()
+        with (
+            pytest.warns(DeprecationWarning, match="regime_inputs_csv is deprecated"),
+            pytest.raises(ValueError, match="regime_monetary_policy|regime_volatility"),
+        ):
+            dm.load_regime_inputs(
+                regime_inputs_csv=five_variable_csv,
+                regime_enforce_lag_days=0,
+            )
+
+        full_csv = write_temp_csv(_make_regime_daily(periods=10)[["dt"] + REGIME_VARIABLES])
+        dm = DataManager(config)
+        with pytest.warns(DeprecationWarning, match="regime_inputs_csv is deprecated"):
+            out = dm.load_regime_inputs(regime_inputs_csv=full_csv, regime_enforce_lag_days=0)
+            assert set(["dt"] + REGIME_VARIABLES).issubset(set(out.columns))
+            assert len(out) >= 1
+            for col in REGIME_OPTIONAL_VARIABLES:
+                assert not out[col].isna().all()
+
+        missing_required_csv = write_temp_csv(
+            _make_regime_daily(periods=10)[["dt"] + REGIME_VARIABLES].drop(
+                columns=["regime_copper"]
+            )
+        )
+        dm = DataManager(config)
+        with (
+            pytest.warns(DeprecationWarning, match="regime_inputs_csv is deprecated"),
+            pytest.raises(ValueError, match="regime_copper"),
+        ):
+            dm.load_regime_inputs(
+                regime_inputs_csv=missing_required_csv,
+                regime_enforce_lag_days=0,
+            )
     finally:
-        import os
-
-        os.unlink(path)
-
-    bad = good.drop(columns=["regime_copper"])
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
-        bad.to_csv(f.name, index=False)
-        path_bad = f.name
-    try:
-        dm2 = DataManager(config)
-        try:
-            dm2.load_regime_inputs(regime_inputs_csv=path_bad, regime_enforce_lag_days=0)
-            raise AssertionError("Expected ValueError for missing column")
-        except ValueError as e:
-            assert "regime_copper" in str(e) or "missing" in str(e).lower()
-    finally:
-        import os
-
-        os.unlink(path_bad)
+        for path in temp_paths:
+            os.unlink(path)
 
 
 def test_transform_with_regime_df_produces_nonzero_regime_columns():
@@ -296,39 +316,40 @@ def test_transform_with_regime_df_produces_nonzero_regime_columns():
 
 
 def test_regime_csv_lag_safety():
-    """With regime_enforce_lag_days=1, value at date T should reflect prior-day data (no look-ahead)."""
+    """Lagged CSV regime inputs must not backfill the leading unavailable row."""
+    import os
     import tempfile
 
     from mci_gru.config import DataConfig
     from mci_gru.data.data_manager import DataManager
 
-    df = _make_regime_daily(start="2000-01-01", periods=5)
+    values = [10.0, 20.0, 30.0]
+    df = pd.DataFrame({"dt": pd.date_range("2000-01-01", periods=3, freq="D")})
+    for offset, col in enumerate(REGIME_VARIABLES):
+        df[col] = [value + offset for value in values]
+    df.loc[1, "regime_oil"] = np.nan
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
         df.to_csv(f.name, index=False)
         path = f.name
     try:
         config = DataConfig(
             train_start="2000-01-01",
-            train_end="2000-01-05",
-            val_start="2000-01-06",
-            val_end="2000-01-07",
-            test_start="2000-01-08",
-            test_end="2000-01-10",
+            train_end="2000-01-03",
+            val_start="2000-01-04",
+            val_end="2000-01-05",
+            test_start="2000-01-06",
+            test_end="2000-01-07",
         )
         dm = DataManager(config)
-        no_lag = dm.load_regime_inputs(regime_inputs_csv=path, regime_enforce_lag_days=0)
-        with_lag = dm.load_regime_inputs(regime_inputs_csv=path, regime_enforce_lag_days=1)
-        # With lag, row at index i should have regime values from no_lag row i-1
-        assert len(with_lag) == len(no_lag)
-        # First row with lag is NaN/ffill so skip; check second row
-        if len(no_lag) >= 2:
-            for col in REGIME_VARIABLES:
-                np.testing.assert_array_almost_equal(
-                    with_lag.iloc[1][col],
-                    no_lag.iloc[0][col],
-                    err_msg=f"Lag not applied for {col}",
-                )
-    finally:
-        import os
+        with pytest.warns(DeprecationWarning, match="regime_inputs_csv is deprecated"):
+            with_lag = dm.load_regime_inputs(regime_inputs_csv=path, regime_enforce_lag_days=1)
 
+        assert len(with_lag) == len(df)
+        assert with_lag.loc[0, REGIME_VARIABLES].isna().all()
+        for col in REGIME_VARIABLES:
+            assert with_lag.loc[1, col] == df.loc[0, col]
+        assert with_lag.loc[2, "regime_market"] == df.loc[1, "regime_market"]
+        assert with_lag.loc[2, "regime_oil"] == df.loc[0, "regime_oil"]
+    finally:
         os.unlink(path)

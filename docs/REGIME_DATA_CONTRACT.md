@@ -1,50 +1,76 @@
-# Canonical Regime Data Contract (Hybrid Local + Colab)
+# Regime Data Contract
 
-This document defines the schema and lag policy for global regime inputs used in the hybrid workflow: local LSEG export plus Colab FRED merge.
+This document defines the regime input contract for global scalar regime
+features. The canonical workflow is the live FRED/LSEG-backed loader in
+`DataManager.load_regime_inputs`; CSV regime inputs are a deprecated legacy
+escape hatch.
 
-## Canonical CSV Schema
+## Canonical Live Workflow
 
-The **canonical regime inputs** file consumed by the training pipeline must have exactly these columns (order does not matter for loading, but column names are case-sensitive):
+Leave `features.regime_inputs_csv` unset or `null`. With global regime enabled,
+the pipeline loads point-in-time-safe live inputs and derives the full
+seven-variable surface:
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `dt` | string (YYYY-MM-DD) | Calendar date; one row per date. |
-| `regime_market` | float | Market proxy level (e.g. S&P 500 index or close). |
-| `regime_yield_curve` | float | 10Y yield minus 3M yield (spread). |
-| `regime_oil` | float | Oil proxy level (e.g. WTI close). |
-| `regime_copper` | float | Copper proxy level (e.g. LME or Refinitiv close). |
-| `regime_stock_bond_corr` | float | Rolling correlation of market returns vs 10Y yield changes (e.g. 63d, min 21). |
+| Column | Source / derivation | Description |
+|--------|----------------------|-------------|
+| `dt` | loader date index | Calendar date; one row per date. |
+| `regime_market` | LSEG market RIC or FRED `SP500` fallback | Market proxy level. |
+| `regime_yield_curve` | FRED/LSEG 10Y minus 3M yield | Yield curve spread. |
+| `regime_oil` | FRED WTI or LSEG oil RIC fallback | Oil proxy level. |
+| `regime_copper` | LSEG copper RIC or FRED copper fallback | Copper proxy level. |
+| `regime_stock_bond_corr` | derived | Rolling correlation of market returns vs 10Y yield changes. |
+| `regime_monetary_policy` | lagged 3M yield | Monetary policy / T-bill yield proxy. |
+| `regime_volatility` | FRED `VIXCLS` or LSEG VIX fallback | Volatility / VIX proxy. |
 
-- No extra columns are required; optional columns (e.g. `yield_10y`, `yield_3m`) may be present but are ignored by the regime feature module.
-- Missing values may be present; the pipeline will forward-fill/backfill as in existing logic. Rows with all regime values missing for a date should be avoided where possible.
+The live loader applies a 1-day lag to FRED series before merging. It then
+forward/backward fills sparse market holidays after all raw live series are
+loaded and derived columns are computed.
 
-## Lag Policy (No Look-Ahead)
+## Requirements
 
-- **Decision time:** Model inputs for date `T` must use only information that would have been available at or before the close of day `T` (or at a defined cutoff, e.g. previous close).
-- **Recommended:** Apply a **1-day lag** to all macro/commodity series before merging: the value assigned to date `T` is the value as of `T-1`. This avoids look-ahead when data is published with a delay.
-- **Config:** When using the CSV override, an optional `features.regime_enforce_lag_days` (default 0) can be set to 1 so the loader shifts the loaded regime columns by that many calendar days before use. If the CSV was already built with lag applied (e.g. in Colab reconciliation), set to 0.
+- `FRED_API_KEY` should be set for the normal regime workflow.
+- When `data.source=lseg`, configured LSEG RICs may supplement or replace
+  specific live series where available.
+- `features.regime_inputs_csv` should remain `null` in production configs.
 
-## Local LSEG Export (Partial File)
+## Deprecated CSV Escape Hatch
 
-When running **locally** (LSEG-only), export at minimum:
+`features.regime_inputs_csv` still exists only for legacy offline experiments.
+When set, it bypasses the live loader, emits a `DeprecationWarning`, and must
+provide `dt` plus all seven regime variables listed above. Five-variable CSVs
+are no longer accepted because they silently drop the paper-guided monetary
+policy and volatility dimensions.
 
-- `dt`, `regime_copper`
+If the deprecated CSV path is used:
 
-Optionally, if entitled: `regime_market`, `regime_oil`. Yields and stock-bond correlation are typically sourced from FRED in Colab.
+- no extra columns are required;
+- optional helper columns such as `yield_10y` or `yield_3m` are ignored;
+- all seven regime variables must be numeric or coercible to numeric;
+- `features.regime_enforce_lag_days` may shift the loaded values forward for
+  point-in-time safety;
+- after any configured lag, the loader forward-fills only and never backfills
+  leading gaps.
 
-- **Naming:** e.g. `lseg_regime_export_YYYYMMDD.csv` or `regime_lseg_partial_<start>_<end>.csv`.
-- **Metadata:** Save a small companion file or header comment with date range, RICs used, and row counts for reproducibility.
+## Retired Colab Reconciliation
 
-## Colab Reconciliation
-
-Use the script `scripts/colab_regime_reconcile.py` in Colab:
-
-1. Set env vars (or edit the script defaults): `LSEG_REGIME_PATH` to the path of your local LSEG export CSV (e.g. in Drive), `REGIME_START`, `REGIME_END`, `REGIME_OUTPUT`.
-2. Run: `%run scripts/colab_regime_reconcile.py`. The script fetches FRED series with 1-day lag (SP500, DGS10, DGS3MO, DCOILWTICO), merges the LSEG export on `dt`, computes `regime_yield_curve` and `regime_stock_bond_corr`, and writes `regime_inputs_reconciled.csv`.
-3. In your experiment config set `regime_inputs_csv` to that output path (e.g. `data/raw/market/regime_inputs_reconciled.csv`) so the pipeline uses the canonical file instead of live APIs.
-4. Version the output file per run for reproducibility against FRED revisions.
+`scripts/colab_regime_reconcile.py` and `scripts/export_lseg_regime.py` are
+deprecated. They no longer write regime CSV files, because the live loader is
+the canonical source for seven-variable regime inputs. Older notebooks that
+reference these scripts should be updated to leave `features.regime_inputs_csv`
+unset and rely on `FRED_API_KEY`.
 
 ## Validation
 
-- The regime feature module (`mci_gru.features.regime`) expects a DataFrame with `dt` plus exactly: `regime_market`, `regime_yield_curve`, `regime_oil`, `regime_copper`, `regime_stock_bond_corr`.
-- CSV override loaders should validate presence of these columns and optionally check for duplicate dates and monotonic date order after sort.
+The regime feature module consumes `dt` plus:
+
+- `regime_market`
+- `regime_yield_curve`
+- `regime_oil`
+- `regime_copper`
+- `regime_stock_bond_corr`
+- `regime_monetary_policy`
+- `regime_volatility`
+
+Direct calls to `compute_regime_monthly_features` still tolerate missing
+optional columns for in-memory synthetic tests and older callers, but persisted
+CSV overrides must provide the full seven-variable contract.

@@ -7,11 +7,11 @@ different sources (CSV, LSEG) and preparing it for model training.
 
 from __future__ import annotations
 
+import warnings
 from datetime import datetime
 from functools import partial
 from typing import TYPE_CHECKING
 
-import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
@@ -19,6 +19,8 @@ from torch.utils.data import Dataset
 from mci_gru.data.path_resolver import resolve_project_data_path
 
 if TYPE_CHECKING:
+    import numpy as np
+
     from mci_gru.config import DataConfig
     from mci_gru.graph.builder import GraphSchedule
 
@@ -201,8 +203,8 @@ class DataManager:
         """
         Load Phase-1 global regime input series with hybrid sourcing.
 
-        If regime_inputs_csv is set, load from that file (and optionally apply lag);
-        otherwise use FRED/LSEG APIs.
+        The live FRED/LSEG path is canonical. If regime_inputs_csv is set, load
+        the deprecated CSV escape hatch (and optionally apply lag).
 
         Args:
             end: Optional override for the fetch end date (ISO string). When None,
@@ -214,33 +216,36 @@ class DataManager:
             dt, regime_market, regime_yield_curve, regime_oil, regime_copper,
             regime_stock_bond_corr, regime_monetary_policy, regime_volatility
         """
-        from mci_gru.features.regime import (
-            REGIME_OPTIONAL_VARIABLES,
-            REGIME_REQUIRED_VARIABLES,
-            REGIME_VARIABLES,
-        )
+        from mci_gru.features.regime import REGIME_VARIABLES
 
         if regime_inputs_csv:
+            warnings.warn(
+                "regime_inputs_csv is deprecated; use the live FRED/LSEG regime input path "
+                "with FRED_API_KEY instead. If this legacy escape hatch is used, the CSV "
+                "must contain dt plus all seven regime variables.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             resolved = resolve_project_data_path(regime_inputs_csv)
             base = pd.read_csv(resolved)
             base["dt"] = pd.to_datetime(base["dt"])
             base = base.sort_values("dt").drop_duplicates(subset=["dt"], keep="last")
-            required = {"dt"} | set(REGIME_REQUIRED_VARIABLES)
+            required = {"dt"} | set(REGIME_VARIABLES)
             missing = sorted(required - set(base.columns))
             if missing:
                 raise ValueError(
                     f"Regime CSV {regime_inputs_csv} is missing required columns: {missing}. "
+                    "CSV regime inputs are deprecated; if used as a legacy override, "
+                    "they must provide the full seven-variable contract. "
                     "See docs/REGIME_DATA_CONTRACT.md."
                 )
-            for col in REGIME_OPTIONAL_VARIABLES:
-                if col not in base.columns:
-                    base[col] = np.nan
             base = base[["dt"] + REGIME_VARIABLES].copy()
             for col in REGIME_VARIABLES:
                 base[col] = pd.to_numeric(base[col], errors="coerce")
             if regime_enforce_lag_days > 0:
                 base[REGIME_VARIABLES] = base[REGIME_VARIABLES].shift(regime_enforce_lag_days)
-            base[REGIME_VARIABLES] = base[REGIME_VARIABLES].ffill().bfill()
+            # Forward-fill only; backfill would leak future values into leading lag gaps.
+            base[REGIME_VARIABLES] = base[REGIME_VARIABLES].ffill()
             base["dt"] = base["dt"].dt.strftime("%Y-%m-%d")
             self.regime_df = base
             return base
@@ -449,11 +454,15 @@ class DataManager:
         k_test = _complete_kdcodes(test_mask)
         kdcode_list = sorted(k_train & k_val & k_test)
 
-        print(f"  Train-complete: {len(k_train)}, val-complete: {len(k_val)}, test-complete: {len(k_test)}")
+        print(
+            f"  Train-complete: {len(k_train)}, val-complete: {len(k_val)}, test-complete: {len(k_test)}"
+        )
         print(f"  Intersection (usable in all splits): {len(kdcode_list)}")
 
         if len(kdcode_list) == 0:
-            raise ValueError("No stocks have complete data in every split after per-split filtering!")
+            raise ValueError(
+                "No stocks have complete data in every split after per-split filtering!"
+            )
 
         df_filtered = df[df["kdcode"].isin(kdcode_list)].copy()
         df_filtered = df_filtered.sort_values(["dt", "kdcode"]).reset_index(drop=True)

@@ -71,12 +71,12 @@ def prepare_inference_regime_df(
     """
     Load global regime inputs for inference.
 
-    Uses FRED by default (when features.regime_inputs_csv is null).  The fetch
+    Uses FRED by default (when features.regime_inputs_csv is null). The fetch
     window is extended to *inference_end_date* so that macro series cover the
     prediction date rather than the frozen training config test_end.
 
-    If features.regime_inputs_csv is set, loads from that file instead (offline
-    / reproducibility override).
+    If features.regime_inputs_csv is set, loads the deprecated full seven-variable
+    CSV escape hatch instead.
 
     Returns a regime DataFrame ready to pass into FeatureEngineer.transform, or
     None if include_global_regime is False.
@@ -117,7 +117,9 @@ def prepare_inference_regime_df(
         end=inference_end_date,
     )
     source_label = (
-        f"CSV ({regime_inputs_csv})" if regime_inputs_csv else f"FRED through {inference_end_date}"
+        f"deprecated CSV ({regime_inputs_csv})"
+        if regime_inputs_csv
+        else f"FRED through {inference_end_date}"
     )
     print(f"  Loaded regime inputs via {source_label}: {len(regime_df)} rows")
     return regime_df
