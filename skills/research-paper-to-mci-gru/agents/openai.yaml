@@ -1,0 +1,4 @@
+interface:
+  display_name: "Research Paper to MCI-GRU"
+  short_description: "Translate finance papers into MCI-GRU implementation briefs"
+  default_prompt: "Use this skill to turn a finance paper PDF or pasted paper text into a Research-to-Implementation Brief with MCI-GRU landing zones and GitHub-ready issue drafts."

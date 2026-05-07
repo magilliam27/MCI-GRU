@@ -37,6 +37,7 @@ mci_gru/             ← core Python package
 ├── graph/builder.py ← Pearson-correlation graph (static or dynamic)
 └── training/        ← Trainer, losses (MSE/IC/combined), metrics
 paper_trade/         ← frozen-checkpoint inference + portfolio pipeline
+skills/              ← versioned Codex skills for GitHub review/upload
 tests/               ← pytest suite + backtest scripts
 ```
 
@@ -58,6 +59,7 @@ tests/               ← pytest suite + backtest scripts
 ## How to Work in This Repo
 
 - **Before editing**, read `docs/ARCHITECTURE.md` for the data flow and model structure.
+- **Before translating finance papers into implementation work**, use `skills/research-paper-to-mci-gru/` to produce an MCI-GRU-aware brief and GitHub-ready issue drafts.
 - **Before adding features**, read `mci_gru/features/registry.py` for the plugin pattern.
 - **Before changing the graph**, read `mci_gru/graph/builder.py`, `docs/ARCHITECTURE.md` (Graph section), and `docs/agent_references/cursor/plans/graph_signal_upgrades_c28cf640.plan.md` (audit + roadmap).
 - **Before touching paper_trade/**, understand that it uses frozen checkpoints — do not import `GraphBuilder`.

@@ -4,6 +4,8 @@ venv*/
 
 # Python
 __pycache__/
+.pytest_cache/
+.codex-tmp/
 *.py[cod]
 *$py.class
 *.so

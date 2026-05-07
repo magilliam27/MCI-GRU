@@ -27,3 +27,9 @@
 |----------|---------|
 | [REGIME_DATA_CONTRACT.md](REGIME_DATA_CONTRACT.md) | Regime feature inputs, outputs, no-lookahead guarantees |
 | [BACKTEST_FAIRNESS_AUDIT.md](BACKTEST_FAIRNESS_AUDIT.md) | Historical fairness audit (lookahead / return timing); line refs may predate refactors |
+
+## Agent Skills
+
+| Skill | Purpose |
+|-------|---------|
+| [research-paper-to-mci-gru](../skills/research-paper-to-mci-gru/SKILL.md) | Translate academic finance papers into MCI-GRU-aware implementation briefs and GitHub-ready issue drafts |
