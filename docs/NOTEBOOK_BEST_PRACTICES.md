@@ -183,7 +183,7 @@ Keep matrices small enough to answer the stated question.
 Run names should be deterministic, readable, and path-safe:
 
 ```text
-static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble
+static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1
 ```
 
 ## Hydra Overrides
@@ -195,11 +195,27 @@ Every notebook should include these baseline overrides unless the experiment is
 specifically testing them:
 
 ```text
+seed=1729
 data.source=csv
 features=with_momentum
+features.include_weekly_momentum=true
+features.momentum_blend_mode=static
+features.include_global_regime=true
+features.regime_strict=true
+features.regime_include_subsequent_returns=false
 tracking.enabled=true
 tracking.log_predictions=false
 graph.use_multi_feature_edges=true
+graph.update_frequency_months=0
+graph.corr_lookback_days=252
+graph.top_k=0
+graph.top_k_metric=corr
+graph.drop_edge_p=0.1
+training.loss_type=ic
+training.label_type=returns
+training.selection_metric=val_ic
+training.shuffle_train=true
+model.label_t=5
 ```
 
 For graph experiments, always record:

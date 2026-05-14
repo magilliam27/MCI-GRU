@@ -16,6 +16,7 @@
 | Document | Purpose |
 |----------|---------|
 | [CONFIGURATION_GUIDE.md](CONFIGURATION_GUIDE.md) | Hydra config system, override patterns, preset catalog |
+| [DEFAULT_EXPERIMENT_RECIPE.md](DEFAULT_EXPERIMENT_RECIPE.md) | Frozen production-style recipe for confirmation notebooks and PIT validation |
 | [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | Cheat sheet for common commands and workflows |
 | [OUTPUT_MANAGEMENT.md](OUTPUT_MANAGEMENT.md) | Output directory structure, naming, cleanup |
 | [MLFLOW_TRACKING.md](MLFLOW_TRACKING.md) | MLflow experiment tracking setup and usage |

@@ -11,6 +11,17 @@ python run_experiment.py training.num_epochs=2 training.num_models=1 data.source
 python paper_trade/scripts/run_nightly.py           # nightly paper-trade pipeline
 ```
 
+## Default Experiment Recipe
+
+For production-style confirmation notebooks and PIT validation runs, use the
+frozen recipe in `docs/DEFAULT_EXPERIMENT_RECIPE.md`:
+`static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1`.
+It means a 20-model, 100-epoch, patience-15 ensemble; pure IC loss; raw 5-day
+return labels; `selection_metric=val_ic`; shuffled static threshold graph;
+multi-feature edges; `drop_edge_p=0.1`; static weekly momentum; and strict
+current-only global regime features. `FRED_API_KEY` is required unless a smoke
+run explicitly disables global regime.
+
 ## Repository Map
 
 ```
@@ -18,6 +29,7 @@ AGENTS.md            ← you are here (start point for all agents)
 docs/
 ├── ARCHITECTURE.md  ← model, pipeline, graph, data flow (READ THIS FIRST)
 ├── CONFIGURATION_GUIDE.md
+├── DEFAULT_EXPERIMENT_RECIPE.md
 ├── QUICK_REFERENCE.md
 ├── REGIME_DATA_CONTRACT.md
 ├── BACKTEST_FAIRNESS_AUDIT.md

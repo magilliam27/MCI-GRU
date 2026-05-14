@@ -36,7 +36,10 @@ cells = [
 
         This notebook runs strict point-in-time masked-panel checks for the 2022, 2023, 2024, and 2025 temporal presets.
 
-        The default is a one-epoch, one-model smoke pass. That is deliberate: first prove the LSEG PIT-union data, daily masks, prediction export, and PIT-aware backtest mechanics. Once every year passes breadth and prediction-count validation, switch `SMOKE_MODE = False` or raise the budget knobs in the configuration cell.
+        The notebook now defaults to the frozen full-budget PIT recipe:
+        `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1`.
+        The earlier one-epoch smoke pass proved the LSEG PIT-union data, daily masks, prediction export, and PIT-aware backtest mechanics.
+        Set `SMOKE_MODE = True` only when you want a quick mechanics re-check.
 
         Required Drive inputs:
 
@@ -45,7 +48,7 @@ cells = [
 
         Put them in `/content/drive/MyDrive/MCI_GRU_shared/data`, Drive root, or set explicit paths in the data cell.
 
-        By default, this notebook does not use FRED-backed global regime features. A later setup cell has `USE_GLOBAL_REGIME` and `FRED_API_KEY` controls if you want the regime-enhanced recipe after the PIT mechanics pass.
+        The frozen recipe uses FRED-backed current-only global regime features with strict loading, so add `FRED_API_KEY` before the full run.
         """
     ),
     md("## 1. Setup: Mount Drive, Clone Repo, Install Dependencies"),
@@ -242,9 +245,9 @@ cells = [
     md("## 3. Optional FRED Key And Regime Toggle"),
     code(
         r"""
-        # The default PIT smoke does NOT use global regime features, so it does not need FRED.
-        # Turn USE_GLOBAL_REGIME on after the PIT data/mask mechanics pass if you want the richer regime recipe.
-        USE_GLOBAL_REGIME = False
+        # Frozen full recipe: current-only global regime features, loaded strictly from FRED/LSEG.
+        # Set USE_GLOBAL_REGIME = False only for a mechanics-only smoke re-check.
+        USE_GLOBAL_REGIME = True
 
         # Option A: add a Colab Secret named FRED_API_KEY.
         # Option B: paste the key here for this runtime.
@@ -294,17 +297,29 @@ cells = [
         for path in [LOCAL_RUN_ROOT, TRAINING_OUTPUT_DIR, SUMMARY_DIR, LOG_DIR]:
             path.mkdir(parents=True, exist_ok=True)
 
-        SMOKE_MODE = True
+        SMOKE_MODE = False
         RUN_TRAINING = True
         RUN_BACKTESTS = True
 
         YEARS = [2022, 2023, 2024, 2025]
 
-        # Default smoke budget. Increase these after all four years pass strict breadth.
-        NUM_MODELS = 1 if SMOKE_MODE else 10
+        MODEL_RECIPE = {
+            'name': 'static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1',
+            'seed': 1729,
+            'label_t': 5,
+            'loss_type': 'ic',
+            'label_type': 'returns',
+            'selection_metric': 'val_ic',
+            'drop_edge_p': 0.1,
+        }
+
+        # Full-budget defaults follow docs/NOTEBOOK_BEST_PRACTICES.md.
+        # Set SMOKE_MODE=True to do a cheap one-model/one-epoch mechanics re-check.
+        NUM_MODELS = 1 if SMOKE_MODE else 20
         NUM_EPOCHS = 1 if SMOKE_MODE else 100
-        EARLY_STOPPING_PATIENCE = 2 if SMOKE_MODE else 10
+        EARLY_STOPPING_PATIENCE = 2 if SMOKE_MODE else 15
         BATCH_SIZE = 32
+        LEARNING_RATE = '5e-5'
         BOOTSTRAP_RESAMPLES = 50 if SMOKE_MODE else 1000
 
         PIT_MIN_SCOREABLE_STOCKS = 450
@@ -312,7 +327,7 @@ cells = [
 
         TRACKING_ENABLED = False
         BACKTEST_SUFFIX = '_pit_daily'
-        LABEL_T = 5
+        LABEL_T = MODEL_RECIPE['label_t']
 
         PIT_WINDOWS = {
             2022: {
@@ -361,7 +376,14 @@ cells = [
         print('Drive run root:', DRIVE_RUN_ROOT)
         print('Years:', YEARS)
         print('SMOKE_MODE:', SMOKE_MODE)
-        print('Budget:', {'num_models': NUM_MODELS, 'num_epochs': NUM_EPOCHS, 'batch_size': BATCH_SIZE})
+        print('Model recipe:', MODEL_RECIPE['name'])
+        print('Budget:', {
+            'num_models': NUM_MODELS,
+            'num_epochs': NUM_EPOCHS,
+            'early_stopping_patience': EARLY_STOPPING_PATIENCE,
+            'batch_size': BATCH_SIZE,
+            'learning_rate': LEARNING_RATE,
+        })
         """
     ),
     md("## 4. Execution And Validation Helpers"),
@@ -461,6 +483,9 @@ cells = [
                 '-u',
                 str(REPO_DIR / 'run_experiment.py'),
                 f"+experiment={window['experiment']}",
+                f"seed={MODEL_RECIPE['seed']}",
+                'training.lr_scheduler=cosine',
+                f"training.learning_rate={LEARNING_RATE}",
                 f"training.num_epochs={NUM_EPOCHS}",
                 f"training.num_models={NUM_MODELS}",
                 f"training.early_stopping_patience={EARLY_STOPPING_PATIENCE}",
@@ -470,10 +495,35 @@ cells = [
                 'tracking.log_artifacts=false',
                 'tracking.log_checkpoints=false',
                 'tracking.log_predictions=false',
+                'features=with_momentum',
+                'features.include_momentum=true',
+                'features.include_weekly_momentum=true',
+                'features.momentum_encoding=binary',
+                'features.momentum_blend_mode=static',
+                'features.momentum_blend_fast_weight=0.5',
                 f"features.include_global_regime={str(USE_GLOBAL_REGIME).lower()}",
                 f"features.regime_strict={str(REGIME_STRICT if USE_GLOBAL_REGIME else False).lower()}",
                 f"features.regime_enforce_lag_days={REGIME_ENFORCE_LAG_DAYS}",
                 'features.regime_include_subsequent_returns=false',
+                'features.regime_change_months=12',
+                'features.regime_norm_months=120',
+                'features.regime_exclusion_months=1',
+                'features.regime_similarity_quantile=0.2',
+                'features.regime_min_history_months=24',
+                'graph.judge_value=0.8',
+                'graph.update_frequency_months=0',
+                'graph.corr_lookback_days=252',
+                'graph.top_k=0',
+                'graph.top_k_metric=corr',
+                'graph.use_multi_feature_edges=true',
+                'graph.append_snapshot_age_days=false',
+                'graph.use_lead_lag_features=false',
+                'training.shuffle_train=true',
+                f"training.loss_type={MODEL_RECIPE['loss_type']}",
+                f"training.label_type={MODEL_RECIPE['label_type']}",
+                f"training.selection_metric={MODEL_RECIPE['selection_metric']}",
+                f"model.label_t={MODEL_RECIPE['label_t']}",
+                f"graph.drop_edge_p={MODEL_RECIPE['drop_edge_p']}",
                 f"data.filename={(repo_market_csv.relative_to(REPO_DIR)).as_posix()}",
                 f"data.pit_universe_csv={(repo_pit_csv.relative_to(REPO_DIR)).as_posix()}",
                 f"data.pit_min_scoreable_stocks={PIT_MIN_SCOREABLE_STOCKS}",
@@ -610,14 +660,22 @@ cells = [
         write_pit_experiment_presets()
 
         # Safe defaults if the optional FRED/regime cell was skipped in a resumed notebook.
-        USE_GLOBAL_REGIME = globals().get('USE_GLOBAL_REGIME', False)
+        USE_GLOBAL_REGIME = globals().get('USE_GLOBAL_REGIME', True)
         REGIME_STRICT = globals().get('REGIME_STRICT', True)
         REGIME_ENFORCE_LAG_DAYS = globals().get('REGIME_ENFORCE_LAG_DAYS', 0)
+
+        if USE_GLOBAL_REGIME and REGIME_STRICT and not os.environ.get('FRED_API_KEY'):
+            raise RuntimeError(
+                'Frozen full recipe requires FRED_API_KEY because USE_GLOBAL_REGIME=True '
+                'and REGIME_STRICT=True. Add it as a Colab Secret named FRED_API_KEY or '
+                'paste it into MY_FRED_KEY in the regime setup cell.'
+            )
 
         manifest = {
             'run_tag': RUN_TAG,
             'branch': BRANCH,
             'smoke_mode': SMOKE_MODE,
+            'model_recipe': MODEL_RECIPE,
             'years': YEARS,
             'market_csv': str(repo_market_csv),
             'market_csv_sha256': sha256_file(repo_market_csv),
@@ -633,6 +691,7 @@ cells = [
                 'num_epochs': NUM_EPOCHS,
                 'early_stopping_patience': EARLY_STOPPING_PATIENCE,
                 'batch_size': BATCH_SIZE,
+                'learning_rate': LEARNING_RATE,
                 'bootstrap_resamples': BOOTSTRAP_RESAMPLES,
             },
             'pit_windows': PIT_WINDOWS,
@@ -750,6 +809,7 @@ cells = [
             f'Market CSV: `{repo_market_csv}`',
             f'Market SHA256: `{sha256_file(repo_market_csv)}`',
             f'PIT universe CSV: `{repo_pit_csv}`',
+            f'Model recipe: `{MODEL_RECIPE["name"]}`',
             f'SMOKE_MODE: `{SMOKE_MODE}`',
             f'USE_GLOBAL_REGIME: `{USE_GLOBAL_REGIME}`',
             f'FRED_API_KEY set: `{bool(os.environ.get("FRED_API_KEY"))}`',

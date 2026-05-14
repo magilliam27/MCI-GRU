@@ -112,7 +112,8 @@ The primary notebook matrix is:
 `regime_off`
 
 - No global regime variables.
-- This matches the new default.
+- Historical control only. The current frozen default uses `regime_current_only`;
+  see `docs/DEFAULT_EXPERIMENT_RECIPE.md`.
 
 `regime_current_only`
 
@@ -210,7 +211,7 @@ The most important confirmatory columns are:
 Start with the control/default row:
 
 ```text
-momentum_static x graph_static_threshold x regime_off
+momentum_static x graph_static_threshold x regime_current_only
 ```
 
 This is the clean comparison point for the new default settings.

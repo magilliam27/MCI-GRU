@@ -111,7 +111,39 @@ escape hatch, emits a `DeprecationWarning`, and requires `dt` plus all seven
 regime variables if used. Do not set it for production training, paper-trade
 inference, or notebook runs.
 
-## Default Settings
+## Default Frozen Experiment Recipe
+
+Production-style confirmation notebooks and PIT validation runs should use the
+frozen recipe documented in
+[`DEFAULT_EXPERIMENT_RECIPE.md`](DEFAULT_EXPERIMENT_RECIPE.md):
+`static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1`.
+
+Core overrides:
+
+| Category | Setting | Frozen recipe value |
+|----------|---------|---------------------|
+| Experiment | seed | `1729` |
+| Training | num_models | `20` |
+| Training | num_epochs | `100` |
+| Training | early_stopping_patience | `15` |
+| Training | loss_type | `ic` |
+| Training | label_type | `returns` |
+| Training | selection_metric | `val_ic` |
+| Training | shuffle_train | `true` |
+| Model | label_t | `5` |
+| Graph | update_frequency_months | `0` |
+| Graph | corr_lookback_days | `252` |
+| Graph | top_k / top_k_metric | `0` / `corr` |
+| Graph | use_multi_feature_edges | `true` |
+| Graph | drop_edge_p | `0.1` |
+| Graph | lead-lag / snapshot-age | disabled |
+| Features | momentum | `features=with_momentum`, weekly momentum on, static 50/50 blend |
+| Features | global regime | `include_global_regime=true`, `regime_strict=true`, `regime_include_subsequent_returns=false` |
+
+`FRED_API_KEY` is required for the full recipe unless a smoke run explicitly
+disables global regime features.
+
+## Hydra Base Defaults
 
 Values below reflect **`configs/config.yaml`** merged with **`configs/data/sp500.yaml`** (Hydra `defaults`). Python dataclass defaults in `mci_gru/config.py` match these where duplicated.
 
@@ -140,7 +172,7 @@ Values below reflect **`configs/config.yaml`** merged with **`configs/data/sp500
 
 ## Common Configurations
 
-### Basic Training (Uses All Defaults)
+### Basic Training (Hydra Base Config)
 
 ```bash
 python run_experiment.py
