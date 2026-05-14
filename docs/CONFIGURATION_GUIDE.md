@@ -62,6 +62,38 @@ filename: sp500_data.csv
 python run_experiment.py +data=csv_sp500
 ```
 
+### True Rolling PIT S&P 500 Panel
+
+Use `data.pit_universe_mode=masked_panel` when the model should score the
+real-world S&P 500 opportunity set for each date instead of the old continuous
+member subset. The pipeline keeps a fixed PIT union axis internally, then uses
+daily `active_member`, `feature_ready`, `loss`, and `tradable` masks for
+training, validation, prediction export, graph batching, and evaluation.
+
+```yaml
+data:
+  use_pit_universe: true
+  pit_universe_csv: data/raw/constituents/sp500_pit_joiner_leaver_20160101_20260513_pit_universe.csv
+  pit_universe_mode: masked_panel
+  pit_min_scoreable_stocks: 450
+  pit_breadth_policy: error
+```
+
+Pre-membership OHLCV is allowed for lookback features because it was public at
+the time. A future joiner is still excluded from loss and prediction rows until
+its `valid_from` date. Legacy temporal constituent CSVs (`sp500_constituents_2016`
+and similar) are not PIT-clean membership histories; use Joiner/Leaver interval
+artifacts for true rolling panels.
+
+Ready-made experiment presets:
+
+```bash
+python run_experiment.py +experiment=pit_temporal_2022
+python run_experiment.py +experiment=pit_temporal_2023
+python run_experiment.py +experiment=pit_temporal_2024
+python run_experiment.py +experiment=pit_temporal_2025
+```
+
 ## Regime Inputs
 
 Global regime features use the live FRED/LSEG-backed loader by default. Leave
@@ -90,6 +122,8 @@ Values below reflect **`configs/config.yaml`** merged with **`configs/data/sp500
 | Data | val | 2024-01-08 to 2024-12-31 (gap after `train_end` **>** `label_t` days — label embargo) |
 | Data | test | 2025-01-08 to 2025-12-31 (gap after `val_end` **>** `label_t` days) |
 | Data | skip_embargo_check | `false` (`ExperimentConfig` raises if gaps are too small; set `true` only for legacy repro) |
+| Data | pit_universe_mode | `row_filter` by default; use `masked_panel` for true rolling PIT candidates |
+| Data | pit_min_scoreable_stocks | `450` when PIT masked-panel mode is active |
 | Model | his_t | 10 |
 | Model | label_t | 5 |
 | Model | gru_hidden_sizes | [32, 10] |

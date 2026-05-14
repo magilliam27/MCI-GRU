@@ -32,20 +32,32 @@ CSV / LSEG / FRED
 4. **Windowing** — Sliding windows of shape `(days, stocks, his_t, features)` are constructed.
    Labels are `label_t`-day forward returns (or rank percentiles if `label_type=rank`).
 
+   In true PIT mode (`data.use_pit_universe=true`, `data.pit_universe_mode=masked_panel`),
+   `prepare_data()` keeps a fixed union `kdcode_list` for every ticker with a PIT
+   membership interval overlapping the experiment. It does not require complete
+   coverage across all dates. Instead it emits date-specific masks:
+   `active_member_mask`, `feature_ready_mask`, `loss_mask`, and `tradable_mask`.
+   New S&P entrants can use pre-membership OHLCV for lookback features, become
+   tradable on `valid_from`, and disappear after `valid_to`. Rank labels and losses
+   operate only over same-day valid PIT-active names.
+
 5. **Graph construction** — `GraphBuilder` computes Pearson correlation over trailing returns.
    Pairs with `|corr| > judge_value` get edges (or top-K selection when `top_k > 0`).
    By default **`use_multi_feature_edges=true`**: edge attributes are `(E, 4)` `[corr, |corr|, corr², rank_pct]`; legacy `(E,)` scalars when `false`.
    Static mode builds once; dynamic mode rebuilds every N months per batch date.
 
 6. **DataLoaders** — `create_data_loaders` wraps tensors in `CombinedDataset`.
-   The `combined_collate_fn` returns a 7-tuple:
-   `(time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates)`.
-   `batch_dates` is `None` in static mode.
+   The `combined_collate_fn` returns a 9-tuple:
+   `(time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates, edge_index_sector, edge_weight_sector)`.
+   In masked PIT mode, `batch_dates` is a metadata dict containing `dates` and
+   `stock_mask`; otherwise it remains the historical date list or `None`. Collate
+   filters graph and sector edges so inactive union nodes do not send messages.
 
 7. **Training** — `Trainer.train()` uses **AdamW**, optional **cosine LR schedule** with linear warmup (`TrainingConfig.lr_scheduler`, `warmup_steps`), **CUDA AMP** when `use_amp` and a GPU are available, and early stopping / checkpoint selection by **`selection_metric`** (`val_ic` or `val_loss`). Default training loss is **`combined`** (MSE + IC). `train_multiple_models` treats `config.seed` as a base seed, repeats training **N** times with **`set_seed(config.seed + model_id)`** per member, then averages predictions.
 
 8. **Inference** — Each model produces per-stock scalar scores. The ensemble mean is the
-   final prediction, saved as CSV files in `averaged_predictions/`.
+   final prediction, saved as CSV files in `averaged_predictions/`. In masked PIT
+   mode, prediction CSVs contain only `tradable_mask` candidates for that date.
 
 9. **Evaluation trust layer** — `mci_gru/evaluation/` provides shared IC,
    Newey-West Sharpe, moving-block bootstrap CIs, top-k returns, rank-drop

@@ -38,14 +38,19 @@ def compute_metrics(
         Dictionary of metrics
     """
     metrics = {}
+    valid = np.isfinite(predictions) & np.isfinite(true_returns)
 
     # MSE and RMSE
-    mse = np.mean((predictions - true_returns) ** 2)
+    mse = np.mean((predictions[valid] - true_returns[valid]) ** 2) if valid.any() else np.nan
     metrics["mse"] = float(mse)
     metrics["rmse"] = float(np.sqrt(mse))
 
     # MAE
-    metrics["mae"] = float(np.mean(np.abs(predictions - true_returns)))
+    metrics["mae"] = (
+        float(np.mean(np.abs(predictions[valid] - true_returns[valid])))
+        if valid.any()
+        else float("nan")
+    )
 
     # Correlation metrics
     correlations = daily_ic_series(predictions, true_returns, method="spearman")
@@ -120,9 +125,10 @@ def compute_hit_rate(
     """
     pred_direction = predictions > threshold
     true_direction = true_returns > 0
+    valid = np.isfinite(predictions) & np.isfinite(true_returns)
 
-    hits = (pred_direction == true_direction).sum()
-    total = pred_direction.size
+    hits = ((pred_direction == true_direction) & valid).sum()
+    total = valid.sum()
 
     return float(hits / total) if total > 0 else 0.0
 
@@ -146,8 +152,13 @@ def compute_rank_metrics(
     quantile_returns = [[] for _ in range(quantiles)]
 
     for i in range(len(predictions)):
+        valid = np.isfinite(predictions[i]) & np.isfinite(true_returns[i])
+        if valid.sum() < quantiles:
+            continue
+        pred_row = predictions[i][valid]
+        ret_row = true_returns[i][valid]
         # Rank stocks by prediction
-        ranks = np.argsort(np.argsort(predictions[i]))
+        ranks = np.argsort(np.argsort(pred_row))
         n_stocks = len(ranks)
         quantile_size = n_stocks // quantiles
 
@@ -156,12 +167,14 @@ def compute_rank_metrics(
             end_rank = (q + 1) * quantile_size if q < quantiles - 1 else n_stocks
 
             quantile_mask = (ranks >= start_rank) & (ranks < end_rank)
-            quantile_return = np.mean(true_returns[i][quantile_mask])
+            quantile_return = np.mean(ret_row[quantile_mask])
             quantile_returns[q].append(quantile_return)
 
     # Compute average return per quantile
     for q in range(quantiles):
-        metrics[f"quantile_{q + 1}_return"] = float(np.mean(quantile_returns[q]))
+        metrics[f"quantile_{q + 1}_return"] = (
+            float(np.mean(quantile_returns[q])) if quantile_returns[q] else float("nan")
+        )
 
     # Long-short spread (top quantile - bottom quantile)
     metrics["long_short_spread"] = (
@@ -234,10 +247,13 @@ def evaluate_predictions(
             block_size=block_size,
             newey_west_lags=newey_west_lags,
         )
-        metrics[f"return_top_{k}"] = k_metrics["avg_portfolio_return"]
-        metrics[f"sharpe_top_{k}"] = k_metrics["sharpe_ratio"]
-        metrics[f"sharpe_top_{k}_naive"] = k_metrics["sharpe_naive"]
-        metrics[f"sharpe_top_{k}_newey_west"] = k_metrics["sharpe_newey_west"]
+        metrics[f"return_top_{k}"] = k_metrics.get("avg_portfolio_return", float("nan"))
+        metrics[f"sharpe_top_{k}"] = k_metrics.get("sharpe_ratio", float("nan"))
+        metrics[f"sharpe_top_{k}_naive"] = k_metrics.get("sharpe_naive", float("nan"))
+        metrics[f"sharpe_top_{k}_newey_west"] = k_metrics.get(
+            "sharpe_newey_west",
+            float("nan"),
+        )
         if f"top_{k}_return_ci_lower" in k_metrics:
             metrics[f"top_{k}_return_ci_lower"] = k_metrics[f"top_{k}_return_ci_lower"]
             metrics[f"top_{k}_return_ci_upper"] = k_metrics[f"top_{k}_return_ci_upper"]

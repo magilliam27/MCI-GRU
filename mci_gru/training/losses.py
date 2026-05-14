@@ -9,6 +9,17 @@ import torch
 import torch.nn as nn
 
 
+class MaskedMSELoss(nn.Module):
+    """MSE over finite target/prediction pairs only."""
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        mask = torch.isfinite(pred) & torch.isfinite(target)
+        if not mask.any():
+            return pred.sum() * 0.0
+        diff = pred[mask] - target[mask]
+        return torch.mean(diff * diff)
+
+
 class ICLoss(nn.Module):
     """
     Negative Pearson correlation loss (Information Coefficient).
@@ -31,28 +42,40 @@ class ICLoss(nn.Module):
         Returns:
             Scalar loss (negative mean IC across batch).
         """
-        pred_centered = pred - pred.mean(dim=-1, keepdim=True)
-        target_centered = target - target.mean(dim=-1, keepdim=True)
-
-        cov = (pred_centered * target_centered).sum(dim=-1)
-        pred_std = pred_centered.norm(dim=-1) + self.eps
-        target_std = target_centered.norm(dim=-1) + self.eps
-
-        ic = cov / (pred_std * target_std)
-        return -ic.mean()
+        values = []
+        for p, t in zip(pred, target, strict=True):
+            mask = torch.isfinite(p) & torch.isfinite(t)
+            if int(mask.sum().item()) < 2:
+                continue
+            p_valid = p[mask]
+            t_valid = t[mask]
+            p_centered = p_valid - p_valid.mean()
+            t_centered = t_valid - t_valid.mean()
+            denom = p_centered.norm() * t_centered.norm() + self.eps
+            values.append((p_centered * t_centered).sum() / denom)
+        if not values:
+            return pred.sum() * 0.0
+        return -torch.stack(values).mean()
 
 
 def mean_information_coefficient(
     pred: torch.Tensor, target: torch.Tensor, eps: float = 1e-8
 ) -> torch.Tensor:
     """Mean cross-sectional Pearson IC per batch row (same math as ``ICLoss``, positive = good)."""
-    pred_centered = pred - pred.mean(dim=-1, keepdim=True)
-    target_centered = target - target.mean(dim=-1, keepdim=True)
-    cov = (pred_centered * target_centered).sum(dim=-1)
-    pred_std = pred_centered.norm(dim=-1) + eps
-    target_std = target_centered.norm(dim=-1) + eps
-    ic = cov / (pred_std * target_std)
-    return ic.mean()
+    values = []
+    for p, t in zip(pred, target, strict=True):
+        mask = torch.isfinite(p) & torch.isfinite(t)
+        if int(mask.sum().item()) < 2:
+            continue
+        p_valid = p[mask]
+        t_valid = t[mask]
+        p_centered = p_valid - p_valid.mean()
+        t_centered = t_valid - t_valid.mean()
+        denom = p_centered.norm() * t_centered.norm() + eps
+        values.append((p_centered * t_centered).sum() / denom)
+    if not values:
+        return pred.sum() * 0.0
+    return torch.stack(values).mean()
 
 
 class CombinedMSEICLoss(nn.Module):
@@ -67,7 +90,7 @@ class CombinedMSEICLoss(nn.Module):
         if not 0 <= alpha <= 1:
             raise ValueError("alpha must be in [0, 1]")
         self.alpha = alpha
-        self.mse = nn.MSELoss()
+        self.mse = MaskedMSELoss()
         self.ic_loss = ICLoss(eps=eps)
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:

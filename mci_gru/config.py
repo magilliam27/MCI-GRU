@@ -36,6 +36,10 @@ class DataConfig:
             (train / val / test) and intersect; mitigates full-calendar survivorship bias.
         use_pit_universe: If True, apply ``pit_universe_csv`` row validity when set.
         pit_universe_csv: Optional CSV with kdcode, valid_from, valid_to for PIT filtering.
+        pit_universe_mode: ``row_filter`` keeps the legacy row-filter flow;
+            ``masked_panel`` keeps a fixed PIT union axis and uses daily masks.
+        pit_min_scoreable_stocks: Minimum expected PIT-tradable candidates per normal date.
+        pit_breadth_policy: ``error``, ``warn``, or ``off`` when candidate breadth is low.
     """
 
     universe: str = "sp500"
@@ -55,6 +59,9 @@ class DataConfig:
     filter_stocks_per_split: bool = False
     use_pit_universe: bool = False
     pit_universe_csv: str | None = None
+    pit_universe_mode: str = "row_filter"
+    pit_min_scoreable_stocks: int = 450
+    pit_breadth_policy: str = "error"
 
     def __post_init__(self):
         if self.experiment_mode not in ("stock_level", "index_level"):
@@ -76,6 +83,18 @@ class DataConfig:
             raise ValueError(
                 f"normalisation must be 'zscore' or 'rank_gauss', got {self.normalisation!r}"
             )
+        if self.pit_universe_mode not in ("row_filter", "masked_panel"):
+            raise ValueError(
+                "pit_universe_mode must be 'row_filter' or 'masked_panel', "
+                f"got {self.pit_universe_mode!r}"
+            )
+        if self.pit_breadth_policy not in ("error", "warn", "off"):
+            raise ValueError(
+                "pit_breadth_policy must be 'error', 'warn', or 'off', "
+                f"got {self.pit_breadth_policy!r}"
+            )
+        if self.pit_min_scoreable_stocks < 0:
+            raise ValueError("pit_min_scoreable_stocks must be >= 0")
 
 
 @dataclass

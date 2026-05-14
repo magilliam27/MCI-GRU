@@ -48,6 +48,9 @@ tests/               ← pytest suite + backtest scripts
 3. **`combined_collate_fn` returns a 9-tuple**: `(time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates, edge_index_sector, edge_weight_sector)`. The first seven entries match the historical contract; the last two are `None` unless `graph.use_sector_relation=true`. `edge_weight` is `(E,)`, `(E, 4)`, or wider when lead-lag / snapshot-age columns are enabled; collate concatenates along dim 0.
 4. **Ensemble averaging**: `train_multiple_models` trains N independent models; prediction = mean.
 5. **Paper-trade inference does not use `GraphBuilder`**: it loads a frozen `graph_data.pt`.
+6. **True PIT masked panels keep breadth**: `data.pit_universe_mode=masked_panel`
+   keeps a fixed PIT union axis and carries daily stock masks; do not replace it
+   with complete-stock filtering or continuous-member/stayer-only filtering.
 
 ## Environment
 
