@@ -609,6 +609,11 @@ cells = [
 
         write_pit_experiment_presets()
 
+        # Safe defaults if the optional FRED/regime cell was skipped in a resumed notebook.
+        USE_GLOBAL_REGIME = globals().get('USE_GLOBAL_REGIME', False)
+        REGIME_STRICT = globals().get('REGIME_STRICT', True)
+        REGIME_ENFORCE_LAG_DAYS = globals().get('REGIME_ENFORCE_LAG_DAYS', 0)
+
         manifest = {
             'run_tag': RUN_TAG,
             'branch': BRANCH,
