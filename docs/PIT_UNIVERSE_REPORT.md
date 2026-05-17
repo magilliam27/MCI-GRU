@@ -140,6 +140,28 @@ This is a normal LSEG historical-identifier issue, not evidence that the panel
 is a current-survivor panel. The metadata keeps the unresolved list so future
 alias-cleanup work can audit it directly.
 
+### Alias coverage audit
+
+On 2026-05-16, `scripts/audit_pit_lseg_alias_coverage.py` audited those six
+unresolved originals against the PIT universe and the LSEG PIT-union market
+panel. The exported artifacts are:
+
+```text
+docs/PIT_LSEG_ALIAS_COVERAGE_AUDIT_2026-05-16.md
+docs/PIT_LSEG_ALIAS_COVERAGE_AUDIT_2026-05-16_candidates.csv
+docs/PIT_LSEG_ALIAS_COVERAGE_AUDIT_2026-05-16_daily_impact.csv
+```
+
+Result:
+
+- All six originals have a suffixed historical candidate in the PIT universe.
+- All six candidates have market rows in the PIT-union market panel.
+- In the 2022-2025 validation window, only `ABMD.OQ` has an active unresolved
+  original interval. Its suffixed candidate `ABMD.OQ^L22` covers all 245 active
+  member-days and all 245 scoreable member-days.
+- The unresolved-original breadth impact for 2022-2025 is therefore 0 uncovered
+  active member-days and 0 unscoreable active member-days.
+
 ## Why The Previous Data Was Not Enough
 
 Before this LSEG PIT-union pull, the available Google Drive/local market files
@@ -503,8 +525,8 @@ When running true PIT experiments:
    `pit_temporal_2025` using the new LSEG PIT-union file.
 2. Add a saved LSEG pull script so the data artifact can be reproduced without
    relying on an inline notebook or shell snippet.
-3. Perform an alias-resolution audit for the remaining unresolved unsuffixed
-   identifiers.
+3. Re-run the alias coverage audit whenever the PIT Joiner/Leaver export or
+   PIT-union market pull is regenerated.
 4. Upload the new PIT-union market CSV and `.meta.json` to the shared Google
    Drive location used by Colab.
 5. Run a proper multi-epoch, multi-seed PIT research experiment only after the

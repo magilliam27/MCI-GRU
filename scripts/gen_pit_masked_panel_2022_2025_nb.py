@@ -38,6 +38,7 @@ cells = [
 
         The notebook now defaults to the frozen full-budget PIT recipe:
         `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1`.
+        See `docs/DEFAULT_EXPERIMENT_RECIPE.md` for the canonical frozen default.
         The earlier one-epoch smoke pass proved the LSEG PIT-union data, daily masks, prediction export, and PIT-aware backtest mechanics.
         Set `SMOKE_MODE = True` only when you want a quick mechanics re-check.
 
@@ -313,7 +314,7 @@ cells = [
             'drop_edge_p': 0.1,
         }
 
-        # Full-budget defaults follow docs/NOTEBOOK_BEST_PRACTICES.md.
+        # Full-budget defaults follow docs/DEFAULT_EXPERIMENT_RECIPE.md.
         # Set SMOKE_MODE=True to do a cheap one-model/one-epoch mechanics re-check.
         NUM_MODELS = 1 if SMOKE_MODE else 20
         NUM_EPOCHS = 1 if SMOKE_MODE else 100
@@ -800,6 +801,42 @@ cells = [
             except Exception:
                 return str(value)
 
+        def build_run_mode_summary_lines(
+            smoke_mode: bool,
+            num_models: int,
+            num_epochs: int,
+            early_stopping_patience: int,
+            use_global_regime: bool,
+            fred_api_key_set: bool,
+        ) -> list[str]:
+            mode = 'smoke' if smoke_mode else 'full'
+            lines = [
+                '## Run Mode And Budget',
+                '',
+                f'Run mode: `{mode}`',
+                f'Model count: `{num_models}`',
+                f'Epoch cap: `{num_epochs}`',
+                f'Early stopping patience: `{early_stopping_patience}`',
+                f'Global regime enabled: `{use_global_regime}`',
+                f'FRED_API_KEY present: `{fred_api_key_set}`',
+                'Frozen recipe reference: `docs/DEFAULT_EXPERIMENT_RECIPE.md`',
+                '',
+            ]
+
+            if smoke_mode:
+                lines.extend([
+                    '> Backtest metrics from one-epoch smoke runs are mechanics evidence, not model-performance evidence.',
+                    '',
+                ])
+            else:
+                lines.extend([
+                    '> Full-run backtest metrics use the configured training budget above; read them with the listed evaluation caveats.',
+                    '',
+                ])
+            return lines
+
+        fred_api_key_set = bool(os.environ.get("FRED_API_KEY"))
+
         lines = [
             '# PIT Masked-Panel 2022-2025 Validation Summary',
             '',
@@ -812,8 +849,22 @@ cells = [
             f'Model recipe: `{MODEL_RECIPE["name"]}`',
             f'SMOKE_MODE: `{SMOKE_MODE}`',
             f'USE_GLOBAL_REGIME: `{USE_GLOBAL_REGIME}`',
-            f'FRED_API_KEY set: `{bool(os.environ.get("FRED_API_KEY"))}`',
+            f'FRED_API_KEY set: `{fred_api_key_set}`',
             '',
+        ]
+
+        lines.extend(
+            build_run_mode_summary_lines(
+                smoke_mode=SMOKE_MODE,
+                num_models=NUM_MODELS,
+                num_epochs=NUM_EPOCHS,
+                early_stopping_patience=EARLY_STOPPING_PATIENCE,
+                use_global_regime=USE_GLOBAL_REGIME,
+                fred_api_key_set=fred_api_key_set,
+            )
+        )
+
+        lines.extend([
             '## Training Runs',
             '',
             training_df[[c for c in [
@@ -833,7 +884,7 @@ cells = [
             '',
             prediction_check_df.to_markdown(index=False) if len(prediction_check_df) else 'No prediction checks.',
             '',
-        ]
+        ])
 
         if len(backtest_df):
             report_backtest = backtest_df[[c for c in [
@@ -855,8 +906,6 @@ cells = [
                 '## PIT-Aware Daily Backtests',
                 '',
                 report_backtest.to_markdown(index=False),
-                '',
-                '> Backtest metrics from one-epoch smoke runs are mechanics evidence, not model-performance evidence.',
                 '',
             ])
 
