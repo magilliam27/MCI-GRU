@@ -204,6 +204,44 @@ python run_experiment.py +data=csv_sp500
 python run_experiment.py experiment_name=lookback_20 model.his_t=20
 ```
 
+### Long-History Presets
+
+Issue #23 adds controlled long-history presets for testing whether more
+temporal context helps the frozen production-style recipe. These presets keep
+the frozen graph, feature, loss, label, selection, and ensemble semantics fixed;
+`model.his_t` is the intended experimental factor.
+
+```bash
+python run_experiment.py +experiment=long_history_his_t_21
+python run_experiment.py +experiment=long_history_his_t_63
+python run_experiment.py +experiment=long_history_his_t_126
+```
+
+`his_t=252` is intentionally not a first-pass preset. Treat it as a gated
+manual candidate after the shorter windows pass memory and runtime checks.
+
+For a cheap mechanics smoke, use the non-PIT anchored historical snapshot universe
+set rather than the base `sp500_data.csv` fallback. The 2025-style
+local surface is `data=temporal_2019`, which points at
+`sp500_2019_universe_data_through_2026.csv`. Override only the runtime cost and
+any unavailable external inputs:
+
+```bash
+python run_experiment.py +experiment=long_history_his_t_21 data=temporal_2019 training.num_epochs=1 training.num_models=1 training.early_stopping_patience=2 tracking.enabled=false features.include_global_regime=false features.regime_strict=false
+```
+
+Do not treat non-PIT smoke metrics as model-performance evidence. Full
+long-history evaluation should run the generated Colab notebook:
+
+```bash
+python scripts/gen_long_history_pit_eval_nb.py
+```
+
+Then open `notebooks/long_history_pit_eval_colab.ipynb` in Colab. The notebook
+evaluates `his_t=10`, `21`, `63`, and `126` across the 2022, 2023, 2024, and
+2025 true PIT masked-panel presets, with `his_t=252` behind
+`INCLUDE_HIS_T_252 = False`.
+
 ### With VIX Features
 
 ```bash

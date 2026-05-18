@@ -1,0 +1,51 @@
+# @package _global_
+# Issue #23: frozen-recipe long-history preset for a 126-day temporal window.
+# Non-PIT runs with this preset are mechanics checks only; PIT evaluation uses
+# the generated long-history Colab notebook.
+
+experiment_name: long_history_his_t_126
+seed: 1729
+
+model:
+  his_t: 126
+  label_t: 5
+  temporal_encoder: gru_attn
+
+training:
+  num_models: 20
+  num_epochs: 100
+  early_stopping_patience: 15
+  learning_rate: 5e-5
+  lr_scheduler: cosine
+  loss_type: ic
+  label_type: returns
+  selection_metric: val_ic
+  shuffle_train: true
+
+graph:
+  judge_value: 0.8
+  update_frequency_months: 0
+  corr_lookback_days: 252
+  top_k: 0
+  top_k_metric: corr
+  use_multi_feature_edges: true
+  drop_edge_p: 0.1
+  append_snapshot_age_days: false
+  use_lead_lag_features: false
+
+features:
+  include_momentum: true
+  include_weekly_momentum: true
+  momentum_encoding: binary
+  momentum_blend_mode: static
+  momentum_blend_fast_weight: 0.5
+  include_global_regime: true
+  regime_strict: true
+  regime_enforce_lag_days: 0
+  regime_include_subsequent_returns: false
+  regime_change_months: 12
+  regime_norm_months: 120
+  regime_exclusion_months: 1
+  regime_similarity_quantile: 0.2
+  regime_min_history_months: 24
+

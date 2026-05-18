@@ -48,6 +48,26 @@ _Avoid_: Paper summary, generic literature review
 A bounded GitHub-ready work item derived from a research paper, classified by target surface such as feature, experiment, notebook, architecture, evaluation, or ADR.
 _Avoid_: Direct implementation, loose idea
 
+**Long-History Preset**:
+A Hydra experiment preset that changes `model.his_t` to test longer temporal context while preserving the chosen recipe semantics.
+_Avoid_: Foundation model experiment, architecture replacement
+
+**Mechanics Smoke**:
+A deliberately cheap run that proves wiring, config composition, data alignment, and artifact creation without serving as model-performance evidence.
+_Avoid_: Confirmation run, evidence run
+
+**Gated Long-Window Candidate**:
+A high-cost history length, such as `his_t=252`, documented for later evaluation after shorter long-history presets pass memory and runtime checks.
+_Avoid_: Default preset, mandatory sweep member
+
+**Anchored Historical Snapshot Universe**:
+A non-PIT market CSV built from an older S&P 500 snapshot universe, such as `sp500_2019_universe_data_through_2026.csv`, that may be used for mechanics validation but not headline performance evidence.
+_Avoid_: PIT data, clean universe, tainted universe data, current-universe panel
+
+**Colab Evaluation Notebook**:
+A generated notebook launcher that runs a resumable explicit experiment matrix on Colab, stages Drive data into local `/content`, and exports compact manifests, results, logs, and summaries back to Drive.
+_Avoid_: Hand-edited notebook, local-only runner
+
 **Slice Category**:
 One of data, feature, graph, model, training/evaluation, config/experiment, notebook, paper-trade, or ADR.
 _Avoid_: Miscellaneous, uncategorized task
@@ -85,13 +105,28 @@ _Avoid_: Auto-created issue, hidden tracker mutation
 - An **Implementation Slice** includes a **Feasibility Opinion** with effort, confidence, rationale, and main blocker.
 - A **Research-to-Implementation Brief** contains one or more **Implementation Slices**.
 - An **Implementation Slice** can become a GitHub issue after review, but the brief does not authorize direct code changes by itself.
+- A **Long-History Preset** can be checked by a **Mechanics Smoke**, but only a full confirmation run can support model-performance claims.
+- A **Gated Long-Window Candidate** should not become a first-pass **Long-History Preset** until cheaper presets establish acceptable memory and runtime behavior.
+- A **Long-History Preset** should preserve the selected frozen recipe semantics and vary temporal history length as the intended experimental factor.
+- A first-pass **Long-History Preset** should not add temporal-encoder comparisons; encoder variants belong in a separate follow-up slice after the history-length path is proven.
+- An **Anchored Historical Snapshot Universe** can support a **Mechanics Smoke**, but full long-history evaluation must use true PIT masked-panel data.
+- Full long-history performance evidence should aggregate PIT masked-panel evaluation across 2022, 2023, 2024, and 2025 rather than rely on a single test year.
+- Full long-history PIT evaluation should be launched through a **Colab Evaluation Notebook** generated from a repo script.
+- A long-history **Colab Evaluation Notebook** should include the `his_t=10` frozen-default baseline alongside `21`, `63`, and `126`, with `252` gated manually.
+- Long-history decision tables should show per-year rows and grouped `his_t` aggregates; a decision score may sort candidates but cannot replace the underlying IC, Sharpe, return, drawdown, turnover, and failure-rate evidence.
 
 ## Example Dialogue
 
 > **Dev:** "Should the skewness paper go straight into a feature branch?"
 > **Domain expert:** "No. First write a **Research-to-Implementation Brief** and split it into **Implementation Slices** we can review as issues."
 
+> **Dev:** "The one-epoch **Mechanics Smoke** passed for a 21-day **Long-History Preset**. Can we call long history better?"
+> **Domain expert:** "No. The smoke proves wiring; performance claims require a confirmation run."
+
 ## Flagged Ambiguities
 
 - "Paper summary" is too broad for this workflow. The resolved term is **Research-to-Implementation Brief**, which must map the paper to MCI-GRU and its invariants.
 - "Core mechanism" should not imply exactly one idea. The resolved term is **Research Mechanism**, with a cap of three per paper.
+- "Smoke" was ambiguous between mechanics validation and reduced-budget performance evidence. The resolved term is **Mechanics Smoke** for cheap wiring checks only.
+- "Long-history experiment" can be ambiguous between a broad config drift and a controlled ablation. Resolved: use **Long-History Preset** for recipe-preserving `model.his_t` changes.
+- "Tainted universe data" and "current-universe panel" are imprecise for the non-PIT temporal CSVs. The resolved term is **Anchored Historical Snapshot Universe**, and it must not be used for headline performance evidence.
