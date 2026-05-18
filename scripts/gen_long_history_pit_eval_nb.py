@@ -389,6 +389,10 @@ cells = [
                     out[name] = item
             return out
 
+        def is_complete_training_run(path: Path) -> bool:
+            predictions_dir = path / 'averaged_predictions'
+            return (path / 'training_summary.json').exists() and predictions_dir.exists()
+
         def latest_run_dir(experiment_name: str) -> Path | None:
             root = TRAINING_OUTPUT_DIR / experiment_name
             if not root.exists():
@@ -396,7 +400,15 @@ cells = [
             candidates = [p for p in root.iterdir() if p.is_dir()]
             if not candidates:
                 return None
-            return max(candidates, key=lambda p: p.stat().st_mtime)
+            complete = []
+            for candidate in candidates:
+                if is_complete_training_run(candidate):
+                    complete.append(candidate)
+                else:
+                    print('Ignoring incomplete run dir:', candidate)
+            if not complete:
+                return None
+            return max(complete, key=lambda p: p.stat().st_mtime)
 
         def write_pit_experiment_presets() -> None:
             # Write PIT preset YAMLs when the cloned branch does not have them yet.
