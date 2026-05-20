@@ -20,6 +20,7 @@
 | [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | Cheat sheet for common commands and workflows |
 | [OUTPUT_MANAGEMENT.md](OUTPUT_MANAGEMENT.md) | Output directory structure, naming, cleanup |
 | [MLFLOW_TRACKING.md](MLFLOW_TRACKING.md) | MLflow experiment tracking setup and usage |
+| [TSFM_PREDICTION_REPORT.md](TSFM_PREDICTION_REPORT.md) | Saved-prediction TSFM-style R2, sign, IC, and yearly decay reports |
 | [NOTEBOOK_BEST_PRACTICES.md](NOTEBOOK_BEST_PRACTICES.md) | Colab experiment notebook structure, safety checks, outputs, and review checklist |
 
 ## Data Contracts & Correctness
