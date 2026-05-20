@@ -116,6 +116,8 @@ def test_issue31_notebook_can_resume_and_retry_transient_regime_fetch_failures()
         "def latest_run_dir(experiment_name: str, require_static_regime: bool = True) -> Path | None:",
         "latest_run_dir(job['name'], require_static_regime=False)",
         "Recovered static regime inputs from Drive",
+        "Cached static regime inputs failed validation; redrawing from FRED-backed loader:",
+        "def draw_static_regime_inputs(dest: Path) -> None:",
         "DRIVE_RUN_ROOT / 'inputs' / dest.name",
         "Static regime inputs:",
     ]

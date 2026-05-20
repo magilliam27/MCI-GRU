@@ -613,19 +613,7 @@ cells = [
             dest = static_dir / f'pit_repeated_seed_regime_inputs_{RUN_TAG}.csv'
             drive_static = DRIVE_RUN_ROOT / 'inputs' / dest.name
 
-            if STATIC_REGIME_INPUTS_CSV.strip():
-                source = Path(STATIC_REGIME_INPUTS_CSV).expanduser()
-                if not source.exists():
-                    raise FileNotFoundError(f'STATIC_REGIME_INPUTS_CSV does not exist: {source}')
-                if source.resolve() != dest.resolve():
-                    shutil.copy2(source, dest)
-                    print('Copied static regime inputs:', source, '->', dest)
-            elif drive_static.exists():
-                shutil.copy2(drive_static, dest)
-                print('Recovered static regime inputs from Drive:', drive_static, '->', dest)
-            elif dest.exists():
-                print('Reusing static regime inputs:', dest)
-            else:
+            def draw_static_regime_inputs(dest: Path) -> None:
                 fetch_start = min(window['train_start'] for window in PIT_WINDOWS.values())
                 fetch_end = max(window['test_end'] for window in PIT_WINDOWS.values())
                 fetch_config = DataConfig(
@@ -643,7 +631,33 @@ cells = [
                 regime_df.to_csv(dest, index=False)
                 print('Wrote static regime inputs:', dest)
 
-            summary = validate_static_regime_inputs(dest)
+            copied_explicit_static = bool(STATIC_REGIME_INPUTS_CSV.strip())
+            if STATIC_REGIME_INPUTS_CSV.strip():
+                source = Path(STATIC_REGIME_INPUTS_CSV).expanduser()
+                if not source.exists():
+                    raise FileNotFoundError(f'STATIC_REGIME_INPUTS_CSV does not exist: {source}')
+                if source.resolve() != dest.resolve():
+                    shutil.copy2(source, dest)
+                    print('Copied static regime inputs:', source, '->', dest)
+            elif drive_static.exists():
+                shutil.copy2(drive_static, dest)
+                print('Recovered static regime inputs from Drive:', drive_static, '->', dest)
+            elif dest.exists():
+                print('Reusing static regime inputs:', dest)
+            else:
+                draw_static_regime_inputs(dest)
+
+            try:
+                summary = validate_static_regime_inputs(dest)
+            except RuntimeError as exc:
+                if copied_explicit_static:
+                    raise
+                print('Cached static regime inputs failed validation; redrawing from FRED-backed loader:', exc)
+                if dest.exists():
+                    dest.unlink()
+                draw_static_regime_inputs(dest)
+                summary = validate_static_regime_inputs(dest)
+
             inputs_dir = LOCAL_RUN_ROOT / 'inputs'
             inputs_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(dest, inputs_dir / dest.name)

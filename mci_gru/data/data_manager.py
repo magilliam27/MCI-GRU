@@ -401,8 +401,13 @@ class DataManager:
         base["regime_volatility"] = pd.to_numeric(base["regime_volatility"], errors="coerce")
 
         # Paper-guided stock-bond regime: roughly three years of daily observations.
-        market_ret = base["regime_market"].pct_change()
-        yield_change = base["yield_10y"].diff()
+        # The merged FRED/LSEG panel can be sparse because series publish on
+        # different calendars. Forward-fill the two raw inputs before deriving
+        # changes so rolling correlation is not all-null on staggered calendars.
+        market_for_corr = base["regime_market"].ffill()
+        yield_10y_for_corr = base["yield_10y"].ffill()
+        market_ret = market_for_corr.pct_change(fill_method=None)
+        yield_change = yield_10y_for_corr.diff()
         base["regime_stock_bond_corr"] = market_ret.rolling(
             STOCK_BOND_CORR_WINDOW_DAYS,
             min_periods=STOCK_BOND_CORR_MIN_PERIODS,

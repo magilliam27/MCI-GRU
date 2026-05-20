@@ -303,6 +303,58 @@ def test_live_regime_stock_bond_corr_uses_three_year_window(monkeypatch):
     assert corr.iloc[756] == pytest.approx(expected.iloc[756])
 
 
+def test_live_regime_stock_bond_corr_handles_sparse_merged_panel(monkeypatch):
+    dates = pd.date_range("2000-01-01", periods=1600, freq="D")
+    even_dates = dates[::2]
+    odd_dates = dates[1::2]
+
+    class FakeFREDLoader:
+        def get_series(self, _series_id, _start, _end, value_name, lag_days=1):
+            if value_name == "yield_10y":
+                return pd.DataFrame(
+                    {
+                        "dt": even_dates.strftime("%Y-%m-%d"),
+                        value_name: np.linspace(1.0, 3.0, len(even_dates)),
+                    }
+                )
+            if value_name == "yield_3m":
+                return pd.DataFrame(
+                    {
+                        "dt": even_dates.strftime("%Y-%m-%d"),
+                        value_name: np.linspace(0.5, 1.5, len(even_dates)),
+                    }
+                )
+            if value_name == "regime_market":
+                returns = np.linspace(-0.005, 0.006, len(odd_dates))
+                market = 3000.0 * (1.0 + returns).cumprod()
+                return pd.DataFrame(
+                    {
+                        "dt": odd_dates.strftime("%Y-%m-%d"),
+                        value_name: market,
+                    }
+                )
+            return pd.DataFrame(
+                {
+                    "dt": dates.strftime("%Y-%m-%d"),
+                    value_name: np.linspace(10.0, 20.0, len(dates)),
+                }
+            )
+
+    monkeypatch.setattr("mci_gru.data.fred_loader.FREDLoader", FakeFREDLoader)
+    config = DataConfig(
+        train_start="2000-01-01",
+        train_end="2000-01-10",
+        val_start="2000-01-11",
+        val_end="2000-01-12",
+        test_start="2000-01-13",
+        test_end="2004-05-18",
+    )
+
+    out = DataManager(config).load_regime_inputs()
+
+    assert not out["regime_stock_bond_corr"].isna().all()
+
+
 def test_live_regime_fetch_retries_transient_series_failure(monkeypatch):
     dates = pd.date_range("2020-01-01", periods=800, freq="D")
     series_by_name = {
