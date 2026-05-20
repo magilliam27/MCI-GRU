@@ -260,6 +260,43 @@ def test_regime_csv_contract_is_deprecated_and_requires_full_seven_variable_surf
             os.unlink(path)
 
 
+def test_regime_csv_loader_forward_fills_without_backfill():
+    """Raw CSV gaps may use prior values only; leading gaps remain unavailable."""
+    import os
+    import tempfile
+
+    from mci_gru.config import DataConfig
+    from mci_gru.data.data_manager import DataManager
+
+    df = pd.DataFrame({"dt": pd.date_range("2000-01-01", periods=3, freq="D")})
+    for offset, col in enumerate(REGIME_VARIABLES):
+        df[col] = [np.nan, 20.0 + offset, np.nan]
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        df.to_csv(f.name, index=False)
+        path = f.name
+
+    try:
+        config = DataConfig(
+            train_start="2000-01-01",
+            train_end="2000-01-03",
+            val_start="2000-01-04",
+            val_end="2000-01-05",
+            test_start="2000-01-06",
+            test_end="2000-01-07",
+        )
+        dm = DataManager(config)
+        with pytest.warns(DeprecationWarning, match="regime_inputs_csv is deprecated"):
+            out = dm.load_regime_inputs(regime_inputs_csv=path, regime_enforce_lag_days=0)
+
+        assert out.loc[0, REGIME_VARIABLES].isna().all()
+        for offset, col in enumerate(REGIME_VARIABLES):
+            assert out.loc[1, col] == 20.0 + offset
+            assert out.loc[2, col] == 20.0 + offset
+    finally:
+        os.unlink(path)
+
+
 def test_transform_with_regime_df_produces_nonzero_regime_columns():
     """Regime columns must be non-constant when a real regime_df is passed to transform."""
     from mci_gru.config import FeatureConfig
