@@ -7,6 +7,8 @@ different sources (CSV, LSEG) and preparing it for model training.
 
 from __future__ import annotations
 
+import os
+import time
 import warnings
 from datetime import datetime
 from functools import partial
@@ -274,13 +276,43 @@ class DataManager:
         except Exception:
             fred = None
 
+        def _env_int(name: str, default: int) -> int:
+            try:
+                return int(os.environ.get(name, str(default)))
+            except ValueError:
+                return default
+
+        def _env_float(name: str, default: float) -> float:
+            try:
+                return float(os.environ.get(name, str(default)))
+            except ValueError:
+                return default
+
+        fred_max_attempts = max(1, _env_int("MCI_GRU_FRED_MAX_ATTEMPTS", 1))
+        fred_retry_seconds = max(0.0, _env_float("MCI_GRU_FRED_RETRY_SECONDS", 0.0))
+
         def try_fred(series_id: str, value_name: str):
             if fred is None:
                 return None
-            try:
-                return fred.get_series(series_id, start, end, value_name, lag_days=1)
-            except Exception:
-                return None
+            for attempt in range(1, fred_max_attempts + 1):
+                try:
+                    return fred.get_series(series_id, start, end, value_name, lag_days=1)
+                except Exception as exc:
+                    if attempt >= fred_max_attempts:
+                        print(
+                            f"FRED fetch failed for {value_name} ({series_id}) "
+                            f"after {fred_max_attempts} attempt(s): "
+                            f"{type(exc).__name__}: {exc}"
+                        )
+                        return None
+                    print(
+                        f"FRED fetch failed for {value_name} ({series_id}) "
+                        f"on attempt {attempt}/{fred_max_attempts}: "
+                        f"{type(exc).__name__}: {exc}. Retrying..."
+                    )
+                    if fred_retry_seconds > 0:
+                        time.sleep(fred_retry_seconds)
+            return None
 
         # FRED-primary variables.
         yield_10y = try_fred(FRED_SERIES_10Y, "yield_10y")
