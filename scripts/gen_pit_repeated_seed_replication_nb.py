@@ -46,12 +46,12 @@ cells = [
         - reference comparison
         - summary markdown
 
-        The notebook defaults to one additional base seed because one seed already means 4 yearly jobs x 20 models = 80 trained models. Add more values to `REPLICATION_BASE_SEEDS` only when you intentionally want a larger compute budget.
+        The notebook defaults to three additional base seeds. That is 3 seeds x 4 yearly jobs x 20 models = 240 trained models, large enough to test whether the issue #29 pooled signal and issue #30 2022 stress pattern are stable without turning this into a recipe sweep.
 
         Frozen recipe reference: `docs/DEFAULT_EXPERIMENT_RECIPE.md`.
         Recipe name: `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1`.
 
-        The pooled significance cell is intentionally written to help close issue #29. The 2022 monthly/drawdown/holdings diagnostics are intentionally written to feed issue #30, although issue #30 may still need a final interpretation pass after the run finishes.
+        The pooled significance cell is intentionally written to help close issue #29. The cross-seed 2022 diagnostics are intentionally written to feed issue #30. The final closeout cell emits a compact issue-by-issue status table for issues #29, #30, and #31.
         """
     ),
     md(
@@ -190,22 +190,14 @@ cells = [
     md("## 2. PIT Data Inputs"),
     code(
         r"""
-        # Leave these blank to auto-discover by filename under common Drive folders.
-        # Set explicit paths if your Drive layout differs.
-        MARKET_CSV_PATH = ''
-        PIT_UNIVERSE_CSV_PATH = ''
-        MARKET_META_JSON_PATH = ''
+        # Hardwired to avoid slow recursive Drive discovery in Colab.
+        MARKET_CSV_PATH = '/content/drive/MyDrive/MCI_GRU_shared/data/sp500_pit_union_lseg_20150101_20260513.csv'
+        PIT_UNIVERSE_CSV_PATH = '/content/drive/MyDrive/MCI_GRU_shared/data/sp500_pit_joiner_leaver_20160101_20260513_pit_universe.csv'
+        MARKET_META_JSON_PATH = '/content/drive/MyDrive/MCI_GRU_shared/data/sp500_pit_union_lseg_20150101_20260513.meta.json'
 
         MARKET_FILENAME = 'sp500_pit_union_lseg_20150101_20260513.csv'
         PIT_FILENAME = 'sp500_pit_joiner_leaver_20160101_20260513_pit_universe.csv'
         MARKET_META_FILENAME = 'sp500_pit_union_lseg_20150101_20260513.meta.json'
-
-        DRIVE_SEARCH_ROOTS = [
-            DRIVE_DATA_DIR,
-            Path('/content/drive/MyDrive') if IN_COLAB else REPO_DIR,
-            Path('/content/drive/MyDrive/MCI_GRU_shared/data') if IN_COLAB else REPO_DIR / 'data' / 'raw' / 'market',
-            Path('/content/drive/MyDrive/Stock universe data') if IN_COLAB else REPO_DIR / 'data' / 'raw' / 'constituents',
-        ]
 
         def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
             digest = hashlib.sha256()
@@ -214,29 +206,23 @@ cells = [
                     digest.update(chunk)
             return digest.hexdigest()
 
-        def resolve_input(explicit_path: str, filename: str) -> Path:
-            if explicit_path:
-                path = Path(explicit_path).expanduser()
-                if path.exists():
-                    return path
-                raise FileNotFoundError(f'Explicit path does not exist: {path}')
+        def resolve_input(fixed_path: str, filename: str) -> Path:
+            path = Path(fixed_path).expanduser()
+            if path.exists():
+                return path
 
-            candidates = []
-            for root in DRIVE_SEARCH_ROOTS:
-                if root is None:
-                    continue
-                candidates.append(root / filename)
-                candidates.extend(root.glob(f'**/{filename}') if root.exists() else [])
+            local_fallbacks = {
+                MARKET_FILENAME: REPO_DIR / 'data' / 'raw' / 'market' / MARKET_FILENAME,
+                PIT_FILENAME: REPO_DIR / 'data' / 'raw' / 'constituents' / PIT_FILENAME,
+                MARKET_META_FILENAME: REPO_DIR / 'data' / 'raw' / 'market' / MARKET_META_FILENAME,
+            }
+            fallback = local_fallbacks.get(filename)
+            if fallback is not None and not IN_COLAB and fallback.exists():
+                return fallback
 
-            for candidate in candidates:
-                if candidate.exists():
-                    return candidate
-
-            searched = '\n'.join(str(root / filename) for root in DRIVE_SEARCH_ROOTS if root is not None)
             raise FileNotFoundError(
-                f'Could not find {filename}.\n\n'
-                f'Put it in Drive, preferably {DRIVE_DATA_DIR}, or set the explicit path above.\n\n'
-                f'Searched:\n{searched}'
+                f'Expected fixed input path does not exist: {path}\n'
+                f'Upload {filename} to {DRIVE_DATA_DIR} or update the hardwired path at the top of this cell.'
             )
 
         def stage_file(source: Path, dest: Path) -> Path:
@@ -284,9 +270,8 @@ cells = [
         r"""
         from datetime import datetime
 
-        # Option A: add a Colab Secret named FRED_API_KEY.
-        # Option B: paste the key here for this runtime.
-        MY_FRED_KEY = ''
+        # Hardwired for this full-run Colab notebook.
+        MY_FRED_KEY = 'c14e4bb7d2c2e2cea539f52ef6672ff8'
 
         if IN_COLAB and not MY_FRED_KEY.strip():
             try:
@@ -318,8 +303,9 @@ cells = [
         REFERENCE_RUN_TAG = '20260514_043539'
         REFERENCE_RUN_ROOT = ''
 
-        # One additional base seed is already 4 years x 20 models = 80 trained models.
-        REPLICATION_BASE_SEEDS = [314159]
+        # Option A closeout budget: 3 seeds x 4 years x 20 models = 240 trained models.
+        REPLICATION_BASE_SEEDS = [314159, 271828, 161803]
+        MIN_CLOSEOUT_REPLICATION_SEEDS = 3
 
         SMOKE_MODE = False
         RUN_TRAINING = True
@@ -372,6 +358,8 @@ cells = [
         NEWEY_WEST_LAGS = 5
         BLOCK_BOOTSTRAP_BLOCK_SIZE = 21
         SIGNIFICANCE_BOOTSTRAP_RESAMPLES = 200 if SMOKE_MODE else 1000
+        EXPECTED_REPLICATION_JOB_COUNT = len(REPLICATION_BASE_SEEDS) * len(YEARS)
+        EXPECTED_TOTAL_MODELS = EXPECTED_REPLICATION_JOB_COUNT * NUM_MODELS
 
         if os.environ.get('FRED_API_KEY'):
             print('FRED_API_KEY is set.')
@@ -425,9 +413,10 @@ cells = [
 
         RUN_BUDGET = {
             'replication_base_seeds': REPLICATION_BASE_SEEDS,
-            'yearly_training_jobs': len(REPLICATION_BASE_SEEDS) * len(YEARS),
+            'min_closeout_replication_seeds': MIN_CLOSEOUT_REPLICATION_SEEDS,
+            'yearly_training_jobs': EXPECTED_REPLICATION_JOB_COUNT,
             'models_per_yearly_job': NUM_MODELS,
-            'total_models': len(REPLICATION_BASE_SEEDS) * len(YEARS) * NUM_MODELS,
+            'total_models': EXPECTED_TOTAL_MODELS,
             'num_epochs': NUM_EPOCHS,
             'early_stopping_patience': EARLY_STOPPING_PATIENCE,
             'batch_size': BATCH_SIZE,
@@ -1160,7 +1149,106 @@ cells = [
         assert_expected_backtests_complete(backtest_df)
         """
     ),
-    md("## 7. Reference Cost/Rank-Gate Backtest And Yearly Comparison"),
+    md(
+        """
+        ## 7. Backtest Sensitivity Replay
+
+        This replay keeps the saved repeated-seed predictions fixed and emits three scenario cross-tabs by default:
+
+        - `current_tc10_slip5_label5`
+        - `spread5_only_label5`
+        - `spread5_only_label21_diagnostic`
+        """
+    ),
+    code(
+        r"""
+        RUN_BACKTEST_SENSITIVITY = True
+        SENSITIVITY_INCLUDE_LABEL21_DIAGNOSTIC = True
+        BASE_TRAINING_RESULTS_CSV = Path(globals().get('training_path', SUMMARY_DIR / 'training_results.csv'))
+        SENSITIVITY_RUN_ROOT = LOCAL_RUN_ROOT if BASE_TRAINING_RESULTS_CSV.exists() else DRIVE_RUN_ROOT
+        SENSITIVITY_TRAINING_RESULTS_CSV = (
+            BASE_TRAINING_RESULTS_CSV
+            if BASE_TRAINING_RESULTS_CSV.exists()
+            else SENSITIVITY_RUN_ROOT / 'summaries' / 'training_results.csv'
+        )
+        SENSITIVITY_OUTPUT_DIR = SENSITIVITY_RUN_ROOT / 'summaries' / 'pit_repeated_seed_backtest_sensitivity'
+        sensitivity_results_path = SENSITIVITY_OUTPUT_DIR / 'pit_repeated_seed_backtest_sensitivity_results.csv'
+        sensitivity_year_crosstab_path = SENSITIVITY_OUTPUT_DIR / 'pit_repeated_seed_backtest_sensitivity_year_crosstab.csv'
+        sensitivity_seed_crosstab_path = SENSITIVITY_OUTPUT_DIR / 'pit_repeated_seed_backtest_sensitivity_seed_crosstab.csv'
+        sensitivity_metric_deltas_path = SENSITIVITY_OUTPUT_DIR / 'pit_repeated_seed_backtest_sensitivity_metric_deltas.csv'
+        sensitivity_summary_path = SENSITIVITY_OUTPUT_DIR / 'pit_repeated_seed_backtest_sensitivity_summary.md'
+
+        if RUN_BACKTEST_SENSITIVITY:
+            cmd = [
+                sys.executable,
+                str(REPO_DIR / 'scripts' / 'run_pit_repeated_seed_backtest_sensitivity.py'),
+                '--run-root',
+                str(SENSITIVITY_RUN_ROOT),
+                '--training-results-csv',
+                str(SENSITIVITY_TRAINING_RESULTS_CSV),
+                '--output-dir',
+                str(SENSITIVITY_OUTPUT_DIR),
+                '--repo-dir',
+                str(REPO_DIR),
+                '--data-file',
+                str(repo_market_csv),
+                '--pit-universe-csv',
+                str(repo_pit_csv),
+                '--years',
+                *[str(year) for year in YEARS],
+                '--base-seeds',
+                *[str(seed) for seed in REPLICATION_BASE_SEEDS],
+                '--training-label-t',
+                str(LABEL_T),
+                '--num-tests',
+                str(NUM_TESTS),
+                '--adjustment-method',
+                ADJUSTMENT_METHOD,
+            ]
+            if not SENSITIVITY_INCLUDE_LABEL21_DIAGNOSTIC:
+                cmd.append('--skip-label21-diagnostic')
+
+            SENSITIVITY_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+            stdout_path = SENSITIVITY_OUTPUT_DIR / 'backtest_sensitivity_stdout.log'
+            stderr_path = SENSITIVITY_OUTPUT_DIR / 'backtest_sensitivity_stderr.log'
+            print('Backtest sensitivity command:', ' '.join(cmd))
+            proc = subprocess.run(cmd, cwd=REPO_DIR, text=True, capture_output=True)
+            stdout_path.write_text(proc.stdout, encoding='utf-8', errors='replace')
+            stderr_path.write_text(proc.stderr, encoding='utf-8', errors='replace')
+            print(proc.stdout[-4000:])
+            if proc.returncode != 0:
+                print(proc.stderr[-4000:])
+                raise RuntimeError(
+                    'Backtest sensitivity replay failed. Inspect '
+                    f'{stdout_path} and {stderr_path}.'
+                )
+        else:
+            print('RUN_BACKTEST_SENSITIVITY=False; skipping sensitivity replay.')
+
+        sensitivity_results_df = pd.read_csv(sensitivity_results_path) if sensitivity_results_path.exists() else pd.DataFrame()
+        sensitivity_year_crosstab_df = pd.read_csv(sensitivity_year_crosstab_path) if sensitivity_year_crosstab_path.exists() else pd.DataFrame()
+        sensitivity_seed_crosstab_df = pd.read_csv(sensitivity_seed_crosstab_path) if sensitivity_seed_crosstab_path.exists() else pd.DataFrame()
+        sensitivity_metric_deltas_df = pd.read_csv(sensitivity_metric_deltas_path) if sensitivity_metric_deltas_path.exists() else pd.DataFrame()
+
+        display(sensitivity_results_df[[c for c in [
+            'scenario_id', 'status', 'name', 'base_seed', 'year',
+            'scenario.spread_bps', 'scenario.slippage_bps', 'scenario.label_t',
+            'scenario.training_label_matched', 'backtest.ARR', 'backtest.ASR',
+            'backtest.excess_return', 'backtest.avg_daily_turnover',
+        ] if c in sensitivity_results_df.columns]])
+        display(sensitivity_year_crosstab_df)
+        display(sensitivity_metric_deltas_df)
+        print('Sensitivity run root:', SENSITIVITY_RUN_ROOT)
+        print('Sensitivity training results:', SENSITIVITY_TRAINING_RESULTS_CSV)
+        print('Sensitivity results:', sensitivity_results_path)
+        print('Sensitivity year crosstab:', sensitivity_year_crosstab_path)
+        print('Sensitivity seed crosstab:', sensitivity_seed_crosstab_path)
+        print('Sensitivity metric deltas:', sensitivity_metric_deltas_path)
+        print('Sensitivity summary:', sensitivity_summary_path)
+        print('Label horizon note: label_t=21 is diagnostic for this Option A run because MODEL_RECIPE label_t is 5; it does not make this a 21-day holding-period backtest.')
+        """
+    ),
+    md("## 8. Reference Cost/Rank-Gate Backtest And Yearly Comparison"),
     code(
         r"""
         def resolve_reference_run_root() -> Path | None:
@@ -1314,7 +1402,7 @@ cells = [
         display(reference_comparison_df)
         """
     ),
-    md("## 8. Pooled Daily Significance"),
+    md("## 9. Pooled Daily Significance"),
     code(
         r"""
         from scipy import stats
@@ -1458,7 +1546,244 @@ cells = [
         print('Inference note: Newey-West t-stats and moving-block bootstrap CIs are decision aids, not a guarantee of robustness.')
         """
     ),
-    md("## 9. 2022 Diagnostics For Issue #30"),
+    md("## 10. Cross-Seed Closeout Evidence For Issues #29-#31"),
+    code(
+        r"""
+        def _ok_backtest_rows(frame: pd.DataFrame) -> pd.DataFrame:
+            if frame is None or frame.empty:
+                return pd.DataFrame()
+            return frame[frame['status'].astype(str).str.upper().eq('OK')].copy()
+
+        def _numeric_series(frame: pd.DataFrame, column: str) -> pd.Series:
+            if frame is None or frame.empty or column not in frame.columns:
+                return pd.Series(dtype=float)
+            return pd.to_numeric(frame[column], errors='coerce')
+
+        def _metric_summary(frame: pd.DataFrame, column: str, prefix: str) -> dict:
+            values = _numeric_series(frame, column).dropna()
+            if values.empty:
+                return {
+                    f'{prefix}.mean': np.nan,
+                    f'{prefix}.std': np.nan,
+                    f'{prefix}.min': np.nan,
+                    f'{prefix}.max': np.nan,
+                }
+            return {
+                f'{prefix}.mean': float(values.mean()),
+                f'{prefix}.std': float(values.std(ddof=1)) if len(values) > 1 else 0.0,
+                f'{prefix}.min': float(values.min()),
+                f'{prefix}.max': float(values.max()),
+            }
+
+        def _significance_row_for_scenario(significance_df: pd.DataFrame, scenario: str) -> dict:
+            if significance_df.empty or 'scenario' not in significance_df.columns:
+                return {}
+            rows = significance_df[significance_df['scenario'].astype(str).eq(scenario)]
+            if rows.empty:
+                return {}
+            return rows.iloc[0].to_dict()
+
+        def build_seed_summary(
+            backtest_rows: pd.DataFrame,
+            significance_df: pd.DataFrame,
+        ) -> pd.DataFrame:
+            ok_rows = _ok_backtest_rows(backtest_rows)
+            rows = []
+            for base_seed in REPLICATION_BASE_SEEDS:
+                seed_rows = ok_rows[ok_rows['base_seed'].astype(int).eq(int(base_seed))] if not ok_rows.empty else pd.DataFrame()
+                scenario = f'replication_seed_{int(base_seed)}'
+                sig = _significance_row_for_scenario(significance_df, scenario)
+                row = {
+                    'base_seed': int(base_seed),
+                    'scenario': scenario,
+                    'expected_years': len(YEARS),
+                    'completed_years': int(seed_rows['year'].nunique()) if not seed_rows.empty else 0,
+                    'all_years_complete': bool(int(seed_rows['year'].nunique()) == len(YEARS)) if not seed_rows.empty else False,
+                    'n_days': int(sig.get('n_days', 0) or 0),
+                    'annualized_excess_return': sig.get('annualized_excess_return', np.nan),
+                    'information_ratio': sig.get('information_ratio', np.nan),
+                    'newey_west_t_stat': sig.get('newey_west_t_stat', np.nan),
+                    'p_value': sig.get('p_value', np.nan),
+                    'multiple_testing_adjusted_p_value': sig.get('multiple_testing_adjusted_p_value', np.nan),
+                }
+                row.update(_metric_summary(seed_rows, 'backtest.excess_return', 'yearly_excess_return'))
+                row.update(_metric_summary(seed_rows, 'backtest.total_return', 'yearly_total_return'))
+                row.update(_metric_summary(seed_rows, 'backtest.ASR', 'yearly_asr'))
+                row.update(_metric_summary(seed_rows, 'backtest.MDD', 'yearly_mdd'))
+                rows.append(row)
+            return pd.DataFrame(rows)
+
+        def build_yearly_seed_summary(backtest_rows: pd.DataFrame) -> pd.DataFrame:
+            ok_rows = _ok_backtest_rows(backtest_rows)
+            rows = []
+            for year in YEARS:
+                year_rows = ok_rows[ok_rows['year'].astype(int).eq(int(year))] if not ok_rows.empty else pd.DataFrame()
+                excess_values = _numeric_series(year_rows, 'backtest.excess_return').dropna()
+                row = {
+                    'year': int(year),
+                    'expected_seed_count': len(REPLICATION_BASE_SEEDS),
+                    'completed_seed_count': int(year_rows['base_seed'].nunique()) if not year_rows.empty else 0,
+                    'all_seeds_complete': bool(int(year_rows['base_seed'].nunique()) == len(REPLICATION_BASE_SEEDS)) if not year_rows.empty else False,
+                    'positive_excess_seed_count': int((excess_values > 0).sum()),
+                    'negative_excess_seed_count': int((excess_values < 0).sum()),
+                    'zero_excess_seed_count': int((excess_values == 0).sum()),
+                }
+                row.update(_metric_summary(year_rows, 'backtest.excess_return', 'excess_return'))
+                row.update(_metric_summary(year_rows, 'backtest.total_return', 'total_return'))
+                row.update(_metric_summary(year_rows, 'backtest.ARR', 'arr'))
+                row.update(_metric_summary(year_rows, 'backtest.ASR', 'asr'))
+                row.update(_metric_summary(year_rows, 'backtest.MDD', 'mdd'))
+                row.update(_metric_summary(year_rows, 'backtest.avg_daily_turnover', 'avg_daily_turnover'))
+                rows.append(row)
+            out = pd.DataFrame(rows)
+            if not out.empty and 'excess_return.mean' in out.columns:
+                out['mean_excess_rank_ascending'] = out['excess_return.mean'].rank(method='min', ascending=True)
+                out['is_worst_mean_excess_year'] = out['mean_excess_rank_ascending'].eq(1)
+            return out
+
+        def _all_expected_pairs_present(frame: pd.DataFrame, status_values: set[str]) -> bool:
+            if frame is None or frame.empty:
+                return False
+            expected = {(int(seed), int(year)) for seed in REPLICATION_BASE_SEEDS for year in YEARS}
+            ok_rows = frame[frame['status'].astype(str).str.upper().isin(status_values)].copy()
+            actual = {(int(row['base_seed']), int(row['year'])) for _, row in ok_rows.iterrows()}
+            return expected == actual
+
+        def _prediction_checks_pass(frame: pd.DataFrame) -> bool:
+            if frame is None or frame.empty or len(frame) != EXPECTED_REPLICATION_JOB_COUNT:
+                return False
+            missing = _numeric_series(frame, 'prediction_files_missing').fillna(0)
+            mismatches = _numeric_series(frame, 'prediction_count_mismatches').fillna(0)
+            return bool((missing.eq(0) & mismatches.eq(0)).all())
+
+        def _breadth_checks_pass(frame: pd.DataFrame) -> bool:
+            if frame is None or frame.empty:
+                return False
+            status_ok = frame['status'].astype(str).str.upper().eq('OK').all()
+            threshold_cols = [col for col in frame.columns if col.endswith('.below_threshold')]
+            threshold_ok = True
+            for col in threshold_cols:
+                threshold_ok = threshold_ok and bool(_numeric_series(frame, col).fillna(0).eq(0).all())
+            return bool(status_ok and threshold_ok)
+
+        def _issue29_pooled_significance_status(significance_df: pd.DataFrame) -> tuple[str, str]:
+            row = _significance_row_for_scenario(significance_df, 'replication_all_seeds')
+            if not row:
+                return 'needs_more_evidence', 'No replication_all_seeds pooled significance row was produced.'
+            annualized_excess = pd.to_numeric(row.get('annualized_excess_return'), errors='coerce')
+            info_ratio = pd.to_numeric(row.get('information_ratio'), errors='coerce')
+            adjusted_p = pd.to_numeric(row.get('multiple_testing_adjusted_p_value'), errors='coerce')
+            ci_low = pd.to_numeric(row.get('mean_daily_excess_ci95_low'), errors='coerce')
+            evidence = (
+                f"replication_all_seeds annualized_excess={annualized_excess:.6f}, "
+                f"IR={info_ratio:.4f}, adjusted_p={adjusted_p:.4f}, "
+                f"mean_daily_excess_ci95_low={ci_low:.6f}"
+            )
+            if (
+                pd.notna(annualized_excess)
+                and pd.notna(adjusted_p)
+                and pd.notna(ci_low)
+                and annualized_excess > 0
+                and adjusted_p <= 0.05
+                and ci_low > 0
+            ):
+                return 'supports_closeout', evidence
+            return 'needs_more_evidence', evidence
+
+        def _issue30_2022_stress_status(yearly_summary: pd.DataFrame) -> tuple[str, str]:
+            if yearly_summary.empty:
+                return 'needs_more_evidence', 'No yearly seed summary was produced.'
+            rows_2022 = yearly_summary[yearly_summary['year'].astype(int).eq(2022)]
+            if rows_2022.empty:
+                return 'needs_more_evidence', 'No 2022 yearly seed summary row was produced.'
+            row = rows_2022.iloc[0]
+            completed = int(row.get('completed_seed_count', 0) or 0)
+            negative = int(row.get('negative_excess_seed_count', 0) or 0)
+            mean_excess = pd.to_numeric(row.get('excess_return.mean'), errors='coerce')
+            is_worst = bool(row.get('is_worst_mean_excess_year', False))
+            evidence = (
+                f"2022 completed_seed_count={completed}, negative_excess_seed_count={negative}, "
+                f"mean_excess={mean_excess:.6f}, is_worst_mean_excess_year={is_worst}"
+            )
+            if completed >= MIN_CLOSEOUT_REPLICATION_SEEDS and negative == completed and is_worst:
+                return 'supports_closeout', evidence
+            return 'needs_more_evidence', evidence
+
+        def build_issue_closeout_summary(
+            seed_summary: pd.DataFrame,
+            yearly_summary: pd.DataFrame,
+            significance_df: pd.DataFrame,
+        ) -> pd.DataFrame:
+            completed_seed_count = int(seed_summary['all_years_complete'].sum()) if not seed_summary.empty else 0
+            training_ok = _all_expected_pairs_present(training_df, {'OK', 'REUSED'})
+            backtests_ok = _all_expected_pairs_present(backtest_df, {'OK'})
+            predictions_ok = _prediction_checks_pass(prediction_check_df)
+            breadth_ok = _breadth_checks_pass(breadth_df)
+            enough_seeds = completed_seed_count >= MIN_CLOSEOUT_REPLICATION_SEEDS
+
+            issue31_status = 'supports_closeout' if all([
+                training_ok,
+                backtests_ok,
+                predictions_ok,
+                breadth_ok,
+                enough_seeds,
+            ]) else 'needs_more_evidence'
+            issue31_evidence = (
+                f"training_ok={training_ok}, backtests_ok={backtests_ok}, "
+                f"predictions_ok={predictions_ok}, breadth_ok={breadth_ok}, "
+                f"completed_seed_count={completed_seed_count}, "
+                f"expected_jobs={EXPECTED_REPLICATION_JOB_COUNT}, "
+                f"expected_total_models={EXPECTED_TOTAL_MODELS}"
+            )
+
+            issue29_status, issue29_evidence = _issue29_pooled_significance_status(significance_df)
+            issue30_status, issue30_evidence = _issue30_2022_stress_status(yearly_summary)
+
+            return pd.DataFrame([
+                {
+                    'issue': 31,
+                    'check': 'issue31_pit_pipeline_status',
+                    'status': issue31_status,
+                    'evidence': issue31_evidence,
+                },
+                {
+                    'issue': 29,
+                    'check': 'issue29_pooled_significance_status',
+                    'status': issue29_status,
+                    'evidence': issue29_evidence,
+                },
+                {
+                    'issue': 30,
+                    'check': 'issue30_2022_stress_status',
+                    'status': issue30_status,
+                    'evidence': issue30_evidence,
+                },
+            ])
+
+        seed_summary_df = build_seed_summary(backtest_df, pooled_significance_df)
+        yearly_seed_summary_df = build_yearly_seed_summary(backtest_df)
+        issue_closeout_summary_df = build_issue_closeout_summary(
+            seed_summary_df,
+            yearly_seed_summary_df,
+            pooled_significance_df,
+        )
+
+        seed_summary_path = SUMMARY_DIR / 'pit_repeated_seed_seed_summary.csv'
+        yearly_seed_summary_path = SUMMARY_DIR / 'pit_repeated_seed_yearly_seed_summary.csv'
+        issue_closeout_summary_path = SUMMARY_DIR / 'pit_repeated_seed_issue_closeout_summary.csv'
+        seed_summary_df.to_csv(seed_summary_path, index=False)
+        yearly_seed_summary_df.to_csv(yearly_seed_summary_path, index=False)
+        issue_closeout_summary_df.to_csv(issue_closeout_summary_path, index=False)
+
+        display(seed_summary_df)
+        display(yearly_seed_summary_df)
+        display(issue_closeout_summary_df)
+        print('Seed summary:', seed_summary_path)
+        print('Yearly seed summary:', yearly_seed_summary_path)
+        print('Issue closeout summary:', issue_closeout_summary_path)
+        """
+    ),
+    md("## 11. 2022 Diagnostics For Issue #30"),
     code(
         r"""
         def collect_2022_diagnostics(rows_df: pd.DataFrame, scenario_prefix: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -1556,7 +1881,7 @@ cells = [
         print('2022 holdings diagnostics:', holdings_diag_path)
         """
     ),
-    md("## 10. Summary And Drive Sync"),
+    md("## 12. Summary And Drive Sync"),
     code(
         r"""
         def fmt_pct(value):
@@ -1580,6 +1905,36 @@ cells = [
         for col in ['information_ratio', 'p_value', 'multiple_testing_adjusted_p_value']:
             if col in report_significance.columns:
                 report_significance[col] = report_significance[col].apply(lambda x: '' if pd.isna(x) else f'{x:.4f}')
+
+        report_seed_summary = seed_summary_df.copy()
+        for col in [
+            'annualized_excess_return',
+            'yearly_excess_return.mean',
+            'yearly_excess_return.min',
+            'yearly_excess_return.max',
+            'yearly_total_return.mean',
+            'yearly_mdd.mean',
+        ]:
+            if col in report_seed_summary.columns:
+                report_seed_summary[col] = report_seed_summary[col].apply(fmt_pct)
+        for col in ['information_ratio', 'newey_west_t_stat', 'p_value', 'multiple_testing_adjusted_p_value', 'yearly_asr.mean']:
+            if col in report_seed_summary.columns:
+                report_seed_summary[col] = report_seed_summary[col].apply(lambda x: '' if pd.isna(x) else f'{float(x):.4f}')
+
+        report_yearly_seed_summary = yearly_seed_summary_df.copy()
+        for col in [
+            'excess_return.mean',
+            'excess_return.min',
+            'excess_return.max',
+            'total_return.mean',
+            'arr.mean',
+            'mdd.mean',
+            'avg_daily_turnover.mean',
+        ]:
+            if col in report_yearly_seed_summary.columns:
+                report_yearly_seed_summary[col] = report_yearly_seed_summary[col].apply(fmt_pct)
+
+        report_issue_closeout = issue_closeout_summary_df.copy()
 
         report_path = SUMMARY_DIR / 'pit_repeated_seed_replication_summary.md'
         lines = [
@@ -1608,8 +1963,14 @@ cells = [
             '- The primary promotion path here is transaction costs enabled plus rank-drop gate enabled.',
             '- Pooled significance uses daily excess returns across 2022-2025.',
             '- The reference comparison uses `20260514_043539` when that run root is available.',
-            '- If the added seed agrees with the reference year by year and pooled, promotion confidence improves.',
+            '- The backtest sensitivity replay reuses saved predictions and changes only cost/label evaluation settings.',
+            '- The `spread5_only_label21_diagnostic` scenario is not training-matched unless the saved model was trained with `label_t=21`.',
+            '- If the three added seeds agree with the reference year by year and pooled, promotion confidence improves.',
             '- If 2022 remains uniquely weak across seeds, issue #30 should treat it as a repeatable regime stress case before blaming randomness.',
+            '',
+            '## Issue Closeout Status',
+            '',
+            report_issue_closeout.to_markdown(index=False) if not report_issue_closeout.empty else 'No issue closeout rows were produced.',
             '',
             '## Replication Backtest Rows',
             '',
@@ -1618,6 +1979,22 @@ cells = [
             '## Pooled Daily Significance',
             '',
             report_significance.to_markdown(index=False) if not report_significance.empty else 'No pooled significance rows were produced.',
+            '',
+            '## Seed Summary',
+            '',
+            report_seed_summary.to_markdown(index=False) if not report_seed_summary.empty else 'No seed summary rows were produced.',
+            '',
+            '## Yearly Cross-Seed Summary',
+            '',
+            report_yearly_seed_summary.to_markdown(index=False) if not report_yearly_seed_summary.empty else 'No yearly seed summary rows were produced.',
+            '',
+            '## Backtest Sensitivity: Scenario x Year',
+            '',
+            sensitivity_year_crosstab_df.to_markdown(index=False) if not sensitivity_year_crosstab_df.empty else 'No backtest sensitivity year rows were produced.',
+            '',
+            '## Backtest Sensitivity: Deltas vs Baseline',
+            '',
+            sensitivity_metric_deltas_df.to_markdown(index=False) if not sensitivity_metric_deltas_df.empty else 'No backtest sensitivity delta rows were produced.',
             '',
             '## Artifact Checklist',
             '',
@@ -1628,6 +2005,14 @@ cells = [
             f'- Backtest results: `{backtest_path}`',
             f'- Pooled daily returns: `{pooled_daily_path}`',
             f'- Pooled significance: `{pooled_significance_path}`',
+            f'- Seed summary: `{seed_summary_path}`',
+            f'- Yearly seed summary: `{yearly_seed_summary_path}`',
+            f'- Issue closeout summary: `{issue_closeout_summary_path}`',
+            f'- Backtest sensitivity results: `{sensitivity_results_path}`',
+            f'- Backtest sensitivity year crosstab: `{sensitivity_year_crosstab_path}`',
+            f'- Backtest sensitivity seed crosstab: `{sensitivity_seed_crosstab_path}`',
+            f'- Backtest sensitivity metric deltas: `{sensitivity_metric_deltas_path}`',
+            f'- Backtest sensitivity summary: `{sensitivity_summary_path}`',
             f'- Reference comparison: `{reference_comparison_path}`',
             f'- 2022 monthly diagnostics: `{monthly_diag_path}`',
             f'- 2022 drawdown diagnostics: `{drawdown_diag_path}`',
@@ -1647,7 +2032,7 @@ cells = [
         print('Summary report:', DRIVE_RUN_ROOT / 'summaries' / 'pit_repeated_seed_replication_summary.md')
         """
     ),
-    md("## 11. Failed-Run Inspection"),
+    md("## 13. Failed-Run Inspection"),
     code(
         r"""
         def print_tail(path_text: str, n_chars: int = 5000) -> None:

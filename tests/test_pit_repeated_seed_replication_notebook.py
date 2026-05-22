@@ -28,7 +28,7 @@ def test_issue31_notebook_pins_repeated_seed_full_pit_replication() -> None:
         "Repeated-Seed Full PIT Masked-Panel Replication",
         "Issue #31",
         "REFERENCE_RUN_TAG = '20260514_043539'",
-        "REPLICATION_BASE_SEEDS = [314159]",
+        "REPLICATION_BASE_SEEDS = [314159, 271828, 161803]",
         "SMOKE_MODE = False",
         "RUN_TRAINING = True",
         "RUN_BACKTESTS = True",
@@ -76,6 +76,12 @@ def test_issue31_notebook_writes_required_decision_artifacts() -> None:
         "backtest_results.csv",
         "pit_repeated_seed_pooled_daily_returns.csv",
         "pit_repeated_seed_pooled_daily_significance.csv",
+        "pit_repeated_seed_seed_summary.csv",
+        "pit_repeated_seed_yearly_seed_summary.csv",
+        "pit_repeated_seed_issue_closeout_summary.csv",
+        "pit_repeated_seed_backtest_sensitivity_results.csv",
+        "pit_repeated_seed_backtest_sensitivity_year_crosstab.csv",
+        "pit_repeated_seed_backtest_sensitivity_metric_deltas.csv",
         "pit_repeated_seed_reference_comparison.csv",
         "pit_repeated_seed_2022_monthly_diagnostics.csv",
         "pit_repeated_seed_replication_summary.md",
@@ -170,6 +176,30 @@ def test_issue31_notebook_pastes_known_drive_locations_and_branch() -> None:
         assert token in generator
 
 
+def test_issue31_notebook_hardwires_colab_inputs_and_runtime_key() -> None:
+    combined = "\n".join(_cell_sources())
+    generator = GENERATOR_PATH.read_text(encoding="utf-8")
+
+    required_tokens = [
+        "Hardwired to avoid slow recursive Drive discovery in Colab.",
+        "MARKET_CSV_PATH = '/content/drive/MyDrive/MCI_GRU_shared/data/sp500_pit_union_lseg_20150101_20260513.csv'",
+        "PIT_UNIVERSE_CSV_PATH = '/content/drive/MyDrive/MCI_GRU_shared/data/sp500_pit_joiner_leaver_20160101_20260513_pit_universe.csv'",
+        "MARKET_META_JSON_PATH = '/content/drive/MyDrive/MCI_GRU_shared/data/sp500_pit_union_lseg_20150101_20260513.meta.json'",
+        "Expected fixed input path does not exist:",
+        "Upload {filename} to {DRIVE_DATA_DIR} or update the hardwired path at the top of this cell.",
+        "Hardwired for this full-run Colab notebook.",
+    ]
+
+    for token in required_tokens:
+        assert token in combined
+        assert token in generator
+
+    assert "root.glob(f'**/{filename}')" not in combined
+    assert "root.glob(f'**/{filename}')" not in generator
+    assert "MY_FRED_KEY = ''" not in combined
+    assert "MY_FRED_KEY = ''" not in generator
+
+
 def test_issue31_notebook_includes_pooled_significance_for_issue29() -> None:
     combined = "\n".join(_cell_sources())
     generator = GENERATOR_PATH.read_text(encoding="utf-8")
@@ -184,6 +214,51 @@ def test_issue31_notebook_includes_pooled_significance_for_issue29() -> None:
         "multiple_testing_adjusted_p_value",
         "Newey-West",
         "moving-block bootstrap",
+    ]
+
+    for token in required_tokens:
+        assert token in combined
+        assert token in generator
+
+
+def test_issue31_notebook_summarizes_three_seed_closeout_evidence() -> None:
+    combined = "\n".join(_cell_sources())
+    generator = GENERATOR_PATH.read_text(encoding="utf-8")
+
+    required_tokens = [
+        "MIN_CLOSEOUT_REPLICATION_SEEDS = 3",
+        "EXPECTED_REPLICATION_JOB_COUNT",
+        "EXPECTED_TOTAL_MODELS",
+        "build_seed_summary",
+        "build_yearly_seed_summary",
+        "build_issue_closeout_summary",
+        "issue31_pit_pipeline_status",
+        "issue29_pooled_significance_status",
+        "issue30_2022_stress_status",
+        "replication_all_seeds",
+        "supports_closeout",
+        "needs_more_evidence",
+    ]
+
+    for token in required_tokens:
+        assert token in combined
+        assert token in generator
+
+
+def test_issue31_notebook_runs_backtest_sensitivity_replay() -> None:
+    combined = "\n".join(_cell_sources())
+    generator = GENERATOR_PATH.read_text(encoding="utf-8")
+
+    required_tokens = [
+        "RUN_BACKTEST_SENSITIVITY = True",
+        "SENSITIVITY_INCLUDE_LABEL21_DIAGNOSTIC = True",
+        "run_pit_repeated_seed_backtest_sensitivity.py",
+        "--training-label-t",
+        "spread5_only_label5",
+        "spread5_only_label21_diagnostic",
+        "label_t=21 is diagnostic",
+        "Backtest Sensitivity: Scenario x Year",
+        "Backtest sensitivity metric deltas",
     ]
 
     for token in required_tokens:
