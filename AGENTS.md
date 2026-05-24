@@ -30,6 +30,9 @@ docs/
 ├── ARCHITECTURE.md  ← model, pipeline, graph, data flow (READ THIS FIRST)
 ├── CONFIGURATION_GUIDE.md
 ├── DEFAULT_EXPERIMENT_RECIPE.md
+├── TESTING_GUIDE.md
+├── agents/          ← issue tracker, triage labels, source-of-truth policy
+├── research/        ← current/archive research evidence lifecycle
 ├── QUICK_REFERENCE.md
 ├── REGIME_DATA_CONTRACT.md
 ├── BACKTEST_FAIRNESS_AUDIT.md
@@ -74,6 +77,7 @@ tests/               ← pytest suite + backtest scripts
 ## How to Work in This Repo
 
 - **Before editing**, read `docs/ARCHITECTURE.md` for the data flow and model structure.
+- **When docs disagree**, current code and the invariants in this file win; see `docs/agents/domain.md`.
 - **Before translating finance papers into implementation work**, use `skills/research-paper-to-mci-gru/` to produce an MCI-GRU-aware brief and GitHub-ready issue drafts.
 - **Before adding features**, read `mci_gru/features/registry.py` for the plugin pattern.
 - **Before changing the graph**, read `mci_gru/graph/builder.py`, `docs/ARCHITECTURE.md` (Graph section), and `docs/agent_references/cursor/plans/graph_signal_upgrades_c28cf640.plan.md` (audit + roadmap).
@@ -124,3 +128,4 @@ The file `docs/agent_references/cursor/plans/graph_signal_upgrades_c28cf640.plan
 - `results/`, `outputs/`, `*.pth`, `*.pt` are gitignored — don't reference them as source of truth
 - The `archive/` directory contains legacy code — do not treat as current
 - `seed_results/` and `_uncertain/` are experimental artifacts, not production code
+- Handoffs are operational continuity notes, not research evidence; use `docs/research/README.md` for current/archive evidence status.

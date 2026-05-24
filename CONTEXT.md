@@ -1,8 +1,48 @@
-# MCI-GRU Research Translation
+# MCI-GRU Context
 
-This context defines the project language for turning finance research papers into MCI-GRU implementation work without skipping architectural review.
+This context defines the repo-wide language agents should use when navigating
+MCI-GRU research, experiments, implementation work, and documentation status.
+The original research-translation language is still part of this glossary.
 
 ## Language
+
+**Canonical Doc**:
+A maintained document that agents can use as a current guide to repo behavior,
+workflow, or invariants, while still checking current code when behavior matters.
+_Avoid_: Any markdown file, historical note, stale plan
+
+**Historical Reference**:
+A retained document, plan, notebook, or tool note that can explain past intent
+but must not override current code, canonical docs, or active evidence.
+_Avoid_: Current acceptance criteria, live roadmap by default
+
+**Source-of-Truth Drift**:
+A disagreement between current code or invariants and older docs, notebooks,
+handoffs, or plans. Agents should report this drift and only fix stale prose
+when it directly affects navigation or active work.
+_Avoid_: Silent doc cleanup, treating old plans as current requirements
+
+**Current Research Evidence**:
+A result report, audit, or evaluation summary that still informs active model,
+data, validation, or experiment decisions.
+_Avoid_: Any dated result file, raw artifact dump
+
+**Superseded Research Evidence**:
+A valid historical result report whose conclusion or recommendation has been
+replaced by newer evidence.
+_Avoid_: Invalid result, deleted evidence
+
+**Research Archive**:
+The repo location for superseded research summaries. Bulky artifacts, raw run
+outputs, and checkpoints should remain in Drive or external storage and be cited
+from the summary.
+_Avoid_: Results folder, checkpoint storage
+
+**Handoff**:
+An operational continuity note that helps another agent resume work, including
+state, blockers, commands, and next steps. A handoff is not research evidence
+unless a current report cites it as provenance.
+_Avoid_: Result report, canonical doc
 
 **Research Mechanism**:
 A paper's durable economic or statistical idea that may be transferable into MCI-GRU, limited to at most three per paper.
@@ -90,6 +130,16 @@ _Avoid_: Auto-created issue, hidden tracker mutation
 
 ## Relationships
 
+- A **Canonical Doc** should reflect current repo behavior, but current code and
+  the invariants in `AGENTS.md` still win when implementation behavior matters.
+- A **Historical Reference** may explain past intent, but contradictions with
+  current code are **Source-of-Truth Drift**.
+- **Current Research Evidence** can support active decisions until it is
+  replaced by stronger or newer evidence.
+- **Superseded Research Evidence** belongs in the **Research Archive** after a
+  report-by-report review.
+- A **Handoff** preserves operational continuity and can provide provenance, but
+  it is not research evidence by default.
 - A paper can contribute one to three **Research Mechanisms**.
 - A **Research Mechanism** can have many **Empirical Choices**.
 - A **Research-to-Implementation Brief** uses stable sections: Intake, Mechanisms, Data Readiness Gate, Landing Zone Ranking, Invariant Check, Feasibility Opinion, GitHub-Ready Slices, ADR Candidates, Rejected Ideas, and Open Questions.
