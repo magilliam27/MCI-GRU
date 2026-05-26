@@ -112,6 +112,28 @@ _Avoid_: Hand-edited notebook, local-only runner
 One of data, feature, graph, model, training/evaluation, config/experiment, notebook, paper-trade, or ADR.
 _Avoid_: Miscellaneous, uncategorized task
 
+**Volatility-Targeting Feature Family**:
+Stock-level model input features derived from volatility-targeting research,
+such as exponentially weighted volatility, clipped inverse-volatility exposure
+proxies, volatility persistence, leverage-effect context, and
+momentum-volatility interactions. These features let the model observe
+volatility-scaling mechanisms without changing portfolio sizing. The first
+implementation should use Harvey-style ex ante timing: volatility-targeting
+signals are deliberately lagged so they are known before the modeled forward
+return, with tests proving future rows cannot affect earlier feature values.
+Chapter-aligned defaults are a 10% annual target volatility and EWM daily-return
+volatility estimates, with 20/60/90 trading-day half-life variants when the
+family is enabled. The first target-vol exposure proxy should be a clipped
+multiplier, `target_vol / estimated_annual_vol`, bounded to `[0.25, 4.0]`;
+this is an input-stability guardrail, not a sigma interval.
+_Avoid_: Portfolio volatility targeting, exposure cap, rank-gate rule
+
+**Portfolio Volatility Targeting**:
+An execution or portfolio-construction rule that scales actual portfolio
+notional exposure toward a volatility target. This belongs in evaluation or
+paper-trade surfaces, not in issue #8's first feature-family implementation.
+_Avoid_: Feature column, model input, issue #8 first slice
+
 **ADR Candidate**:
 A possible architecture decision note emitted only when a paper-derived choice is hard to reverse, surprising without context, and involves real trade-offs.
 _Avoid_: Default ADR, design note for every idea

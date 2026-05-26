@@ -19,6 +19,11 @@ momentum_dynamic_min_state_observations: 3
 momentum_buffer_low: 0.1
 momentum_buffer_high: 0.9
 include_volatility: false
+include_volatility_targeting: false
+volatility_targeting_half_lives: [20, 60, 90]
+volatility_target_vol: 0.10
+volatility_target_scale_clip: [0.25, 4.0]
+volatility_targeting_interaction_return_window: 21
 include_vix: false
 include_credit_spread: false
 include_global_regime: false

@@ -117,6 +117,11 @@ class FeatureConfig:
         momentum_buffer_low: Low buffer percentile for buffered encoding
         momentum_buffer_high: High buffer percentile for buffered encoding
         include_volatility: Whether to add volatility features
+        include_volatility_targeting: Whether to add Harvey-style volatility-targeting features
+        volatility_targeting_half_lives: EWM volatility half-lives for volatility-targeting features
+        volatility_target_vol: Annualized volatility target used for target-vol scale proxies
+        volatility_target_scale_clip: Lower/upper bounds for target-vol scale multiplier proxies
+        volatility_targeting_interaction_return_window: Trailing return window for momentum-vol interaction
         include_vix: Whether to add VIX features
         include_credit_spread: Whether to add credit spread features (IG/HY from FRED)
         include_global_regime: Whether to add global scalar regime features
@@ -159,6 +164,11 @@ class FeatureConfig:
     momentum_buffer_low: float = 0.1
     momentum_buffer_high: float = 0.9
     include_volatility: bool = False
+    include_volatility_targeting: bool = False
+    volatility_targeting_half_lives: list[int] = field(default_factory=lambda: [20, 60, 90])
+    volatility_target_vol: float = 0.10
+    volatility_target_scale_clip: list[float] = field(default_factory=lambda: [0.25, 4.0])
+    volatility_targeting_interaction_return_window: int = 21
     include_vix: bool = False
     include_credit_spread: bool = False
     include_global_regime: bool = False
@@ -210,6 +220,23 @@ class FeatureConfig:
             raise ValueError("momentum_dynamic_min_history must be > 0")
         if self.momentum_dynamic_min_state_observations <= 0:
             raise ValueError("momentum_dynamic_min_state_observations must be > 0")
+        if len(self.volatility_targeting_half_lives) < 2:
+            raise ValueError("volatility_targeting_half_lives must contain at least two values")
+        if any(half_life <= 0 for half_life in self.volatility_targeting_half_lives):
+            raise ValueError("volatility_targeting_half_lives must contain positive integers")
+        if len(set(self.volatility_targeting_half_lives)) != len(
+            self.volatility_targeting_half_lives
+        ):
+            raise ValueError("volatility_targeting_half_lives must not contain duplicates")
+        if self.volatility_target_vol <= 0:
+            raise ValueError("volatility_target_vol must be > 0")
+        if len(self.volatility_target_scale_clip) != 2:
+            raise ValueError("volatility_target_scale_clip must contain two values")
+        clip_low, clip_high = self.volatility_target_scale_clip
+        if clip_low <= 0 or clip_high <= clip_low:
+            raise ValueError("volatility_target_scale_clip must be positive and increasing")
+        if self.volatility_targeting_interaction_return_window <= 0:
+            raise ValueError("volatility_targeting_interaction_return_window must be > 0")
         if not (0 < self.regime_similarity_quantile < 0.5):
             raise ValueError("regime_similarity_quantile must be in (0, 0.5)")
         if self.regime_change_months <= 0:
@@ -689,6 +716,17 @@ class ExperimentConfig:
             "features.include_credit_spread": self.features.include_credit_spread,
             "features.include_global_regime": self.features.include_global_regime,
             "features.include_volatility": self.features.include_volatility,
+            "features.include_volatility_targeting": self.features.include_volatility_targeting,
+            "features.volatility_targeting_half_lives": str(
+                self.features.volatility_targeting_half_lives
+            ),
+            "features.volatility_target_vol": self.features.volatility_target_vol,
+            "features.volatility_target_scale_clip": str(
+                self.features.volatility_target_scale_clip
+            ),
+            "features.volatility_targeting_interaction_return_window": (
+                self.features.volatility_targeting_interaction_return_window
+            ),
             "features.regime_include_subsequent_returns": self.features.regime_include_subsequent_returns,
             "features.regime_subsequent_return_horizons": str(
                 self.features.regime_subsequent_return_horizons
