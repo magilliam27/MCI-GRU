@@ -1,12 +1,14 @@
-"""Generate a Colab launcher for issue #8 volatility-targeting PIT smoke runs."""
+"""Generate Colab launchers for issue #8 volatility-targeting PIT runs."""
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from textwrap import dedent
 
 OUT = Path("notebooks/volatility_targeting_pit_colab.ipynb")
+FULL_OUT = Path("notebooks/volatility_targeting_full_pit_colab.ipynb")
 
 
 def md(text: str) -> dict:
@@ -25,6 +27,13 @@ def code(text: str) -> dict:
         "outputs": [],
         "source": dedent(text).strip().splitlines(keepends=True),
     }
+
+
+def replace_cell_text(cell: dict, old: str, new: str) -> None:
+    source = "".join(cell["source"])
+    if old not in source:
+        raise ValueError(f"Did not find expected notebook text: {old!r}")
+    cell["source"] = source.replace(old, new).splitlines(keepends=True)
 
 
 cells = [
@@ -277,9 +286,9 @@ cells = [
 ]
 
 
-def main() -> None:
-    notebook = {
-        "cells": cells,
+def build_notebook(notebook_cells: list[dict]) -> dict:
+    return {
+        "cells": notebook_cells,
         "metadata": {
             "accelerator": "GPU",
             "colab": {"provenance": []},
@@ -293,9 +302,83 @@ def main() -> None:
         "nbformat": 4,
         "nbformat_minor": 5,
     }
+
+
+def full_run_cells() -> list[dict]:
+    full_cells = copy.deepcopy(cells)
+    replace_cell_text(
+        full_cells[0],
+        "# Issue #8 Volatility-Targeting PIT Smoke",
+        "# Issue #8 Volatility-Targeting PIT Full Run",
+    )
+    replace_cell_text(
+        full_cells[0],
+        "This notebook starts the first Colab check for the Harvey-style\n"
+        "volatility-targeting feature family. It uses current PIT temporal\n"
+        "presets for 2022 and 2024 and compares:\n\n"
+        "- `baseline_vol`: existing realized-volatility features only.\n"
+        "- `vol_targeting`: existing realized-volatility features plus the\n"
+        "  issue #8 Harvey-style volatility-targeting family.\n\n"
+        "Default mode is a mechanics smoke: one model, two epochs, and low\n"
+        "bootstrap count. Set `SMOKE_MODE = False` for a full-budget run after\n"
+        "the smoke proves the preset composes and training starts.",
+        "This notebook launches the full-budget Harvey-style volatility-targeting\n"
+        "training run after the smoke notebook proved the preset composes on G4.\n"
+        "It intentionally trains only the `vol_targeting` variant for 2022 and\n"
+        "2024. Baseline mechanics were already covered by the smoke run; this\n"
+        "run is for producing new full-budget volatility-targeted model artifacts.",
+    )
+    replace_cell_text(
+        full_cells[5],
+        "## 3. Build Current-Preset Smoke Matrix",
+        "## 3. Build Current-Preset Full-Run Matrix",
+    )
+    replace_cell_text(full_cells[6], "SMOKE_MODE = True", "SMOKE_MODE = False")
+    replace_cell_text(
+        full_cells[6],
+        'RUN_ROOT = Path("/content/drive/MyDrive/MCI-GRU-Ablations/volatility_targeting_issue8") / RUN_TAG',
+        'RUN_ROOT = Path("/content/drive/MyDrive/MCI-GRU-Ablations/volatility_targeting_issue8_full") / RUN_TAG',
+    )
+    replace_cell_text(
+        full_cells[6],
+        '''VARIANTS = {
+    "baseline_vol": [
+        "features.include_volatility=true",
+        "features.include_volatility_targeting=false",
+    ],
+    "vol_targeting": [
+        "features.include_volatility=true",
+        "features.include_volatility_targeting=true",
+        "features.volatility_targeting_half_lives=[20,60,90]",
+        "features.volatility_target_vol=0.10",
+        "features.volatility_target_scale_clip=[0.25,4.0]",
+        "features.volatility_targeting_interaction_return_window=21",
+    ],
+}''',
+        '''VARIANTS = {
+    "vol_targeting": [
+        "features.include_volatility=true",
+        "features.include_volatility_targeting=true",
+        "features.volatility_targeting_half_lives=[20,60,90]",
+        "features.volatility_target_vol=0.10",
+        "features.volatility_target_scale_clip=[0.25,4.0]",
+        "features.volatility_targeting_interaction_return_window=21",
+    ],
+}''',
+    )
+    return full_cells
+
+
+def main() -> None:
+    notebook = build_notebook(cells)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(notebook, indent=1), encoding="utf-8")
     print(f"Wrote {OUT}")
+
+    full_notebook = build_notebook(full_run_cells())
+    FULL_OUT.parent.mkdir(parents=True, exist_ok=True)
+    FULL_OUT.write_text(json.dumps(full_notebook, indent=1), encoding="utf-8")
+    print(f"Wrote {FULL_OUT}")
 
 
 if __name__ == "__main__":
