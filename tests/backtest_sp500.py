@@ -88,7 +88,7 @@ import pandas as pd
 warnings.filterwarnings("ignore")
 
 from mci_gru.data.pit import normalise_pit_intervals  # noqa: E402
-from mci_gru.evaluation.portfolio import (
+from mci_gru.evaluation.portfolio import (  # noqa: E402
     calculate_turnover as shared_calculate_turnover,  # noqa: E402
 )
 from mci_gru.tracking import (  # noqa: E402

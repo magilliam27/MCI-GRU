@@ -25,7 +25,6 @@ import pandas as pd
 import refinitiv.data as rd
 from tqdm import tqdm
 
-
 DEFAULT_FIELDS = [
     "TR.IndexConstituentRIC",
     "TR.CommonName",
@@ -222,7 +221,9 @@ def fetch_adaptive_snapshots(
             failures.append({"as_of_date": as_of_date, "reason": str(exc)})
 
     print("  Refining changed anchor windows...")
-    for prev_date, next_date in tqdm(list(zip(anchors, anchors[1:])), desc="Refining PIT"):
+    for prev_date, next_date in tqdm(
+        list(zip(anchors, anchors[1:], strict=False)), desc="Refining PIT"
+    ):
         if prev_date not in cache or next_date not in cache:
             continue
         try:
