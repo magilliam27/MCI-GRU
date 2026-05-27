@@ -99,6 +99,23 @@ def test_issue8_ablation_notebook_runs_cost_rank_gate_backtests_and_writes_delta
         assert token in generator
 
 
+def test_issue8_ablation_notebook_sets_repo_pythonpath_for_backtest_script() -> None:
+    combined = "\n".join(_cell_sources())
+    generator = GENERATOR_PATH.read_text(encoding="utf-8")
+
+    required_tokens = [
+        "backtest_env = os.environ.copy()",
+        'existing_pythonpath = backtest_env.get("PYTHONPATH")',
+        'backtest_env["PYTHONPATH"] = str(REPO_DIR)',
+        'backtest_env["PYTHONPATH"] = f"{REPO_DIR}{os.pathsep}{existing_pythonpath}"',
+        "env=backtest_env",
+    ]
+
+    for token in required_tokens:
+        assert token in combined
+        assert token in generator
+
+
 def test_issue8_ablation_notebook_code_cells_parse() -> None:
     code_cells = _code_cell_sources()
 

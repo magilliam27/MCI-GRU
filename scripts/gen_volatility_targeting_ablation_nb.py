@@ -545,6 +545,12 @@ cells = [
                     "--min_rank_drop",
                     str(MIN_RANK_DROP),
                 ]
+                backtest_env = os.environ.copy()
+                existing_pythonpath = backtest_env.get("PYTHONPATH")
+                if existing_pythonpath:
+                    backtest_env["PYTHONPATH"] = f"{REPO_DIR}{os.pathsep}{existing_pythonpath}"
+                else:
+                    backtest_env["PYTHONPATH"] = str(REPO_DIR)
                 logs_dir = RUN_ROOT / "logs" / job["name"] / "backtest"
                 logs_dir.mkdir(parents=True, exist_ok=True)
                 stdout_path = logs_dir / "stdout.log"
@@ -559,6 +565,7 @@ cells = [
                         stdout=stdout,
                         stderr=stderr,
                         text=True,
+                        env=backtest_env,
                     )
                 print("Backtest return code:", proc.returncode)
                 print("Backtest stdout:", stdout_path)
