@@ -18,13 +18,16 @@ seven-variable surface:
 | `regime_yield_curve` | FRED/LSEG 10Y minus 3M yield | Yield curve spread. |
 | `regime_oil` | FRED WTI or LSEG oil RIC fallback | Oil proxy level. |
 | `regime_copper` | LSEG copper RIC or FRED copper fallback | Copper proxy level. |
-| `regime_stock_bond_corr` | derived | Rolling correlation of market returns vs 10Y yield changes. |
+| `regime_stock_bond_corr` | derived | 756-trading-day rolling correlation of market returns vs 10Y yield changes. |
 | `regime_monetary_policy` | lagged 3M yield | Monetary policy / T-bill yield proxy. |
 | `regime_volatility` | FRED `VIXCLS` or LSEG VIX fallback | Volatility / VIX proxy. |
 
 The live loader applies a 1-day lag to FRED series before merging. It then
-forward/backward fills sparse market holidays after all raw live series are
-loaded and derived columns are computed.
+forward/backward fills sparse market holidays for raw live fields after all
+series are loaded. `regime_stock_bond_corr` uses a 756-trading-day rolling
+window with `min_periods=756`; its initial warmup rows remain `NaN` and only
+later gaps are forward-filled, so the first valid correlation is not backfilled
+into dates where the full 3-year window was unavailable.
 
 ## Requirements
 

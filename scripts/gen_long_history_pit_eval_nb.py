@@ -89,6 +89,19 @@ cells = [
             if IN_COLAB
             else Path.cwd() / 'results' / 'long_history_pit_eval'
         )
+        NOTEBOOK_GENERATED_REPO_FILES = [
+            Path('configs/experiment/pit_temporal_2022.yaml'),
+            Path('configs/experiment/pit_temporal_2023.yaml'),
+            Path('configs/experiment/pit_temporal_2024.yaml'),
+            Path('configs/experiment/pit_temporal_2025.yaml'),
+        ]
+
+        def clear_notebook_generated_repo_files() -> None:
+            for relative_path in NOTEBOOK_GENERATED_REPO_FILES:
+                path = REPO_DIR / relative_path
+                if path.exists():
+                    path.unlink()
+                    print('Unlinked generated repo file before branch checkout:', path)
 
         DRIVE_ROOT.mkdir(parents=True, exist_ok=True)
         LOCAL_RUN_BASE.mkdir(parents=True, exist_ok=True)
@@ -98,8 +111,9 @@ cells = [
                 subprocess.run(['git', 'clone', '--branch', BRANCH, REPO_URL, str(REPO_DIR)], check=True)
             else:
                 subprocess.run(['git', '-C', str(REPO_DIR), 'fetch', 'origin'], check=True)
-                subprocess.run(['git', '-C', str(REPO_DIR), 'checkout', BRANCH], check=True)
-                subprocess.run(['git', '-C', str(REPO_DIR), 'pull', 'origin', BRANCH], check=True)
+                clear_notebook_generated_repo_files()
+                subprocess.run(['git', '-C', str(REPO_DIR), 'checkout', '-B', BRANCH, f'origin/{BRANCH}'], check=True)
+                subprocess.run(['git', '-C', str(REPO_DIR), 'pull', '--ff-only', 'origin', BRANCH], check=True)
 
         os.chdir(REPO_DIR)
         print('Working directory:', Path.cwd())

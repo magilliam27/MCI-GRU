@@ -1,0 +1,120 @@
+{
+  "created_at_utc": "2026-05-13T20:18:35.448355+00:00",
+  "source": "refinitiv.data.get_history",
+  "pit_csv": "data\\raw\\constituents\\sp500_pit_joiner_leaver_20160101_20260513_pit_universe.csv",
+  "output_csv": "data\\raw\\market\\sp500_pit_union_lseg_20150101_20260513.csv",
+  "start": "2015-01-01",
+  "end": "2026-05-13",
+  "requested_identifiers": 870,
+  "resolved_identifiers_with_rows": 759,
+  "rows": 1849404,
+  "date_min": "2015-01-02",
+  "date_max": "2026-05-13",
+  "batch_size": 50,
+  "batch_dir": ".codex_tmp\\lseg_pit_union_batches_20150101_20260513",
+  "failure_count": 8,
+  "failures": [
+    {
+      "kdcode": "A.N",
+      "error": "Error code -1 | timed out"
+    },
+    {
+      "kdcode": "AA.N",
+      "error": "Error code -1 | timed out"
+    },
+    {
+      "kdcode": "AABA.OQ",
+      "error": "Error code -1 | timed out"
+    },
+    {
+      "kdcode": "ABMD.OQ",
+      "error": "Error code -1 | No data to return, please check errors: ERROR: No successful response.\n(TS.Interday.UserRequestError.70005, The universe is not found)"
+    },
+    {
+      "kdcode": "AET.N",
+      "error": "Error code -1 | No data to return, please check errors: ERROR: No successful response.\n(TS.Interday.UserRequestError.70005, The universe is not found)"
+    },
+    {
+      "kdcode": "AGN.N",
+      "error": "Error code -1 | No data to return, please check errors: ERROR: No successful response.\n(TS.Interday.UserRequestError.70005, The universe is not found)"
+    },
+    {
+      "kdcode": "AIRC.N",
+      "error": "Error code -1 | No data to return, please check errors: ERROR: No successful response.\n(TS.Interday.UserRequestError.70005, The universe is not found)"
+    },
+    {
+      "kdcode": "ALXN.OQ",
+      "error": "Error code -1 | No data to return, please check errors: ERROR: No successful response.\n(TS.Interday.UserRequestError.70005, The universe is not found)"
+    }
+  ],
+  "retry_timeout_identifiers": [
+    "A.N",
+    "AA.N",
+    "AABA.OQ"
+  ],
+  "retry_timeout_failures": [
+    {
+      "kdcode": "AABA.OQ",
+      "start": "2015-01-01",
+      "end": "2016-12-31",
+      "error": "Error code -1 | No data to return, please check errors: ERROR: No successful response.\n(TS.Interday.UserRequestError.70005, The universe is not found)"
+    },
+    {
+      "kdcode": "AABA.OQ",
+      "start": "2017-01-01",
+      "end": "2018-12-31",
+      "error": "Error code -1 | No data to return, please check errors: ERROR: No successful response.\n(TS.Interday.UserRequestError.70005, The universe is not found)"
+    },
+    {
+      "kdcode": "AABA.OQ",
+      "start": "2019-01-01",
+      "end": "2020-12-31",
+      "error": "Error code -1 | No data to return, please check errors: ERROR: No successful response.\n(TS.Interday.UserRequestError.70005, The universe is not found)"
+    },
+    {
+      "kdcode": "AABA.OQ",
+      "start": "2021-01-01",
+      "end": "2022-12-31",
+      "error": "Error code -1 | No data to return, please check errors: ERROR: No successful response.\n(TS.Interday.UserRequestError.70005, The universe is not found)"
+    },
+    {
+      "kdcode": "AABA.OQ",
+      "start": "2023-01-01",
+      "end": "2024-12-31",
+      "error": "Error code -1 | No data to return, please check errors: ERROR: No successful response.\n(TS.Interday.UserRequestError.70005, The universe is not found)"
+    },
+    {
+      "kdcode": "AABA.OQ",
+      "start": "2025-01-01",
+      "end": "2026-05-13",
+      "error": "Error code -1 | No data to return, please check errors: ERROR: No successful response.\n(TS.Interday.UserRequestError.70005, The universe is not found)"
+    }
+  ],
+  "currently_unresolved_original_failures": [
+    {
+      "kdcode": "AABA.OQ",
+      "error": "Error code -1 | timed out"
+    },
+    {
+      "kdcode": "ABMD.OQ",
+      "error": "Error code -1 | No data to return, please check errors: ERROR: No successful response.\n(TS.Interday.UserRequestError.70005, The universe is not found)"
+    },
+    {
+      "kdcode": "AET.N",
+      "error": "Error code -1 | No data to return, please check errors: ERROR: No successful response.\n(TS.Interday.UserRequestError.70005, The universe is not found)"
+    },
+    {
+      "kdcode": "AGN.N",
+      "error": "Error code -1 | No data to return, please check errors: ERROR: No successful response.\n(TS.Interday.UserRequestError.70005, The universe is not found)"
+    },
+    {
+      "kdcode": "AIRC.N",
+      "error": "Error code -1 | No data to return, please check errors: ERROR: No successful response.\n(TS.Interday.UserRequestError.70005, The universe is not found)"
+    },
+    {
+      "kdcode": "ALXN.OQ",
+      "error": "Error code -1 | No data to return, please check errors: ERROR: No successful response.\n(TS.Interday.UserRequestError.70005, The universe is not found)"
+    }
+  ],
+  "currently_unresolved_original_failure_count": 6
+}

@@ -135,6 +135,25 @@ def test_long_history_colab_writes_missing_pit_temporal_presets() -> None:
         assert token in generator
 
 
+def test_long_history_colab_setup_survives_existing_generated_presets() -> None:
+    combined = "\n".join(_cell_sources())
+    generator = GENERATOR_PATH.read_text(encoding="utf-8")
+
+    required_tokens = [
+        "def clear_notebook_generated_repo_files() -> None:",
+        "NOTEBOOK_GENERATED_REPO_FILES",
+        "Unlinked generated repo file before branch checkout:",
+        "configs/experiment/pit_temporal_2022.yaml",
+        "configs/experiment/pit_temporal_2025.yaml",
+        "'checkout', '-B', BRANCH, f'origin/{BRANCH}'",
+        "'pull', '--ff-only', 'origin', BRANCH",
+    ]
+
+    for token in required_tokens:
+        assert token in combined
+        assert token in generator
+
+
 def test_long_history_colab_code_cells_parse() -> None:
     code_cells = _code_cell_sources()
 
