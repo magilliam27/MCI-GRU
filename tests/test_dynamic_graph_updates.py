@@ -555,7 +555,7 @@ class TestSignedTopK:
 
         rows = ei[0].numpy()
         cols = ei[1].numpy()
-        edges = list(zip(rows.tolist(), cols.tolist()))
+        edges = list(zip(rows.tolist(), cols.tolist(), strict=False))
         assert (0, 3) in edges
         assert (3, 0) in edges
         idx = edges.index((0, 3))
@@ -571,7 +571,7 @@ class TestSignedTopK:
             use_multi_feature_edges=True,
         )
         ei, _ea = gb.build_edges(_corr_df(m), [f"S{i}" for i in range(4)], show_progress=False)
-        edges = list(zip(ei[0].tolist(), ei[1].tolist()))
+        edges = list(zip(ei[0].tolist(), ei[1].tolist(), strict=False))
         assert (0, 3) not in edges
         assert (3, 0) not in edges
 

@@ -17,6 +17,13 @@ import pandas as pd
 import torch
 
 from mci_gru.data.data_manager import DataManager
+from mci_gru.data.pit import (
+    active_kdcodes_in_period,
+    apply_label_mask,
+    build_pit_masks,
+    candidate_breadth,
+    load_pit_intervals,
+)
 from mci_gru.data.preprocessing import (
     apply_rank_gaussian,
     apply_rank_labels,
@@ -141,6 +148,61 @@ def _apply_pit_universe(df: pd.DataFrame, csv_path: str) -> pd.DataFrame:
     return out.reset_index(drop=True)
 
 
+def _filter_to_masked_pit_panel(
+    df: pd.DataFrame,
+    kdcode_list: list[str],
+    start: str,
+    end: str,
+) -> pd.DataFrame:
+    """Keep PIT-union rows in the experiment calendar without requiring full coverage."""
+    mask = (
+        df["kdcode"].isin(kdcode_list)
+        & (df["dt"] >= start)
+        & (df["dt"] <= end)
+    )
+    return df.loc[mask].sort_values(["dt", "kdcode"]).reset_index(drop=True)
+
+
+def _audit_pit_breadth(
+    split_name: str,
+    dates: list[str],
+    tradable_mask: np.ndarray,
+    min_scoreable: int,
+    policy: str,
+) -> list[dict[str, int | str]]:
+    """Return daily breadth diagnostics and enforce the configured threshold."""
+    summary = candidate_breadth(dates, tradable_mask)
+    if policy == "off" or min_scoreable <= 0:
+        return summary
+    low = [row for row in summary if int(row["scoreable_count"]) < min_scoreable]
+    if not low:
+        return summary
+    preview = ", ".join(f"{row['date']}={row['scoreable_count']}" for row in low[:5])
+    message = (
+        f"PIT {split_name} breadth below {min_scoreable} on {len(low)} dates "
+        f"(first: {preview}). Check ticker mapping/data outages or lower "
+        "data.pit_min_scoreable_stocks with an explicit explanation."
+    )
+    if policy == "error":
+        raise ValueError(message)
+    print(f"Warning: {message}")
+    return summary
+
+
+def _pit_mask_summary(dates: list[str], masks) -> list[dict[str, int | str]]:
+    """Daily active/readiness/loss/tradable counts for run metadata."""
+    return [
+        {
+            "date": str(date),
+            "active_count": int(masks.active_member[i].sum()),
+            "feature_ready_count": int(masks.feature_ready[i].sum()),
+            "loss_count": int(masks.loss[i].sum()),
+            "scoreable_count": int(masks.tradable[i].sum()),
+        }
+        for i, date in enumerate(dates)
+    ]
+
+
 def _apply_normalisation(
     df: pd.DataFrame,
     feature_cols: list[str],
@@ -190,6 +252,7 @@ def _build_tensors(
     val_df: pd.DataFrame,
     test_df: pd.DataFrame,
     use_polars: bool = False,
+    fill_missing_labels: bool = True,
 ) -> dict[str, Any]:
     """Build time-series tensors, graph features, and labels."""
     print("Generating time series features...")
@@ -215,9 +278,27 @@ def _build_tensors(
     x_graph_test = generate_graph_features(test_df, kdcode_list, feature_cols, test_dates)
 
     print("Computing labels...")
-    train_labels = compute_labels(df_for_labels, kdcode_list, train_dates[his_t:], label_t)
-    val_labels = compute_labels(df_for_labels, kdcode_list, val_dates, label_t)
-    test_labels = compute_labels(df_for_labels, kdcode_list, test_dates, label_t)
+    train_labels = compute_labels(
+        df_for_labels,
+        kdcode_list,
+        train_dates[his_t:],
+        label_t,
+        fill_missing=fill_missing_labels,
+    )
+    val_labels = compute_labels(
+        df_for_labels,
+        kdcode_list,
+        val_dates,
+        label_t,
+        fill_missing=fill_missing_labels,
+    )
+    test_labels = compute_labels(
+        df_for_labels,
+        kdcode_list,
+        test_dates,
+        label_t,
+        fill_missing=fill_missing_labels,
+    )
 
     if label_type == "rank":
         print("Converting labels to cross-sectional rank percentiles...")
@@ -279,18 +360,35 @@ def prepare_data(
     del parts
     gc.collect()
 
-    if config.data.use_pit_universe and config.data.pit_universe_csv:
-        print("Applying PIT universe filter...")
-        df_filled = _apply_pit_universe(df_filled, config.data.pit_universe_csv)
+    pit_intervals = None
+    true_pit_masked = (
+        config.data.use_pit_universe
+        and config.data.pit_universe_mode == "masked_panel"
+    )
+    if config.data.use_pit_universe:
+        if not config.data.pit_universe_csv:
+            raise ValueError("data.use_pit_universe=true requires data.pit_universe_csv")
+        pit_intervals = load_pit_intervals(config.data.pit_universe_csv)
+        if true_pit_masked:
+            print("Using true PIT masked-panel mode (fixed union axis + daily masks)...")
+        else:
+            print("Applying legacy PIT universe row filter...")
+            df_filled = _apply_pit_universe(df_filled, config.data.pit_universe_csv)
 
     rank_gauss_reference: dict[str, np.ndarray] | None = None
     if config.data.normalisation == "zscore":
-        means, stds = _compute_norm_stats(df_filled, feature_cols, config.data.train_end)
+        norm_source = df_filled
+        if true_pit_masked:
+            norm_source = _apply_pit_universe(df_filled, config.data.pit_universe_csv)
+        means, stds = _compute_norm_stats(norm_source, feature_cols, config.data.train_end)
         df_norm = _apply_normalisation(df_filled, feature_cols, means, stds)
     elif config.data.normalisation == "rank_gauss":
         print("Applying rank-Gaussian normalisation (train fit)...")
-        train_mask = df_filled["dt"] <= config.data.train_end
-        train_slice = df_filled.loc[train_mask]
+        rank_source = df_filled
+        if true_pit_masked:
+            rank_source = _apply_pit_universe(df_filled, config.data.pit_universe_csv)
+        train_mask = rank_source["dt"] <= config.data.train_end
+        train_slice = rank_source.loc[train_mask]
         rank_gauss_reference = fit_rank_gaussian_reference(train_slice, feature_cols)
         df_norm = apply_rank_gaussian(df_filled, feature_cols, rank_gauss_reference)
         means, stds = {}, {}
@@ -299,7 +397,28 @@ def prepare_data(
     del df_filled
     gc.collect()
 
-    if config.data.filter_stocks_per_split:
+    if true_pit_masked:
+        assert pit_intervals is not None
+        kdcode_list = active_kdcodes_in_period(
+            pit_intervals,
+            config.data.train_start,
+            config.data.test_end,
+            available_kdcodes=set(df_norm["kdcode"].astype(str).unique()),
+        )
+        if not kdcode_list:
+            raise ValueError("No PIT-union stocks overlap the configured experiment dates")
+        df_filtered = _filter_to_masked_pit_panel(
+            df_norm,
+            kdcode_list,
+            config.data.train_start,
+            config.data.test_end,
+        )
+        data_manager.kdcode_list = kdcode_list
+        print(
+            f"  PIT union axis: {len(kdcode_list)} stocks with any membership interval "
+            f"from {config.data.train_start} to {config.data.test_end}"
+        )
+    elif config.data.filter_stocks_per_split:
         df_filtered, kdcode_list = data_manager.filter_complete_stocks_per_split(df_norm)
     else:
         df_filtered, kdcode_list = data_manager.filter_complete_stocks(df_norm)
@@ -319,13 +438,94 @@ def prepare_data(
         test_dates,
         config.model.his_t,
         config.model.label_t,
-        config.training.label_type,
+        "returns" if true_pit_masked else config.training.label_type,
         df,  # use un-normalised df for forward-return labels
         train_df,
         val_df,
         test_df,
         use_polars=config.data.use_polars,
+        fill_missing_labels=not true_pit_masked,
     )
+
+    pit_breadth: dict[str, list[dict[str, int | str]]] | None = None
+    if true_pit_masked:
+        assert pit_intervals is not None
+        train_masks = build_pit_masks(
+            df_filtered,
+            df,
+            kdcode_list,
+            tensors["train_dates"],
+            config.model.his_t,
+            config.model.label_t,
+            pit_intervals,
+        )
+        val_masks = build_pit_masks(
+            df_filtered,
+            df,
+            kdcode_list,
+            tensors["val_dates"],
+            config.model.his_t,
+            config.model.label_t,
+            pit_intervals,
+        )
+        test_masks = build_pit_masks(
+            df_filtered,
+            df,
+            kdcode_list,
+            tensors["test_dates"],
+            config.model.his_t,
+            config.model.label_t,
+            pit_intervals,
+        )
+
+        tensors["train_labels"] = apply_label_mask(tensors["train_labels"], train_masks.loss)
+        tensors["val_labels"] = apply_label_mask(tensors["val_labels"], val_masks.loss)
+        tensors["test_labels"] = apply_label_mask(tensors["test_labels"], test_masks.loss)
+        if config.training.label_type == "rank":
+            print("Converting masked labels to PIT cross-sectional rank percentiles...")
+            tensors["train_labels"] = apply_rank_labels(tensors["train_labels"], train_masks.loss)
+            tensors["val_labels"] = apply_rank_labels(tensors["val_labels"], val_masks.loss)
+            tensors["test_labels"] = apply_rank_labels(tensors["test_labels"], test_masks.loss)
+
+        tensors["train_active_member_mask"] = train_masks.active_member
+        tensors["val_active_member_mask"] = val_masks.active_member
+        tensors["test_active_member_mask"] = test_masks.active_member
+        tensors["train_feature_ready_mask"] = train_masks.feature_ready
+        tensors["val_feature_ready_mask"] = val_masks.feature_ready
+        tensors["test_feature_ready_mask"] = test_masks.feature_ready
+        tensors["train_loss_mask"] = train_masks.loss
+        tensors["val_loss_mask"] = val_masks.loss
+        tensors["test_loss_mask"] = test_masks.loss
+        tensors["train_tradable_mask"] = train_masks.tradable
+        tensors["val_tradable_mask"] = val_masks.tradable
+        tensors["test_tradable_mask"] = test_masks.tradable
+
+        _audit_pit_breadth(
+            "train",
+            tensors["train_dates"],
+            train_masks.tradable,
+            config.data.pit_min_scoreable_stocks,
+            config.data.pit_breadth_policy,
+        )
+        _audit_pit_breadth(
+            "val",
+            tensors["val_dates"],
+            val_masks.tradable,
+            config.data.pit_min_scoreable_stocks,
+            config.data.pit_breadth_policy,
+        )
+        _audit_pit_breadth(
+            "test",
+            tensors["test_dates"],
+            test_masks.tradable,
+            config.data.pit_min_scoreable_stocks,
+            config.data.pit_breadth_policy,
+        )
+        pit_breadth = {
+            "train": _pit_mask_summary(tensors["train_dates"], train_masks),
+            "val": _pit_mask_summary(tensors["val_dates"], val_masks),
+            "test": _pit_mask_summary(tensors["test_dates"], test_masks),
+        }
 
     print("Building correlation graph...")
     graph_builder = GraphBuilder(
@@ -371,6 +571,8 @@ def prepare_data(
         "edge_weight_sector": edge_weight_sector,
         "rank_gauss_reference": rank_gauss_reference,
         "feature_reference": feature_reference,
+        "pit_breadth": pit_breadth,
+        "pit_universe_mode": config.data.pit_universe_mode if config.data.use_pit_universe else None,
     }
 
 

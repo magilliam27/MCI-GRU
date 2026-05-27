@@ -1,8 +1,48 @@
-# MCI-GRU Research Translation
+# MCI-GRU Context
 
-This context defines the project language for turning finance research papers into MCI-GRU implementation work without skipping architectural review.
+This context defines the repo-wide language agents should use when navigating
+MCI-GRU research, experiments, implementation work, and documentation status.
+The original research-translation language is still part of this glossary.
 
 ## Language
+
+**Canonical Doc**:
+A maintained document that agents can use as a current guide to repo behavior,
+workflow, or invariants, while still checking current code when behavior matters.
+_Avoid_: Any markdown file, historical note, stale plan
+
+**Historical Reference**:
+A retained document, plan, notebook, or tool note that can explain past intent
+but must not override current code, canonical docs, or active evidence.
+_Avoid_: Current acceptance criteria, live roadmap by default
+
+**Source-of-Truth Drift**:
+A disagreement between current code or invariants and older docs, notebooks,
+handoffs, or plans. Agents should report this drift and only fix stale prose
+when it directly affects navigation or active work.
+_Avoid_: Silent doc cleanup, treating old plans as current requirements
+
+**Current Research Evidence**:
+A result report, audit, or evaluation summary that still informs active model,
+data, validation, or experiment decisions.
+_Avoid_: Any dated result file, raw artifact dump
+
+**Superseded Research Evidence**:
+A valid historical result report whose conclusion or recommendation has been
+replaced by newer evidence.
+_Avoid_: Invalid result, deleted evidence
+
+**Research Archive**:
+The repo location for superseded research summaries. Bulky artifacts, raw run
+outputs, and checkpoints should remain in Drive or external storage and be cited
+from the summary.
+_Avoid_: Results folder, checkpoint storage
+
+**Handoff**:
+An operational continuity note that helps another agent resume work, including
+state, blockers, commands, and next steps. A handoff is not research evidence
+unless a current report cites it as provenance.
+_Avoid_: Result report, canonical doc
 
 **Research Mechanism**:
 A paper's durable economic or statistical idea that may be transferable into MCI-GRU, limited to at most three per paper.
@@ -48,9 +88,51 @@ _Avoid_: Paper summary, generic literature review
 A bounded GitHub-ready work item derived from a research paper, classified by target surface such as feature, experiment, notebook, architecture, evaluation, or ADR.
 _Avoid_: Direct implementation, loose idea
 
+**Long-History Preset**:
+A Hydra experiment preset that changes `model.his_t` to test longer temporal context while preserving the chosen recipe semantics.
+_Avoid_: Foundation model experiment, architecture replacement
+
+**Mechanics Smoke**:
+A deliberately cheap run that proves wiring, config composition, data alignment, and artifact creation without serving as model-performance evidence.
+_Avoid_: Confirmation run, evidence run
+
+**Gated Long-Window Candidate**:
+A high-cost history length, such as `his_t=252`, documented for later evaluation after shorter long-history presets pass memory and runtime checks.
+_Avoid_: Default preset, mandatory sweep member
+
+**Anchored Historical Snapshot Universe**:
+A non-PIT market CSV built from an older S&P 500 snapshot universe, such as `sp500_2019_universe_data_through_2026.csv`, that may be used for mechanics validation but not headline performance evidence.
+_Avoid_: PIT data, clean universe, tainted universe data, current-universe panel
+
+**Colab Evaluation Notebook**:
+A generated notebook launcher that runs a resumable explicit experiment matrix on Colab, stages Drive data into local `/content`, and exports compact manifests, results, logs, and summaries back to Drive.
+_Avoid_: Hand-edited notebook, local-only runner
+
 **Slice Category**:
 One of data, feature, graph, model, training/evaluation, config/experiment, notebook, paper-trade, or ADR.
 _Avoid_: Miscellaneous, uncategorized task
+
+**Volatility-Targeting Feature Family**:
+Stock-level model input features derived from volatility-targeting research,
+such as exponentially weighted volatility, clipped inverse-volatility exposure
+proxies, volatility persistence, leverage-effect context, and
+momentum-volatility interactions. These features let the model observe
+volatility-scaling mechanisms without changing portfolio sizing. The first
+implementation should use Harvey-style ex ante timing: volatility-targeting
+signals are deliberately lagged so they are known before the modeled forward
+return, with tests proving future rows cannot affect earlier feature values.
+Chapter-aligned defaults are a 10% annual target volatility and EWM daily-return
+volatility estimates, with 20/60/90 trading-day half-life variants when the
+family is enabled. The first target-vol exposure proxy should be a clipped
+multiplier, `target_vol / estimated_annual_vol`, bounded to `[0.25, 4.0]`;
+this is an input-stability guardrail, not a sigma interval.
+_Avoid_: Portfolio volatility targeting, exposure cap, rank-gate rule
+
+**Portfolio Volatility Targeting**:
+An execution or portfolio-construction rule that scales actual portfolio
+notional exposure toward a volatility target. This belongs in evaluation or
+paper-trade surfaces, not in issue #8's first feature-family implementation.
+_Avoid_: Feature column, model input, issue #8 first slice
 
 **ADR Candidate**:
 A possible architecture decision note emitted only when a paper-derived choice is hard to reverse, surprising without context, and involves real trade-offs.
@@ -70,6 +152,16 @@ _Avoid_: Auto-created issue, hidden tracker mutation
 
 ## Relationships
 
+- A **Canonical Doc** should reflect current repo behavior, but current code and
+  the invariants in `AGENTS.md` still win when implementation behavior matters.
+- A **Historical Reference** may explain past intent, but contradictions with
+  current code are **Source-of-Truth Drift**.
+- **Current Research Evidence** can support active decisions until it is
+  replaced by stronger or newer evidence.
+- **Superseded Research Evidence** belongs in the **Research Archive** after a
+  report-by-report review.
+- A **Handoff** preserves operational continuity and can provide provenance, but
+  it is not research evidence by default.
 - A paper can contribute one to three **Research Mechanisms**.
 - A **Research Mechanism** can have many **Empirical Choices**.
 - A **Research-to-Implementation Brief** uses stable sections: Intake, Mechanisms, Data Readiness Gate, Landing Zone Ranking, Invariant Check, Feasibility Opinion, GitHub-Ready Slices, ADR Candidates, Rejected Ideas, and Open Questions.
@@ -85,13 +177,28 @@ _Avoid_: Auto-created issue, hidden tracker mutation
 - An **Implementation Slice** includes a **Feasibility Opinion** with effort, confidence, rationale, and main blocker.
 - A **Research-to-Implementation Brief** contains one or more **Implementation Slices**.
 - An **Implementation Slice** can become a GitHub issue after review, but the brief does not authorize direct code changes by itself.
+- A **Long-History Preset** can be checked by a **Mechanics Smoke**, but only a full confirmation run can support model-performance claims.
+- A **Gated Long-Window Candidate** should not become a first-pass **Long-History Preset** until cheaper presets establish acceptable memory and runtime behavior.
+- A **Long-History Preset** should preserve the selected frozen recipe semantics and vary temporal history length as the intended experimental factor.
+- A first-pass **Long-History Preset** should not add temporal-encoder comparisons; encoder variants belong in a separate follow-up slice after the history-length path is proven.
+- An **Anchored Historical Snapshot Universe** can support a **Mechanics Smoke**, but full long-history evaluation must use true PIT masked-panel data.
+- Full long-history performance evidence should aggregate PIT masked-panel evaluation across 2022, 2023, 2024, and 2025 rather than rely on a single test year.
+- Full long-history PIT evaluation should be launched through a **Colab Evaluation Notebook** generated from a repo script.
+- A long-history **Colab Evaluation Notebook** should include the `his_t=10` frozen-default baseline alongside `21`, `63`, and `126`, with `252` gated manually.
+- Long-history decision tables should show per-year rows and grouped `his_t` aggregates; a decision score may sort candidates but cannot replace the underlying IC, Sharpe, return, drawdown, turnover, and failure-rate evidence.
 
 ## Example Dialogue
 
 > **Dev:** "Should the skewness paper go straight into a feature branch?"
 > **Domain expert:** "No. First write a **Research-to-Implementation Brief** and split it into **Implementation Slices** we can review as issues."
 
+> **Dev:** "The one-epoch **Mechanics Smoke** passed for a 21-day **Long-History Preset**. Can we call long history better?"
+> **Domain expert:** "No. The smoke proves wiring; performance claims require a confirmation run."
+
 ## Flagged Ambiguities
 
 - "Paper summary" is too broad for this workflow. The resolved term is **Research-to-Implementation Brief**, which must map the paper to MCI-GRU and its invariants.
 - "Core mechanism" should not imply exactly one idea. The resolved term is **Research Mechanism**, with a cap of three per paper.
+- "Smoke" was ambiguous between mechanics validation and reduced-budget performance evidence. The resolved term is **Mechanics Smoke** for cheap wiring checks only.
+- "Long-history experiment" can be ambiguous between a broad config drift and a controlled ablation. Resolved: use **Long-History Preset** for recipe-preserving `model.his_t` changes.
+- "Tainted universe data" and "current-universe panel" are imprecise for the non-PIT temporal CSVs. The resolved term is **Anchored Historical Snapshot Universe**, and it must not be used for headline performance evidence.

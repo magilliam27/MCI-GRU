@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from mci_gru.config import DataConfig
+from mci_gru.data.data_manager import DataManager
 from mci_gru.features.regime import (
     REGIME_FEATURES,
     REGIME_OPTIONAL_VARIABLES,
@@ -198,9 +200,6 @@ def test_regime_csv_contract_is_deprecated_and_requires_full_seven_variable_surf
     import os
     import tempfile
 
-    from mci_gru.config import DataConfig
-    from mci_gru.data.data_manager import DataManager
-
     temp_paths = []
 
     def write_temp_csv(df: pd.DataFrame) -> str:
@@ -258,6 +257,144 @@ def test_regime_csv_contract_is_deprecated_and_requires_full_seven_variable_surf
     finally:
         for path in temp_paths:
             os.unlink(path)
+
+
+def test_live_regime_stock_bond_corr_uses_three_year_window(monkeypatch):
+    dates = pd.date_range("2020-01-01", periods=800, freq="D")
+    market_returns = pd.Series(np.linspace(-0.01, 0.012, len(dates)), index=dates)
+    market = 100.0 * (1.0 + market_returns).cumprod()
+    yield_10y = pd.Series(np.sin(np.linspace(0, 20, len(dates))), index=dates).cumsum()
+
+    series_by_name = {
+        "yield_10y": yield_10y,
+        "yield_3m": pd.Series(1.0, index=dates),
+        "regime_oil": pd.Series(np.linspace(70.0, 80.0, len(dates)), index=dates),
+        "regime_volatility": pd.Series(np.linspace(20.0, 25.0, len(dates)), index=dates),
+        "regime_market": market,
+        "regime_copper": pd.Series(np.linspace(3.0, 4.0, len(dates)), index=dates),
+    }
+
+    class FakeFREDLoader:
+        def get_series(self, _series_id, _start, _end, value_name, lag_days=1):
+            return pd.DataFrame(
+                {
+                    "dt": dates.strftime("%Y-%m-%d"),
+                    value_name: series_by_name[value_name].to_numpy(),
+                }
+            )
+
+    monkeypatch.setattr("mci_gru.data.fred_loader.FREDLoader", FakeFREDLoader)
+    config = DataConfig(
+        train_start="2020-01-01",
+        train_end="2020-01-10",
+        val_start="2020-01-11",
+        val_end="2020-01-12",
+        test_start="2020-01-13",
+        test_end="2022-03-10",
+    )
+
+    out = DataManager(config).load_regime_inputs()
+
+    corr = out["regime_stock_bond_corr"]
+    assert corr.iloc[:756].isna().all()
+    assert not pd.isna(corr.iloc[756])
+
+    expected = market.pct_change().rolling(756, min_periods=756).corr(yield_10y.diff())
+    assert corr.iloc[756] == pytest.approx(expected.iloc[756])
+
+
+def test_live_regime_stock_bond_corr_handles_sparse_merged_panel(monkeypatch):
+    dates = pd.date_range("2000-01-01", periods=1600, freq="D")
+    even_dates = dates[::2]
+    odd_dates = dates[1::2]
+
+    class FakeFREDLoader:
+        def get_series(self, _series_id, _start, _end, value_name, lag_days=1):
+            if value_name == "yield_10y":
+                return pd.DataFrame(
+                    {
+                        "dt": even_dates.strftime("%Y-%m-%d"),
+                        value_name: np.linspace(1.0, 3.0, len(even_dates)),
+                    }
+                )
+            if value_name == "yield_3m":
+                return pd.DataFrame(
+                    {
+                        "dt": even_dates.strftime("%Y-%m-%d"),
+                        value_name: np.linspace(0.5, 1.5, len(even_dates)),
+                    }
+                )
+            if value_name == "regime_market":
+                returns = np.linspace(-0.005, 0.006, len(odd_dates))
+                market = 3000.0 * (1.0 + returns).cumprod()
+                return pd.DataFrame(
+                    {
+                        "dt": odd_dates.strftime("%Y-%m-%d"),
+                        value_name: market,
+                    }
+                )
+            return pd.DataFrame(
+                {
+                    "dt": dates.strftime("%Y-%m-%d"),
+                    value_name: np.linspace(10.0, 20.0, len(dates)),
+                }
+            )
+
+    monkeypatch.setattr("mci_gru.data.fred_loader.FREDLoader", FakeFREDLoader)
+    config = DataConfig(
+        train_start="2000-01-01",
+        train_end="2000-01-10",
+        val_start="2000-01-11",
+        val_end="2000-01-12",
+        test_start="2000-01-13",
+        test_end="2004-05-18",
+    )
+
+    out = DataManager(config).load_regime_inputs()
+
+    assert not out["regime_stock_bond_corr"].isna().all()
+
+
+def test_live_regime_fetch_retries_transient_series_failure(monkeypatch):
+    dates = pd.date_range("2020-01-01", periods=800, freq="D")
+    series_by_name = {
+        "yield_10y": pd.Series(np.linspace(1.0, 2.0, len(dates)), index=dates),
+        "yield_3m": pd.Series(np.linspace(0.5, 1.0, len(dates)), index=dates),
+        "regime_oil": pd.Series(np.linspace(70.0, 80.0, len(dates)), index=dates),
+        "regime_volatility": pd.Series(np.linspace(20.0, 25.0, len(dates)), index=dates),
+        "regime_market": pd.Series(np.linspace(3000.0, 4000.0, len(dates)), index=dates),
+        "regime_copper": pd.Series(np.linspace(3.0, 4.0, len(dates)), index=dates),
+    }
+    calls_by_name: dict[str, int] = {}
+
+    class FakeFREDLoader:
+        def get_series(self, _series_id, _start, _end, value_name, lag_days=1):
+            calls_by_name[value_name] = calls_by_name.get(value_name, 0) + 1
+            if value_name == "regime_oil" and calls_by_name[value_name] == 1:
+                raise RuntimeError("temporary FRED outage")
+            return pd.DataFrame(
+                {
+                    "dt": dates.strftime("%Y-%m-%d"),
+                    value_name: series_by_name[value_name].to_numpy(),
+                }
+            )
+
+    monkeypatch.setattr("mci_gru.data.fred_loader.FREDLoader", FakeFREDLoader)
+    monkeypatch.setenv("MCI_GRU_FRED_MAX_ATTEMPTS", "2")
+    monkeypatch.setenv("MCI_GRU_FRED_RETRY_SECONDS", "0")
+    config = DataConfig(
+        train_start="2020-01-01",
+        train_end="2020-01-10",
+        val_start="2020-01-11",
+        val_end="2020-01-12",
+        test_start="2020-01-13",
+        test_end="2022-03-10",
+    )
+
+    out = DataManager(config).load_regime_inputs()
+
+    assert calls_by_name["regime_oil"] == 2
+    assert not out["regime_oil"].isna().all()
 
 
 def test_transform_with_regime_df_produces_nonzero_regime_columns():
@@ -319,9 +456,6 @@ def test_regime_csv_lag_safety():
     """Lagged CSV regime inputs must not backfill the leading unavailable row."""
     import os
     import tempfile
-
-    from mci_gru.config import DataConfig
-    from mci_gru.data.data_manager import DataManager
 
     values = [10.0, 20.0, 30.0]
     df = pd.DataFrame({"dt": pd.date_range("2000-01-01", periods=3, freq="D")})

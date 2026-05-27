@@ -370,21 +370,29 @@ configs/
 | `judge_value` | 0.8 | Correlation threshold for edge creation |
 | `update_frequency_months` | 0 | Graph update interval (0 = static) |
 | `corr_lookback_days` | 252 | Trading days of return history for correlation |
+| `top_k` | 0 | Use threshold graph, not per-node top-K |
+| `use_multi_feature_edges` | true | Four-channel correlation edge attributes |
+| `drop_edge_p` | 0.1 | Train-time edge dropout in the frozen recipe |
 
 ### Training Configuration
+
+Production-style notebooks use the frozen recipe in
+`docs/DEFAULT_EXPERIMENT_RECIPE.md`. The most important training defaults are:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `batch_size` | 32 | Samples per training batch |
 | `learning_rate` | 5e-5 | Adam optimizer learning rate |
 | `num_epochs` | 100 | Maximum training epochs |
-| `num_models` | 10 | Ensemble size (predictions are averaged) |
-| `early_stopping_patience` | 10 | Epochs without improvement before stopping |
+| `num_models` | 20 | Ensemble size for confirmation runs |
+| `early_stopping_patience` | 15 | Epochs without improvement before stopping |
 | `weight_decay` | 1e-3 | L2 regularization weight |
 | `gradient_clip` | 1.0 | Max gradient norm (0 = no clipping) |
-| `loss_type` | mse | Loss function: `mse`, `ic`, or `combined` |
+| `loss_type` | ic | Loss function: `mse`, `ic`, or `combined` |
 | `ic_loss_alpha` | 0.5 | IC weight when `loss_type=combined` |
 | `label_type` | returns | Label format: `returns` (raw) or `rank` (percentile) |
+| `selection_metric` | val_ic | Checkpoint / early-stopping selection metric |
+| `shuffle_train` | true | Shuffle training batches for the static graph recipe |
 
 ### Command-Line Override Examples
 

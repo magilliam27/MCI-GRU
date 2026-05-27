@@ -2,6 +2,11 @@
 
 Last updated: 2026-04-29
 
+> Historical note: this handoff records the older `modern_defaults` ablation
+> state. For current production-style confirmation notebooks and PIT validation
+> runs, use `docs/DEFAULT_EXPERIMENT_RECIPE.md` and the frozen recipe
+> `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1`.
+
 This is a fresh-chat handoff for the MCI-GRU ablation and 2026 holdout work.
 
 ## Current Recommendation

@@ -1,0 +1,21 @@
+# @package _global_
+# True rolling PIT S&P 500 panel: train 2017-2021, val 2022, test 2023.
+
+experiment_name: pit_true_rolling_2023
+
+data:
+  universe: sp500
+  source: csv
+  filename: data/raw/market/sp500_data.csv
+  train_start: "2017-01-01"
+  train_end: "2021-12-31"
+  val_start: "2022-01-22"
+  val_end: "2022-12-31"
+  test_start: "2023-01-22"
+  test_end: "2023-12-31"
+  filter_stocks_per_split: false
+  use_pit_universe: true
+  pit_universe_csv: data/raw/constituents/sp500_pit_joiner_leaver_20160101_20260513_pit_universe.csv
+  pit_universe_mode: masked_panel
+  pit_min_scoreable_stocks: 450
+  pit_breadth_policy: error

@@ -146,7 +146,7 @@ def generate_graph_features(
     return x_graph
 
 
-def apply_rank_labels(labels: np.ndarray) -> np.ndarray:
+def apply_rank_labels(labels: np.ndarray, valid_mask: np.ndarray | None = None) -> np.ndarray:
     """Convert raw return labels to cross-sectional rank percentiles per day.
 
     Each day's returns are ranked across stocks and divided by the stock count
@@ -155,9 +155,15 @@ def apply_rank_labels(labels: np.ndarray) -> np.ndarray:
     """
     from scipy.stats import rankdata
 
-    ranked = np.empty_like(labels)
+    ranked = np.full_like(labels, np.nan, dtype=np.float32)
+    mask = np.isfinite(labels)
+    if valid_mask is not None:
+        mask &= np.asarray(valid_mask, dtype=bool)
     for i in range(labels.shape[0]):
-        ranked[i] = rankdata(labels[i]) / labels.shape[1]
+        row_mask = mask[i]
+        if not row_mask.any():
+            continue
+        ranked[i, row_mask] = rankdata(labels[i, row_mask]) / row_mask.sum()
     return ranked.astype(np.float32)
 
 
@@ -166,14 +172,17 @@ def compute_labels(
     kdcode_list: list[str],
     dates: list[str],
     label_t: int,
+    fill_missing: bool = True,
 ) -> np.ndarray:
     """Compute forward-return labels for the given dates.
 
     For each (stock, date) pair the label is:
         close[date + label_t] / close[date + 1] - 1
 
-    NaN labels (e.g. near the end of the dataset) are filled with the
-    cross-sectional mean for that day, then with zero as a final fallback.
+    When ``fill_missing`` is true, NaN labels (e.g. near the end of the dataset)
+    are filled with the cross-sectional mean for that day, then with zero as a
+    final fallback. Masked PIT mode passes ``fill_missing=False`` so unobservable
+    labels stay excluded from loss/evaluation.
     """
     df_subset = df[df["kdcode"].isin(kdcode_list)].copy()
     df_subset = df_subset.sort_values(["kdcode", "dt"])
@@ -186,10 +195,11 @@ def compute_labels(
     pivot = df_subset.pivot_table(index="dt", columns="kdcode", values="forward_return")
     pivot = pivot.reindex(index=dates, columns=kdcode_list)
 
-    for date in dates:
-        if date in pivot.index:
-            row_mean = pivot.loc[date].mean()
-            pivot.loc[date] = pivot.loc[date].fillna(row_mean)
-    pivot = pivot.fillna(0)
+    if fill_missing:
+        for date in dates:
+            if date in pivot.index:
+                row_mean = pivot.loc[date].mean()
+                pivot.loc[date] = pivot.loc[date].fillna(row_mean)
+        pivot = pivot.fillna(0)
 
     return pivot.values.astype(np.float32)

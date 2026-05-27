@@ -132,7 +132,11 @@ def top_k_returns(predictions: np.ndarray, true_returns: np.ndarray, top_k: int)
         raise ValueError("predictions and true_returns must be 2-D")
     out: list[float] = []
     for p, r in zip(preds, rets, strict=True):
-        idx = select_top_k(p, top_k)
+        valid = np.isfinite(p) & np.isfinite(r)
+        if not valid.any():
+            continue
+        valid_idx = np.flatnonzero(valid)
+        idx = valid_idx[select_top_k(p[valid], top_k)]
         if idx.size:
-            out.append(float(np.nanmean(r[idx])))
+            out.append(float(np.mean(r[idx])))
     return np.asarray(out, dtype=np.float64)

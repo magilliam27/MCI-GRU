@@ -14,12 +14,13 @@ This module contains all model components:
 
 import math
 import warnings
+from typing import Any, Dict, List, Optional, Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GATConv
 from torch_geometric.utils import dropout_edge
-from typing import List, Tuple, Optional, Dict, Any
 
 
 class AttentionResetGRUCell(nn.Module):
@@ -401,7 +402,7 @@ class SelfAttention(nn.Module):
         else:
             self.type_embed = None  # no extra params for checkpoint compat
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, stock_mask: torch.Tensor | None = None) -> torch.Tensor:
         if self.type_embed is not None:
             b, n, c = x.shape
             if c != 4 * self.align_dim:
@@ -411,11 +412,23 @@ class SelfAttention(nn.Module):
         q = self.W_q(x)
         k = self.W_k(x)
         v = self.W_v(x)
-        attn = F.softmax(
-            torch.matmul(q, k.transpose(-2, -1)) * self.scale,
-            dim=-1,
-        )
-        return torch.matmul(attn, v)
+        scores = torch.matmul(q, k.transpose(-2, -1)) * self.scale
+        if stock_mask is not None:
+            mask = stock_mask.to(dtype=torch.bool, device=x.device)
+            key_mask = mask[:, None, :]
+            scores = scores.masked_fill(~key_mask, torch.finfo(scores.dtype).min)
+            no_valid_keys = ~mask.any(dim=-1)
+            if no_valid_keys.any():
+                scores[no_valid_keys] = 0.0
+        attn = F.softmax(scores, dim=-1)
+        if stock_mask is not None:
+            mask_f = mask.to(attn.dtype)
+            attn = attn * mask_f[:, None, :]
+            attn = attn / attn.sum(dim=-1, keepdim=True).clamp_min(1e-12)
+        out = torch.matmul(attn, v)
+        if stock_mask is not None:
+            out = out * mask.to(out.dtype)[:, :, None]
+        return out
 
 
 class MarketLatentStateLearner(nn.Module):
@@ -692,8 +705,20 @@ class StockPredictionModel(nn.Module):
         num_stocks: Optional[int] = None,
         edge_index_sector: Optional[torch.Tensor] = None,
         edge_weight_sector: Optional[torch.Tensor] = None,
+        stock_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         training = self.training
+        batch_size = x_time_series.shape[0]
+        if num_stocks is None:
+            num_stocks = x_time_series.shape[1]
+
+        node_mask = None
+        if stock_mask is not None:
+            stock_mask = stock_mask.to(dtype=torch.bool, device=x_time_series.device)
+            node_mask = stock_mask.reshape(batch_size * num_stocks, 1).to(x_graph.dtype)
+            x_time_series = x_time_series * stock_mask[:, :, None, None].to(x_time_series.dtype)
+            x_graph = x_graph * node_mask
+
         e_idx, e_wt = _apply_edge_dropout(
             edge_index, edge_weight, self.drop_edge_p, training=training
         )
@@ -709,14 +734,12 @@ class StockPredictionModel(nn.Module):
         else:
             e_idx_s, e_wt_s = None, None
 
-        batch_size = x_time_series.shape[0]
-        if num_stocks is None:
-            num_stocks = x_time_series.shape[1]
-
         a1_raw = self.temporal_encoder(x_time_series)
         a1_raw = a1_raw.reshape(batch_size * num_stocks, -1)
         a1 = self.proj_temporal(a1_raw)
         a1 = self.ln_a1(a1)
+        if node_mask is not None:
+            a1 = a1 * node_mask.to(a1.dtype)
 
         a2_corr = self.gat_layer(x_graph, e_idx, e_wt)
         if self.gat_layer_sector is not None and e_idx_s is not None and e_wt_s is not None:
@@ -736,19 +759,28 @@ class StockPredictionModel(nn.Module):
             cross_out, _ = self.cross_a1_a2(q, kv, kv, need_weights=False)
             a2 = a2 + cross_out.reshape(batch_size * num_stocks, -1)
         a2 = self.ln_a2(a2)
+        if node_mask is not None:
+            a2 = a2 * node_mask.to(a2.dtype)
 
         b1, b2 = self.latent_learner(a1, a2)
+        if node_mask is not None:
+            b1 = b1 * node_mask.to(b1.dtype)
+            b2 = b2 * node_mask.to(b2.dtype)
         # Contract: A1, A2, B1, B2 order for SelfAttention group_type_embed slots 0..3
         z = torch.cat([a1, a2, b1, b2], dim=-1)
         z = self.ln_z(z)
         z = self.drop_z(z)
+        if node_mask is not None:
+            z = z * node_mask.to(z.dtype)
 
         if self.self_attention is not None:
             z = z.view(batch_size, num_stocks, -1)
-            z = self.self_attention(z)
+            z = self.self_attention(z, stock_mask=stock_mask)
             z = z.view(batch_size * num_stocks, -1)
         out = self.final_gat(z, e_idx, e_wt)
         out = self.output_act(out)
+        if node_mask is not None:
+            out = out * node_mask.to(out.dtype)
         return out.view(batch_size, num_stocks)
 
 

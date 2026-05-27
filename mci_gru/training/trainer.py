@@ -30,6 +30,7 @@ from mci_gru.config import ExperimentConfig
 from mci_gru.training.losses import (
     CombinedMSEICLoss,
     ICLoss,
+    MaskedMSELoss,
     mean_information_coefficient,
 )
 from mci_gru.utils.seeding import set_seed
@@ -57,11 +58,18 @@ def _unpack_loader_batch(batch, device: torch.device):
             edge_weight_sector,
         ) = batch
 
+    stock_mask = None
+    if isinstance(batch_dates, dict):
+        stock_mask = batch_dates.get("stock_mask")
+        batch_dates = batch_dates.get("dates")
+
     time_series = time_series.to(device)
     labels = labels.to(device)
     graph_features = graph_features.to(device)
     edge_index = edge_index.to(device)
     edge_weight = edge_weight.to(device)
+    if stock_mask is not None:
+        stock_mask = stock_mask.to(device)
     if edge_index_sector is not None:
         edge_index_sector = edge_index_sector.to(device)
     if edge_weight_sector is not None:
@@ -77,6 +85,7 @@ def _unpack_loader_batch(batch, device: torch.device):
         batch_dates,
         edge_index_sector,
         edge_weight_sector,
+        stock_mask,
     )
 
 
@@ -88,6 +97,29 @@ class TrainingResult:
     epochs_trained: int
     best_model_path: str
     predictions: np.ndarray | None = None
+
+
+def prediction_rows_for_date(
+    predictions: np.ndarray,
+    kdcode_list: list[str],
+    date: str,
+    prediction_mask: np.ndarray | None = None,
+) -> list[list[object]]:
+    """Build prediction CSV rows, optionally filtering to PIT-tradable stocks."""
+    mask = (
+        np.asarray(prediction_mask, dtype=bool)
+        if prediction_mask is not None
+        else np.ones(len(kdcode_list), dtype=bool)
+    )
+    rows: list[list[object]] = []
+    for i, kdcode in enumerate(kdcode_list):
+        if i >= len(predictions) or i >= len(mask) or not bool(mask[i]):
+            continue
+        score = float(predictions[i])
+        if not np.isfinite(score):
+            continue
+        rows.append([kdcode, date, round(score, 5)])
+    return rows
 
 
 def _build_lr_scheduler(
@@ -192,7 +224,7 @@ class Trainer:
         elif training_cfg.loss_type == "combined":
             criterion = CombinedMSEICLoss(alpha=training_cfg.ic_loss_alpha)
         else:
-            criterion = nn.MSELoss()
+            criterion = MaskedMSELoss()
 
         steps_per_epoch = len(train_loader)
         scheduler = _build_lr_scheduler(optimizer, training_cfg, steps_per_epoch)
@@ -311,6 +343,7 @@ class Trainer:
                 _batch_dates,
                 edge_index_sector,
                 edge_weight_sector,
+                stock_mask,
             ) = _unpack_loader_batch(batch, self.device)
             batch_size = time_series.shape[0]
 
@@ -324,6 +357,7 @@ class Trainer:
                     n_stocks,
                     edge_index_sector=edge_index_sector,
                     edge_weight_sector=edge_weight_sector,
+                    stock_mask=stock_mask,
                 )
                 loss = criterion(outputs, labels)
 
@@ -365,6 +399,7 @@ class Trainer:
                     _batch_dates,
                     edge_index_sector,
                     edge_weight_sector,
+                    stock_mask,
                 ) = _unpack_loader_batch(batch, self.device)
                 batch_size = time_series.shape[0]
 
@@ -377,6 +412,7 @@ class Trainer:
                         n_stocks,
                         edge_index_sector=edge_index_sector,
                         edge_weight_sector=edge_weight_sector,
+                        stock_mask=stock_mask,
                     )
                     loss = criterion(outputs, labels)
                 ic = mean_information_coefficient(outputs, labels)
@@ -415,6 +451,7 @@ class Trainer:
                     _batch_dates,
                     edge_index_sector,
                     edge_weight_sector,
+                    stock_mask,
                 ) = _unpack_loader_batch(batch, self.device)
 
                 with autocast("cuda", enabled=use_amp):
@@ -426,8 +463,11 @@ class Trainer:
                         n_stocks,
                         edge_index_sector=edge_index_sector,
                         edge_weight_sector=edge_weight_sector,
+                        stock_mask=stock_mask,
                     )
-                predictions = outputs.squeeze().cpu().numpy()
+                if stock_mask is not None:
+                    outputs = outputs.masked_fill(~stock_mask, float("nan"))
+                predictions = outputs.squeeze(0).cpu().numpy()
                 all_predictions.append(predictions)
 
         return np.array(all_predictions)
@@ -438,6 +478,7 @@ class Trainer:
         kdcode_list: list[str],
         test_dates: list[str],
         output_dir: str,
+        prediction_masks: np.ndarray | None = None,
     ):
         """
         Args:
@@ -445,15 +486,14 @@ class Trainer:
             kdcode_list: Stock codes
             test_dates: Test dates
             output_dir: Output directory
+            prediction_masks: Optional boolean ``(n_dates, n_stocks)`` tradable mask
         """
         os.makedirs(output_dir, exist_ok=True)
 
         for idx, date in enumerate(test_dates):
             if idx < len(predictions):
-                data = [
-                    [kdcode_list[i], date, round(float(predictions[idx][i]), 5)]
-                    for i in range(len(kdcode_list))
-                ]
+                mask = prediction_masks[idx] if prediction_masks is not None else None
+                data = prediction_rows_for_date(predictions[idx], kdcode_list, date, mask)
                 df = pd.DataFrame(columns=["kdcode", "dt", "score"], data=data)
                 df.to_csv(os.path.join(output_dir, f"{date}.csv"), index=False)
 
@@ -483,6 +523,7 @@ def train_multiple_models(
     test_dates: list[str],
     output_path: str | None = None,
     tracking_manager: Optional["MLflowTrackingManager"] = None,
+    test_prediction_masks: np.ndarray | None = None,
 ) -> tuple[list[TrainingResult], np.ndarray]:
     """
     Per paper Section 4.1.2: Train num_models and average predictions.
@@ -502,6 +543,7 @@ def train_multiple_models(
         test_dates: List of test dates
         output_path: Optional output path override (for Hydra managed paths)
         tracking_manager: Optional MLflow tracking manager
+        test_prediction_masks: Optional boolean tradable mask for test prediction exports
 
     Returns:
         Tuple of (list of training results, averaged predictions)
@@ -564,7 +606,13 @@ def train_multiple_models(
             all_predictions.append(predictions)
 
             pred_dir = os.path.join(base_output_path, f"predictions_model_{model_id}")
-            trainer.save_predictions(predictions, kdcode_list, test_dates, pred_dir)
+            trainer.save_predictions(
+                predictions,
+                kdcode_list,
+                test_dates,
+                pred_dir,
+                prediction_masks=test_prediction_masks,
+            )
 
             if child_tracking is not None and child_tracking.enabled:
                 child_tracking.log_metrics(
@@ -592,10 +640,8 @@ def train_multiple_models(
 
     for idx, date in enumerate(test_dates):
         if idx < len(avg_predictions):
-            data = [
-                [kdcode_list[i], date, round(float(avg_predictions[idx][i]), 5)]
-                for i in range(len(kdcode_list))
-            ]
+            mask = test_prediction_masks[idx] if test_prediction_masks is not None else None
+            data = prediction_rows_for_date(avg_predictions[idx], kdcode_list, date, mask)
             df_pred = pd.DataFrame(columns=["kdcode", "dt", "score"], data=data)
             df_pred.to_csv(os.path.join(avg_pred_dir, f"{date}.csv"), index=False)
 

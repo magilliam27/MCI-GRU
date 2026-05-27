@@ -84,6 +84,8 @@ from glob import glob
 import numpy as np
 import pandas as pd
 
+from mci_gru.data.pit import normalise_pit_intervals
+
 warnings.filterwarnings("ignore")
 
 
@@ -97,6 +99,7 @@ DEFAULT_CONFIG = {
     "test_start": "2025-01-01",  # Updated to match training config
     "test_end": "2025-12-31",  # Updated to match training config
     "data_file": "data/raw/market/sp500_data.csv",  # Updated to reorganized path
+    "pit_universe_csv": None,
     "label_t": 5,  # Forward return period (days)
     # Transaction costs for retail investor
     "transaction_costs": {
@@ -749,7 +752,35 @@ def calculate_forward_returns(df, label_t=5):
     return df
 
 
-def equal_weight_benchmark_daily_series(stock_data_df: pd.DataFrame) -> pd.Series:
+def load_pit_universe_for_backtest(csv_path: str | None) -> pd.DataFrame | None:
+    """Load optional PIT intervals used to restrict candidates and benchmark rows."""
+    if not csv_path:
+        return None
+    if not os.path.isfile(csv_path):
+        raise FileNotFoundError(f"PIT universe CSV not found: {csv_path}")
+    return normalise_pit_intervals(pd.read_csv(csv_path))
+
+
+def _pit_active_rows(stock_data_df: pd.DataFrame, pit_universe_df: pd.DataFrame | None) -> pd.DataFrame:
+    if pit_universe_df is None:
+        return stock_data_df
+    pit = pit_universe_df.copy()
+    merged = stock_data_df.merge(pit, on="kdcode", how="inner")
+    mask = (merged["dt"] >= merged["valid_from"]) & (merged["dt"] <= merged["valid_to"])
+    return merged.loc[mask, stock_data_df.columns]
+
+
+def _pit_active_kdcodes_on_date(pit_universe_df: pd.DataFrame | None, date: str) -> set[str] | None:
+    if pit_universe_df is None:
+        return None
+    mask = (pit_universe_df["valid_from"] <= date) & (pit_universe_df["valid_to"] >= date)
+    return set(pit_universe_df.loc[mask, "kdcode"].astype(str))
+
+
+def equal_weight_benchmark_daily_series(
+    stock_data_df: pd.DataFrame,
+    pit_universe_df: pd.DataFrame | None = None,
+) -> pd.Series:
     """
     Equal-weight mean open_to_open_return for each calendar dt in the panel.
 
@@ -760,7 +791,8 @@ def equal_weight_benchmark_daily_series(stock_data_df: pd.DataFrame) -> pd.Serie
         raise ValueError(
             "stock_data_df must have 'open_to_open_return'. Run calculate_forward_returns() first."
         )
-    return stock_data_df.groupby("dt", sort=True)["open_to_open_return"].mean().sort_index()
+    benchmark_df = _pit_active_rows(stock_data_df, pit_universe_df)
+    return benchmark_df.groupby("dt", sort=True)["open_to_open_return"].mean().sort_index()
 
 
 def calendar_returns_for_evaluation_window(
@@ -769,6 +801,7 @@ def calendar_returns_for_evaluation_window(
     last_trade_date,
     portfolio_returns: np.ndarray,
     portfolio_dates: list,
+    pit_universe_df: pd.DataFrame | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Align strategy to full trading calendar: cash (0 return) on days with no trade row.
@@ -778,7 +811,7 @@ def calendar_returns_for_evaluation_window(
 
     Returns parallel arrays: (calendar_dates, portfolio_padded, benchmark_returns).
     """
-    bm = equal_weight_benchmark_daily_series(stock_data_df)
+    bm = equal_weight_benchmark_daily_series(stock_data_df, pit_universe_df)
     mask = (bm.index >= first_trade_date) & (bm.index <= last_trade_date)
     bm_win = bm.loc[mask]
     if len(bm_win) == 0:
@@ -789,7 +822,11 @@ def calendar_returns_for_evaluation_window(
     bm_vals = np.where(np.isfinite(bm_vals), bm_vals, 0.0)
 
     port_by: dict[str, float] = {}
-    for d, r in zip(portfolio_dates, np.asarray(portfolio_returns, dtype=np.float64)):
+    for d, r in zip(
+        portfolio_dates,
+        np.asarray(portfolio_returns, dtype=np.float64),
+        strict=False,
+    ):
         port_by[str(d)] = float(r)
 
     port_pad = np.zeros(len(cal_dates), dtype=np.float64)
@@ -969,7 +1006,13 @@ def calculate_transaction_cost(turnover_info, bid_ask_spread, slippage):
 
 
 def simulate_trading_strategy(
-    predictions_df, stock_data_df, top_k=10, label_t=5, transaction_costs=None, rank_drop_gate=None
+    predictions_df,
+    stock_data_df,
+    top_k=10,
+    label_t=5,
+    transaction_costs=None,
+    rank_drop_gate=None,
+    pit_universe_df: pd.DataFrame | None = None,
 ):
     """
     Simulate trading strategy with realistic timing and overnight holding.
@@ -1067,7 +1110,7 @@ def simulate_trading_strategy(
             "stock_data_df must have 'daily_return' column. Run calculate_forward_returns() first!"
         )
 
-    bm_by_date = equal_weight_benchmark_daily_series(stock_data_df)
+    bm_by_date = equal_weight_benchmark_daily_series(stock_data_df, pit_universe_df)
 
     # Tracking arrays
     gross_portfolio_returns = []  # Returns before transaction costs
@@ -1098,6 +1141,9 @@ def simulate_trading_strategy(
     for _i, pred_date in enumerate(pred_dates):
         # Day t: Get predictions made at close
         day_preds = predictions_df[predictions_df["dt"] == pred_date].copy()
+        active_kdcodes = _pit_active_kdcodes_on_date(pit_universe_df, pred_date)
+        if active_kdcodes is not None:
+            day_preds = day_preds[day_preds["kdcode"].astype(str).isin(active_kdcodes)]
 
         if len(day_preds) < top_k:
             prev_date_ranks = None
@@ -1387,6 +1433,7 @@ def evaluate(predictions_dir, config=None):
 
     # Calculate forward returns
     stock_data = calculate_forward_returns(stock_data, label_t=config["label_t"])
+    pit_universe_df = load_pit_universe_for_backtest(config.get("pit_universe_csv"))
 
     # Get transaction cost settings (with fallback to defaults)
     tc_config = config.get("transaction_costs", DEFAULT_CONFIG["transaction_costs"])
@@ -1400,6 +1447,7 @@ def evaluate(predictions_dir, config=None):
         label_t=config["label_t"],
         transaction_costs=tc_config,
         rank_drop_gate=rank_drop_config,
+        pit_universe_df=pit_universe_df,
     )
 
     portfolio_returns = sim_results["portfolio_returns"]
@@ -1424,7 +1472,12 @@ def evaluate(predictions_dir, config=None):
     cr = calculate_cr(arr, mdd)
 
     _cal, port_cal, bm_cal = calendar_returns_for_evaluation_window(
-        stock_data, dates[0], dates[-1], portfolio_returns, dates
+        stock_data,
+        dates[0],
+        dates[-1],
+        portfolio_returns,
+        dates,
+        pit_universe_df=pit_universe_df,
     )
     if len(bm_cal) > 0:
         ir = calculate_ir(port_cal, bm_cal)
@@ -2108,6 +2161,7 @@ def plot_equity_curve(predictions_dir, stock_data, config, output_path=None):
 
     predictions_df = load_predictions(predictions_dir)
     stock_data = calculate_forward_returns(stock_data, label_t=config["label_t"])
+    pit_universe_df = load_pit_universe_for_backtest(config.get("pit_universe_csv"))
 
     # Get transaction cost settings
     tc_config = config.get("transaction_costs", DEFAULT_CONFIG["transaction_costs"])
@@ -2120,6 +2174,7 @@ def plot_equity_curve(predictions_dir, stock_data, config, output_path=None):
         label_t=config["label_t"],
         transaction_costs=tc_config,
         rank_drop_gate=rank_drop_config,
+        pit_universe_df=pit_universe_df,
     )
 
     cal_d, port_cal, bm_cal = calendar_returns_for_evaluation_window(
@@ -2128,6 +2183,7 @@ def plot_equity_curve(predictions_dir, stock_data, config, output_path=None):
         sim_results["dates"][-1],
         sim_results["portfolio_returns"],
         sim_results["dates"],
+        pit_universe_df=pit_universe_df,
     )
     if len(bm_cal) > 0:
         dates = pd.to_datetime(cal_d)
@@ -2271,6 +2327,12 @@ def main():
         default="data/raw/market/sp500_data.csv",
         help="Path to stock data CSV file",
     )
+    parser.add_argument(
+        "--pit_universe_csv",
+        type=str,
+        default=None,
+        help="Optional PIT kdcode/valid_from/valid_to CSV for candidate and benchmark filtering",
+    )
 
     parser.add_argument(
         "--top_k", type=int, default=10, help="Number of top stocks to select (default: 10)"
@@ -2393,6 +2455,7 @@ def main():
         "test_start": args.test_start,
         "test_end": args.test_end,
         "data_file": args.data_file,
+        "pit_universe_csv": args.pit_universe_csv,
         "label_t": args.label_t,
         "transaction_costs": {
             "enabled": args.transaction_costs,
@@ -2483,6 +2546,7 @@ def main():
                 # Load predictions
                 predictions_df = load_predictions(args.predictions_dir)
                 stock_data = calculate_forward_returns(stock_data, label_t=config["label_t"])
+                pit_universe_df = load_pit_universe_for_backtest(config.get("pit_universe_csv"))
 
                 # Get full simulation results
                 sim_results = simulate_trading_strategy(
@@ -2492,6 +2556,7 @@ def main():
                     label_t=config["label_t"],
                     transaction_costs=config["transaction_costs"],
                     rank_drop_gate=config["rank_drop_gate"],
+                    pit_universe_df=pit_universe_df,
                 )
 
                 # Save comprehensive results

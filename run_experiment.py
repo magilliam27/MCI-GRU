@@ -260,6 +260,8 @@ def main(cfg: DictConfig):
                 "walkforward_window": wi,
                 "graph_static_valid_from": data.get("graph_static_valid_from"),
                 "feature_reference_path": "feature_reference.json",
+                "pit_universe_mode": data.get("pit_universe_mode"),
+                "pit_breadth": data.get("pit_breadth"),
                 **_data_file_fingerprint(cfg_w.data.filename, logger),
             }
             metadata_path = os.path.join(wpath, "run_metadata.json")
@@ -309,6 +311,9 @@ def main(cfg: DictConfig):
                 edge_index_sector=data.get("edge_index_sector"),
                 edge_weight_sector=data.get("edge_weight_sector"),
                 use_sector_relation=cfg_w.graph.use_sector_relation,
+                train_stock_masks=data.get("train_tradable_mask"),
+                val_stock_masks=data.get("val_tradable_mask"),
+                test_stock_masks=data.get("test_tradable_mask"),
             )
 
             num_features = len(data["feature_cols"])
@@ -320,7 +325,7 @@ def main(cfg: DictConfig):
                 "use_sector_relation": cfg_w.graph.use_sector_relation,
             }
 
-            def model_factory():
+            def model_factory(num_features=num_features, model_cfg_dict=model_cfg_dict):
                 return create_model(num_features, model_cfg_dict)
 
             logger.info("\n" + "=" * 80)
@@ -348,6 +353,7 @@ def main(cfg: DictConfig):
                     test_dates=data["test_dates"],
                     output_path=wpath,
                     tracking_manager=active_tracking,
+                    test_prediction_masks=data.get("test_tradable_mask"),
                 )
 
                 best_val_losses = [r.best_val_loss for r in results]

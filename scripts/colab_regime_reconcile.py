@@ -13,6 +13,8 @@ Use the live regime input path instead:
 - leave features.regime_inputs_csv unset/null
 - set FRED_API_KEY
 - enable include_global_regime in the selected feature config
+- let DataManager.load_regime_inputs derive regime_stock_bond_corr with the
+  documented 756-trading-day full-window policy
 
 If a legacy offline CSV override is absolutely required, build it outside this
 script and include dt plus all seven regime variables documented in

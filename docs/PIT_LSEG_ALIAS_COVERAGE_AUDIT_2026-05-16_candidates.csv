@@ -1,0 +1,7 @@
+original,original_interval_count,original_intervals,original_overlaps_validation,original_active_days_in_validation,original_market_rows,candidate,candidate_found,candidate_valid_from,candidate_valid_to,overlaps_validation,has_market_rows,market_rows,market_date_min,market_date_max,active_days_in_validation,scoreable_days_in_validation,loss_days_in_validation
+AABA.OQ,1,2016-01-01..2017-06-16,False,0,0,AABA.OQ^J19,True,2016-01-01,2017-06-16,False,True,1196,2015-01-02,2019-10-02,0,0,0
+ABMD.OQ,1,2018-05-31..2022-12-21,True,245,0,ABMD.OQ^L22,True,2018-05-31,2022-12-21,True,True,2008,2015-01-02,2022-12-21,245,245,240
+AET.N,1,2016-01-01..2018-11-30,False,0,0,AET.N^K18,True,2016-01-01,2018-11-30,False,True,985,2015-01-02,2018-11-28,0,0,0
+AGN.N,1,2016-01-01..2020-05-11,False,0,0,AGN.N^E20,True,2016-01-01,2020-05-11,False,True,1347,2015-01-02,2020-05-08,0,0,0
+AIRC.N,1,2020-12-15..2020-12-18,False,0,0,AIRC.N^F24,True,2020-12-15,2020-12-18,False,True,888,2020-12-15,2024-06-27,0,0,0
+ALXN.OQ,1,2016-01-01..2021-07-20,False,0,0,ALXN.OQ^G21,True,2016-01-01,2021-07-20,False,True,1648,2015-01-02,2021-07-20,0,0,0

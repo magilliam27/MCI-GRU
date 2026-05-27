@@ -41,10 +41,13 @@ from mci_gru.features.regime import (
 from mci_gru.features.volatility import (
     VIX_FEATURES,
     VOLATILITY_FEATURES,
+    VOLATILITY_TARGETING_FEATURES,
     add_moving_average_features,
     add_rsi,
     add_vix_features,
     add_volatility_features,
+    add_volatility_targeting_features,
+    get_volatility_targeting_features,
 )
 
 # Pre-defined feature sets
@@ -52,6 +55,7 @@ FEATURE_SETS = {
     "base": BASE_FEATURES,
     "momentum": MOMENTUM_FEATURES,
     "volatility": VOLATILITY_FEATURES,
+    "volatility_targeting": VOLATILITY_TARGETING_FEATURES,
     "vix": VIX_FEATURES,
     "credit": CREDIT_FEATURES,
     "regime": REGIME_FEATURES,
@@ -59,6 +63,7 @@ FEATURE_SETS = {
     "full": BASE_FEATURES
     + MOMENTUM_FEATURES
     + VOLATILITY_FEATURES
+    + VOLATILITY_TARGETING_FEATURES
     + VIX_FEATURES
     + CREDIT_FEATURES
     + REGIME_FEATURES,
@@ -70,6 +75,9 @@ def build_feature_list(
     include_momentum: bool = True,
     include_weekly_momentum: bool = True,
     include_volatility: bool = False,
+    include_volatility_targeting: bool = False,
+    volatility_targeting_half_lives: list[int] | None = None,
+    volatility_targeting_interaction_return_window: int = 21,
     include_vix: bool = False,
     include_credit_spread: bool = False,
     include_global_regime: bool = False,
@@ -85,6 +93,9 @@ def build_feature_list(
         include_momentum: Include momentum features
         include_weekly_momentum: Include weekly momentum features (5-day return/signal)
         include_volatility: Include volatility features
+        include_volatility_targeting: Include Harvey-style volatility-targeting features
+        volatility_targeting_half_lives: EWM volatility half-lives for vol-targeting features
+        volatility_targeting_interaction_return_window: Return window for momentum-vol interaction
         include_vix: Include VIX features
         include_credit_spread: Include credit spread features (IG/HY from FRED)
         include_global_regime: Include global scalar regime features
@@ -103,6 +114,13 @@ def build_feature_list(
         features.extend(get_momentum_features(include_weekly_momentum))
     if include_volatility:
         features.extend(VOLATILITY_FEATURES)
+    if include_volatility_targeting:
+        features.extend(
+            get_volatility_targeting_features(
+                half_lives=volatility_targeting_half_lives,
+                interaction_return_window=volatility_targeting_interaction_return_window,
+            )
+        )
     if include_vix:
         features.extend(VIX_FEATURES)
     if include_credit_spread:
@@ -157,6 +175,11 @@ class FeatureEngineer:
         momentum_buffer_low: float = 0.1,
         momentum_buffer_high: float = 0.9,
         include_volatility: bool = False,
+        include_volatility_targeting: bool = False,
+        volatility_targeting_half_lives: list[int] | None = None,
+        volatility_target_vol: float = 0.10,
+        volatility_target_scale_clip: list[float] | None = None,
+        volatility_targeting_interaction_return_window: int = 21,
         include_vix: bool = False,
         include_credit_spread: bool = False,
         include_global_regime: bool = False,
@@ -193,6 +216,13 @@ class FeatureEngineer:
             self.momentum_buffer_low = config.momentum_buffer_low
             self.momentum_buffer_high = config.momentum_buffer_high
             self.include_volatility = config.include_volatility
+            self.include_volatility_targeting = config.include_volatility_targeting
+            self.volatility_targeting_half_lives = list(config.volatility_targeting_half_lives)
+            self.volatility_target_vol = config.volatility_target_vol
+            self.volatility_target_scale_clip = list(config.volatility_target_scale_clip)
+            self.volatility_targeting_interaction_return_window = (
+                config.volatility_targeting_interaction_return_window
+            )
             self.include_vix = config.include_vix
             self.include_credit_spread = config.include_credit_spread
             self.include_global_regime = config.include_global_regime
@@ -224,6 +254,21 @@ class FeatureEngineer:
             self.momentum_buffer_low = momentum_buffer_low
             self.momentum_buffer_high = momentum_buffer_high
             self.include_volatility = include_volatility
+            self.include_volatility_targeting = include_volatility_targeting
+            self.volatility_targeting_half_lives = list(
+                volatility_targeting_half_lives
+                if volatility_targeting_half_lives is not None
+                else [20, 60, 90]
+            )
+            self.volatility_target_vol = volatility_target_vol
+            self.volatility_target_scale_clip = list(
+                volatility_target_scale_clip
+                if volatility_target_scale_clip is not None
+                else [0.25, 4.0]
+            )
+            self.volatility_targeting_interaction_return_window = (
+                volatility_targeting_interaction_return_window
+            )
             self.include_vix = include_vix
             self.include_credit_spread = include_credit_spread
             self.include_global_regime = include_global_regime
@@ -318,6 +363,16 @@ class FeatureEngineer:
         if self.include_volatility:
             df = add_volatility_features(df)
 
+        # Harvey-style volatility-targeting features
+        if self.include_volatility_targeting:
+            df = add_volatility_targeting_features(
+                df,
+                half_lives=self.volatility_targeting_half_lives,
+                target_vol=self.volatility_target_vol,
+                scale_clip=tuple(self.volatility_target_scale_clip),
+                interaction_return_window=self.volatility_targeting_interaction_return_window,
+            )
+
         # VIX features
         if self.include_vix:
             if vix_df is None:
@@ -394,6 +449,14 @@ class FeatureEngineer:
 
         if self.include_volatility:
             features.extend(VOLATILITY_FEATURES)
+
+        if self.include_volatility_targeting:
+            features.extend(
+                get_volatility_targeting_features(
+                    half_lives=self.volatility_targeting_half_lives,
+                    interaction_return_window=self.volatility_targeting_interaction_return_window,
+                )
+            )
 
         if self.include_vix:
             features.extend(VIX_FEATURES)
