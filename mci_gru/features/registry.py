@@ -78,6 +78,10 @@ def build_feature_list(
     include_volatility_targeting: bool = False,
     volatility_targeting_half_lives: list[int] | None = None,
     volatility_targeting_interaction_return_window: int = 21,
+    volatility_targeting_include_ewm_vol: bool = True,
+    volatility_targeting_include_scale: bool = True,
+    volatility_targeting_include_dynamics: bool = True,
+    volatility_targeting_include_scaled_return: bool = True,
     include_vix: bool = False,
     include_credit_spread: bool = False,
     include_global_regime: bool = False,
@@ -96,6 +100,10 @@ def build_feature_list(
         include_volatility_targeting: Include Harvey-style volatility-targeting features
         volatility_targeting_half_lives: EWM volatility half-lives for vol-targeting features
         volatility_targeting_interaction_return_window: Return window for momentum-vol interaction
+        volatility_targeting_include_ewm_vol: Include raw EWM volatility columns
+        volatility_targeting_include_scale: Include clipped target-vol scale columns
+        volatility_targeting_include_dynamics: Include vol change and vol-of-vol columns
+        volatility_targeting_include_scaled_return: Include lagged return x scale interaction
         include_vix: Include VIX features
         include_credit_spread: Include credit spread features (IG/HY from FRED)
         include_global_regime: Include global scalar regime features
@@ -119,6 +127,10 @@ def build_feature_list(
             get_volatility_targeting_features(
                 half_lives=volatility_targeting_half_lives,
                 interaction_return_window=volatility_targeting_interaction_return_window,
+                include_ewm_vol=volatility_targeting_include_ewm_vol,
+                include_scale=volatility_targeting_include_scale,
+                include_dynamics=volatility_targeting_include_dynamics,
+                include_scaled_return=volatility_targeting_include_scaled_return,
             )
         )
     if include_vix:
@@ -180,6 +192,10 @@ class FeatureEngineer:
         volatility_target_vol: float = 0.10,
         volatility_target_scale_clip: list[float] | None = None,
         volatility_targeting_interaction_return_window: int = 21,
+        volatility_targeting_include_ewm_vol: bool = True,
+        volatility_targeting_include_scale: bool = True,
+        volatility_targeting_include_dynamics: bool = True,
+        volatility_targeting_include_scaled_return: bool = True,
         include_vix: bool = False,
         include_credit_spread: bool = False,
         include_global_regime: bool = False,
@@ -222,6 +238,14 @@ class FeatureEngineer:
             self.volatility_target_scale_clip = list(config.volatility_target_scale_clip)
             self.volatility_targeting_interaction_return_window = (
                 config.volatility_targeting_interaction_return_window
+            )
+            self.volatility_targeting_include_ewm_vol = config.volatility_targeting_include_ewm_vol
+            self.volatility_targeting_include_scale = config.volatility_targeting_include_scale
+            self.volatility_targeting_include_dynamics = (
+                config.volatility_targeting_include_dynamics
+            )
+            self.volatility_targeting_include_scaled_return = (
+                config.volatility_targeting_include_scaled_return
             )
             self.include_vix = config.include_vix
             self.include_credit_spread = config.include_credit_spread
@@ -268,6 +292,12 @@ class FeatureEngineer:
             )
             self.volatility_targeting_interaction_return_window = (
                 volatility_targeting_interaction_return_window
+            )
+            self.volatility_targeting_include_ewm_vol = volatility_targeting_include_ewm_vol
+            self.volatility_targeting_include_scale = volatility_targeting_include_scale
+            self.volatility_targeting_include_dynamics = volatility_targeting_include_dynamics
+            self.volatility_targeting_include_scaled_return = (
+                volatility_targeting_include_scaled_return
             )
             self.include_vix = include_vix
             self.include_credit_spread = include_credit_spread
@@ -455,6 +485,10 @@ class FeatureEngineer:
                 get_volatility_targeting_features(
                     half_lives=self.volatility_targeting_half_lives,
                     interaction_return_window=self.volatility_targeting_interaction_return_window,
+                    include_ewm_vol=self.volatility_targeting_include_ewm_vol,
+                    include_scale=self.volatility_targeting_include_scale,
+                    include_dynamics=self.volatility_targeting_include_dynamics,
+                    include_scaled_return=self.volatility_targeting_include_scaled_return,
                 )
             )
 

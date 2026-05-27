@@ -191,6 +191,50 @@ def test_volatility_targeting_registry_and_config_wiring():
     assert all(col in transformed.columns for col in feature_cols)
 
 
+def test_volatility_targeting_component_selection_controls_model_feature_list():
+    scale_only = get_volatility_targeting_features(
+        half_lives=[20, 60, 90],
+        include_ewm_vol=False,
+        include_scale=True,
+        include_dynamics=False,
+        include_scaled_return=False,
+    )
+    cfg = FeatureConfig(
+        include_momentum=False,
+        include_volatility_targeting=True,
+        volatility_targeting_include_ewm_vol=False,
+        volatility_targeting_include_scale=True,
+        volatility_targeting_include_dynamics=False,
+        volatility_targeting_include_scaled_return=False,
+    )
+    engineer = FeatureEngineer(cfg)
+
+    assert scale_only == [
+        "vol_target_scale_hl20",
+        "vol_target_scale_hl60",
+        "vol_target_scale_hl90",
+    ]
+    assert all(col in engineer.get_feature_columns() for col in scale_only)
+    assert "vol_target_ewm_vol_hl20" not in engineer.get_feature_columns()
+    assert "vol_target_vol_change_hl20_hl90" not in engineer.get_feature_columns()
+    assert "vol_target_ret21_lag2_x_scale_hl20" not in engineer.get_feature_columns()
+    assert all(
+        col
+        in build_feature_list(
+            include_momentum=False,
+            include_volatility_targeting=True,
+            volatility_targeting_include_ewm_vol=False,
+            volatility_targeting_include_scale=True,
+            volatility_targeting_include_dynamics=False,
+            volatility_targeting_include_scaled_return=False,
+        )
+        for col in scale_only
+    )
+
+    transformed = engineer.transform(_make_panel())
+    assert all(col in transformed.columns for col in scale_only)
+
+
 def test_volatility_targeting_config_rejects_invalid_controls():
     with pytest.raises(ValueError, match="volatility_targeting_half_lives"):
         FeatureConfig(volatility_targeting_half_lives=[20, 20])
@@ -200,3 +244,12 @@ def test_volatility_targeting_config_rejects_invalid_controls():
 
     with pytest.raises(ValueError, match="volatility_target_vol"):
         FeatureConfig(volatility_target_vol=0.0)
+
+    with pytest.raises(ValueError, match="At least one volatility-targeting component"):
+        FeatureConfig(
+            include_volatility_targeting=True,
+            volatility_targeting_include_ewm_vol=False,
+            volatility_targeting_include_scale=False,
+            volatility_targeting_include_dynamics=False,
+            volatility_targeting_include_scaled_return=False,
+        )

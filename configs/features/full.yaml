@@ -17,6 +17,10 @@ volatility_targeting_half_lives: [20, 60, 90]
 volatility_target_vol: 0.10
 volatility_target_scale_clip: [0.25, 4.0]
 volatility_targeting_interaction_return_window: 21
+volatility_targeting_include_ewm_vol: true
+volatility_targeting_include_scale: true
+volatility_targeting_include_dynamics: true
+volatility_targeting_include_scaled_return: true
 include_vix: true
 include_credit_spread: true
 include_global_regime: true

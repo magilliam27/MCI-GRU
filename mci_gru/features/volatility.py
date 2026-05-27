@@ -38,8 +38,15 @@ def _validate_volatility_targeting_controls(
 def get_volatility_targeting_features(
     half_lives: list[int] | None = None,
     interaction_return_window: int = DEFAULT_VOLATILITY_TARGET_INTERACTION_RETURN_WINDOW,
+    include_ewm_vol: bool = True,
+    include_scale: bool = True,
+    include_dynamics: bool = True,
+    include_scaled_return: bool = True,
 ) -> list[str]:
     """Return feature names for the Harvey-style volatility-targeting family."""
+    if not any((include_ewm_vol, include_scale, include_dynamics, include_scaled_return)):
+        return []
+
     resolved_half_lives = _validate_volatility_targeting_controls(
         half_lives,
         DEFAULT_VOLATILITY_TARGET_VOL,
@@ -49,15 +56,24 @@ def get_volatility_targeting_features(
     short_half_life = resolved_half_lives[0]
     long_half_life = resolved_half_lives[-1]
 
-    return (
-        [f"vol_target_ewm_vol_hl{half_life}" for half_life in resolved_half_lives]
-        + [f"vol_target_scale_hl{half_life}" for half_life in resolved_half_lives]
-        + [
-            f"vol_target_vol_change_hl{short_half_life}_hl{long_half_life}",
-            f"vol_target_vol_of_vol_hl{short_half_life}",
-            f"vol_target_ret{interaction_return_window}_lag2_x_scale_hl{short_half_life}",
-        ]
-    )
+    features: list[str] = []
+    if include_ewm_vol:
+        features.extend(f"vol_target_ewm_vol_hl{half_life}" for half_life in resolved_half_lives)
+    if include_scale:
+        features.extend(f"vol_target_scale_hl{half_life}" for half_life in resolved_half_lives)
+    if include_dynamics:
+        features.extend(
+            [
+                f"vol_target_vol_change_hl{short_half_life}_hl{long_half_life}",
+                f"vol_target_vol_of_vol_hl{short_half_life}",
+            ]
+        )
+    if include_scaled_return:
+        features.append(
+            f"vol_target_ret{interaction_return_window}_lag2_x_scale_hl{short_half_life}"
+        )
+
+    return features
 
 
 VOLATILITY_TARGETING_FEATURES = get_volatility_targeting_features()

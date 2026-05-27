@@ -122,6 +122,10 @@ class FeatureConfig:
         volatility_target_vol: Annualized volatility target used for target-vol scale proxies
         volatility_target_scale_clip: Lower/upper bounds for target-vol scale multiplier proxies
         volatility_targeting_interaction_return_window: Trailing return window for momentum-vol interaction
+        volatility_targeting_include_ewm_vol: Include raw EWM volatility columns
+        volatility_targeting_include_scale: Include clipped target-vol scale columns
+        volatility_targeting_include_dynamics: Include vol change and vol-of-vol columns
+        volatility_targeting_include_scaled_return: Include lagged return x scale interaction
         include_vix: Whether to add VIX features
         include_credit_spread: Whether to add credit spread features (IG/HY from FRED)
         include_global_regime: Whether to add global scalar regime features
@@ -169,6 +173,10 @@ class FeatureConfig:
     volatility_target_vol: float = 0.10
     volatility_target_scale_clip: list[float] = field(default_factory=lambda: [0.25, 4.0])
     volatility_targeting_interaction_return_window: int = 21
+    volatility_targeting_include_ewm_vol: bool = True
+    volatility_targeting_include_scale: bool = True
+    volatility_targeting_include_dynamics: bool = True
+    volatility_targeting_include_scaled_return: bool = True
     include_vix: bool = False
     include_credit_spread: bool = False
     include_global_regime: bool = False
@@ -237,6 +245,18 @@ class FeatureConfig:
             raise ValueError("volatility_target_scale_clip must be positive and increasing")
         if self.volatility_targeting_interaction_return_window <= 0:
             raise ValueError("volatility_targeting_interaction_return_window must be > 0")
+        if self.include_volatility_targeting and not any(
+            (
+                self.volatility_targeting_include_ewm_vol,
+                self.volatility_targeting_include_scale,
+                self.volatility_targeting_include_dynamics,
+                self.volatility_targeting_include_scaled_return,
+            )
+        ):
+            raise ValueError(
+                "At least one volatility-targeting component must be enabled when "
+                "include_volatility_targeting=True"
+            )
         if not (0 < self.regime_similarity_quantile < 0.5):
             raise ValueError("regime_similarity_quantile must be in (0, 0.5)")
         if self.regime_change_months <= 0:
@@ -726,6 +746,18 @@ class ExperimentConfig:
             ),
             "features.volatility_targeting_interaction_return_window": (
                 self.features.volatility_targeting_interaction_return_window
+            ),
+            "features.volatility_targeting_include_ewm_vol": (
+                self.features.volatility_targeting_include_ewm_vol
+            ),
+            "features.volatility_targeting_include_scale": (
+                self.features.volatility_targeting_include_scale
+            ),
+            "features.volatility_targeting_include_dynamics": (
+                self.features.volatility_targeting_include_dynamics
+            ),
+            "features.volatility_targeting_include_scaled_return": (
+                self.features.volatility_targeting_include_scaled_return
             ),
             "features.regime_include_subsequent_returns": self.features.regime_include_subsequent_returns,
             "features.regime_subsequent_return_horizons": str(
