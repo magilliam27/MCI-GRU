@@ -57,8 +57,11 @@ training:
   early_stopping_patience: 10
   weight_decay: 1e-3            # L2 regularization
   gradient_clip: 1.0            # Max gradient norm
-  loss_type: combined            # mse, ic, or combined
+  loss_type: combined            # mse, ic, combined, or portfolio_ic
   ic_loss_alpha: 0.5           # Weight for IC component (only for combined)
+  portfolio_ic_top_k: 10        # Soft top-k breadth (only for portfolio_ic)
+  portfolio_ic_weight: 0.25     # Portfolio utility blend weight (only for portfolio_ic)
+  portfolio_ic_temperature: 0.25 # Soft top-k sigmoid temperature (only for portfolio_ic)
   label_type: returns          # returns (raw) or rank (cross-sectional percentile)
   warmup_steps: 1000           # Linear LR warmup (optimizer steps) before cosine
   lr_scheduler: cosine         # cosine | none

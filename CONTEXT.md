@@ -134,6 +134,15 @@ notional exposure toward a volatility target. This belongs in evaluation or
 paper-trade surfaces, not in issue #8's first feature-family implementation.
 _Avoid_: Feature column, model input, issue #8 first slice
 
+**Portfolio-IC Hybrid Loss**:
+A training/evaluation loss that keeps cross-sectional IC as the anchor while
+adding a differentiable soft top-k forward-return utility term. The first
+implementation optimizes same-date PIT-valid 5-day forward-return labels through
+a per-date soft top-k surrogate. It is not direct open-to-open PnL, not
+transaction-cost-aware sequential training, and not a full end-to-end Markowitz
+optimizer.
+_Avoid_: Full portfolio optimizer, Sharpe-loss trainer, turnover-aware trainer
+
 **ADR Candidate**:
 A possible architecture decision note emitted only when a paper-derived choice is hard to reverse, surprising without context, and involves real trade-offs.
 _Avoid_: Default ADR, design note for every idea
@@ -186,6 +195,9 @@ _Avoid_: Auto-created issue, hidden tracker mutation
 - Full long-history PIT evaluation should be launched through a **Colab Evaluation Notebook** generated from a repo script.
 - A long-history **Colab Evaluation Notebook** should include the `his_t=10` frozen-default baseline alongside `21`, `63`, and `126`, with `252` gated manually.
 - Long-history decision tables should show per-year rows and grouped `his_t` aggregates; a decision score may sort candidates but cannot replace the underlying IC, Sharpe, return, drawdown, turnover, and failure-rate evidence.
+- A **Portfolio-IC Hybrid Loss** can be checked by a **Mechanics Smoke**, but
+  performance judgment requires PIT portfolio evidence, including Sharpe,
+  drawdown, turnover, and transaction-cost-sensitive comparisons after training.
 
 ## Example Dialogue
 

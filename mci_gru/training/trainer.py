@@ -31,6 +31,7 @@ from mci_gru.training.losses import (
     CombinedMSEICLoss,
     ICLoss,
     MaskedMSELoss,
+    PortfolioICLoss,
     mean_information_coefficient,
 )
 from mci_gru.utils.seeding import set_seed
@@ -223,6 +224,12 @@ class Trainer:
             criterion = ICLoss()
         elif training_cfg.loss_type == "combined":
             criterion = CombinedMSEICLoss(alpha=training_cfg.ic_loss_alpha)
+        elif training_cfg.loss_type == "portfolio_ic":
+            criterion = PortfolioICLoss(
+                top_k=training_cfg.portfolio_ic_top_k,
+                weight=training_cfg.portfolio_ic_weight,
+                temperature=training_cfg.portfolio_ic_temperature,
+            )
         else:
             criterion = MaskedMSELoss()
 
@@ -252,6 +259,13 @@ class Trainer:
             + (
                 f" (alpha={training_cfg.ic_loss_alpha})"
                 if training_cfg.loss_type == "combined"
+                else ""
+            )
+            + (
+                f" (top_k={training_cfg.portfolio_ic_top_k}, "
+                f"weight={training_cfg.portfolio_ic_weight}, "
+                f"temperature={training_cfg.portfolio_ic_temperature})"
+                if training_cfg.loss_type == "portfolio_ic"
                 else ""
             )
         )

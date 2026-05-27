@@ -484,8 +484,11 @@ class TrainingConfig:
         early_stopping_patience: Epochs to wait before early stopping
         weight_decay: L2 regularization weight
         gradient_clip: Maximum gradient norm (0 = no clipping)
-        loss_type: Loss function (mse, ic, combined)
+        loss_type: Loss function (mse, ic, combined, portfolio_ic)
         ic_loss_alpha: Weight for IC component when loss_type=combined (0 to 1)
+        portfolio_ic_top_k: Soft top-k breadth when loss_type=portfolio_ic
+        portfolio_ic_weight: Weight for the soft top-k utility term
+        portfolio_ic_temperature: Sigmoid temperature for soft top-k inclusion
         label_type: Label representation -- "returns" for raw forward returns,
                      "rank" for cross-sectional rank percentiles per day.
                      Rank labels use only same-day information so they
@@ -509,6 +512,9 @@ class TrainingConfig:
     gradient_clip: float = 1.0
     loss_type: str = "combined"
     ic_loss_alpha: float = 0.5
+    portfolio_ic_top_k: int = 10
+    portfolio_ic_weight: float = 0.25
+    portfolio_ic_temperature: float = 0.25
     label_type: str = "returns"
     warmup_steps: int = 1000
     lr_scheduler: str = "cosine"
@@ -517,7 +523,7 @@ class TrainingConfig:
     shuffle_train: bool | None = None
     walkforward: WalkforwardConfig = field(default_factory=WalkforwardConfig)
 
-    _VALID_LOSS_TYPES = ("mse", "ic", "combined")
+    _VALID_LOSS_TYPES = ("mse", "ic", "combined", "portfolio_ic")
     _VALID_LABEL_TYPES = ("returns", "rank")
     _VALID_LR_SCHEDULERS = ("none", "cosine")
     _VALID_SELECTION_METRICS = ("val_loss", "val_ic")
@@ -542,6 +548,16 @@ class TrainingConfig:
             )
         if not 0 <= self.ic_loss_alpha <= 1:
             raise ValueError(f"ic_loss_alpha must be in [0, 1], got {self.ic_loss_alpha}")
+        if self.portfolio_ic_top_k <= 0:
+            raise ValueError(f"portfolio_ic_top_k must be > 0, got {self.portfolio_ic_top_k}")
+        if not 0 <= self.portfolio_ic_weight <= 1:
+            raise ValueError(
+                f"portfolio_ic_weight must be in [0, 1], got {self.portfolio_ic_weight}"
+            )
+        if self.portfolio_ic_temperature <= 0:
+            raise ValueError(
+                f"portfolio_ic_temperature must be > 0, got {self.portfolio_ic_temperature}"
+            )
         if self.label_type not in self._VALID_LABEL_TYPES:
             raise ValueError(
                 f"label_type must be one of {self._VALID_LABEL_TYPES}, got {self.label_type!r}"
@@ -748,6 +764,9 @@ class ExperimentConfig:
             "training.num_models": self.training.num_models,
             "training.loss_type": self.training.loss_type,
             "training.ic_loss_alpha": self.training.ic_loss_alpha,
+            "training.portfolio_ic_top_k": self.training.portfolio_ic_top_k,
+            "training.portfolio_ic_weight": self.training.portfolio_ic_weight,
+            "training.portfolio_ic_temperature": self.training.portfolio_ic_temperature,
             "training.shuffle_train": self.training.shuffle_train,
             # Evaluation
             "evaluation.top_k_values": str(self.evaluation.top_k_values),
