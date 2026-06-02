@@ -98,6 +98,8 @@ class TrainingResult:
     epochs_trained: int
     best_model_path: str
     predictions: np.ndarray | None = None
+    resumed_from_predictions: bool = False
+    resumed_from_checkpoint: bool = False
 
 
 def prediction_rows_for_date(
@@ -121,6 +123,55 @@ def prediction_rows_for_date(
             continue
         rows.append([kdcode, date, round(score, 5)])
     return rows
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _prediction_dir_complete(prediction_dir: str, test_dates: list[str]) -> bool:
+    if not os.path.isdir(prediction_dir):
+        return False
+    return all(os.path.isfile(os.path.join(prediction_dir, f"{date}.csv")) for date in test_dates)
+
+
+def _load_saved_predictions(
+    prediction_dir: str,
+    kdcode_list: list[str],
+    test_dates: list[str],
+) -> np.ndarray:
+    """Reload saved prediction CSVs into the in-memory ensemble prediction shape."""
+    kdcode_to_idx = {str(kdcode): idx for idx, kdcode in enumerate(kdcode_list)}
+    predictions = np.full((len(test_dates), len(kdcode_list)), np.nan, dtype=float)
+
+    for date_idx, date in enumerate(test_dates):
+        path = os.path.join(prediction_dir, f"{date}.csv")
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"Missing saved prediction file: {path}")
+
+        df = pd.read_csv(path)
+        required = {"kdcode", "score"}
+        missing = required.difference(df.columns)
+        if missing:
+            raise ValueError(f"Saved prediction file {path} is missing columns: {sorted(missing)}")
+
+        for row in df[["kdcode", "score"]].itertuples(index=False):
+            idx = kdcode_to_idx.get(str(row.kdcode))
+            if idx is None:
+                continue
+            score = pd.to_numeric(row.score, errors="coerce")
+            if pd.notna(score) and np.isfinite(float(score)):
+                predictions[date_idx, idx] = float(score)
+
+    return predictions
+
+
+def _write_ensemble_progress(path: str, payload: dict) -> None:
+    import json
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, default=str)
 
 
 def _build_lr_scheduler(
@@ -567,6 +618,8 @@ def train_multiple_models(
     base_output_path = output_path if output_path else config.get_output_path()
     checkpoint_dir = os.path.join(base_output_path, "checkpoints")
     os.makedirs(checkpoint_dir, exist_ok=True)
+    resume_ensemble = _env_flag("MCI_GRU_RESUME_ENSEMBLE")
+    progress_path = os.path.join(base_output_path, "ensemble_progress.json")
 
     all_results = []
     all_predictions = []
@@ -576,12 +629,42 @@ def train_multiple_models(
         print(f"Training Model {model_id + 1}/{config.training.num_models}")
         print(f"{'=' * 60}")
 
+        model_checkpoint_path = os.path.join(checkpoint_dir, f"model_{model_id}_best.pth")
+        pred_dir = os.path.join(base_output_path, f"predictions_model_{model_id}")
+        if resume_ensemble and _prediction_dir_complete(pred_dir, test_dates):
+            print(f"Reusing saved predictions for model {model_id + 1}/{config.training.num_models}: {pred_dir}")
+            predictions = _load_saved_predictions(pred_dir, kdcode_list, test_dates)
+            all_predictions.append(predictions)
+            all_results.append(
+                TrainingResult(
+                    best_val_loss=float("nan"),
+                    best_val_ic=float("nan"),
+                    final_train_loss=float("nan"),
+                    epochs_trained=0,
+                    best_model_path=model_checkpoint_path
+                    if os.path.exists(model_checkpoint_path)
+                    else "",
+                    resumed_from_predictions=True,
+                )
+            )
+            _write_ensemble_progress(
+                progress_path,
+                {
+                    "status": "RUNNING",
+                    "completed_models": len(all_predictions),
+                    "num_models": config.training.num_models,
+                    "last_model_id": model_id,
+                    "last_model_status": "reused_predictions",
+                    "base_output_path": base_output_path,
+                },
+            )
+            continue
+
         model_seed = config.seed + model_id
         print(f"Model seed: {model_seed}")
         set_seed(model_seed)
 
         model = model_factory()
-        model_checkpoint_path = os.path.join(checkpoint_dir, f"model_{model_id}_best.pth")
         trainer = Trainer(
             model=model,
             config=config,
@@ -589,6 +672,50 @@ def train_multiple_models(
             output_path=base_output_path,
             checkpoint_path=model_checkpoint_path,
         )
+
+        if resume_ensemble and os.path.exists(model_checkpoint_path):
+            try:
+                print(
+                    f"Recovering predictions from checkpoint for model {model_id + 1}/"
+                    f"{config.training.num_models}: {model_checkpoint_path}"
+                )
+                trainer.load_best_model(model_checkpoint_path)
+                predictions = trainer.predict(test_loader, kdcode_list, test_dates)
+                trainer.save_predictions(
+                    predictions,
+                    kdcode_list,
+                    test_dates,
+                    pred_dir,
+                    prediction_masks=test_prediction_masks,
+                )
+                all_predictions.append(predictions)
+                all_results.append(
+                    TrainingResult(
+                        best_val_loss=float("nan"),
+                        best_val_ic=float("nan"),
+                        final_train_loss=float("nan"),
+                        epochs_trained=0,
+                        best_model_path=model_checkpoint_path,
+                        resumed_from_checkpoint=True,
+                    )
+                )
+                _write_ensemble_progress(
+                    progress_path,
+                    {
+                        "status": "RUNNING",
+                        "completed_models": len(all_predictions),
+                        "num_models": config.training.num_models,
+                        "last_model_id": model_id,
+                        "last_model_status": "recovered_checkpoint",
+                        "base_output_path": base_output_path,
+                    },
+                )
+                continue
+            except Exception as exc:
+                print(
+                    f"Could not recover model {model_id + 1} from checkpoint; "
+                    f"training it again. Reason: {exc}"
+                )
 
         child_ctx = nullcontext(None)
         if tracking_manager is not None and tracking_manager.enabled:
@@ -619,13 +746,23 @@ def train_multiple_models(
             predictions = trainer.predict(test_loader, kdcode_list, test_dates)
             all_predictions.append(predictions)
 
-            pred_dir = os.path.join(base_output_path, f"predictions_model_{model_id}")
             trainer.save_predictions(
                 predictions,
                 kdcode_list,
                 test_dates,
                 pred_dir,
                 prediction_masks=test_prediction_masks,
+            )
+            _write_ensemble_progress(
+                progress_path,
+                {
+                    "status": "RUNNING",
+                    "completed_models": len(all_predictions),
+                    "num_models": config.training.num_models,
+                    "last_model_id": model_id,
+                    "last_model_status": "trained",
+                    "base_output_path": base_output_path,
+                },
             )
 
             if child_tracking is not None and child_tracking.enabled:
@@ -660,5 +797,15 @@ def train_multiple_models(
             df_pred.to_csv(os.path.join(avg_pred_dir, f"{date}.csv"), index=False)
 
     print(f"\nAveraged predictions saved to {avg_pred_dir}")
+    _write_ensemble_progress(
+        progress_path,
+        {
+            "status": "OK",
+            "completed_models": len(all_predictions),
+            "num_models": config.training.num_models,
+            "averaged_predictions_dir": avg_pred_dir,
+            "base_output_path": base_output_path,
+        },
+    )
 
     return all_results, avg_predictions

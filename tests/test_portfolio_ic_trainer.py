@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 from mci_gru.config import ExperimentConfig, TrainingConfig
-from mci_gru.training.trainer import Trainer
+from mci_gru.training.trainer import Trainer, train_multiple_models
 
 
 class TinyPortfolioModel(nn.Module):
@@ -70,3 +70,64 @@ def test_trainer_can_run_one_cpu_step_with_portfolio_ic(tmp_path: Path) -> None:
     assert np.isfinite(result.final_train_loss)
     assert np.isfinite(result.best_val_loss)
     assert Path(result.best_model_path).exists()
+
+
+def _write_prediction_dir(base: Path, model_id: int, rows_by_date: dict[str, list[tuple[str, float]]]) -> None:
+    pred_dir = base / f"predictions_model_{model_id}"
+    pred_dir.mkdir(parents=True)
+    for date, rows in rows_by_date.items():
+        lines = ["kdcode,dt,score"]
+        lines.extend(f"{kdcode},{date},{score}" for kdcode, score in rows)
+        (pred_dir / f"{date}.csv").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_train_multiple_models_reuses_complete_prediction_dirs(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    test_dates = ["2025-01-10", "2025-01-13"]
+    kdcode_list = ["AAA", "BBB", "CCC"]
+    _write_prediction_dir(
+        tmp_path,
+        0,
+        {
+            "2025-01-10": [("AAA", 0.10), ("BBB", 0.20)],
+            "2025-01-13": [("BBB", 0.30), ("CCC", 0.40)],
+        },
+    )
+    _write_prediction_dir(
+        tmp_path,
+        1,
+        {
+            "2025-01-10": [("AAA", 0.30), ("BBB", 0.60)],
+            "2025-01-13": [("BBB", 0.70), ("CCC", 0.80)],
+        },
+    )
+    config = ExperimentConfig(
+        training=TrainingConfig(num_models=2, use_amp=False),
+        experiment_name="resume_predictions",
+        output_dir=str(tmp_path),
+    )
+    monkeypatch.setenv("MCI_GRU_RESUME_ENSEMBLE", "1")
+
+    def model_factory():
+        raise AssertionError("model_factory should not be called for complete saved predictions")
+
+    results, averaged = train_multiple_models(
+        model_factory=model_factory,
+        config=config,
+        train_loader=[],
+        val_loader=[],
+        test_loader=[],
+        kdcode_list=kdcode_list,
+        test_dates=test_dates,
+        output_path=str(tmp_path),
+    )
+
+    assert [r.resumed_from_predictions for r in results] == [True, True]
+    assert averaged.shape == (2, 3)
+    np.testing.assert_allclose(averaged[0, :2], [0.20, 0.40])
+    assert np.isnan(averaged[0, 2])
+    np.testing.assert_allclose(averaged[1, 1:], [0.50, 0.60])
+    assert (tmp_path / "averaged_predictions" / "2025-01-10.csv").exists()
+    assert '"status": "OK"' in (tmp_path / "ensemble_progress.json").read_text(encoding="utf-8")

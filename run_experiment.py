@@ -120,6 +120,11 @@ def _compute_evaluation_summary(
     }
 
 
+def _nanmean_or_none(values: list[float]) -> float | None:
+    finite = [value for value in values if np.isfinite(value)]
+    return float(np.mean(finite)) if finite else None
+
+
 def setup_logging(output_dir: str, experiment_name: str) -> logging.Logger:
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -358,13 +363,21 @@ def main(cfg: DictConfig):
 
                 best_val_losses = [r.best_val_loss for r in results]
                 best_val_ics = [r.best_val_ic for r in results]
+                resumed_from_predictions = sum(
+                    1 for r in results if getattr(r, "resumed_from_predictions", False)
+                )
+                resumed_from_checkpoints = sum(
+                    1 for r in results if getattr(r, "resumed_from_checkpoint", False)
+                )
                 training_summary = {
                     "experiment_name": cfg_w.experiment_name,
                     "models_trained": len(results),
+                    "models_resumed_from_predictions": resumed_from_predictions,
+                    "models_resumed_from_checkpoints": resumed_from_checkpoints,
                     "best_val_losses": best_val_losses,
                     "best_val_ics": best_val_ics,
-                    "mean_best_val_loss": float(np.mean(best_val_losses)) if best_val_losses else None,
-                    "mean_best_val_ic": float(np.mean(best_val_ics)) if best_val_ics else None,
+                    "mean_best_val_loss": _nanmean_or_none(best_val_losses),
+                    "mean_best_val_ic": _nanmean_or_none(best_val_ics),
                     "walkforward_window": wi,
                 }
                 training_summary_path = os.path.join(wpath, "training_summary.json")
