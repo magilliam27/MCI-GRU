@@ -57,16 +57,18 @@ training:
   early_stopping_patience: 10
   weight_decay: 1e-3            # L2 regularization
   gradient_clip: 1.0            # Max gradient norm
-  loss_type: combined            # mse, ic, combined, or portfolio_ic
+  loss_type: combined            # mse, ic, combined, portfolio_ic, or lambdarank_ic
   ic_loss_alpha: 0.5           # Weight for IC component (only for combined)
   portfolio_ic_top_k: 10        # Soft top-k breadth (only for portfolio_ic)
   portfolio_ic_weight: 0.25     # Portfolio utility blend weight (only for portfolio_ic)
   portfolio_ic_temperature: 0.25 # Soft top-k sigmoid temperature (only for portfolio_ic)
+  lambdarank_ic_max_pairs_per_day: 4096 # Deterministic pair cap per date (only for lambdarank_ic)
+  lambdarank_ic_temperature: 1.0 # Pairwise logistic temperature (only for lambdarank_ic)
   label_type: returns          # returns (raw) or rank (cross-sectional percentile)
   warmup_steps: 1000           # Linear LR warmup (optimizer steps) before cosine
   lr_scheduler: cosine         # cosine | none
   use_amp: true                # CUDA autocast + GradScaler (no-op on CPU)
-  selection_metric: val_ic     # val_ic | val_loss — early stopping / checkpoint
+  selection_metric: val_ic     # val_ic | val_rank_ic | val_loss — early stopping / checkpoint
   shuffle_train: null          # null = legacy default (static shuffles, dynamic sequential); true/false overrides
   walkforward:
     enabled: false

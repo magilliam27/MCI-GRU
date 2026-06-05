@@ -484,11 +484,13 @@ class TrainingConfig:
         early_stopping_patience: Epochs to wait before early stopping
         weight_decay: L2 regularization weight
         gradient_clip: Maximum gradient norm (0 = no clipping)
-        loss_type: Loss function (mse, ic, combined, portfolio_ic)
+        loss_type: Loss function (mse, ic, combined, portfolio_ic, lambdarank_ic)
         ic_loss_alpha: Weight for IC component when loss_type=combined (0 to 1)
         portfolio_ic_top_k: Soft top-k breadth when loss_type=portfolio_ic
         portfolio_ic_weight: Weight for the soft top-k utility term
         portfolio_ic_temperature: Sigmoid temperature for soft top-k inclusion
+        lambdarank_ic_max_pairs_per_day: Deterministic pair cap per row for lambdarank_ic
+        lambdarank_ic_temperature: Logistic pairwise temperature for lambdarank_ic
         label_type: Label representation -- "returns" for raw forward returns,
                      "rank" for cross-sectional rank percentiles per day.
                      Rank labels use only same-day information so they
@@ -496,7 +498,7 @@ class TrainingConfig:
         warmup_steps: Linear LR warmup steps (optimizer steps) before cosine decay
         lr_scheduler: "cosine" (warmup + cosine) or "none" (constant LR)
         use_amp: Enable CUDA autocast + GradScaler when device is CUDA
-        selection_metric: "val_ic" (maximize) or "val_loss" (minimize) for early stopping / checkpointing
+        selection_metric: "val_ic", "val_rank_ic", or "val_loss" for early stopping / checkpointing
         shuffle_train: Optional override for training DataLoader shuffling. ``None`` keeps
                        the historical behavior: shuffled for static graphs, sequential for
                        dynamic graphs.
@@ -515,6 +517,8 @@ class TrainingConfig:
     portfolio_ic_top_k: int = 10
     portfolio_ic_weight: float = 0.25
     portfolio_ic_temperature: float = 0.25
+    lambdarank_ic_max_pairs_per_day: int = 4096
+    lambdarank_ic_temperature: float = 1.0
     label_type: str = "returns"
     warmup_steps: int = 1000
     lr_scheduler: str = "cosine"
@@ -523,10 +527,10 @@ class TrainingConfig:
     shuffle_train: bool | None = None
     walkforward: WalkforwardConfig = field(default_factory=WalkforwardConfig)
 
-    _VALID_LOSS_TYPES = ("mse", "ic", "combined", "portfolio_ic")
+    _VALID_LOSS_TYPES = ("mse", "ic", "combined", "portfolio_ic", "lambdarank_ic")
     _VALID_LABEL_TYPES = ("returns", "rank")
     _VALID_LR_SCHEDULERS = ("none", "cosine")
-    _VALID_SELECTION_METRICS = ("val_loss", "val_ic")
+    _VALID_SELECTION_METRICS = ("val_loss", "val_ic", "val_rank_ic")
 
     def __post_init__(self):
         wf = self.walkforward
@@ -557,6 +561,15 @@ class TrainingConfig:
         if self.portfolio_ic_temperature <= 0:
             raise ValueError(
                 f"portfolio_ic_temperature must be > 0, got {self.portfolio_ic_temperature}"
+            )
+        if self.lambdarank_ic_max_pairs_per_day <= 0:
+            raise ValueError(
+                "lambdarank_ic_max_pairs_per_day must be > 0, "
+                f"got {self.lambdarank_ic_max_pairs_per_day}"
+            )
+        if self.lambdarank_ic_temperature <= 0:
+            raise ValueError(
+                f"lambdarank_ic_temperature must be > 0, got {self.lambdarank_ic_temperature}"
             )
         if self.label_type not in self._VALID_LABEL_TYPES:
             raise ValueError(
@@ -767,6 +780,10 @@ class ExperimentConfig:
             "training.portfolio_ic_top_k": self.training.portfolio_ic_top_k,
             "training.portfolio_ic_weight": self.training.portfolio_ic_weight,
             "training.portfolio_ic_temperature": self.training.portfolio_ic_temperature,
+            "training.lambdarank_ic_max_pairs_per_day": (
+                self.training.lambdarank_ic_max_pairs_per_day
+            ),
+            "training.lambdarank_ic_temperature": self.training.lambdarank_ic_temperature,
             "training.shuffle_train": self.training.shuffle_train,
             # Evaluation
             "evaluation.top_k_values": str(self.evaluation.top_k_values),

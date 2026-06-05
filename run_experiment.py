@@ -125,6 +125,26 @@ def _nanmean_or_none(values: list[float]) -> float | None:
     return float(np.mean(finite)) if finite else None
 
 
+def _select_training_objective_value(
+    selection_metric: str,
+    wf_summaries: list[dict[str, Any]],
+    merged_summary: dict[str, Any] | None,
+) -> float | None:
+    """Return the summary objective matching the configured checkpoint metric."""
+    if selection_metric == "val_loss":
+        key = "mean_best_val_loss"
+    elif selection_metric == "val_rank_ic":
+        key = "mean_best_val_rank_ic"
+    else:
+        key = "mean_best_val_ic"
+
+    if merged_summary is not None:
+        return merged_summary.get(f"{key}_across_windows")
+    if wf_summaries:
+        return wf_summaries[-1].get(key)
+    return None
+
+
 def setup_logging(output_dir: str, experiment_name: str) -> logging.Logger:
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -363,6 +383,7 @@ def main(cfg: DictConfig):
 
                 best_val_losses = [r.best_val_loss for r in results]
                 best_val_ics = [r.best_val_ic for r in results]
+                best_val_rank_ics = [r.best_val_rank_ic for r in results]
                 resumed_from_predictions = sum(
                     1 for r in results if getattr(r, "resumed_from_predictions", False)
                 )
@@ -376,8 +397,10 @@ def main(cfg: DictConfig):
                     "models_resumed_from_checkpoints": resumed_from_checkpoints,
                     "best_val_losses": best_val_losses,
                     "best_val_ics": best_val_ics,
+                    "best_val_rank_ics": best_val_rank_ics,
                     "mean_best_val_loss": _nanmean_or_none(best_val_losses),
                     "mean_best_val_ic": _nanmean_or_none(best_val_ics),
+                    "mean_best_val_rank_ic": _nanmean_or_none(best_val_rank_ics),
                     "walkforward_window": wi,
                 }
                 training_summary_path = os.path.join(wpath, "training_summary.json")
@@ -403,6 +426,9 @@ def main(cfg: DictConfig):
                             "models_trained": len(results),
                             "mean_best_val_loss": training_summary["mean_best_val_loss"],
                             "mean_best_val_ic": training_summary["mean_best_val_ic"],
+                            "mean_best_val_rank_ic": training_summary[
+                                "mean_best_val_rank_ic"
+                            ],
                         },
                         prefix="training.",
                     )
@@ -434,9 +460,17 @@ def main(cfg: DictConfig):
             with open(merged_path, "w") as f:
                 json.dump(merged, f, indent=2)
             logger.info("Walk-forward aggregate summary: %s", merged_path)
-            objective_value = merged.get("mean_best_val_ic_across_windows")
+            objective_value = _select_training_objective_value(
+                config.training.selection_metric,
+                wf_summaries,
+                merged,
+            )
         elif wf_summaries:
-            objective_value = wf_summaries[-1].get("mean_best_val_ic")
+            objective_value = _select_training_objective_value(
+                config.training.selection_metric,
+                wf_summaries,
+                None,
+            )
 
         logger.info("\n" + "=" * 80)
         logger.info("Experiment Complete")
