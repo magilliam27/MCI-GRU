@@ -8,6 +8,7 @@ __pycache__/
 .tmp_pytest/
 .codex_tmp/
 .codex-tmp/
+.codex/worktrees/
 .playwright-mcp/
 *.py[cod]
 *$py.class
