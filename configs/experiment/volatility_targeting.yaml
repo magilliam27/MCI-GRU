@@ -14,3 +14,4 @@ features:
   volatility_target_vol: 0.10
   volatility_target_scale_clip: [0.25, 4.0]
   volatility_targeting_interaction_return_window: 21
+  volatility_targeting_components: [ewm_vol, scale, dynamics, scaled_return]

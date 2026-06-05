@@ -122,6 +122,7 @@ class FeatureConfig:
         volatility_target_vol: Annualized volatility target used for target-vol scale proxies
         volatility_target_scale_clip: Lower/upper bounds for target-vol scale multiplier proxies
         volatility_targeting_interaction_return_window: Trailing return window for momentum-vol interaction
+        volatility_targeting_components: Vol-targeting component names to include
         include_vix: Whether to add VIX features
         include_credit_spread: Whether to add credit spread features (IG/HY from FRED)
         include_global_regime: Whether to add global scalar regime features
@@ -169,6 +170,9 @@ class FeatureConfig:
     volatility_target_vol: float = 0.10
     volatility_target_scale_clip: list[float] = field(default_factory=lambda: [0.25, 4.0])
     volatility_targeting_interaction_return_window: int = 21
+    volatility_targeting_components: list[str] = field(
+        default_factory=lambda: ["ewm_vol", "scale", "dynamics", "scaled_return"]
+    )
     include_vix: bool = False
     include_credit_spread: bool = False
     include_global_regime: bool = False
@@ -237,6 +241,11 @@ class FeatureConfig:
             raise ValueError("volatility_target_scale_clip must be positive and increasing")
         if self.volatility_targeting_interaction_return_window <= 0:
             raise ValueError("volatility_targeting_interaction_return_window must be > 0")
+        from mci_gru.features.volatility import resolve_volatility_targeting_components
+
+        self.volatility_targeting_components = resolve_volatility_targeting_components(
+            self.volatility_targeting_components
+        )
         if not (0 < self.regime_similarity_quantile < 0.5):
             raise ValueError("regime_similarity_quantile must be in (0, 0.5)")
         if self.regime_change_months <= 0:
@@ -484,8 +493,13 @@ class TrainingConfig:
         early_stopping_patience: Epochs to wait before early stopping
         weight_decay: L2 regularization weight
         gradient_clip: Maximum gradient norm (0 = no clipping)
-        loss_type: Loss function (mse, ic, combined)
+        loss_type: Loss function (mse, ic, combined, portfolio_ic, lambdarank_ic)
         ic_loss_alpha: Weight for IC component when loss_type=combined (0 to 1)
+        portfolio_ic_top_k: Soft top-k breadth when loss_type=portfolio_ic
+        portfolio_ic_weight: Weight for the soft top-k utility term
+        portfolio_ic_temperature: Sigmoid temperature for soft top-k inclusion
+        lambdarank_ic_max_pairs_per_day: Deterministic pair cap per row for lambdarank_ic
+        lambdarank_ic_temperature: Logistic pairwise temperature for lambdarank_ic
         label_type: Label representation -- "returns" for raw forward returns,
                      "rank" for cross-sectional rank percentiles per day.
                      Rank labels use only same-day information so they
@@ -493,7 +507,7 @@ class TrainingConfig:
         warmup_steps: Linear LR warmup steps (optimizer steps) before cosine decay
         lr_scheduler: "cosine" (warmup + cosine) or "none" (constant LR)
         use_amp: Enable CUDA autocast + GradScaler when device is CUDA
-        selection_metric: "val_ic" (maximize) or "val_loss" (minimize) for early stopping / checkpointing
+        selection_metric: "val_ic", "val_rank_ic", or "val_loss" for early stopping / checkpointing
         shuffle_train: Optional override for training DataLoader shuffling. ``None`` keeps
                        the historical behavior: shuffled for static graphs, sequential for
                        dynamic graphs.
@@ -509,6 +523,11 @@ class TrainingConfig:
     gradient_clip: float = 1.0
     loss_type: str = "combined"
     ic_loss_alpha: float = 0.5
+    portfolio_ic_top_k: int = 10
+    portfolio_ic_weight: float = 0.25
+    portfolio_ic_temperature: float = 0.25
+    lambdarank_ic_max_pairs_per_day: int = 4096
+    lambdarank_ic_temperature: float = 1.0
     label_type: str = "returns"
     warmup_steps: int = 1000
     lr_scheduler: str = "cosine"
@@ -517,10 +536,10 @@ class TrainingConfig:
     shuffle_train: bool | None = None
     walkforward: WalkforwardConfig = field(default_factory=WalkforwardConfig)
 
-    _VALID_LOSS_TYPES = ("mse", "ic", "combined")
+    _VALID_LOSS_TYPES = ("mse", "ic", "combined", "portfolio_ic", "lambdarank_ic")
     _VALID_LABEL_TYPES = ("returns", "rank")
     _VALID_LR_SCHEDULERS = ("none", "cosine")
-    _VALID_SELECTION_METRICS = ("val_loss", "val_ic")
+    _VALID_SELECTION_METRICS = ("val_loss", "val_ic", "val_rank_ic")
 
     def __post_init__(self):
         wf = self.walkforward
@@ -542,6 +561,25 @@ class TrainingConfig:
             )
         if not 0 <= self.ic_loss_alpha <= 1:
             raise ValueError(f"ic_loss_alpha must be in [0, 1], got {self.ic_loss_alpha}")
+        if self.portfolio_ic_top_k <= 0:
+            raise ValueError(f"portfolio_ic_top_k must be > 0, got {self.portfolio_ic_top_k}")
+        if not 0 <= self.portfolio_ic_weight <= 1:
+            raise ValueError(
+                f"portfolio_ic_weight must be in [0, 1], got {self.portfolio_ic_weight}"
+            )
+        if self.portfolio_ic_temperature <= 0:
+            raise ValueError(
+                f"portfolio_ic_temperature must be > 0, got {self.portfolio_ic_temperature}"
+            )
+        if self.lambdarank_ic_max_pairs_per_day <= 0:
+            raise ValueError(
+                "lambdarank_ic_max_pairs_per_day must be > 0, "
+                f"got {self.lambdarank_ic_max_pairs_per_day}"
+            )
+        if self.lambdarank_ic_temperature <= 0:
+            raise ValueError(
+                f"lambdarank_ic_temperature must be > 0, got {self.lambdarank_ic_temperature}"
+            )
         if self.label_type not in self._VALID_LABEL_TYPES:
             raise ValueError(
                 f"label_type must be one of {self._VALID_LABEL_TYPES}, got {self.label_type!r}"
@@ -727,6 +765,9 @@ class ExperimentConfig:
             "features.volatility_targeting_interaction_return_window": (
                 self.features.volatility_targeting_interaction_return_window
             ),
+            "features.volatility_targeting_components": (
+                str(self.features.volatility_targeting_components)
+            ),
             "features.regime_include_subsequent_returns": self.features.regime_include_subsequent_returns,
             "features.regime_subsequent_return_horizons": str(
                 self.features.regime_subsequent_return_horizons
@@ -748,6 +789,13 @@ class ExperimentConfig:
             "training.num_models": self.training.num_models,
             "training.loss_type": self.training.loss_type,
             "training.ic_loss_alpha": self.training.ic_loss_alpha,
+            "training.portfolio_ic_top_k": self.training.portfolio_ic_top_k,
+            "training.portfolio_ic_weight": self.training.portfolio_ic_weight,
+            "training.portfolio_ic_temperature": self.training.portfolio_ic_temperature,
+            "training.lambdarank_ic_max_pairs_per_day": (
+                self.training.lambdarank_ic_max_pairs_per_day
+            ),
+            "training.lambdarank_ic_temperature": self.training.lambdarank_ic_temperature,
             "training.shuffle_train": self.training.shuffle_train,
             # Evaluation
             "evaluation.top_k_values": str(self.evaluation.top_k_values),

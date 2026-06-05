@@ -28,10 +28,9 @@ from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 
 from mci_gru.config import ExperimentConfig
 from mci_gru.training.losses import (
-    CombinedMSEICLoss,
-    ICLoss,
-    MaskedMSELoss,
-    mean_information_coefficient,
+    build_training_loss,
+    information_coefficient_sum_count,
+    rank_information_coefficient_sum_count,
 )
 from mci_gru.utils.seeding import set_seed
 
@@ -93,6 +92,7 @@ def _unpack_loader_batch(batch, device: torch.device):
 class TrainingResult:
     best_val_loss: float
     best_val_ic: float
+    best_val_rank_ic: float
     final_train_loss: float
     epochs_trained: int
     best_model_path: str
@@ -193,6 +193,7 @@ class Trainer:
         # Training state
         self.best_val_loss = float("inf")
         self.best_val_ic = float("-inf")
+        self.best_val_rank_ic = float("-inf")
         self.patience_counter = 0
         self.epoch = 0
 
@@ -207,7 +208,8 @@ class Trainer:
             train_loader: Training data loader
             val_loader: Validation data loader
             epoch_callback: Optional per-epoch callback; receives
-                (epoch, train_loss, val_loss, val_ic, best_val_loss, best_val_ic).
+                (epoch, train_loss, val_loss, val_ic, val_rank_ic,
+                 best_val_loss, best_val_ic, best_val_rank_ic).
 
         Returns:
             TrainingResult with training metrics
@@ -219,12 +221,7 @@ class Trainer:
             lr=training_cfg.learning_rate,
             weight_decay=training_cfg.weight_decay,
         )
-        if training_cfg.loss_type == "ic":
-            criterion = ICLoss()
-        elif training_cfg.loss_type == "combined":
-            criterion = CombinedMSEICLoss(alpha=training_cfg.ic_loss_alpha)
-        else:
-            criterion = MaskedMSELoss()
+        criterion, loss_label = build_training_loss(training_cfg)
 
         steps_per_epoch = len(train_loader)
         scheduler = _build_lr_scheduler(optimizer, training_cfg, steps_per_epoch)
@@ -243,18 +240,12 @@ class Trainer:
 
         self.best_val_loss = float("inf")
         self.best_val_ic = float("-inf")
+        self.best_val_rank_ic = float("-inf")
         self.patience_counter = 0
         final_train_loss = 0.0
 
         print(f"Training on {self.device}...")
-        print(
-            f"  Loss: {training_cfg.loss_type}"
-            + (
-                f" (alpha={training_cfg.ic_loss_alpha})"
-                if training_cfg.loss_type == "combined"
-                else ""
-            )
-        )
+        print(f"  Loss: {loss_label}")
         print(f"  Selection metric: {training_cfg.selection_metric}")
         print(f"  LR scheduler: {training_cfg.lr_scheduler}")
         print(f"  AMP (CUDA): {use_amp}")
@@ -269,16 +260,20 @@ class Trainer:
             )
             final_train_loss = train_loss
 
-            val_loss, val_ic = self._validate(val_loader, criterion, use_amp)
+            val_loss, val_ic, val_rank_ic = self._validate(val_loader, criterion, use_amp)
 
             print(
                 f"Epoch [{epoch + 1}/{training_cfg.num_epochs}] - Train Loss: {train_loss:.6f}, "
-                f"Val Loss: {val_loss:.6f}, Val IC: {val_ic:.6f}"
+                f"Val Loss: {val_loss:.6f}, Val IC: {val_ic:.6f}, "
+                f"Val Rank IC: {val_rank_ic:.6f}"
             )
 
             improved = False
             if training_cfg.selection_metric == "val_ic":
                 if val_ic > self.best_val_ic:
+                    improved = True
+            elif training_cfg.selection_metric == "val_rank_ic":
+                if val_rank_ic > self.best_val_rank_ic:
                     improved = True
             else:
                 if val_loss < self.best_val_loss:
@@ -287,10 +282,14 @@ class Trainer:
             if improved:
                 self.best_val_loss = val_loss
                 self.best_val_ic = val_ic
+                self.best_val_rank_ic = val_rank_ic
                 self.patience_counter = 0
                 torch.save(self.model.state_dict(), best_model_path)
                 print(
-                    f"  -> New best model saved (val_loss={self.best_val_loss:.6f}, val_ic={self.best_val_ic:.6f})"
+                    "  -> New best model saved "
+                    f"(val_loss={self.best_val_loss:.6f}, "
+                    f"val_ic={self.best_val_ic:.6f}, "
+                    f"val_rank_ic={self.best_val_rank_ic:.6f})"
                 )
             else:
                 self.patience_counter += 1
@@ -304,8 +303,10 @@ class Trainer:
                             train_loss,
                             val_loss,
                             val_ic,
+                            val_rank_ic,
                             self.best_val_loss,
                             self.best_val_ic,
+                            self.best_val_rank_ic,
                         )
                     break
 
@@ -315,13 +316,16 @@ class Trainer:
                     train_loss,
                     val_loss,
                     val_ic,
+                    val_rank_ic,
                     self.best_val_loss,
                     self.best_val_ic,
+                    self.best_val_rank_ic,
                 )
 
         return TrainingResult(
             best_val_loss=self.best_val_loss,
             best_val_ic=self.best_val_ic,
+            best_val_rank_ic=self.best_val_rank_ic,
             final_train_loss=final_train_loss,
             epochs_trained=epoch + 1,
             best_model_path=best_model_path,
@@ -381,10 +385,13 @@ class Trainer:
 
         return total_loss / num_samples if num_samples > 0 else 0.0
 
-    def _validate(self, val_loader, criterion, use_amp) -> tuple[float, float]:
+    def _validate(self, val_loader, criterion, use_amp) -> tuple[float, float, float]:
         self.model.eval()
         total_loss = 0.0
         total_ic = 0.0
+        total_ic_rows = 0
+        total_rank_ic = 0.0
+        total_rank_ic_rows = 0
         num_samples = 0
 
         with torch.no_grad():
@@ -415,15 +422,23 @@ class Trainer:
                         stock_mask=stock_mask,
                     )
                     loss = criterion(outputs, labels)
-                ic = mean_information_coefficient(outputs, labels)
+                ic_sum, ic_count = information_coefficient_sum_count(outputs, labels)
+                rank_ic_sum, rank_ic_count = rank_information_coefficient_sum_count(
+                    outputs,
+                    labels,
+                )
 
                 total_loss += loss.item() * batch_size
-                total_ic += ic.item() * batch_size
+                total_ic += ic_sum.item()
+                total_ic_rows += ic_count
+                total_rank_ic += rank_ic_sum.item()
+                total_rank_ic_rows += rank_ic_count
                 num_samples += batch_size
 
         mean_loss = total_loss / num_samples if num_samples > 0 else 0.0
-        mean_ic = total_ic / num_samples if num_samples > 0 else 0.0
-        return mean_loss, mean_ic
+        mean_ic = total_ic / total_ic_rows if total_ic_rows > 0 else 0.0
+        mean_rank_ic = total_rank_ic / total_rank_ic_rows if total_rank_ic_rows > 0 else 0.0
+        return mean_loss, mean_ic, mean_rank_ic
 
     def predict(self, test_loader, kdcode_list: list[str], test_dates: list[str]) -> np.ndarray:
         """
@@ -597,7 +612,8 @@ def train_multiple_models(
 
             print(
                 f"Model {model_id + 1} training complete. Best val loss: {result.best_val_loss:.6f}, "
-                f"best val IC: {result.best_val_ic:.6f}"
+                f"best val IC: {result.best_val_ic:.6f}, "
+                f"best val Rank IC: {result.best_val_rank_ic:.6f}"
             )
 
             trainer.last_best_model_path = result.best_model_path
@@ -619,6 +635,7 @@ def train_multiple_models(
                     {
                         "best_val_loss": result.best_val_loss,
                         "best_val_ic": result.best_val_ic,
+                        "best_val_rank_ic": result.best_val_rank_ic,
                         "final_train_loss": result.final_train_loss,
                         "epochs_trained": result.epochs_trained,
                     }

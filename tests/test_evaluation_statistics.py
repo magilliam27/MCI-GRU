@@ -1,10 +1,12 @@
 import numpy as np
+import pytest
 
 from mci_gru.evaluation.statistics import (
     daily_ic_series,
     moving_block_bootstrap_ci,
     newey_west_sharpe,
 )
+from mci_gru.training.metrics import compute_metrics
 
 
 def test_daily_ic_series_computes_per_day_correlations():
@@ -18,6 +20,18 @@ def test_daily_ic_series_computes_per_day_correlations():
     assert pearson[0] > 0.98
     assert pearson[1] < -0.98
     np.testing.assert_allclose(spearman, np.array([1.0, -1.0]))
+
+
+def test_compute_metrics_reports_rank_ic_with_explicit_names():
+    predictions = np.array([[1.0, 2.0, 3.0], [3.0, 2.0, 1.0]])
+    returns = np.array([[1.0, 2.0, 4.0], [1.0, 2.0, 3.0]])
+
+    metrics = compute_metrics(predictions, returns, top_k=2)
+
+    assert metrics["avg_rank_ic"] == pytest.approx(0.0)
+    assert metrics["median_rank_ic"] == pytest.approx(0.0)
+    assert metrics["rank_ic_ir"] == pytest.approx(0.0)
+    assert metrics["avg_spearman_corr"] == metrics["avg_rank_ic"]
 
 
 def test_newey_west_sharpe_differs_from_naive_on_autocorrelated_returns():

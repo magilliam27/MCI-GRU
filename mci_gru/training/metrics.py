@@ -52,12 +52,28 @@ def compute_metrics(
         else float("nan")
     )
 
-    # Correlation metrics
-    correlations = daily_ic_series(predictions, true_returns, method="spearman")
+    # Rank IC (Spearman correlation)
+    rank_ic_values = daily_ic_series(predictions, true_returns, method="spearman")
 
-    if len(correlations) > 0:
-        metrics["avg_spearman_corr"] = float(np.mean(correlations))
-        metrics["median_spearman_corr"] = float(np.median(correlations))
+    if len(rank_ic_values) > 0:
+        avg_rank_ic = float(np.mean(rank_ic_values))
+        median_rank_ic = float(np.median(rank_ic_values))
+        metrics["avg_rank_ic"] = avg_rank_ic
+        metrics["median_rank_ic"] = median_rank_ic
+        metrics["rank_ic_ir"] = float(np.mean(rank_ic_values) / (np.std(rank_ic_values) + 1e-8))
+        metrics["avg_spearman_corr"] = avg_rank_ic
+        metrics["median_spearman_corr"] = median_rank_ic
+        if bootstrap_enabled:
+            ci = moving_block_bootstrap_ci(
+                rank_ic_values,
+                statistic=np.mean,
+                block_size=block_size or max(1, label_t),
+                n_resamples=bootstrap_resamples,
+                seed=bootstrap_seed + 17,
+                ci_level=ci_level,
+            )
+            metrics["avg_rank_ic_ci_lower"] = ci["lower"]
+            metrics["avg_rank_ic_ci_upper"] = ci["upper"]
 
     # Information Coefficient (Pearson correlation)
     ic_values = daily_ic_series(predictions, true_returns, method="pearson")
@@ -275,7 +291,15 @@ def print_metrics(metrics: dict[str, float], title: str = "Evaluation Metrics"):
 
     # Group metrics by category
     loss_keys = ["mse", "rmse", "mae"]
-    corr_keys = ["avg_spearman_corr", "median_spearman_corr", "avg_ic", "ic_ir"]
+    corr_keys = [
+        "avg_ic",
+        "ic_ir",
+        "avg_rank_ic",
+        "median_rank_ic",
+        "rank_ic_ir",
+        "avg_spearman_corr",
+        "median_spearman_corr",
+    ]
     portfolio_keys = [k for k in metrics if "return" in k or "sharpe" in k]
 
     print("\nLoss Metrics:")
