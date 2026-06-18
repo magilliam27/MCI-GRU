@@ -4,12 +4,20 @@ Last updated: 2026-06-18
 
 ## Resume Here
 
-- Start from branch `codex/issue8-vol-repeated-seed`, commit `9b5d201`.
+- Start from branch `codex/issue8-vol-repeated-seed`, latest pushed handoff commit `3643e0e`.
 - Open the branch-backed Colab notebook:
   `https://colab.research.google.com/github/magilliam27/MCI-GRU/blob/codex/issue8-vol-repeated-seed/notebooks/volatility_targeting_ablation_colab.ipynb`
-- Current blocker: setup cell failed before training at `drive.mount("/content/drive")` with `ValueError: mount failed`.
-- The failed G4 runtime was manually disconnected/deleted; the visible state after cleanup was `Reconnect G4 High-RAM Click to connect`.
-- Next useful fix is notebook Drive staging resilience before relaunching the expensive repeated-seed sweep.
+- Current Colab run is live in Chrome on the branch-backed notebook.
+- Setup succeeded after granting the standard Drive OAuth prompt:
+  - Drive mounted at `/content/drive`.
+  - GPU printed `NVIDIA RTX PRO 6000 Blackwell Server Edition` from a `G4 GPU` runtime.
+  - Repo printed `/content/MCI-GRU`.
+  - Branch printed `codex/issue8-vol-repeated-seed`.
+- FRED/PIT preflight succeeded after granting Colab Secrets access for `FRED_API_KEY`.
+- Build cell created Drive run root:
+  `/content/drive/MyDrive/MCI-GRU-Ablations/volatility_targeting_issue8_ablation/20260618_183044`
+- Training/backtest cell was launched at about 2:32 PM ET on 2026-06-18 and started:
+  `Training: issue8_ablate_baseline_vol_2022_seed314159`
 
 ## Current Objective
 
@@ -58,39 +66,55 @@ Continue Issue #8 volatility-targeting diagnosis by running the documented compo
 - Git:
   - Branch created and pushed: `codex/issue8-vol-repeated-seed`.
   - Commit: `9b5d201 Add Issue 8 repeated-seed ablation notebook`.
-  - `git status --short --branch` after push showed branch tracking `origin/codex/issue8-vol-repeated-seed`; no tracked modifications before this handoff file was added.
-- Colab manual evidence:
+  - Handoff commit: `3643e0e Document Issue 8 repeated-seed Colab blocker`.
+- Colab manual evidence, first failed attempt:
   - Chrome opened the GitHub-backed notebook while signed in as the user.
   - Runtime type was changed from T4 to `G4 GPU`; toolbar showed `Connect G4 High-RAM`.
   - Running setup triggered expected GitHub `Run anyway` warning; accepted it.
   - Setup connected to a GPU backend and failed at Drive mount: `ValueError: mount failed`.
   - Runtime was manually disconnected/deleted; toolbar showed `Reconnect G4 High-RAM`.
+- Colab manual evidence, retry:
+  - In-app browser was on stale Drive notebook file id `1guG5FBvIRhtC6oMFj2Heal_TkTyNgoRj`, whose setup cell still had `BRANCH = "codex/pit-universe-validation"`.
+  - Navigated to the branch-backed URL because it correctly had `BRANCH = "codex/issue8-vol-repeated-seed"`.
+  - In-app runtime picker still showed `T4 GPU` and would not actuate the G4 radio through the browser helper; Chrome fallback was used with the visible signed-in Colab UI.
+  - Chrome runtime dialog showed `G4 GPU` selected.
+  - Setup mounted Drive and printed GPU/repo/branch evidence above.
+  - FRED/PIT cell printed:
+    - `FRED_API_KEY loaded from Colab Secrets.`
+    - market CSV `/content/MCI-GRU/data/raw/market/sp500_pit_union_lseg_20150101_20260513.csv` hash prefix `84e1f3f2b79a7982`.
+    - PIT CSV `/content/MCI-GRU/data/raw/constituents/sp500_pit_joiner_leaver_20160101_20260513_pit_universe.csv` hash prefix `a9ef692b83a9575c`.
+  - Build cell printed manifest path:
+    `/content/drive/MyDrive/MCI-GRU-Ablations/volatility_targeting_issue8_ablation/20260618_183044/issue8_vol_targeting_ablation_manifest.json`.
+  - Training/backtest cell is running; no return code had printed at this handoff update.
 
 ## Open Risks
 
-- No experiment/backtest rows completed in Colab during this turn.
-- The notebook still depends on DriveFS mount for input data and output paths; this failed before clone/install reached completion.
-- The current notebook writes full repeated-seed training as 60 full-budget jobs. Confirm runtime budget before relaunching.
-- FRED secret/data cell was not reached; `FRED_API_KEY` and data file availability remain unverified for this run.
-- The handoff file itself is currently an uncommitted local note unless the next agent stages/commits it.
+- No experiment/backtest rows had completed at this handoff update.
+- The current notebook writes full repeated-seed training as 60 full-budget jobs; expect a long run unless prior artifacts are reused.
+- The training cell captures each subprocess output and prints `Training return code` only after a job completes, so the visible notebook may be quiet during long training.
+- The in-app browser tab still points to the stale Drive upload unless manually redirected; use the branch-backed URL for source truth.
+- This handoff update is a local working-tree edit until staged/committed/pushed.
 
 ## Next Actions
 
-1. Patch the notebook generator to handle Drive mount failure before relaunch:
-   - minimally try `drive.mount("/content/drive", force_remount=True, timeout_ms=120000)`;
-   - preferably add a Drive API fallback or clear failure message following `docs/NOTEBOOK_BEST_PRACTICES.md`.
-2. Regenerate `notebooks/volatility_targeting_ablation_colab.ipynb`, run the same focused tests and ruff, commit, and push to `codex/issue8-vol-repeated-seed`.
-3. Reopen the GitHub-backed Colab URL, set G4/L4-class runtime, run setup only, and confirm:
-   - non-T4 `nvidia-smi` output,
-   - cloned branch `codex/issue8-vol-repeated-seed`,
-   - no DriveFS failure.
-4. Run the FRED/PIT input cell and matrix build cell; record the run root under `/content/drive/MyDrive/MCI-GRU-Ablations/volatility_targeting_issue8_ablation/<RUN_TAG>`.
-5. Launch the training/backtest cell only after setup/data preflight passes; monitor Drive artifacts (`issue8_vol_targeting_ablation_results.csv`, deltas CSV, seed summary CSVs) as the source of truth.
+1. Keep the Chrome Colab tab alive and monitor the running training/backtest cell.
+2. Source-of-truth run root:
+   `/content/drive/MyDrive/MCI-GRU-Ablations/volatility_targeting_issue8_ablation/20260618_183044`
+3. Check for first completed rows in:
+   - `issue8_vol_targeting_ablation_results.csv`
+   - `issue8_vol_targeting_ablation_deltas_vs_baseline.csv`
+   - `issue8_vol_targeting_repeated_seed_summary_by_variant.csv`
+   - `issue8_vol_targeting_repeated_seed_summary_by_year_variant.csv`
+4. If the cell fails, inspect the logged stdout/stderr files under:
+   `/content/drive/MyDrive/MCI-GRU-Ablations/volatility_targeting_issue8_ablation/20260618_183044/logs/`
+5. Once enough rows exist, compare each candidate against same-year, same-seed `baseline_vol`.
 
 ## Data/Experiment State
 
 - Intended Drive run root pattern:
   `/content/drive/MyDrive/MCI-GRU-Ablations/volatility_targeting_issue8_ablation/<RUN_TAG>`
+- Active Drive run root:
+  `/content/drive/MyDrive/MCI-GRU-Ablations/volatility_targeting_issue8_ablation/20260618_183044`
 - Intended result artifacts:
   - `issue8_vol_targeting_ablation_manifest.json`
   - `issue8_vol_targeting_ablation_results.csv`
