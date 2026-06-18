@@ -575,6 +575,13 @@ cells = [
                 logs_dir.mkdir(parents=True, exist_ok=True)
                 stdout_path = logs_dir / "stdout.log"
                 stderr_path = logs_dir / "stderr.log"
+                backtest_env = os.environ.copy()
+                existing_pythonpath = backtest_env.get("PYTHONPATH", "")
+                backtest_env["PYTHONPATH"] = (
+                    f"{REPO_DIR}{os.pathsep}{existing_pythonpath}"
+                    if existing_pythonpath
+                    else str(REPO_DIR)
+                )
                 with stdout_path.open("w", encoding="utf-8") as stdout, stderr_path.open(
                     "w",
                     encoding="utf-8",
@@ -582,6 +589,7 @@ cells = [
                     proc = subprocess.run(
                         cmd,
                         cwd=str(REPO_DIR),
+                        env=backtest_env,
                         stdout=stdout,
                         stderr=stderr,
                         text=True,
