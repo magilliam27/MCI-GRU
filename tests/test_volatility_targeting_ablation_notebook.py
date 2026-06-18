@@ -26,7 +26,10 @@ def test_issue8_ablation_notebook_defines_stage1_component_sweep() -> None:
 
     required_tokens = [
         "Issue #8 Volatility-Targeting Ablation Sweep",
-        'RUN_STAGE = "stage1_2023"',
+        'RUN_STAGE = "repeated_seed_validation"',
+        '"repeated_seed_validation": [2022, 2023, 2024, 2025]',
+        "SEEDS_BY_STAGE",
+        "[314159, 271828, 161803]",
         '"stage2_contrasts": [2024, 2025]',
         '"baseline_vol"',
         '"vt_full_clip_0p25_4p0"',
@@ -36,10 +39,12 @@ def test_issue8_ablation_notebook_defines_stage1_component_sweep() -> None:
         '"vt_no_dynamics"',
         '"vt_clip_0p50_2p0"',
         '"vt_clip_0p75_1p5"',
-        "features.volatility_targeting_include_ewm_vol",
-        "features.volatility_targeting_include_scale",
-        "features.volatility_targeting_include_dynamics",
-        "features.volatility_targeting_include_scaled_return",
+        "features.volatility_targeting_components=",
+        "component_list_override",
+        '"ewm_vol": True',
+        '"scale": False',
+        '"scale": True',
+        '"ewm_vol": False',
     ]
 
     for token in required_tokens:
@@ -53,7 +58,7 @@ def test_issue8_ablation_notebook_uses_current_pit_recipe_and_g4_preflight() -> 
 
     required_tokens = [
         "G4/L4-class Colab runtime, not T4/CPU",
-        "BRANCH = \"codex/pit-universe-validation\"",
+        "BRANCH = \"codex/issue8-vol-repeated-seed\"",
         "FRED_API_KEY loaded from Colab Secrets.",
         "features=with_momentum",
         "features.include_global_regime=true",
@@ -90,7 +95,10 @@ def test_issue8_ablation_notebook_runs_cost_rank_gate_backtests_and_writes_delta
         "--min_rank_drop",
         "issue8_vol_targeting_ablation_results.csv",
         "issue8_vol_targeting_ablation_deltas_vs_baseline.csv",
+        "issue8_vol_targeting_repeated_seed_summary_by_variant.csv",
+        "issue8_vol_targeting_repeated_seed_summary_by_year_variant.csv",
         "total_return_vs_baseline",
+        'results_df.groupby(["year", "seed"])',
         "issue8_vol_targeting_ablation_summary.md",
     ]
 

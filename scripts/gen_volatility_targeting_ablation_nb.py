@@ -38,9 +38,10 @@ cells = [
         variants, runs the cost-aware rank-gated saved-prediction backtest, and
         emits a variant-vs-baseline delta table.
 
-        Default stage is `stage1_2023`: full-budget 2023 ablations first. After
-        reviewing the baseline deltas, switch `RUN_STAGE` to `stage2_contrasts`
-        to promote the interesting variants to 2024 and 2025.
+        Default stage is `repeated_seed_validation`: the narrow candidate set
+        from the Issue #8 handoff across 2022-2025 and three seeds. Switch
+        `RUN_STAGE` back to `stage1_2023` only when replaying the older
+        single-seed component diagnosis.
         """
     ),
     md("## 1. Setup"),
@@ -59,7 +60,7 @@ cells = [
 
         IN_COLAB = "google.colab" in sys.modules
         REPO_URL = "https://github.com/magilliam27/MCI-GRU.git"
-        BRANCH = "codex/pit-universe-validation"
+        BRANCH = "codex/issue8-vol-repeated-seed"
         REPO_DIR = Path("/content/MCI-GRU") if IN_COLAB else Path.cwd()
         REQUIRE_G4_GPU = True
 
@@ -165,7 +166,7 @@ cells = [
     code(
         r"""
         SMOKE_MODE = False
-        RUN_STAGE = "stage1_2023"  # stage1_2023 | stage2_contrasts | all_years
+        RUN_STAGE = "repeated_seed_validation"  # repeated_seed_validation | stage1_2023 | stage2_contrasts | all_years
         BASE_SEED = 314159
         RUN_TAG_OVERRIDE = ""
         RUN_TAG = RUN_TAG_OVERRIDE.strip() or datetime.utcnow().strftime("%Y%m%d_%H%M%S")
@@ -179,12 +180,27 @@ cells = [
         BOOTSTRAP_RESAMPLES = 25 if SMOKE_MODE else 1000
 
         YEARS_BY_STAGE = {
+            "repeated_seed_validation": [2022, 2023, 2024, 2025],
             "stage1_2023": [2023],
             "stage2_contrasts": [2024, 2025],
             "all_years": [2022, 2023, 2024, 2025],
         }
 
+        SEEDS_BY_STAGE = {
+            "repeated_seed_validation": [314159, 271828, 161803],
+            "stage1_2023": [BASE_SEED],
+            "stage2_contrasts": [BASE_SEED],
+            "all_years": [BASE_SEED],
+        }
+
         VARIANTS_BY_STAGE = {
+            "repeated_seed_validation": [
+                "baseline_vol",
+                "vt_full_clip_0p25_4p0",
+                "vt_clip_0p50_2p0",
+                "vt_scale_only",
+                "vt_ewm_only",
+            ],
             "stage1_2023": [
                 "baseline_vol",
                 "vt_full_clip_0p25_4p0",
@@ -300,8 +316,14 @@ cells = [
             },
         }
 
+        COMPONENT_ORDER = ["ewm_vol", "scale", "dynamics", "scaled_return"]
+
         def bool_override(value: bool) -> str:
             return "true" if value else "false"
+
+        def component_list_override(component_flags: dict[str, bool]) -> str:
+            components = [name for name in COMPONENT_ORDER if component_flags[name]]
+            return "[" + ",".join(components) + "]"
 
         def variant_overrides(name: str) -> list[str]:
             variant = VARIANT_DEFS[name]
@@ -319,10 +341,7 @@ cells = [
                 "features.volatility_target_vol=0.10",
                 f"features.volatility_target_scale_clip=[{variant['scale_clip'][0]},{variant['scale_clip'][1]}]",
                 "features.volatility_targeting_interaction_return_window=21",
-                f"features.volatility_targeting_include_ewm_vol={bool_override(components['ewm_vol'])}",
-                f"features.volatility_targeting_include_scale={bool_override(components['scale'])}",
-                f"features.volatility_targeting_include_dynamics={bool_override(components['dynamics'])}",
-                f"features.volatility_targeting_include_scaled_return={bool_override(components['scaled_return'])}",
+                f"features.volatility_targeting_components={component_list_override(components)}",
             ]
 
         BASE_OVERRIDES = [
@@ -377,27 +396,30 @@ cells = [
 
         years = YEARS_BY_STAGE[RUN_STAGE]
         variant_names = VARIANTS_BY_STAGE[RUN_STAGE]
+        seeds = SEEDS_BY_STAGE[RUN_STAGE]
         jobs = []
         for year in years:
-            for variant_name in variant_names:
-                experiment = f"pit_temporal_{year}"
-                name = f"issue8_ablate_{variant_name}_{year}_seed{BASE_SEED}"
-                jobs.append(
-                    {
-                        "year": year,
-                        "variant": variant_name,
-                        "name": name,
-                        "hypothesis": VARIANT_DEFS[variant_name]["hypothesis"],
-                        "overrides": [
-                            f"+experiment={experiment}",
-                            *BASE_OVERRIDES,
-                            *variant_overrides(variant_name),
-                            f"seed={BASE_SEED}",
-                            f"experiment_name={name}",
-                            f"output_dir={TRAINING_OUTPUT_DIR.as_posix()}",
-                        ],
-                    }
-                )
+            for seed in seeds:
+                for variant_name in variant_names:
+                    experiment = f"pit_temporal_{year}"
+                    name = f"issue8_ablate_{variant_name}_{year}_seed{seed}"
+                    jobs.append(
+                        {
+                            "year": year,
+                            "seed": seed,
+                            "variant": variant_name,
+                            "name": name,
+                            "hypothesis": VARIANT_DEFS[variant_name]["hypothesis"],
+                            "overrides": [
+                                f"+experiment={experiment}",
+                                *BASE_OVERRIDES,
+                                *variant_overrides(variant_name),
+                                f"seed={seed}",
+                                f"experiment_name={name}",
+                                f"output_dir={TRAINING_OUTPUT_DIR.as_posix()}",
+                            ],
+                        }
+                    )
 
         manifest = {
             "issue": 8,
@@ -408,6 +430,7 @@ cells = [
             "num_models": NUM_MODELS,
             "num_epochs": NUM_EPOCHS,
             "base_seed": BASE_SEED,
+            "seeds": seeds,
             "years": years,
             "variants": {name: VARIANT_DEFS[name] for name in variant_names},
             "jobs": jobs,
@@ -425,6 +448,7 @@ cells = [
 
         print("Run root:", RUN_ROOT)
         print("Stage:", RUN_STAGE)
+        print("Seeds:", seeds)
         print("Jobs:", len(jobs))
         for job in jobs:
             print("-", job["name"], "|", job["hypothesis"])
@@ -451,6 +475,8 @@ cells = [
 
         results_path = RUN_ROOT / "issue8_vol_targeting_ablation_results.csv"
         deltas_path = RUN_ROOT / "issue8_vol_targeting_ablation_deltas_vs_baseline.csv"
+        seed_summary_path = RUN_ROOT / "issue8_vol_targeting_repeated_seed_summary_by_variant.csv"
+        year_variant_summary_path = RUN_ROOT / "issue8_vol_targeting_repeated_seed_summary_by_year_variant.csv"
         summary_md_path = RUN_ROOT / "issue8_vol_targeting_ablation_summary.md"
 
         def latest_run_dir(experiment_name: str) -> Path | None:
@@ -572,6 +598,7 @@ cells = [
             row.update(
                 {
                     "year": job["year"],
+                    "seed": job["seed"],
                     "variant": job["variant"],
                     "experiment_name": job["name"],
                     "run_dir": str(run_dir),
@@ -594,7 +621,7 @@ cells = [
                 "days_skipped_by_rank_gate",
             ]
             rows = []
-            for year, year_df in results_df.groupby("year"):
+            for (year, seed), year_df in results_df.groupby(["year", "seed"]):
                 baseline = year_df[year_df["variant"] == "baseline_vol"]
                 if baseline.empty:
                     continue
@@ -602,6 +629,7 @@ cells = [
                 for _, row in year_df.iterrows():
                     out = {
                         "year": year,
+                        "seed": seed,
                         "variant": row["variant"],
                         "run_dir": row["run_dir"],
                     }
@@ -611,22 +639,70 @@ cells = [
                     rows.append(out)
             return pd.DataFrame(rows)
 
+        def write_repeated_seed_summaries(deltas_df: pd.DataFrame) -> None:
+            if deltas_df.empty:
+                pd.DataFrame().to_csv(seed_summary_path, index=False)
+                pd.DataFrame().to_csv(year_variant_summary_path, index=False)
+                return
+            summary_metrics = [
+                col
+                for col in [
+                    "total_return_vs_baseline",
+                    "ASR_vs_baseline",
+                    "MDD_vs_baseline",
+                    "avg_daily_turnover_vs_baseline",
+                ]
+                if col in deltas_df.columns
+            ]
+            if not summary_metrics:
+                pd.DataFrame().to_csv(seed_summary_path, index=False)
+                pd.DataFrame().to_csv(year_variant_summary_path, index=False)
+                return
+            by_variant = (
+                deltas_df.groupby("variant")[summary_metrics]
+                .agg(["count", "mean", "median", "min", "max"])
+                .reset_index()
+            )
+            by_variant.columns = [
+                "_".join(str(part) for part in col if part).rstrip("_")
+                if isinstance(col, tuple)
+                else str(col)
+                for col in by_variant.columns
+            ]
+            by_year_variant = (
+                deltas_df.groupby(["year", "variant"])[summary_metrics]
+                .agg(["count", "mean", "median", "min", "max"])
+                .reset_index()
+            )
+            by_year_variant.columns = [
+                "_".join(str(part) for part in col if part).rstrip("_")
+                if isinstance(col, tuple)
+                else str(col)
+                for col in by_year_variant.columns
+            ]
+            by_variant.to_csv(seed_summary_path, index=False)
+            by_year_variant.to_csv(year_variant_summary_path, index=False)
+
         rows = []
         for job in jobs:
             run_dir = run_training(job)
             rows.append(run_backtest(job, run_dir))
             pd.DataFrame(rows).to_csv(results_path, index=False)
-            build_deltas(pd.DataFrame(rows)).to_csv(deltas_path, index=False)
+            interim_deltas = build_deltas(pd.DataFrame(rows))
+            interim_deltas.to_csv(deltas_path, index=False)
+            write_repeated_seed_summaries(interim_deltas)
 
         results_df = pd.DataFrame(rows)
         deltas_df = build_deltas(results_df)
         results_df.to_csv(results_path, index=False)
         deltas_df.to_csv(deltas_path, index=False)
+        write_repeated_seed_summaries(deltas_df)
 
         display_cols = [
             col
             for col in [
                 "year",
+                "seed",
                 "variant",
                 "total_return",
                 "excess_return",
@@ -650,9 +726,12 @@ cells = [
             f"- Smoke mode: `{SMOKE_MODE}`",
             f"- Models per job: `{NUM_MODELS}`",
             f"- Epochs per job: `{NUM_EPOCHS}`",
+            f"- Seeds: `{seeds}`",
             f"- Backtest: top_k={TOP_K}, label_t={LABEL_T}, spread={SPREAD_BPS}, slippage={SLIPPAGE_BPS}, rank gate={MIN_RANK_DROP}",
             f"- Results CSV: `{results_path}`",
             f"- Delta CSV: `{deltas_path}`",
+            f"- Seed summary CSV: `{seed_summary_path}`",
+            f"- Year-variant summary CSV: `{year_variant_summary_path}`",
             "",
             "## Variant Hypotheses",
         ]
