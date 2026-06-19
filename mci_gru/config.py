@@ -487,6 +487,12 @@ class TrainingConfig:
 
     Attributes:
         batch_size: Training batch size
+        test_batch_size: Prediction DataLoader batch size. Defaults to 1 to preserve
+                         the historical one-date-at-a-time prediction contract.
+        dataloader_num_workers: Worker processes for PyTorch DataLoaders
+        dataloader_pin_memory: Pin host batches before CUDA transfer
+        dataloader_persistent_workers: Keep DataLoader workers alive across epochs
+        dataloader_prefetch_factor: Batches prefetched per worker when workers are enabled
         learning_rate: Optimizer learning rate
         num_epochs: Maximum number of training epochs
         num_models: Number of independently seeded models to train (for averaging)
@@ -511,10 +517,19 @@ class TrainingConfig:
         shuffle_train: Optional override for training DataLoader shuffling. ``None`` keeps
                        the historical behavior: shuffled for static graphs, sequential for
                        dynamic graphs.
+        save_member_predictions: Save per-ensemble-member prediction CSV folders in addition
+                                 to the averaged predictions needed by downstream backtests.
+        save_checkpoints: Save best-model checkpoint files. If false, the trainer keeps the
+                          best state in memory for prediction and avoids per-improvement I/O.
         walkforward: Optional rolling / expanding window orchestration (see :class:`WalkforwardConfig`).
     """
 
     batch_size: int = 32
+    test_batch_size: int = 1
+    dataloader_num_workers: int = 0
+    dataloader_pin_memory: bool = False
+    dataloader_persistent_workers: bool = False
+    dataloader_prefetch_factor: int | None = None
     learning_rate: float = 5e-5
     num_epochs: int = 100
     num_models: int = 10
@@ -534,6 +549,8 @@ class TrainingConfig:
     use_amp: bool = True
     selection_metric: str = "val_ic"
     shuffle_train: bool | None = None
+    save_member_predictions: bool = True
+    save_checkpoints: bool = True
     walkforward: WalkforwardConfig = field(default_factory=WalkforwardConfig)
 
     _VALID_LOSS_TYPES = ("mse", "ic", "combined", "portfolio_ic", "lambdarank_ic")
@@ -549,6 +566,16 @@ class TrainingConfig:
             self.walkforward = WalkforwardConfig()
         if self.batch_size <= 0:
             raise ValueError("batch_size must be > 0")
+        if self.test_batch_size <= 0:
+            raise ValueError("test_batch_size must be > 0")
+        if self.dataloader_num_workers < 0:
+            raise ValueError("dataloader_num_workers must be >= 0")
+        if self.dataloader_persistent_workers and self.dataloader_num_workers == 0:
+            raise ValueError(
+                "dataloader_persistent_workers requires dataloader_num_workers > 0"
+            )
+        if self.dataloader_prefetch_factor is not None and self.dataloader_prefetch_factor <= 0:
+            raise ValueError("dataloader_prefetch_factor must be > 0 when set")
         if self.learning_rate <= 0:
             raise ValueError("learning_rate must be > 0")
         if self.num_epochs <= 0:
@@ -784,6 +811,13 @@ class ExperimentConfig:
             "model.gru_hidden_sizes": str(self.model.gru_hidden_sizes),
             # Training
             "training.batch_size": self.training.batch_size,
+            "training.test_batch_size": self.training.test_batch_size,
+            "training.dataloader_num_workers": self.training.dataloader_num_workers,
+            "training.dataloader_pin_memory": self.training.dataloader_pin_memory,
+            "training.dataloader_persistent_workers": (
+                self.training.dataloader_persistent_workers
+            ),
+            "training.dataloader_prefetch_factor": self.training.dataloader_prefetch_factor,
             "training.learning_rate": self.training.learning_rate,
             "training.num_epochs": self.training.num_epochs,
             "training.num_models": self.training.num_models,
@@ -797,6 +831,8 @@ class ExperimentConfig:
             ),
             "training.lambdarank_ic_temperature": self.training.lambdarank_ic_temperature,
             "training.shuffle_train": self.training.shuffle_train,
+            "training.save_member_predictions": self.training.save_member_predictions,
+            "training.save_checkpoints": self.training.save_checkpoints,
             # Evaluation
             "evaluation.top_k_values": str(self.evaluation.top_k_values),
             "evaluation.bootstrap_enabled": self.evaluation.bootstrap_enabled,

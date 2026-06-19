@@ -229,6 +229,21 @@ def test_volatility_targeting_component_selection_controls_model_feature_list():
     assert "vol_target_ret21_lag2_x_scale_hl20" not in transformed.columns
 
 
+def test_volatility_targeting_ewm_only_omits_unused_component_columns():
+    transformed = add_volatility_targeting_features(
+        _make_panel(),
+        half_lives=[2, 4],
+        interaction_return_window=3,
+        components=["ewm_vol"],
+    )
+
+    assert "vol_target_ewm_vol_hl2" in transformed.columns
+    assert "vol_target_ewm_vol_hl4" in transformed.columns
+    assert "vol_target_scale_hl2" not in transformed.columns
+    assert "vol_target_vol_change_hl2_hl4" not in transformed.columns
+    assert "vol_target_ret3_lag2_x_scale_hl2" not in transformed.columns
+
+
 def test_volatility_targeting_config_rejects_invalid_controls():
     with pytest.raises(ValueError, match="volatility_targeting_half_lives"):
         FeatureConfig(volatility_targeting_half_lives=[20, 20])

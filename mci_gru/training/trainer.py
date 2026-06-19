@@ -62,17 +62,18 @@ def _unpack_loader_batch(batch, device: torch.device):
         stock_mask = batch_dates.get("stock_mask")
         batch_dates = batch_dates.get("dates")
 
-    time_series = time_series.to(device)
-    labels = labels.to(device)
-    graph_features = graph_features.to(device)
-    edge_index = edge_index.to(device)
-    edge_weight = edge_weight.to(device)
+    non_blocking = device.type == "cuda"
+    time_series = time_series.to(device, non_blocking=non_blocking)
+    labels = labels.to(device, non_blocking=non_blocking)
+    graph_features = graph_features.to(device, non_blocking=non_blocking)
+    edge_index = edge_index.to(device, non_blocking=non_blocking)
+    edge_weight = edge_weight.to(device, non_blocking=non_blocking)
     if stock_mask is not None:
-        stock_mask = stock_mask.to(device)
+        stock_mask = stock_mask.to(device, non_blocking=non_blocking)
     if edge_index_sector is not None:
-        edge_index_sector = edge_index_sector.to(device)
+        edge_index_sector = edge_index_sector.to(device, non_blocking=non_blocking)
     if edge_weight_sector is not None:
-        edge_weight_sector = edge_weight_sector.to(device)
+        edge_weight_sector = edge_weight_sector.to(device, non_blocking=non_blocking)
 
     return (
         time_series,
@@ -189,6 +190,7 @@ class Trainer:
             self.device = device
 
         self.model.to(self.device)
+        self.best_state_dict: dict[str, torch.Tensor] | None = None
 
         # Training state
         self.best_val_loss = float("inf")
@@ -242,6 +244,7 @@ class Trainer:
         self.best_val_ic = float("-inf")
         self.best_val_rank_ic = float("-inf")
         self.patience_counter = 0
+        self.best_state_dict = None
         final_train_loss = 0.0
 
         print(f"Training on {self.device}...")
@@ -284,9 +287,17 @@ class Trainer:
                 self.best_val_ic = val_ic
                 self.best_val_rank_ic = val_rank_ic
                 self.patience_counter = 0
-                torch.save(self.model.state_dict(), best_model_path)
+                if training_cfg.save_checkpoints:
+                    torch.save(self.model.state_dict(), best_model_path)
+                    save_detail = "saved"
+                else:
+                    self.best_state_dict = {
+                        key: value.detach().cpu().clone()
+                        for key, value in self.model.state_dict().items()
+                    }
+                    save_detail = "kept in memory"
                 print(
-                    "  -> New best model saved "
+                    f"  -> New best model {save_detail} "
                     f"(val_loss={self.best_val_loss:.6f}, "
                     f"val_ic={self.best_val_ic:.6f}, "
                     f"val_rank_ic={self.best_val_rank_ic:.6f})"
@@ -328,7 +339,7 @@ class Trainer:
             best_val_rank_ic=self.best_val_rank_ic,
             final_train_loss=final_train_loss,
             epochs_trained=epoch + 1,
-            best_model_path=best_model_path,
+            best_model_path=best_model_path if training_cfg.save_checkpoints else "",
         )
 
     def _train_epoch(self, train_loader, optimizer, criterion, scaler, scheduler, use_amp) -> float:
@@ -482,10 +493,10 @@ class Trainer:
                     )
                 if stock_mask is not None:
                     outputs = outputs.masked_fill(~stock_mask, float("nan"))
-                predictions = outputs.squeeze(0).cpu().numpy()
+                predictions = outputs.cpu().numpy()
                 all_predictions.append(predictions)
 
-        return np.array(all_predictions)
+        return np.concatenate(all_predictions, axis=0)
 
     def save_predictions(
         self,
@@ -513,6 +524,13 @@ class Trainer:
                 df.to_csv(os.path.join(output_dir, f"{date}.csv"), index=False)
 
     def load_best_model(self, best_model_path: str | None = None):
+        if self.best_state_dict is not None and not best_model_path:
+            self.model.load_state_dict(
+                {key: value.to(self.device) for key, value in self.best_state_dict.items()}
+            )
+            print("Loaded best model from in-memory state")
+            return
+
         if best_model_path is None:
             if self.last_best_model_path is not None:
                 best_model_path = self.last_best_model_path
@@ -521,9 +539,14 @@ class Trainer:
             else:
                 best_model_path = os.path.join(self.output_path, "best_model.pth")
 
-        if os.path.exists(best_model_path):
+        if best_model_path and os.path.exists(best_model_path):
             self.model.load_state_dict(torch.load(best_model_path, weights_only=True))
             print(f"Loaded best model from {best_model_path}")
+        elif self.best_state_dict is not None:
+            self.model.load_state_dict(
+                {key: value.to(self.device) for key, value in self.best_state_dict.items()}
+            )
+            print("Loaded best model from in-memory state")
         else:
             print(f"No saved model found at {best_model_path}")
 
@@ -567,7 +590,8 @@ def train_multiple_models(
 
     base_output_path = output_path if output_path else config.get_output_path()
     checkpoint_dir = os.path.join(base_output_path, "checkpoints")
-    os.makedirs(checkpoint_dir, exist_ok=True)
+    if config.training.save_checkpoints:
+        os.makedirs(checkpoint_dir, exist_ok=True)
 
     all_results = []
     all_predictions = []
@@ -582,7 +606,11 @@ def train_multiple_models(
         set_seed(model_seed)
 
         model = model_factory()
-        model_checkpoint_path = os.path.join(checkpoint_dir, f"model_{model_id}_best.pth")
+        model_checkpoint_path = (
+            os.path.join(checkpoint_dir, f"model_{model_id}_best.pth")
+            if config.training.save_checkpoints
+            else None
+        )
         trainer = Trainer(
             model=model,
             config=config,
@@ -622,13 +650,16 @@ def train_multiple_models(
             all_predictions.append(predictions)
 
             pred_dir = os.path.join(base_output_path, f"predictions_model_{model_id}")
-            trainer.save_predictions(
-                predictions,
-                kdcode_list,
-                test_dates,
-                pred_dir,
-                prediction_masks=test_prediction_masks,
-            )
+            if config.training.save_member_predictions:
+                trainer.save_predictions(
+                    predictions,
+                    kdcode_list,
+                    test_dates,
+                    pred_dir,
+                    prediction_masks=test_prediction_masks,
+                )
+            else:
+                print("Skipping per-model prediction CSV export.")
 
             if child_tracking is not None and child_tracking.enabled:
                 child_tracking.log_metrics(
@@ -640,12 +671,21 @@ def train_multiple_models(
                         "epochs_trained": result.epochs_trained,
                     }
                 )
-                if config.tracking.log_artifacts and config.tracking.log_checkpoints:
+                if (
+                    config.training.save_checkpoints
+                    and result.best_model_path
+                    and config.tracking.log_artifacts
+                    and config.tracking.log_checkpoints
+                ):
                     child_tracking.log_artifact(
                         result.best_model_path,
                         artifact_path=f"checkpoints/model_{model_id}",
                     )
-                if config.tracking.log_artifacts and config.tracking.log_predictions:
+                if (
+                    config.training.save_member_predictions
+                    and config.tracking.log_artifacts
+                    and config.tracking.log_predictions
+                ):
                     child_tracking.log_artifacts(
                         pred_dir,
                         artifact_path=f"predictions/model_{model_id}",

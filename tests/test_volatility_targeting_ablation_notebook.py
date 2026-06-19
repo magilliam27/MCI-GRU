@@ -26,7 +26,8 @@ def test_issue8_ablation_notebook_defines_stage1_component_sweep() -> None:
 
     required_tokens = [
         "Issue #8 Volatility-Targeting Ablation Sweep",
-        'RUN_STAGE = "repeated_seed_validation"',
+        'RUN_STAGE = "efficiency_probe"',
+        '"efficiency_probe": [2022]',
         '"repeated_seed_validation": [2022, 2023, 2024, 2025]',
         "SEEDS_BY_STAGE",
         "[314159, 271828, 161803]",
@@ -58,7 +59,7 @@ def test_issue8_ablation_notebook_uses_current_pit_recipe_and_g4_preflight() -> 
 
     required_tokens = [
         "G4/L4-class Colab runtime, not T4/CPU",
-        "BRANCH = \"codex/issue8-vol-repeated-seed\"",
+        "BRANCH = \"codex/issue8-colab-efficiency-experiment\"",
         "FRED_API_KEY loaded from Colab Secrets.",
         "features=with_momentum",
         "features.include_global_regime=true",
@@ -71,6 +72,19 @@ def test_issue8_ablation_notebook_uses_current_pit_recipe_and_g4_preflight() -> 
         "training.label_type=returns",
         "training.selection_metric=val_ic",
         "training.shuffle_train=true",
+        "EFFICIENCY_PROBE = RUN_STAGE == \"efficiency_probe\"",
+        "TEST_BATCH_SIZE = 32 if EFFICIENCY_PROBE else 1",
+        "SAVE_CHECKPOINTS = not EFFICIENCY_PROBE",
+        "DATALOADER_PIN_MEMORY = True",
+        "SAVE_MEMBER_PREDICTIONS = False",
+        "LOCAL_TRAINING_OUTPUT_DIR",
+        "DRIVE_TRAINING_OUTPUT_DIR",
+        "sync_run_to_drive",
+        "shutil.copytree(run_dir, drive_run_dir, dirs_exist_ok=True)",
+        'f"training.test_batch_size={TEST_BATCH_SIZE}"',
+        'f"training.dataloader_pin_memory={bool_override(DATALOADER_PIN_MEMORY)}"',
+        'f"training.save_member_predictions={bool_override(SAVE_MEMBER_PREDICTIONS)}"',
+        'f"training.save_checkpoints={bool_override(SAVE_CHECKPOINTS)}"',
         "model.label_t=5",
         "data.pit_universe_mode=masked_panel",
         "data.pit_min_scoreable_stocks=450",

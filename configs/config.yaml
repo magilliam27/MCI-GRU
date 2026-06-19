@@ -51,6 +51,11 @@ graph:
 # Training configuration
 training:
   batch_size: 32
+  test_batch_size: 1
+  dataloader_num_workers: 0
+  dataloader_pin_memory: false
+  dataloader_persistent_workers: false
+  dataloader_prefetch_factor: null
   learning_rate: 5e-5
   num_epochs: 100
   num_models: 10               # Number of independently seeded models for averaging
@@ -70,6 +75,8 @@ training:
   use_amp: true                # CUDA autocast + GradScaler (no-op on CPU)
   selection_metric: val_ic     # val_ic | val_rank_ic | val_loss — early stopping / checkpoint
   shuffle_train: null          # null = legacy default (static shuffles, dynamic sequential); true/false overrides
+  save_member_predictions: true # false skips per-model prediction CSV folders; averaged_predictions are always saved
+  save_checkpoints: true       # false keeps best weights in memory and skips best-model checkpoint files
   walkforward:
     enabled: false
     window_train_years: 4

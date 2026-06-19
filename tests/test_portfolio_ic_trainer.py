@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 from mci_gru.config import ExperimentConfig, TrainingConfig
-from mci_gru.training.trainer import Trainer
+from mci_gru.training.trainer import Trainer, train_multiple_models
 
 
 class TinyPortfolioModel(nn.Module):
@@ -70,3 +70,88 @@ def test_trainer_can_run_one_cpu_step_with_portfolio_ic(tmp_path: Path) -> None:
     assert np.isfinite(result.final_train_loss)
     assert np.isfinite(result.best_val_loss)
     assert Path(result.best_model_path).exists()
+
+
+def test_trainer_predict_accepts_batched_test_loader(tmp_path: Path) -> None:
+    n_stocks = 4
+    batch = (
+        torch.zeros((2, n_stocks, 3, 2)),
+        torch.zeros((2, n_stocks)),
+        torch.zeros((2, n_stocks, 2)),
+        torch.zeros((2, 0), dtype=torch.long),
+        torch.zeros((0,)),
+        n_stocks,
+        ["2025-01-14", "2025-01-15"],
+    )
+    config = ExperimentConfig(
+        training=TrainingConfig(use_amp=False),
+        experiment_name="portfolio_ic_batched_predict",
+        output_dir=str(tmp_path),
+    )
+    model = TinyPortfolioModel(n_stocks=n_stocks)
+
+    predictions = Trainer(
+        model=model,
+        config=config,
+        device=torch.device("cpu"),
+        output_path=str(tmp_path),
+    ).predict([batch], [f"S{i}" for i in range(n_stocks)], ["2025-01-14", "2025-01-15"])
+
+    assert predictions.shape == (2, n_stocks)
+
+
+def test_train_multiple_models_can_skip_member_prediction_and_checkpoint_exports(
+    tmp_path: Path,
+) -> None:
+    n_stocks = 4
+    train_batch = (
+        torch.zeros((2, n_stocks, 3, 2)),
+        torch.tensor([[0.20, -0.10, 0.00, 0.10], [0.10, 0.00, -0.10, 0.20]]),
+        torch.zeros((2, n_stocks, 2)),
+        torch.zeros((2, 0), dtype=torch.long),
+        torch.zeros((0,)),
+        n_stocks,
+        ["2025-01-10", "2025-01-13"],
+    )
+    test_batch = (
+        torch.zeros((1, n_stocks, 3, 2)),
+        torch.zeros((1, n_stocks)),
+        torch.zeros((1, n_stocks, 2)),
+        torch.zeros((2, 0), dtype=torch.long),
+        torch.zeros((0,)),
+        n_stocks,
+        ["2025-01-14"],
+    )
+    config = ExperimentConfig(
+        training=TrainingConfig(
+            loss_type="portfolio_ic",
+            portfolio_ic_top_k=2,
+            selection_metric="val_loss",
+            num_epochs=1,
+            num_models=2,
+            batch_size=2,
+            learning_rate=1e-3,
+            lr_scheduler="none",
+            use_amp=False,
+            save_member_predictions=False,
+            save_checkpoints=False,
+        ),
+        experiment_name="portfolio_ic_skip_member_preds",
+        output_dir=str(tmp_path),
+    )
+
+    train_multiple_models(
+        model_factory=lambda: TinyPortfolioModel(n_stocks=n_stocks),
+        config=config,
+        train_loader=[train_batch],
+        val_loader=[train_batch],
+        test_loader=[test_batch],
+        kdcode_list=[f"S{i}" for i in range(n_stocks)],
+        test_dates=["2025-01-14"],
+        output_path=str(tmp_path),
+    )
+
+    assert not (tmp_path / "predictions_model_0").exists()
+    assert not (tmp_path / "predictions_model_1").exists()
+    assert not (tmp_path / "checkpoints").exists()
+    assert (tmp_path / "averaged_predictions" / "2025-01-14.csv").is_file()

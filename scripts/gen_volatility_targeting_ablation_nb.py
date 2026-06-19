@@ -38,10 +38,11 @@ cells = [
         variants, runs the cost-aware rank-gated saved-prediction backtest, and
         emits a variant-vs-baseline delta table.
 
-        Default stage is `repeated_seed_validation`: the narrow candidate set
-        from the Issue #8 handoff across 2022-2025 and three seeds. Switch
-        `RUN_STAGE` back to `stage1_2023` only when replaying the older
-        single-seed component diagnosis.
+        Default stage is `efficiency_probe`: a small 2022 same-seed
+        baseline/candidate pair for timing the Colab optimization settings
+        before resuming the full repeated-seed sweep. Switch `RUN_STAGE` to
+        `repeated_seed_validation` for the narrow candidate set from the Issue #8
+        handoff across 2022-2025 and three seeds.
         """
     ),
     md("## 1. Setup"),
@@ -60,7 +61,7 @@ cells = [
 
         IN_COLAB = "google.colab" in sys.modules
         REPO_URL = "https://github.com/magilliam27/MCI-GRU.git"
-        BRANCH = "codex/issue8-vol-repeated-seed"
+        BRANCH = "codex/issue8-colab-efficiency-experiment"
         REPO_DIR = Path("/content/MCI-GRU") if IN_COLAB else Path.cwd()
         REQUIRE_G4_GPU = True
 
@@ -166,20 +167,38 @@ cells = [
     code(
         r"""
         SMOKE_MODE = False
-        RUN_STAGE = "repeated_seed_validation"  # repeated_seed_validation | stage1_2023 | stage2_contrasts | all_years
+        RUN_STAGE = "efficiency_probe"  # efficiency_probe | repeated_seed_validation | stage1_2023 | stage2_contrasts | all_years
+        EFFICIENCY_PROBE = RUN_STAGE == "efficiency_probe"
         BASE_SEED = 314159
         RUN_TAG_OVERRIDE = ""
         RUN_TAG = RUN_TAG_OVERRIDE.strip() or datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         RUN_ROOT = Path("/content/drive/MyDrive/MCI-GRU-Ablations/volatility_targeting_issue8_ablation") / RUN_TAG
-        TRAINING_OUTPUT_DIR = RUN_ROOT / "training"
+        DRIVE_TRAINING_OUTPUT_DIR = RUN_ROOT / "training"
+        LOCAL_RUN_ROOT = (
+            Path("/content/mci-gru-issue8-ablation-work") / RUN_TAG
+            if IN_COLAB
+            else RUN_ROOT
+        )
+        LOCAL_TRAINING_OUTPUT_DIR = LOCAL_RUN_ROOT / "training"
+        TRAINING_OUTPUT_DIR = LOCAL_TRAINING_OUTPUT_DIR
         RUN_ROOT.mkdir(parents=True, exist_ok=True)
+        LOCAL_TRAINING_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-        NUM_MODELS = 1 if SMOKE_MODE else 20
+        NUM_MODELS = 1 if SMOKE_MODE else (5 if EFFICIENCY_PROBE else 20)
         NUM_EPOCHS = 2 if SMOKE_MODE else 100
-        PATIENCE = 2 if SMOKE_MODE else 15
+        PATIENCE = 2 if SMOKE_MODE else (10 if EFFICIENCY_PROBE else 15)
         BOOTSTRAP_RESAMPLES = 25 if SMOKE_MODE else 1000
+        BATCH_SIZE = 64 if EFFICIENCY_PROBE else 32
+        TEST_BATCH_SIZE = 32 if EFFICIENCY_PROBE else 1
+        DATALOADER_NUM_WORKERS = 0
+        DATALOADER_PIN_MEMORY = True
+        DATALOADER_PERSISTENT_WORKERS = False
+        DATALOADER_PREFETCH_FACTOR = None
+        SAVE_MEMBER_PREDICTIONS = False
+        SAVE_CHECKPOINTS = not EFFICIENCY_PROBE
 
         YEARS_BY_STAGE = {
+            "efficiency_probe": [2022],
             "repeated_seed_validation": [2022, 2023, 2024, 2025],
             "stage1_2023": [2023],
             "stage2_contrasts": [2024, 2025],
@@ -187,6 +206,7 @@ cells = [
         }
 
         SEEDS_BY_STAGE = {
+            "efficiency_probe": [BASE_SEED],
             "repeated_seed_validation": [314159, 271828, 161803],
             "stage1_2023": [BASE_SEED],
             "stage2_contrasts": [BASE_SEED],
@@ -194,6 +214,10 @@ cells = [
         }
 
         VARIANTS_BY_STAGE = {
+            "efficiency_probe": [
+                "baseline_vol",
+                "vt_scale_only",
+            ],
             "repeated_seed_validation": [
                 "baseline_vol",
                 "vt_full_clip_0p25_4p0",
@@ -372,6 +396,11 @@ cells = [
             "graph.drop_edge_p=0.1",
             "training.lr_scheduler=cosine",
             "training.learning_rate=5e-5",
+            f"training.batch_size={BATCH_SIZE}",
+            f"training.test_batch_size={TEST_BATCH_SIZE}",
+            f"training.dataloader_num_workers={DATALOADER_NUM_WORKERS}",
+            f"training.dataloader_pin_memory={bool_override(DATALOADER_PIN_MEMORY)}",
+            f"training.dataloader_persistent_workers={bool_override(DATALOADER_PERSISTENT_WORKERS)}",
             f"training.num_epochs={NUM_EPOCHS}",
             f"training.num_models={NUM_MODELS}",
             f"training.early_stopping_patience={PATIENCE}",
@@ -379,6 +408,8 @@ cells = [
             "training.label_type=returns",
             "training.selection_metric=val_ic",
             "training.shuffle_train=true",
+            f"training.save_member_predictions={bool_override(SAVE_MEMBER_PREDICTIONS)}",
+            f"training.save_checkpoints={bool_override(SAVE_CHECKPOINTS)}",
             "model.label_t=5",
             "model.temporal_encoder=gru_attn",
             f"evaluation.bootstrap_resamples={BOOTSTRAP_RESAMPLES}",
@@ -393,6 +424,10 @@ cells = [
             "data.pit_min_scoreable_stocks=450",
             "data.pit_breadth_policy=error",
         ]
+        if DATALOADER_PREFETCH_FACTOR is not None:
+            BASE_OVERRIDES.append(
+                f"training.dataloader_prefetch_factor={DATALOADER_PREFETCH_FACTOR}"
+            )
 
         years = YEARS_BY_STAGE[RUN_STAGE]
         variant_names = VARIANTS_BY_STAGE[RUN_STAGE]
@@ -429,6 +464,16 @@ cells = [
             "smoke_mode": SMOKE_MODE,
             "num_models": NUM_MODELS,
             "num_epochs": NUM_EPOCHS,
+            "batch_size": BATCH_SIZE,
+            "test_batch_size": TEST_BATCH_SIZE,
+            "dataloader_num_workers": DATALOADER_NUM_WORKERS,
+            "dataloader_pin_memory": DATALOADER_PIN_MEMORY,
+            "dataloader_persistent_workers": DATALOADER_PERSISTENT_WORKERS,
+            "dataloader_prefetch_factor": DATALOADER_PREFETCH_FACTOR,
+            "save_member_predictions": SAVE_MEMBER_PREDICTIONS,
+            "save_checkpoints": SAVE_CHECKPOINTS,
+            "drive_training_output_dir": str(DRIVE_TRAINING_OUTPUT_DIR),
+            "local_training_output_dir": str(LOCAL_TRAINING_OUTPUT_DIR),
             "base_seed": BASE_SEED,
             "seeds": seeds,
             "years": years,
@@ -479,12 +524,31 @@ cells = [
         year_variant_summary_path = RUN_ROOT / "issue8_vol_targeting_repeated_seed_summary_by_year_variant.csv"
         summary_md_path = RUN_ROOT / "issue8_vol_targeting_ablation_summary.md"
 
-        def latest_run_dir(experiment_name: str) -> Path | None:
-            base = TRAINING_OUTPUT_DIR / experiment_name
+        def latest_run_dir(
+            experiment_name: str,
+            training_root: Path = TRAINING_OUTPUT_DIR,
+        ) -> Path | None:
+            base = training_root / experiment_name
             if not base.exists():
                 return None
             candidates = sorted(path for path in base.iterdir() if path.is_dir())
             return candidates[-1] if candidates else None
+
+        def drive_mirror_for_run_dir(run_dir: Path) -> Path:
+            try:
+                rel = run_dir.resolve().relative_to(LOCAL_TRAINING_OUTPUT_DIR.resolve())
+            except ValueError:
+                return run_dir
+            return DRIVE_TRAINING_OUTPUT_DIR / rel
+
+        def sync_run_to_drive(run_dir: Path) -> Path:
+            drive_run_dir = drive_mirror_for_run_dir(run_dir)
+            if drive_run_dir == run_dir:
+                return run_dir
+            print("Syncing completed run to Drive:", drive_run_dir)
+            drive_run_dir.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(run_dir, drive_run_dir, dirs_exist_ok=True)
+            return drive_run_dir
 
         def tail(path: Path, n: int = 60) -> str:
             if not path.exists():
@@ -493,13 +557,22 @@ cells = [
             return "\n".join(lines[-n:])
 
         def run_training(job: dict) -> Path:
-            existing = latest_run_dir(job["name"])
+            existing = latest_run_dir(job["name"], DRIVE_TRAINING_OUTPUT_DIR)
             if (
                 RESUME_COMPLETED_TRAINING
                 and existing is not None
                 and (existing / "averaged_predictions").is_dir()
             ):
-                print("Skipping completed training:", existing)
+                print("Skipping completed Drive training:", existing)
+                return existing
+
+            existing = latest_run_dir(job["name"], LOCAL_TRAINING_OUTPUT_DIR)
+            if (
+                RESUME_COMPLETED_TRAINING
+                and existing is not None
+                and (existing / "averaged_predictions").is_dir()
+            ):
+                print("Skipping completed local training:", existing)
                 return existing
 
             print("=" * 100)
@@ -522,7 +595,7 @@ cells = [
                 print(tail(stderr_path))
                 raise RuntimeError(f"Training failed for {job['name']}")
 
-            run_dir = latest_run_dir(job["name"])
+            run_dir = latest_run_dir(job["name"], LOCAL_TRAINING_OUTPUT_DIR)
             if run_dir is None or not (run_dir / "averaged_predictions").is_dir():
                 raise FileNotFoundError(f"Missing averaged_predictions for {job['name']}")
             return run_dir
@@ -694,7 +767,18 @@ cells = [
         rows = []
         for job in jobs:
             run_dir = run_training(job)
-            rows.append(run_backtest(job, run_dir))
+            row = run_backtest(job, run_dir)
+            drive_run_dir = sync_run_to_drive(run_dir)
+            row.update(
+                {
+                    "local_run_dir": str(run_dir),
+                    "drive_run_dir": str(drive_run_dir),
+                    "run_dir": str(drive_run_dir),
+                    "predictions_dir": str(drive_run_dir / "averaged_predictions"),
+                    "backtest_dir": str(drive_run_dir / f"backtest{BACKTEST_SUFFIX}"),
+                }
+            )
+            rows.append(row)
             pd.DataFrame(rows).to_csv(results_path, index=False)
             interim_deltas = build_deltas(pd.DataFrame(rows))
             interim_deltas.to_csv(deltas_path, index=False)
@@ -734,6 +818,13 @@ cells = [
             f"- Smoke mode: `{SMOKE_MODE}`",
             f"- Models per job: `{NUM_MODELS}`",
             f"- Epochs per job: `{NUM_EPOCHS}`",
+            f"- Batch size: `{BATCH_SIZE}`",
+            f"- Test batch size: `{TEST_BATCH_SIZE}`",
+            f"- DataLoader: workers={DATALOADER_NUM_WORKERS}, pin_memory={DATALOADER_PIN_MEMORY}, persistent_workers={DATALOADER_PERSISTENT_WORKERS}, prefetch_factor={DATALOADER_PREFETCH_FACTOR}",
+            f"- Save per-member predictions: `{SAVE_MEMBER_PREDICTIONS}`",
+            f"- Save checkpoints: `{SAVE_CHECKPOINTS}`",
+            f"- Local training output: `{LOCAL_TRAINING_OUTPUT_DIR}`",
+            f"- Drive training output: `{DRIVE_TRAINING_OUTPUT_DIR}`",
             f"- Seeds: `{seeds}`",
             f"- Backtest: top_k={TOP_K}, label_t={LABEL_T}, spread={SPREAD_BPS}, slippage={SLIPPAGE_BPS}, rank gate={MIN_RANK_DROP}",
             f"- Results CSV: `{results_path}`",

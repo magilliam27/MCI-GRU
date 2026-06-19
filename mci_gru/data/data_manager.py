@@ -715,6 +715,11 @@ def create_data_loaders(
     edge_index: torch.Tensor,
     edge_weight: torch.Tensor,
     batch_size: int = 32,
+    test_batch_size: int = 1,
+    num_workers: int = 0,
+    pin_memory: bool = False,
+    persistent_workers: bool = False,
+    prefetch_factor: int | None = None,
     train_dates: list[str] | None = None,
     val_dates: list[str] | None = None,
     test_dates: list[str] | None = None,
@@ -745,6 +750,11 @@ def create_data_loaders(
         edge_index: Graph edge indices (static fallback when graph_schedule is None)
         edge_weight: Graph edge weights
         batch_size: Batch size for training
+        test_batch_size: Batch size for prediction/test DataLoader
+        num_workers: Number of worker processes for DataLoader batch assembly
+        pin_memory: Pin host tensors before CUDA transfer
+        persistent_workers: Keep DataLoader workers alive between epochs when workers are enabled
+        prefetch_factor: Batches prefetched per worker when workers are enabled
         train_dates: Per-sample dates aligned with train samples
         val_dates: Per-sample dates aligned with val samples
         test_dates: Per-sample dates aligned with test samples
@@ -837,12 +847,22 @@ def create_data_loaders(
     )
 
     train_shuffle = (not dynamic_graph) if shuffle_train is None else shuffle_train
+    loader_kwargs = {
+        "num_workers": num_workers,
+        "pin_memory": pin_memory,
+    }
+    if num_workers > 0:
+        loader_kwargs["persistent_workers"] = persistent_workers
+        if prefetch_factor is not None:
+            loader_kwargs["prefetch_factor"] = prefetch_factor
+
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=train_shuffle,
         drop_last=False,
         collate_fn=collate_fn,
+        **loader_kwargs,
     )
 
     val_loader = torch.utils.data.DataLoader(
@@ -850,13 +870,15 @@ def create_data_loaders(
         batch_size=batch_size,
         shuffle=False,
         collate_fn=collate_fn,
+        **loader_kwargs,
     )
 
     test_loader = torch.utils.data.DataLoader(
         test_dataset,
-        batch_size=1,
+        batch_size=test_batch_size,
         shuffle=False,
         collate_fn=collate_fn,
+        **loader_kwargs,
     )
 
     print(

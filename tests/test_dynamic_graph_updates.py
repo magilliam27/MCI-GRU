@@ -319,6 +319,36 @@ class TestCreateDataLoaders:
         assert train_loader.dataset.sample_dates is not None
         assert val_loader.dataset.sample_dates is not None
 
+    def test_loader_exposes_performance_kwargs(self):
+        ts, graph, labels = _make_small_arrays(20, 5, 5, 3)
+        train_loader, val_loader, test_loader = create_data_loaders(
+            stock_features_train=ts,
+            x_graph_train=graph,
+            train_labels=labels,
+            stock_features_val=ts,
+            x_graph_val=graph,
+            val_labels=labels,
+            stock_features_test=ts,
+            x_graph_test=graph,
+            edge_index=torch.zeros((2, 0), dtype=torch.long),
+            edge_weight=torch.zeros(0),
+            batch_size=4,
+            test_batch_size=3,
+            num_workers=1,
+            pin_memory=True,
+            persistent_workers=True,
+            prefetch_factor=2,
+        )
+
+        assert train_loader.batch_size == 4
+        assert val_loader.batch_size == 4
+        assert test_loader.batch_size == 3
+        for loader in (train_loader, val_loader, test_loader):
+            assert loader.num_workers == 1
+            assert loader.pin_memory is True
+            assert loader.persistent_workers is True
+            assert loader.prefetch_factor == 2
+
     def test_dynamic_loader_no_shuffle(self):
         train_loader, _, _ = self._loaders(dynamic_graph=True, batch_size=4)
         from torch.utils.data import SequentialSampler

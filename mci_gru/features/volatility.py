@@ -171,6 +171,7 @@ def add_volatility_targeting_features(
     clip_low, clip_high = scale_clip
     short_half_life = resolved_half_lives[0]
     long_half_life = resolved_half_lives[-1]
+    needs_scale = "scale" in resolved_components or "scaled_return" in resolved_components
 
     print("Computing volatility-targeting features...")
     df = df.sort_values(["kdcode", "dt"]).copy()
@@ -188,29 +189,37 @@ def add_volatility_targeting_features(
             )
         )
         df[vol_col] = df[vol_col].fillna(target_vol)
-        df[scale_col] = (target_vol / (df[vol_col] + 1e-8)).clip(clip_low, clip_high)
+        if needs_scale:
+            df[scale_col] = (target_vol / (df[vol_col] + 1e-8)).clip(clip_low, clip_high)
 
     short_vol_col = f"vol_target_ewm_vol_hl{short_half_life}"
     long_vol_col = f"vol_target_ewm_vol_hl{long_half_life}"
     short_scale_col = f"vol_target_scale_hl{short_half_life}"
 
     vol_change_col = f"vol_target_vol_change_hl{short_half_life}_hl{long_half_life}"
-    df[vol_change_col] = df[short_vol_col] / (df[long_vol_col] + 1e-8) - 1.0
-    df[vol_change_col] = df[vol_change_col].fillna(0.0)
+    if "dynamics" in resolved_components:
+        df[vol_change_col] = df[short_vol_col] / (df[long_vol_col] + 1e-8) - 1.0
+        df[vol_change_col] = df[vol_change_col].fillna(0.0)
 
     vol_of_vol_col = f"vol_target_vol_of_vol_hl{short_half_life}"
-    df[vol_of_vol_col] = df.groupby("kdcode")[short_vol_col].transform(
-        lambda x: (
-            x.diff().ewm(halflife=short_half_life, min_periods=2, adjust=False).std(bias=False)
-            * annualization_factor
+    if "dynamics" in resolved_components:
+        df[vol_of_vol_col] = df.groupby("kdcode")[short_vol_col].transform(
+            lambda x: (
+                x.diff()
+                .ewm(halflife=short_half_life, min_periods=2, adjust=False)
+                .std(bias=False)
+                * annualization_factor
+            )
         )
-    )
-    df[vol_of_vol_col] = df[vol_of_vol_col].fillna(0.0)
+        df[vol_of_vol_col] = df[vol_of_vol_col].fillna(0.0)
 
     interaction_col = f"vol_target_ret{interaction_return_window}_lag2_x_scale_hl{short_half_life}"
-    trailing_return = df.groupby("kdcode")["close"].pct_change(periods=interaction_return_window)
-    lagged_trailing_return = trailing_return.groupby(group_keys).shift(2).fillna(0.0)
-    df[interaction_col] = lagged_trailing_return * df[short_scale_col]
+    if "scaled_return" in resolved_components:
+        trailing_return = df.groupby("kdcode")["close"].pct_change(
+            periods=interaction_return_window
+        )
+        lagged_trailing_return = trailing_return.groupby(group_keys).shift(2).fillna(0.0)
+        df[interaction_col] = lagged_trailing_return * df[short_scale_col]
 
     added = get_volatility_targeting_features(
         resolved_half_lives,
@@ -221,7 +230,7 @@ def add_volatility_targeting_features(
         resolved_half_lives,
         interaction_return_window=interaction_return_window,
     )
-    df = df.drop(columns=[col for col in generated if col not in added])
+    df = df.drop(columns=[col for col in generated if col not in added and col in df.columns])
     print(f"  Added volatility-targeting features: {', '.join(added)}")
 
     return df
