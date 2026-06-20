@@ -135,6 +135,8 @@ def _ensure_pr(runner: CommandRunner, repo: str, branch: str, run_date: date) ->
             repo,
             "--head",
             branch,
+            "--state",
+            "all",
             "--json",
             "url",
             "--jq",

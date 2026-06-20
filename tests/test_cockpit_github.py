@@ -75,6 +75,7 @@ def test_sync_github_creates_branch_pr_issue_and_comment_with_fake_runner(
     assert result.pr_url == "https://github.com/magilliam27/MCI-GRU/pull/99"
     assert result.cockpit_issue_number == 100
     assert any(command[:2] == ["git", "add"] for command in commands)
+    assert any(command[:3] == ["gh", "pr", "list"] and "--state" in command for command in commands)
     assert any(command[:3] == ["gh", "issue", "comment"] for command in commands)
 
 
