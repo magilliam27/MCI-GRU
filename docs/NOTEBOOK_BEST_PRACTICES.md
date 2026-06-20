@@ -1,6 +1,6 @@
 # Notebook Best Practices
 
-Last updated: 2026-05-06
+Last updated: 2026-06-02
 
 This guide documents the notebook conventions used for MCI-GRU Colab experiment
 notebooks. Follow it when creating or modifying notebooks under `notebooks/`.
@@ -95,6 +95,14 @@ evaluation.bootstrap_resamples = 1000
 ```
 
 For scouting notebooks, keep the quick-run knobs visible and label them clearly.
+
+Full current-preset Colab notebooks should include a hard runtime preflight:
+
+- require the user or agent to select `G4 GPU` in the Colab UI,
+- confirm the visible toolbar/runtime label is not `T4`,
+- run an in-notebook `nvidia-smi` gate before training,
+- stop before launching if the runtime is CPU, T4, or otherwise below the
+  notebook-specific requirement.
 
 Use separate roots for work and persistence:
 
@@ -268,6 +276,15 @@ outputs in one sync/export cell after matrix execution:
 The manifest should include the run matrix, baseline overrides, filters, budget
 settings, local work root, Drive export root, and data archive used for staging.
 
+Long full-preset notebooks should also write small durable progress artifacts to
+Drive while the heavy work runs:
+
+- `heartbeat.json` for job-level phase, status, current job, GPU, and timestamp,
+- `ensemble_progress.json` for per-model progress and resume state,
+- `training_results.csv` and `training_results.json` for completed jobs.
+
+Use these files as the source of truth when Colab cell output does not stream.
+
 ## Scoring and Reporting
 
 Use the shared decision-score pattern from the existing ablation notebooks, but
@@ -293,11 +310,30 @@ Never hide failed runs.
 - Add a final failed-run inspection cell that prints log tails.
 - Keep failed rows in the raw and decision tables with `status=FAILED`.
 - Treat recurring failures as experiment findings, not notebook noise.
+- For expensive ensembles, make jobs resumable at the model level with
+  checkpoints or prediction folders. Repeated failure at the same job can be a
+  runtime interruption plus an atomic job design, not necessarily a model-code
+  bug.
 - If logs are large, keep full logs locally during execution and export
   compressed logs or relevant tails to Drive.
 - Classify Drive `Input/output error` failures separately from model or data
   failures; they usually indicate a notebook I/O pattern or Drive quota issue,
   not an experiment result.
+- If Drive OAuth, `Run anyway`, or Colab Secrets access prompts interrupt setup,
+  grant the required access, rerun the setup/gate cell, and re-check the runtime
+  before training. Do not assume final cleanup ran if the notebook failed before
+  the launcher cell.
+
+## Runtime Cleanup
+
+Full-run Colab notebooks should launch long work from a visible foreground final
+cell, not from a hidden kernel or detached background process. Wrap that launcher
+with `try` / `finally` and call `google.colab.runtime.unassign()` in the final
+block so the runtime releases after completion or failure.
+
+This auto-unassign path only runs if execution reaches the final cell. If an
+earlier setup, OAuth, secret-access, or GPU-gate cell fails, manually use
+`Runtime > Disconnect and delete runtime` before leaving the run unattended.
 
 ## Review Checklist
 
@@ -317,5 +353,13 @@ Before pushing a notebook:
 - Confirm every factor has row metadata.
 - Confirm strict regime behavior is intentional.
 - Confirm no secrets are committed.
+- Confirm GitHub-hosted notebook prompts are expected: `Run anyway`, Drive
+  OAuth, and Colab Secrets per-notebook access where needed.
+- Confirm full current-preset notebooks hard-gate on both visible `G4 GPU`
+  runtime selection and in-notebook GPU evidence.
+- Confirm long expensive ensembles write heartbeat, per-model progress, and
+  completed-job result artifacts to Drive.
+- Confirm foreground final-cell cleanup calls `runtime.unassign()` and documents
+  the manual cleanup path for earlier setup failures.
 - Confirm summary report links or paths match generated artifacts.
 - Run a quick syntax/JSON validation locally if the notebook was edited by hand.

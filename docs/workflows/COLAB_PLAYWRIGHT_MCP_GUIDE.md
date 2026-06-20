@@ -1,6 +1,6 @@
 # Colab Playwright MCP Agent Guide
 
-Last updated: 2026-05-26
+Last updated: 2026-06-02
 
 Use this guide when an agent needs to operate a Google Colab notebook through
 Playwright MCP from the logged-in Windows/Codex environment. It is intended for
@@ -27,6 +27,10 @@ paths for that run.
 - Closing Chrome, killing MCP, or ending the local agent is not proof that a
   Colab cloud runtime stopped. Only a Colab-side disconnected/deleted runtime
   state counts.
+- For long full-preset training runs, prefer the real visible Colab notebook UI
+  as the control plane. Avoid hidden kernel launches or detached background
+  processes when the user needs traceable progress, prompt handling, and runtime
+  cleanup.
 
 ## Tool Discovery
 
@@ -58,9 +62,9 @@ browser_tabs {"action":"list"}
 1. Read the notebook-specific handoff or issue first.
 2. Record the target branch and Colab URL.
 3. Confirm whether this is a proof run or a full training run.
-4. Confirm the runtime target. Current MCI-GRU training runs should use
-   `G4 GPU`; do not accept `T4` for full current-preset runs unless the user
-   explicitly asks for a cheaper proof.
+4. Confirm the runtime target. Current MCI-GRU full-preset training runs should
+   use `G4 GPU`; do not accept `T4` unless the user explicitly asks for a
+   cheaper proof.
 5. Check whether the notebook must be fresh from GitHub. Colab GitHub URLs read
    the remote branch, not local unpushed edits.
 6. Run `browser_tabs {"action":"list"}`.
@@ -89,6 +93,8 @@ Use the Colab UI, not local assumptions:
 4. Save.
 5. Confirm the toolbar or runtime status shows `G4`, not `T4`, before running
    setup or training cells.
+6. Run the notebook's GPU gate and confirm `nvidia-smi` reports a non-T4
+   G4-class or better device before launching a full current-preset job.
 
 For the MCI-GRU proof run, Colab reported `G4 (Python 3)` and the setup cell saw
 CUDA with an `NVIDIA RTX PRO 6000 Blackwell Server Edition` GPU. Treat the exact
@@ -120,6 +126,8 @@ Expected prompts the agent may accept for the target notebook:
 - `Run anyway` for a GitHub-hosted notebook warning.
 - `Connect to Google Drive` when the notebook mounts Drive.
 - Google OAuth `Continue` for Drive access requested by the Colab notebook.
+- Colab Secrets per-notebook access prompts for an existing secret such as
+  `FRED_API_KEY`.
 - Runtime reconnection prompts when they are clearly tied to the notebook run.
 
 Stop and ask the user for:
@@ -136,6 +144,12 @@ Stop and ask the user for:
 If the notebook needs FRED access, prefer an existing Colab secret or notebook
 runtime configuration named `FRED_API_KEY`. Do not copy the secret into a guide
 or review.
+
+If a setup cell errors because Drive OAuth or Colab Secrets access was not yet
+granted, grant the prompt, rerun the setup/gate cell, and re-check the visible
+runtime state. If the error happened before the final cleanup cell could start,
+assume auto-release did not run and manually disconnect/delete the runtime when
+stopping the attempt.
 
 ## Notebook Freshness
 
@@ -192,6 +206,32 @@ Attempt: 1/3
 For a full run, continue monitoring after this point according to the
 notebook-specific handoff. Watch for prompts, disconnects, Drive write failures,
 and first-job errors.
+
+## Long-Run Monitoring
+
+When Colab output does not stream child-process logs, treat Drive artifacts as
+the source of truth:
+
+- `heartbeat.json` for job-level phase, status, current job, runtime GPU, and
+  last update time.
+- `ensemble_progress.json` for model-level resume progress inside an expensive
+  ensemble job.
+- `training_results.csv` and `training_results.json` for completed jobs and
+  final statuses.
+
+Repeated failure or restart at the same job is not automatically a model-code
+failure. In the Portfolio-IC upward sweep, job 7 repeatedly restarted because a
+long atomic 20-model job was interrupted. Expensive ensembles should write
+per-model checkpoints or prediction folders and resume from them before
+retraining the whole job.
+
+## Full-Run Cleanup
+
+Full-run notebooks should call `google.colab.runtime.unassign()` from the
+foreground final launcher cell, normally in a `finally` block. That cleanup only
+runs if execution reaches the final cell. If an earlier setup, OAuth, secret, or
+GPU-gate cell fails, manually use `Runtime > Disconnect and delete runtime`
+after collecting the needed evidence.
 
 ## Stopping A Proof Run
 

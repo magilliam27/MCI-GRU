@@ -10,6 +10,12 @@ DEFAULT_VOLATILITY_TARGETING_HALF_LIVES = [20, 60, 90]
 DEFAULT_VOLATILITY_TARGET_VOL = 0.10
 DEFAULT_VOLATILITY_TARGET_SCALE_CLIP = (0.25, 4.0)
 DEFAULT_VOLATILITY_TARGET_INTERACTION_RETURN_WINDOW = 21
+DEFAULT_VOLATILITY_TARGETING_COMPONENTS = [
+    "ewm_vol",
+    "scale",
+    "dynamics",
+    "scaled_return",
+]
 
 
 def _validate_volatility_targeting_controls(
@@ -35,9 +41,35 @@ def _validate_volatility_targeting_controls(
     return resolved_half_lives
 
 
+def resolve_volatility_targeting_components(
+    components: list[str] | tuple[str, ...] | None = None,
+) -> list[str]:
+    """Normalize and validate volatility-targeting component names."""
+    if components is None:
+        return list(DEFAULT_VOLATILITY_TARGETING_COMPONENTS)
+    if not components:
+        raise ValueError("volatility_targeting_components must contain at least one component")
+
+    resolved_components = list(components)
+    if len(set(resolved_components)) != len(resolved_components):
+        raise ValueError("volatility_targeting_components must not contain duplicates")
+
+    valid_components = set(DEFAULT_VOLATILITY_TARGETING_COMPONENTS)
+    unknown_components = [name for name in resolved_components if name not in valid_components]
+    if unknown_components:
+        valid = ", ".join(DEFAULT_VOLATILITY_TARGETING_COMPONENTS)
+        unknown = ", ".join(unknown_components)
+        raise ValueError(
+            f"Unknown volatility-targeting component: {unknown}. Expected one of: {valid}"
+        )
+
+    return resolved_components
+
+
 def get_volatility_targeting_features(
     half_lives: list[int] | None = None,
     interaction_return_window: int = DEFAULT_VOLATILITY_TARGET_INTERACTION_RETURN_WINDOW,
+    components: list[str] | tuple[str, ...] | None = None,
 ) -> list[str]:
     """Return feature names for the Harvey-style volatility-targeting family."""
     resolved_half_lives = _validate_volatility_targeting_controls(
@@ -46,18 +78,28 @@ def get_volatility_targeting_features(
         DEFAULT_VOLATILITY_TARGET_SCALE_CLIP,
         interaction_return_window,
     )
+    resolved_components = resolve_volatility_targeting_components(components)
     short_half_life = resolved_half_lives[0]
     long_half_life = resolved_half_lives[-1]
 
-    return (
-        [f"vol_target_ewm_vol_hl{half_life}" for half_life in resolved_half_lives]
-        + [f"vol_target_scale_hl{half_life}" for half_life in resolved_half_lives]
-        + [
-            f"vol_target_vol_change_hl{short_half_life}_hl{long_half_life}",
-            f"vol_target_vol_of_vol_hl{short_half_life}",
-            f"vol_target_ret{interaction_return_window}_lag2_x_scale_hl{short_half_life}",
-        ]
-    )
+    features: list[str] = []
+    if "ewm_vol" in resolved_components:
+        features.extend(f"vol_target_ewm_vol_hl{half_life}" for half_life in resolved_half_lives)
+    if "scale" in resolved_components:
+        features.extend(f"vol_target_scale_hl{half_life}" for half_life in resolved_half_lives)
+    if "dynamics" in resolved_components:
+        features.extend(
+            [
+                f"vol_target_vol_change_hl{short_half_life}_hl{long_half_life}",
+                f"vol_target_vol_of_vol_hl{short_half_life}",
+            ]
+        )
+    if "scaled_return" in resolved_components:
+        features.append(
+            f"vol_target_ret{interaction_return_window}_lag2_x_scale_hl{short_half_life}"
+        )
+
+    return features
 
 
 VOLATILITY_TARGETING_FEATURES = get_volatility_targeting_features()
@@ -110,6 +152,7 @@ def add_volatility_targeting_features(
     target_vol: float = DEFAULT_VOLATILITY_TARGET_VOL,
     scale_clip: tuple[float, float] = DEFAULT_VOLATILITY_TARGET_SCALE_CLIP,
     interaction_return_window: int = DEFAULT_VOLATILITY_TARGET_INTERACTION_RETURN_WINDOW,
+    components: list[str] | tuple[str, ...] | None = None,
     annualization_factor: float = np.sqrt(252),
 ) -> pd.DataFrame:
     """Add Harvey-style ex ante volatility-targeting model-input features.
@@ -124,6 +167,7 @@ def add_volatility_targeting_features(
         scale_clip,
         interaction_return_window,
     )
+    resolved_components = resolve_volatility_targeting_components(components)
     clip_low, clip_high = scale_clip
     short_half_life = resolved_half_lives[0]
     long_half_life = resolved_half_lives[-1]
@@ -157,27 +201,27 @@ def add_volatility_targeting_features(
     vol_of_vol_col = f"vol_target_vol_of_vol_hl{short_half_life}"
     df[vol_of_vol_col] = df.groupby("kdcode")[short_vol_col].transform(
         lambda x: (
-            x.diff()
-            .ewm(halflife=short_half_life, min_periods=2, adjust=False)
-            .std(bias=False)
+            x.diff().ewm(halflife=short_half_life, min_periods=2, adjust=False).std(bias=False)
             * annualization_factor
         )
     )
     df[vol_of_vol_col] = df[vol_of_vol_col].fillna(0.0)
 
-    interaction_col = (
-        f"vol_target_ret{interaction_return_window}_lag2_x_scale_hl{short_half_life}"
-    )
-    trailing_return = df.groupby("kdcode")["close"].pct_change(
-        periods=interaction_return_window
-    )
+    interaction_col = f"vol_target_ret{interaction_return_window}_lag2_x_scale_hl{short_half_life}"
+    trailing_return = df.groupby("kdcode")["close"].pct_change(periods=interaction_return_window)
     lagged_trailing_return = trailing_return.groupby(group_keys).shift(2).fillna(0.0)
     df[interaction_col] = lagged_trailing_return * df[short_scale_col]
 
     added = get_volatility_targeting_features(
         resolved_half_lives,
         interaction_return_window=interaction_return_window,
+        components=resolved_components,
     )
+    generated = get_volatility_targeting_features(
+        resolved_half_lives,
+        interaction_return_window=interaction_return_window,
+    )
+    df = df.drop(columns=[col for col in generated if col not in added])
     print(f"  Added volatility-targeting features: {', '.join(added)}")
 
     return df
