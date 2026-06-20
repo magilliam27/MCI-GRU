@@ -63,18 +63,61 @@ cells = [
         import shutil
         import subprocess
         import sys
+        import time
         from datetime import datetime
         from pathlib import Path
 
         IN_COLAB = "google.colab" in sys.modules
         REPO_URL = "https://github.com/magilliam27/MCI-GRU.git"
-        BRANCH = "codex/pit-universe-validation"
+        BRANCH = "codex/colab-gpu-utilization-hardening-20260620"
         REPO_DIR = Path("/content/MCI-GRU") if IN_COLAB else Path.cwd()
+        REQUIRE_G4_L4_GPU = True
+        BLOCKED_GPU_NAMES = ("T4",)
+        ALLOWED_GPU_MARKERS = (
+            "G4",
+            "L4",
+            "A100",
+            "H100",
+            "V100",
+            "RTX PRO",
+            "BLACKWELL",
+        )
+        STRICT_GPU_MARKERS: list[str] = []
+
+        def detect_gpu_name() -> str:
+            proc = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if proc.returncode != 0:
+                raise RuntimeError(
+                    "G4/L4-class Colab runtime, not T4/CPU, is required. nvidia-smi failed:\n"
+                    + proc.stderr
+                )
+            gpu_name = proc.stdout.strip().splitlines()[0].strip() if proc.stdout.strip() else ""
+            upper_gpu = gpu_name.upper()
+            if not gpu_name or any(marker in upper_gpu for marker in BLOCKED_GPU_NAMES):
+                raise RuntimeError(
+                    f"G4/L4-class Colab runtime, not T4/CPU, is required. Visible GPU: {gpu_name!r}"
+                )
+            if not any(marker in upper_gpu for marker in ALLOWED_GPU_MARKERS):
+                raise RuntimeError(
+                    f"Refusing runtime GPU {gpu_name}; allowed markers are {ALLOWED_GPU_MARKERS}."
+                )
+            if STRICT_GPU_MARKERS and not any(marker in upper_gpu for marker in STRICT_GPU_MARKERS):
+                raise RuntimeError(
+                    f"GPU {gpu_name} does not match STRICT_GPU_MARKERS={STRICT_GPU_MARKERS}."
+                )
+            return gpu_name
 
         if IN_COLAB:
             from google.colab import drive
 
             drive.mount("/content/drive")
+            GPU_NAME = detect_gpu_name()
+            print("GPU:", GPU_NAME)
             if not REPO_DIR.exists():
                 subprocess.run(["git", "clone", "--branch", BRANCH, REPO_URL, str(REPO_DIR)], check=True)
             else:
@@ -145,7 +188,39 @@ cells = [
         RUN_TAG = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         RUN_ROOT = Path("/content/drive/MyDrive/MCI-GRU-Ablations/volatility_targeting_issue8") / RUN_TAG
         TRAINING_OUTPUT_DIR = RUN_ROOT / "training"
+        GPU_UTIL_PATH = RUN_ROOT / "gpu_util.csv"
+        GPU_UTIL_STOP_PATH = RUN_ROOT / "gpu_util.stop"
         RUN_ROOT.mkdir(parents=True, exist_ok=True)
+
+        def start_gpu_sampler():
+            if GPU_UTIL_STOP_PATH.exists():
+                GPU_UTIL_STOP_PATH.unlink()
+            monitor_script = REPO_DIR / "scripts/monitor_gpu_util.py"
+            if not monitor_script.exists():
+                raise FileNotFoundError(f"Missing GPU monitor: {monitor_script}")
+            return subprocess.Popen(
+                [
+                    sys.executable,
+                    str(monitor_script),
+                    "--output",
+                    str(GPU_UTIL_PATH),
+                    "--interval",
+                    "1",
+                    "--stop-file",
+                    str(GPU_UTIL_STOP_PATH),
+                ],
+                cwd=str(REPO_DIR),
+            )
+
+        def stop_gpu_sampler(proc):
+            if proc is None:
+                return
+            GPU_UTIL_STOP_PATH.write_text("stop", encoding="utf-8")
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.terminate()
+                proc.wait(timeout=10)
 
         num_models = 1 if SMOKE_MODE else 20
         num_epochs = 2 if SMOKE_MODE else 100
@@ -260,24 +335,31 @@ cells = [
     code(
         r"""
         results = []
-        for job in jobs:
-            print("=" * 100)
-            print("Starting:", job["name"])
-            cmd = [sys.executable, "-u", str(REPO_DIR / "run_experiment.py"), *job["overrides"]]
-            print("Command:", " ".join(cmd[:4]), "... +", len(job["overrides"]), "overrides")
-            proc = subprocess.run(cmd, cwd=str(REPO_DIR), text=True)
-            result = {
-                "name": job["name"],
-                "variant": job["variant"],
-                "year": job["year"],
-                "returncode": int(proc.returncode),
-            }
-            results.append(result)
-            results_path = RUN_ROOT / "issue8_volatility_targeting_results.json"
-            results_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
-            print("Return code:", proc.returncode)
-            if proc.returncode != 0:
-                raise RuntimeError(f"Job failed: {job['name']}")
+        gpu_sampler_proc = start_gpu_sampler()
+        try:
+            for job in jobs:
+                print("=" * 100)
+                print("Starting:", job["name"])
+                cmd = [sys.executable, "-u", str(REPO_DIR / "run_experiment.py"), *job["overrides"]]
+                print("Command:", " ".join(cmd[:4]), "... +", len(job["overrides"]), "overrides")
+                start_time = time.perf_counter()
+                proc = subprocess.run(cmd, cwd=str(REPO_DIR), text=True)
+                result = {
+                    "name": job["name"],
+                    "variant": job["variant"],
+                    "year": job["year"],
+                    "returncode": int(proc.returncode),
+                    "elapsed_seconds": round(time.perf_counter() - start_time, 3),
+                    "gpu_util_csv": str(GPU_UTIL_PATH),
+                }
+                results.append(result)
+                results_path = RUN_ROOT / "issue8_volatility_targeting_results.json"
+                results_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
+                print("Return code:", proc.returncode)
+                if proc.returncode != 0:
+                    raise RuntimeError(f"Job failed: {job['name']}")
+        finally:
+            stop_gpu_sampler(gpu_sampler_proc)
 
         print("All jobs completed.")
         print("Results:", RUN_ROOT / "issue8_volatility_targeting_results.json")

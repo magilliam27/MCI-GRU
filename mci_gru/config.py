@@ -511,6 +511,11 @@ class TrainingConfig:
         shuffle_train: Optional override for training DataLoader shuffling. ``None`` keeps
                        the historical behavior: shuffled for static graphs, sequential for
                        dynamic graphs.
+        dataloader_num_workers: Number of worker processes for PyTorch DataLoader.
+        dataloader_pin_memory: Pin CPU memory before CUDA transfer when using DataLoader.
+        dataloader_persistent_workers: Keep worker processes alive between epochs.
+        dataloader_prefetch_factor: Number of batches loaded in advance by each worker.
+        profile_batches: Number of first train batches to profile per training run (0 disables).
         walkforward: Optional rolling / expanding window orchestration (see :class:`WalkforwardConfig`).
     """
 
@@ -534,6 +539,11 @@ class TrainingConfig:
     use_amp: bool = True
     selection_metric: str = "val_ic"
     shuffle_train: bool | None = None
+    dataloader_num_workers: int = 0
+    dataloader_pin_memory: bool = False
+    dataloader_persistent_workers: bool = False
+    dataloader_prefetch_factor: int | None = None
+    profile_batches: int = 0
     walkforward: WalkforwardConfig = field(default_factory=WalkforwardConfig)
 
     _VALID_LOSS_TYPES = ("mse", "ic", "combined", "portfolio_ic", "lambdarank_ic")
@@ -555,6 +565,16 @@ class TrainingConfig:
             raise ValueError("num_epochs must be > 0")
         if self.num_models <= 0:
             raise ValueError("num_models must be > 0")
+        if self.dataloader_num_workers < 0:
+            raise ValueError("dataloader_num_workers must be >= 0")
+        if self.dataloader_prefetch_factor is not None and self.dataloader_prefetch_factor <= 0:
+            raise ValueError("dataloader_prefetch_factor must be > 0 when set")
+        if self.dataloader_num_workers == 0 and self.dataloader_persistent_workers:
+            raise ValueError("dataloader_persistent_workers requires dataloader_num_workers > 0")
+        if self.dataloader_num_workers == 0 and self.dataloader_prefetch_factor is not None:
+            raise ValueError("dataloader_prefetch_factor requires dataloader_num_workers > 0")
+        if self.profile_batches < 0:
+            raise ValueError("profile_batches must be >= 0")
         if self.loss_type not in self._VALID_LOSS_TYPES:
             raise ValueError(
                 f"loss_type must be one of {self._VALID_LOSS_TYPES}, got {self.loss_type!r}"
@@ -797,6 +817,13 @@ class ExperimentConfig:
             ),
             "training.lambdarank_ic_temperature": self.training.lambdarank_ic_temperature,
             "training.shuffle_train": self.training.shuffle_train,
+            "training.dataloader_num_workers": self.training.dataloader_num_workers,
+            "training.dataloader_pin_memory": self.training.dataloader_pin_memory,
+            "training.dataloader_persistent_workers": (
+                self.training.dataloader_persistent_workers
+            ),
+            "training.dataloader_prefetch_factor": self.training.dataloader_prefetch_factor,
+            "training.profile_batches": self.training.profile_batches,
             # Evaluation
             "evaluation.top_k_values": str(self.evaluation.top_k_values),
             "evaluation.bootstrap_enabled": self.evaluation.bootstrap_enabled,

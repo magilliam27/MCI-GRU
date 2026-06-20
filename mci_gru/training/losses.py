@@ -83,13 +83,13 @@ def _average_ranks(values: torch.Tensor) -> torch.Tensor:
     order = torch.argsort(values)
     ranks = torch.empty(values.numel(), dtype=values.dtype, device=values.device)
     sorted_values = values[order]
-    start = 0
-    while start < values.numel():
-        end = start + 1
-        while end < values.numel() and bool(sorted_values[end] == sorted_values[start]):
-            end += 1
-        ranks[order[start:end]] = (start + end - 1) / 2.0
-        start = end
+    _unique_values, counts = torch.unique_consecutive(sorted_values, return_counts=True)
+    ends = counts.cumsum(dim=0)
+    starts = ends - counts
+    average_rank_by_group = (
+        starts.to(dtype=values.dtype) + ends.to(dtype=values.dtype) - 1.0
+    ) / 2.0
+    ranks[order] = torch.repeat_interleave(average_rank_by_group, counts)
     return ranks
 
 
@@ -142,6 +142,35 @@ class LambdaRankICLoss(nn.Module):
         self.max_pairs_per_day = max_pairs_per_day
         self.temperature = temperature
         self.eps = eps
+        self._pair_index_cache: dict[
+            tuple[int, int, torch.device],
+            tuple[torch.Tensor, torch.Tensor],
+        ] = {}
+
+    def _all_pair_indices(
+        self,
+        valid_count: int,
+        device: torch.device,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        key = (valid_count, 0, device)
+        cached = self._pair_index_cache.get(key)
+        if cached is None:
+            cached = torch.triu_indices(valid_count, valid_count, offset=1, device=device)
+            self._pair_index_cache[key] = (cached[0], cached[1])
+        return cached
+
+    def _capped_pair_indices(
+        self,
+        valid_count: int,
+        device: torch.device,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        key = (valid_count, self.max_pairs_per_day, device)
+        cached = self._pair_index_cache.get(key)
+        if cached is None:
+            rows, cols = self._all_pair_indices(valid_count, device)
+            cached = _cap_pair_indices(rows, cols, self.max_pairs_per_day)
+            self._pair_index_cache[key] = cached
+        return cached
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         losses = []
@@ -154,22 +183,19 @@ class LambdaRankICLoss(nn.Module):
             score_z = _standardize_cross_section(p[mask], self.eps)
             label_ranks = _average_ranks(t[mask].detach())
             pred_ranks = _average_ranks(score_z.detach())
-            left, right = torch.triu_indices(
-                valid_count,
-                valid_count,
-                offset=1,
-                device=score_z.device,
-            )
+            left, right = self._all_pair_indices(valid_count, score_z.device)
 
             label_diff = label_ranks[left] - label_ranks[right]
             ordered = label_diff != 0
             if not bool(ordered.any()):
                 continue
 
-            left = left[ordered]
-            right = right[ordered]
-            label_diff = label_diff[ordered]
-            left, right = _cap_pair_indices(left, right, self.max_pairs_per_day)
+            if bool(ordered.all()):
+                left, right = self._capped_pair_indices(valid_count, score_z.device)
+            else:
+                left = left[ordered]
+                right = right[ordered]
+                left, right = _cap_pair_indices(left, right, self.max_pairs_per_day)
             label_diff = label_ranks[left] - label_ranks[right]
             direction = torch.sign(label_diff)
             score_diff = score_z[left] - score_z[right]

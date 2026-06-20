@@ -52,6 +52,7 @@ cells = [
         import shutil
         import subprocess
         import sys
+        import time
         from datetime import datetime
         from pathlib import Path
 
@@ -59,9 +60,20 @@ cells = [
 
         IN_COLAB = "google.colab" in sys.modules
         REPO_URL = "https://github.com/magilliam27/MCI-GRU.git"
-        BRANCH = "codex/pit-universe-validation"
+        BRANCH = "codex/colab-gpu-utilization-hardening-20260620"
         REPO_DIR = Path("/content/MCI-GRU") if IN_COLAB else Path.cwd()
         REQUIRE_G4_GPU = True
+        BLOCKED_GPU_NAMES = ("T4",)
+        ALLOWED_GPU_MARKERS = (
+            "G4",
+            "L4",
+            "A100",
+            "H100",
+            "V100",
+            "RTX PRO",
+            "BLACKWELL",
+        )
+        STRICT_GPU_MARKERS: list[str] = []
 
         def require_expected_gpu() -> None:
             try:
@@ -75,10 +87,21 @@ cells = [
             except FileNotFoundError:
                 gpu_name = ""
             print("GPU:", gpu_name or "not detected")
-            if REQUIRE_G4_GPU and (not gpu_name or "T4" in gpu_name.upper()):
+            upper_gpu = gpu_name.upper()
+            if REQUIRE_G4_GPU and (
+                not gpu_name or any(marker in upper_gpu for marker in BLOCKED_GPU_NAMES)
+            ):
                 raise RuntimeError(
                     "Issue #8 full ablation expects a G4/L4-class Colab runtime, not T4/CPU. "
                     "Use Runtime > Change runtime type before continuing."
+                )
+            if REQUIRE_G4_GPU and not any(marker in upper_gpu for marker in ALLOWED_GPU_MARKERS):
+                raise RuntimeError(
+                    f"Refusing runtime GPU {gpu_name}; allowed markers are {ALLOWED_GPU_MARKERS}."
+                )
+            if STRICT_GPU_MARKERS and not any(marker in upper_gpu for marker in STRICT_GPU_MARKERS):
+                raise RuntimeError(
+                    f"GPU {gpu_name} does not match STRICT_GPU_MARKERS={STRICT_GPU_MARKERS}."
                 )
 
         if IN_COLAB:
@@ -171,7 +194,39 @@ cells = [
         RUN_TAG = RUN_TAG_OVERRIDE.strip() or datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         RUN_ROOT = Path("/content/drive/MyDrive/MCI-GRU-Ablations/volatility_targeting_issue8_ablation") / RUN_TAG
         TRAINING_OUTPUT_DIR = RUN_ROOT / "training"
+        GPU_UTIL_PATH = RUN_ROOT / "gpu_util.csv"
+        GPU_UTIL_STOP_PATH = RUN_ROOT / "gpu_util.stop"
         RUN_ROOT.mkdir(parents=True, exist_ok=True)
+
+        def start_gpu_sampler():
+            if GPU_UTIL_STOP_PATH.exists():
+                GPU_UTIL_STOP_PATH.unlink()
+            monitor_script = REPO_DIR / "scripts/monitor_gpu_util.py"
+            if not monitor_script.exists():
+                raise FileNotFoundError(f"Missing GPU monitor: {monitor_script}")
+            return subprocess.Popen(
+                [
+                    sys.executable,
+                    str(monitor_script),
+                    "--output",
+                    str(GPU_UTIL_PATH),
+                    "--interval",
+                    "1",
+                    "--stop-file",
+                    str(GPU_UTIL_STOP_PATH),
+                ],
+                cwd=str(REPO_DIR),
+            )
+
+        def stop_gpu_sampler(proc):
+            if proc is None:
+                return
+            GPU_UTIL_STOP_PATH.write_text("stop", encoding="utf-8")
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.terminate()
+                proc.wait(timeout=10)
 
         NUM_MODELS = 1 if SMOKE_MODE else 20
         NUM_EPOCHS = 2 if SMOKE_MODE else 100
@@ -612,11 +667,17 @@ cells = [
             return pd.DataFrame(rows)
 
         rows = []
-        for job in jobs:
-            run_dir = run_training(job)
-            rows.append(run_backtest(job, run_dir))
-            pd.DataFrame(rows).to_csv(results_path, index=False)
-            build_deltas(pd.DataFrame(rows)).to_csv(deltas_path, index=False)
+        gpu_sampler_proc = start_gpu_sampler()
+        try:
+            for job in jobs:
+                run_dir = run_training(job)
+                row = run_backtest(job, run_dir)
+                row["gpu_util_csv"] = str(GPU_UTIL_PATH)
+                rows.append(row)
+                pd.DataFrame(rows).to_csv(results_path, index=False)
+                build_deltas(pd.DataFrame(rows)).to_csv(deltas_path, index=False)
+        finally:
+            stop_gpu_sampler(gpu_sampler_proc)
 
         results_df = pd.DataFrame(rows)
         deltas_df = build_deltas(results_df)

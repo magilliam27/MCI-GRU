@@ -53,7 +53,11 @@ def test_issue8_ablation_notebook_uses_current_pit_recipe_and_g4_preflight() -> 
 
     required_tokens = [
         "G4/L4-class Colab runtime, not T4/CPU",
-        "BRANCH = \"codex/pit-universe-validation\"",
+        "ALLOWED_GPU_MARKERS = (",
+        "STRICT_GPU_MARKERS: list[str] = []",
+        "GPU_UTIL_PATH = RUN_ROOT / \"gpu_util.csv\"",
+        "scripts/monitor_gpu_util.py",
+        "BRANCH = \"codex/colab-gpu-utilization-hardening-20260620\"",
         "FRED_API_KEY loaded from Colab Secrets.",
         "features=with_momentum",
         "features.include_global_regime=true",

@@ -1,8 +1,11 @@
+from pathlib import Path
+
 import torch
 
 from mci_gru.config import TrainingConfig
 from mci_gru.training.losses import (
     LambdaRankICLoss,
+    _average_ranks,
     build_training_loss,
     mean_rank_information_coefficient,
 )
@@ -83,6 +86,31 @@ def test_lambdarank_ic_pair_sampling_is_deterministic() -> None:
     second = loss(pred, target)
 
     assert torch.isclose(first, second)
+
+
+def test_lambdarank_ic_loss_reuses_cached_pair_indices() -> None:
+    pred = torch.tensor([[0.50, -0.20, 0.10, 0.70, -0.30, 0.00]], requires_grad=True)
+    target = torch.tensor([[0.40, -0.10, 0.30, 0.20, -0.20, 0.10]])
+    loss = LambdaRankICLoss(max_pairs_per_day=4, temperature=0.75)
+
+    first = loss(pred, target)
+    cache_key = (6, 4, pred.device)
+    cached_rows, cached_cols = loss._pair_index_cache[cache_key]
+    second = loss(pred, target)
+
+    assert torch.isclose(first, second)
+    assert loss._pair_index_cache[cache_key][0] is cached_rows
+    assert loss._pair_index_cache[cache_key][1] is cached_cols
+
+
+def test_average_ranks_handles_ties_without_cpu_scalar_loop_regression() -> None:
+    ranks = _average_ranks(torch.tensor([3.0, 1.0, 1.0, 2.0, 3.0]))
+
+    assert torch.allclose(ranks, torch.tensor([3.5, 0.5, 0.5, 2.0, 3.5]))
+
+
+def test_lambdarank_ic_benchmark_script_is_checked_in() -> None:
+    assert Path("scripts/benchmark_lambdarank_ic_loss.py").exists()
 
 
 def test_mean_rank_information_coefficient_uses_spearman_ordering() -> None:

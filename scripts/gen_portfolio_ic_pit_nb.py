@@ -53,13 +53,17 @@ cells = [
     md("## 1. Setup"),
     code(
         r"""
+        import csv
         import json
         import os
         import shutil
         import subprocess
         import sys
+        import time
         from datetime import datetime
         from pathlib import Path
+
+        import torch
 
         try:
             from google.colab import drive, userdata
@@ -71,8 +75,50 @@ cells = [
             IN_COLAB = False
 
         REPO_URL = "https://github.com/magilliam27/MCI-GRU.git"
-        BRANCH = "main"
+        BRANCH = "codex/colab-gpu-utilization-hardening-20260620"
         REPO_DIR = Path("/content/MCI-GRU") if IN_COLAB else Path.cwd()
+        REQUIRE_G4_L4_GPU = True
+        BLOCKED_GPU_NAMES = ("T4",)
+        ALLOWED_GPU_MARKERS = (
+            "G4",
+            "L4",
+            "A100",
+            "H100",
+            "V100",
+            "RTX PRO",
+            "BLACKWELL",
+        )
+        STRICT_GPU_MARKERS: list[str] = []
+
+        def detect_gpu_name() -> str:
+            proc = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if proc.returncode != 0:
+                raise RuntimeError(
+                    "nvidia-smi failed. Expected G4/L4-class Colab runtime, not T4/CPU.\n"
+                    + proc.stderr
+                )
+            gpu_name = proc.stdout.strip().splitlines()[0].strip() if proc.stdout.strip() else ""
+            if not gpu_name:
+                raise RuntimeError("nvidia-smi did not report a GPU name.")
+            upper_gpu = gpu_name.upper()
+            if any(blocked in upper_gpu for blocked in BLOCKED_GPU_NAMES):
+                raise RuntimeError(
+                    f"Expected G4/L4-class Colab runtime, not T4/CPU. Visible GPU: {gpu_name}"
+                )
+            if not any(marker in upper_gpu for marker in ALLOWED_GPU_MARKERS):
+                raise RuntimeError(
+                    f"Refusing runtime GPU {gpu_name}; allowed markers are {ALLOWED_GPU_MARKERS}."
+                )
+            if STRICT_GPU_MARKERS and not any(marker in upper_gpu for marker in STRICT_GPU_MARKERS):
+                raise RuntimeError(
+                    f"GPU {gpu_name} does not match STRICT_GPU_MARKERS={STRICT_GPU_MARKERS}."
+                )
+            return gpu_name
 
         if IN_COLAB:
             drive.mount("/content/drive")
@@ -92,6 +138,15 @@ cells = [
         print("Repo:", REPO_DIR)
         print("Branch:", BRANCH)
         subprocess.run(["git", "rev-parse", "HEAD"], check=False)
+        print("CUDA available:", torch.cuda.is_available())
+        if torch.cuda.is_available():
+            GPU_NAME = detect_gpu_name()
+            print("GPU:", GPU_NAME)
+        elif REQUIRE_G4_L4_GPU:
+            raise RuntimeError(
+                "Expected G4/L4-class Colab runtime, not T4/CPU. "
+                "Switch Runtime -> Change runtime type -> G4 GPU before training."
+            )
         """
     ),
     md("## 2. Data And Regime Inputs"),
@@ -151,7 +206,65 @@ cells = [
             else REPO_DIR / "results" / "portfolio_ic_hybrid"
         ) / RUN_TAG
         TRAINING_OUTPUT_DIR = RUN_ROOT / "training"
+        HEARTBEAT_PATH = RUN_ROOT / "heartbeat.json"
+        GPU_UTIL_PATH = RUN_ROOT / "gpu_util.csv"
+        GPU_UTIL_STOP_PATH = RUN_ROOT / "gpu_util.stop"
+        RESULTS_CSV_PATH = RUN_ROOT / "training_results.csv"
+        RESULTS_JSON_PATH = RUN_ROOT / "training_results.json"
         RUN_ROOT.mkdir(parents=True, exist_ok=True)
+
+        def write_heartbeat(
+            phase: str,
+            status: str = "RUNNING",
+            current_job: str | None = None,
+            completed_jobs: int = 0,
+            error: str | None = None,
+        ) -> None:
+            payload = {
+                "phase": phase,
+                "status": status,
+                "current_job": current_job,
+                "completed_jobs": completed_jobs,
+                "expected_jobs": len(jobs) if "jobs" in globals() else None,
+                "branch": BRANCH,
+                "run_root": str(RUN_ROOT),
+                "updated_at": datetime.utcnow().isoformat() + "Z",
+            }
+            if "GPU_NAME" in globals():
+                payload["gpu_name"] = GPU_NAME
+            if error is not None:
+                payload["error"] = error
+            HEARTBEAT_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+        def start_gpu_sampler() -> subprocess.Popen | None:
+            if GPU_UTIL_STOP_PATH.exists():
+                GPU_UTIL_STOP_PATH.unlink()
+            monitor_script = REPO_DIR / "scripts/monitor_gpu_util.py"
+            if not monitor_script.exists():
+                raise FileNotFoundError(f"Missing GPU monitor: {monitor_script}")
+            return subprocess.Popen(
+                [
+                    sys.executable,
+                    str(monitor_script),
+                    "--output",
+                    str(GPU_UTIL_PATH),
+                    "--interval",
+                    "1",
+                    "--stop-file",
+                    str(GPU_UTIL_STOP_PATH),
+                ],
+                cwd=str(REPO_DIR),
+            )
+
+        def stop_gpu_sampler(proc: subprocess.Popen | None) -> None:
+            if proc is None:
+                return
+            GPU_UTIL_STOP_PATH.write_text("stop", encoding="utf-8")
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.terminate()
+                proc.wait(timeout=10)
 
         FROZEN_RECIPE_ID = (
             "static-threshold-shuffle__pure-ic-returns-5d-val-ic__"
@@ -290,36 +403,85 @@ cells = [
         for job in jobs:
             print("-", job["name"], job["loss_type"], job["selection_metric"])
         print("Manifest:", manifest_path)
+        write_heartbeat("manifest", completed_jobs=0)
         """
     ),
     md("## 4. Run Training Jobs"),
     code(
         r"""
-        results = []
-        for job in jobs:
-            print("=" * 100)
-            print("Starting:", job["name"])
-            cmd = [sys.executable, "-u", str(REPO_DIR / "run_experiment.py"), *job["overrides"]]
-            print("Command:", " ".join(cmd[:4]), "... +", len(job["overrides"]), "overrides")
-            proc = subprocess.run(cmd, cwd=str(REPO_DIR), text=True)
-            result = {
-                "name": job["name"],
-                "variant": job["variant"],
-                "loss_type": job["loss_type"],
-                "selection_metric": job["selection_metric"],
-                "year": job["year"],
-                "base_seed": job["base_seed"],
-                "returncode": int(proc.returncode),
-            }
-            results.append(result)
-            results_path = RUN_ROOT / "portfolio_ic_pit_training_results.json"
-            results_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
-            print("Return code:", proc.returncode)
-            if proc.returncode != 0:
-                raise RuntimeError(f"Job failed: {job['name']}")
+        def write_results_artifacts(rows: list[dict]) -> None:
+            RESULTS_JSON_PATH.write_text(json.dumps(rows, indent=2), encoding="utf-8")
+            fieldnames = [
+                "name",
+                "variant",
+                "loss_type",
+                "selection_metric",
+                "year",
+                "base_seed",
+                "returncode",
+                "elapsed_seconds",
+            ]
+            with RESULTS_CSV_PATH.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fieldnames)
+                writer.writeheader()
+                for row in rows:
+                    writer.writerow({key: row.get(key) for key in fieldnames})
 
-        print("All jobs completed.")
-        print("Results:", RUN_ROOT / "portfolio_ic_pit_training_results.json")
+        results = []
+        gpu_sampler_proc = start_gpu_sampler()
+        try:
+            for job in jobs:
+                write_heartbeat("training", current_job=job["name"], completed_jobs=len(results))
+                print("=" * 100)
+                print("Starting:", job["name"])
+                cmd = [sys.executable, "-u", str(REPO_DIR / "run_experiment.py"), *job["overrides"]]
+                print("Command:", " ".join(cmd[:4]), "... +", len(job["overrides"]), "overrides")
+                start_time = time.perf_counter()
+                proc = subprocess.run(cmd, cwd=str(REPO_DIR), text=True)
+                elapsed_seconds = time.perf_counter() - start_time
+                result = {
+                    "name": job["name"],
+                    "variant": job["variant"],
+                    "loss_type": job["loss_type"],
+                    "selection_metric": job["selection_metric"],
+                    "year": job["year"],
+                    "base_seed": job["base_seed"],
+                    "returncode": int(proc.returncode),
+                    "elapsed_seconds": round(elapsed_seconds, 3),
+                }
+                results.append(result)
+                write_results_artifacts(results)
+                print("Return code:", proc.returncode)
+                if proc.returncode != 0:
+                    raise RuntimeError(f"Job failed: {job['name']}")
+
+            print("All jobs completed.")
+            write_heartbeat("done", status="OK", completed_jobs=len(results))
+        except Exception as exc:
+            write_heartbeat(
+                "failed",
+                status="FAILED",
+                current_job=job["name"] if "job" in locals() else None,
+                completed_jobs=len(results),
+                error=str(exc),
+            )
+            raise
+        finally:
+            stop_gpu_sampler(gpu_sampler_proc)
+            if IN_COLAB:
+                try:
+                    import google.colab.runtime
+
+                    google.colab.runtime.unassign()
+                    print("Released Colab runtime with google.colab.runtime.unassign().")
+                except Exception as exc:
+                    print(
+                        "Runtime > Disconnect and delete runtime manually if "
+                        f"foreground cleanup did not complete: {exc}"
+                    )
+
+        print("Results:", RESULTS_JSON_PATH)
+        print("CSV results:", RESULTS_CSV_PATH)
         """
     ),
     md("## 5. Post-Training Reminder"),

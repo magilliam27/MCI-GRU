@@ -12,7 +12,9 @@ Graph resolution is handled upstream by the collate function (via
 (7 core tensors + optional sector ``edge_index`` / ``edge_weight``) from the loaders.
 """
 
+import json
 import os
+import time
 from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass
@@ -40,6 +42,7 @@ if TYPE_CHECKING:
 
 def _unpack_loader_batch(batch, device: torch.device):
     """Move graph batch tensors to *device*; supports 7- or 9-tuple collate output."""
+    non_blocking = device.type == "cuda"
     if len(batch) == 7:
         time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates = batch
         edge_index_sector = None
@@ -62,17 +65,17 @@ def _unpack_loader_batch(batch, device: torch.device):
         stock_mask = batch_dates.get("stock_mask")
         batch_dates = batch_dates.get("dates")
 
-    time_series = time_series.to(device)
-    labels = labels.to(device)
-    graph_features = graph_features.to(device)
-    edge_index = edge_index.to(device)
-    edge_weight = edge_weight.to(device)
+    time_series = time_series.to(device, non_blocking=non_blocking)
+    labels = labels.to(device, non_blocking=non_blocking)
+    graph_features = graph_features.to(device, non_blocking=non_blocking)
+    edge_index = edge_index.to(device, non_blocking=non_blocking)
+    edge_weight = edge_weight.to(device, non_blocking=non_blocking)
     if stock_mask is not None:
-        stock_mask = stock_mask.to(device)
+        stock_mask = stock_mask.to(device, non_blocking=non_blocking)
     if edge_index_sector is not None:
-        edge_index_sector = edge_index_sector.to(device)
+        edge_index_sector = edge_index_sector.to(device, non_blocking=non_blocking)
     if edge_weight_sector is not None:
-        edge_weight_sector = edge_weight_sector.to(device)
+        edge_weight_sector = edge_weight_sector.to(device, non_blocking=non_blocking)
 
     return (
         time_series,
@@ -196,6 +199,8 @@ class Trainer:
         self.best_val_rank_ic = float("-inf")
         self.patience_counter = 0
         self.epoch = 0
+        self._profile_rows_written = 0
+        self._profile_path: str | None = None
 
     def train(
         self,
@@ -222,6 +227,7 @@ class Trainer:
             weight_decay=training_cfg.weight_decay,
         )
         criterion, loss_label = build_training_loss(training_cfg)
+        criterion = criterion.to(self.device)
 
         steps_per_epoch = len(train_loader)
         scheduler = _build_lr_scheduler(optimizer, training_cfg, steps_per_epoch)
@@ -231,6 +237,16 @@ class Trainer:
 
         output_path = self.output_path
         os.makedirs(output_path, exist_ok=True)
+        self._profile_rows_written = 0
+        self._profile_path = None
+        if training_cfg.profile_batches > 0:
+            profile_name = "training_step_profile.jsonl"
+            if self.checkpoint_path is not None:
+                checkpoint_stem = os.path.basename(self.checkpoint_path).removesuffix("_best.pth")
+                profile_name = f"training_step_profile_{checkpoint_stem}.jsonl"
+            self._profile_path = os.path.join(output_path, profile_name)
+            with open(self._profile_path, "w", encoding="utf-8"):
+                pass
         best_model_path = (
             self.checkpoint_path
             if self.checkpoint_path
@@ -331,12 +347,30 @@ class Trainer:
             best_model_path=best_model_path,
         )
 
+    def _sync_cuda_if_needed(self, profiling_active: bool) -> None:
+        if profiling_active and self.device.type == "cuda":
+            torch.cuda.synchronize(self.device)
+
+    def _write_profile_row(self, row: dict[str, object]) -> None:
+        if self._profile_path is None:
+            return
+        with open(self._profile_path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(row, sort_keys=True) + "\n")
+        self._profile_rows_written += 1
+
     def _train_epoch(self, train_loader, optimizer, criterion, scaler, scheduler, use_amp) -> float:
         self.model.train()
         total_loss = 0.0
         num_samples = 0
 
-        for batch in train_loader:
+        profile_limit = self.config.training.profile_batches
+        profiling_active = profile_limit > 0
+        batch_wait_start = time.perf_counter()
+        for batch_index, batch in enumerate(train_loader):
+            batch_received = time.perf_counter()
+            data_wait_seconds = batch_received - batch_wait_start
+
+            h2d_start = time.perf_counter()
             (
                 time_series,
                 labels,
@@ -349,9 +383,12 @@ class Trainer:
                 edge_weight_sector,
                 stock_mask,
             ) = _unpack_loader_batch(batch, self.device)
+            self._sync_cuda_if_needed(profiling_active)
+            h2d_seconds = time.perf_counter() - h2d_start
             batch_size = time_series.shape[0]
 
             optimizer.zero_grad(set_to_none=True)
+            forward_start = time.perf_counter()
             with autocast("cuda", enabled=use_amp):
                 outputs = self.model(
                     time_series,
@@ -364,9 +401,15 @@ class Trainer:
                     stock_mask=stock_mask,
                 )
                 loss = criterion(outputs, labels)
+            self._sync_cuda_if_needed(profiling_active)
+            forward_loss_seconds = time.perf_counter() - forward_start
 
+            backward_start = time.perf_counter()
             scaler.scale(loss).backward()
+            self._sync_cuda_if_needed(profiling_active)
+            backward_seconds = time.perf_counter() - backward_start
 
+            optimizer_start = time.perf_counter()
             if self.config.training.gradient_clip > 0:
                 scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(
@@ -379,9 +422,36 @@ class Trainer:
 
             if scheduler is not None:
                 scheduler.step()
+            self._sync_cuda_if_needed(profiling_active)
+            optimizer_seconds = time.perf_counter() - optimizer_start
 
-            total_loss += loss.item() * batch_size
+            loss_value = loss.item()
+            if profile_limit > 0 and self._profile_rows_written < profile_limit:
+                cuda_memory_allocated = 0
+                cuda_max_memory_allocated = 0
+                if self.device.type == "cuda":
+                    cuda_memory_allocated = int(torch.cuda.memory_allocated(self.device))
+                    cuda_max_memory_allocated = int(torch.cuda.max_memory_allocated(self.device))
+                self._write_profile_row(
+                    {
+                        "epoch": self.epoch,
+                        "batch_index": batch_index,
+                        "device": str(self.device),
+                        "batch_size": int(batch_size),
+                        "loss": float(loss_value),
+                        "data_wait_seconds": data_wait_seconds,
+                        "h2d_seconds": h2d_seconds,
+                        "forward_loss_seconds": forward_loss_seconds,
+                        "backward_seconds": backward_seconds,
+                        "optimizer_seconds": optimizer_seconds,
+                        "cuda_memory_allocated_bytes": cuda_memory_allocated,
+                        "cuda_max_memory_allocated_bytes": cuda_max_memory_allocated,
+                    }
+                )
+
+            total_loss += loss_value * batch_size
             num_samples += batch_size
+            batch_wait_start = time.perf_counter()
 
         return total_loss / num_samples if num_samples > 0 else 0.0
 

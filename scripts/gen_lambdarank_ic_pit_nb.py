@@ -40,20 +40,28 @@ cells = [
 
         Recipe reference: `docs/DEFAULT_EXPERIMENT_RECIPE.md`.
 
-        Default mode is a mechanics smoke: one year, one seed, one model, one
-        epoch, and all three objectives. Set `SMOKE_MODE = False` only after
-        the setup cell proves that this branch exposes `lambdarank_ic` and
-        `val_rank_ic` in the cloned Colab environment.
+        Default mode is a lower-pair screen: one year, one seed, one model,
+        40 epochs, patience 8, and LambdaRankIC pair caps
+        `[512, 1024, 2048, 4096]`. This is intentionally cheaper than the full
+        20-model ensemble and should be labeled as screening evidence.
+
+        Operate this notebook from the visible Colab UI on a G4/L4-class Colab
+        runtime, not T4/CPU. Use Drive artifacts as truth if output streaming
+        stalls; Drive API fallback is preferred over repeated DriveFS remounts
+        for compact artifacts such as heartbeat and result files. If cleanup
+        does not run, use `Runtime > Disconnect and delete runtime` manually.
         """
     ),
     md("## 1. Setup"),
     code(
         r"""
+        import csv
         import json
         import os
         import shutil
         import subprocess
         import sys
+        import time
         from datetime import datetime
         from pathlib import Path
 
@@ -61,9 +69,50 @@ cells = [
 
         IN_COLAB = "google.colab" in sys.modules
         REPO_URL = "https://github.com/magilliam27/MCI-GRU.git"
-        BRANCH = "codex/thermo-cleanup-review"
+        BRANCH = "codex/colab-gpu-utilization-hardening-20260620"
         REPO_DIR = Path("/content/MCI-GRU") if IN_COLAB else Path.cwd()
-        REQUIRE_GPU = True
+        REQUIRE_G4_L4_GPU = True
+        BLOCKED_GPU_NAMES = ("T4",)
+        ALLOWED_GPU_MARKERS = (
+            "G4",
+            "L4",
+            "A100",
+            "H100",
+            "V100",
+            "RTX PRO",
+            "BLACKWELL",
+        )
+        STRICT_GPU_MARKERS: list[str] = []
+
+        def detect_gpu_name() -> str:
+            proc = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if proc.returncode != 0:
+                raise RuntimeError(
+                    "nvidia-smi failed. Expected G4/L4-class Colab runtime, not T4/CPU.\n"
+                    + proc.stderr
+                )
+            gpu_name = proc.stdout.strip().splitlines()[0].strip() if proc.stdout.strip() else ""
+            if not gpu_name:
+                raise RuntimeError("nvidia-smi did not report a GPU name.")
+            upper_gpu = gpu_name.upper()
+            if any(blocked in upper_gpu for blocked in BLOCKED_GPU_NAMES):
+                raise RuntimeError(
+                    f"Expected G4/L4-class Colab runtime, not T4/CPU. Visible GPU: {gpu_name}"
+                )
+            if not any(marker in upper_gpu for marker in ALLOWED_GPU_MARKERS):
+                raise RuntimeError(
+                    f"Refusing runtime GPU {gpu_name}; allowed markers are {ALLOWED_GPU_MARKERS}."
+                )
+            if STRICT_GPU_MARKERS and not any(marker in upper_gpu for marker in STRICT_GPU_MARKERS):
+                raise RuntimeError(
+                    f"GPU {gpu_name} does not match STRICT_GPU_MARKERS={STRICT_GPU_MARKERS}."
+                )
+            return gpu_name
 
         if IN_COLAB:
             from google.colab import drive
@@ -90,9 +139,13 @@ cells = [
         print("Torch:", torch.__version__)
         print("CUDA available:", torch.cuda.is_available())
         if torch.cuda.is_available():
-            print("GPU:", torch.cuda.get_device_name(0))
-        elif REQUIRE_GPU:
-            raise RuntimeError("No CUDA GPU is visible. In Colab, switch Runtime -> Change runtime type -> GPU.")
+            GPU_NAME = detect_gpu_name()
+            print("GPU:", GPU_NAME)
+        elif REQUIRE_G4_L4_GPU:
+            raise RuntimeError(
+                "Expected G4/L4-class Colab runtime, not T4/CPU. "
+                "Switch Runtime -> Change runtime type -> G4 GPU before training."
+            )
 
         from mci_gru.config import TrainingConfig
         from mci_gru.training.losses import build_training_loss
@@ -142,19 +195,59 @@ cells = [
     md("## 3. Build Objective Grid"),
     code(
         r"""
-        SMOKE_MODE = True
+        SMOKE_MODE = False
+        SCREEN_MODE = True
         RUN_TRAINING = True
         MAX_JOBS = None
-        SMOKE_YEARS = [2025]
+        SMOKE_YEARS = [2022]
+        SCREEN_YEARS = [2022]
         FULL_YEARS = [2022, 2023, 2024, 2025]
         SMOKE_BASE_SEEDS = [314159]
+        SCREEN_BASE_SEEDS = [314159]
         FULL_BASE_SEEDS = [314159, 271828, 161803]
+        SMOKE_PAIR_CAPS = [512]
+        SCREEN_PAIR_CAPS = [512, 1024, 2048, 4096]
+        FULL_PAIR_CAPS = [4096]
+        SMOKE_NUM_MODELS = 1
+        SCREEN_NUM_MODELS = 1
+        FULL_NUM_MODELS = 20
+        SMOKE_NUM_EPOCHS = 2
+        SCREEN_NUM_EPOCHS = 40
+        FULL_NUM_EPOCHS = 100
+        SMOKE_EARLY_STOPPING_PATIENCE = 2
+        SCREEN_EARLY_STOPPING_PATIENCE = 8
+        FULL_EARLY_STOPPING_PATIENCE = 15
 
-        YEARS = SMOKE_YEARS if SMOKE_MODE else FULL_YEARS
-        BASE_SEEDS = SMOKE_BASE_SEEDS if SMOKE_MODE else FULL_BASE_SEEDS
-        NUM_MODELS = 1 if SMOKE_MODE else 20
-        NUM_EPOCHS = 1 if SMOKE_MODE else 100
-        EARLY_STOPPING_PATIENCE = 2 if SMOKE_MODE else 15
+        if SMOKE_MODE and SCREEN_MODE:
+            raise ValueError("SMOKE_MODE and SCREEN_MODE are mutually exclusive.")
+
+        BUDGET_MODE = "smoke" if SMOKE_MODE else ("screen" if SCREEN_MODE else "full")
+        YEARS = SMOKE_YEARS if SMOKE_MODE else (SCREEN_YEARS if SCREEN_MODE else FULL_YEARS)
+        BASE_SEEDS = (
+            SMOKE_BASE_SEEDS
+            if SMOKE_MODE
+            else (SCREEN_BASE_SEEDS if SCREEN_MODE else FULL_BASE_SEEDS)
+        )
+        PAIR_CAPS = SCREEN_PAIR_CAPS if SCREEN_MODE else (SMOKE_PAIR_CAPS if SMOKE_MODE else FULL_PAIR_CAPS)
+        NUM_MODELS = (
+            SMOKE_NUM_MODELS
+            if SMOKE_MODE
+            else (SCREEN_NUM_MODELS if SCREEN_MODE else FULL_NUM_MODELS)
+        )
+        NUM_EPOCHS = (
+            SMOKE_NUM_EPOCHS
+            if SMOKE_MODE
+            else (SCREEN_NUM_EPOCHS if SCREEN_MODE else FULL_NUM_EPOCHS)
+        )
+        EARLY_STOPPING_PATIENCE = (
+            SMOKE_EARLY_STOPPING_PATIENCE
+            if SMOKE_MODE
+            else (
+                SCREEN_EARLY_STOPPING_PATIENCE
+                if SCREEN_MODE
+                else FULL_EARLY_STOPPING_PATIENCE
+            )
+        )
 
         RUN_TAG = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         RUN_ROOT = (
@@ -163,14 +256,82 @@ cells = [
             else REPO_DIR / "results" / "lambdarank_ic_pit"
         ) / RUN_TAG
         TRAINING_OUTPUT_DIR = RUN_ROOT / "training"
+        HEARTBEAT_PATH = RUN_ROOT / "heartbeat.json"
+        GPU_UTIL_PATH = RUN_ROOT / "gpu_util.csv"
+        GPU_UTIL_STOP_PATH = RUN_ROOT / "gpu_util.stop"
+        RESULTS_CSV_PATH = RUN_ROOT / "training_results.csv"
+        RESULTS_JSON_PATH = RUN_ROOT / "training_results.json"
+        LEGACY_RESULTS_JSON_PATH = RUN_ROOT / "lambdarank_ic_pit_training_results.json"
+        if RUN_ROOT.exists():
+            raise RuntimeError(f"Refusing to reuse existing run root: {RUN_ROOT}")
         RUN_ROOT.mkdir(parents=True, exist_ok=True)
+
+        def write_heartbeat(
+            phase: str,
+            status: str = "RUNNING",
+            current_job: str | None = None,
+            completed_jobs: int = 0,
+            error: str | None = None,
+        ) -> None:
+            payload = {
+                "phase": phase,
+                "status": status,
+                "current_job": current_job,
+                "completed_jobs": completed_jobs,
+                "expected_jobs": None,
+                "budget_mode": BUDGET_MODE,
+                "branch": BRANCH,
+                "run_root": str(RUN_ROOT),
+                "updated_at": datetime.utcnow().isoformat() + "Z",
+            }
+            if "jobs" in globals():
+                payload["expected_jobs"] = len(jobs)
+            if "GPU_NAME" in globals():
+                payload["gpu_name"] = GPU_NAME
+            if torch.cuda.is_available():
+                payload["gpu"] = torch.cuda.get_device_name(0)
+            if error is not None:
+                payload["error"] = error
+            HEARTBEAT_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+        def start_gpu_sampler() -> subprocess.Popen | None:
+            if not RUN_TRAINING:
+                return None
+            if GPU_UTIL_STOP_PATH.exists():
+                GPU_UTIL_STOP_PATH.unlink()
+            monitor_script = REPO_DIR / "scripts/monitor_gpu_util.py"
+            if not monitor_script.exists():
+                raise FileNotFoundError(f"Missing GPU monitor: {monitor_script}")
+            return subprocess.Popen(
+                [
+                    sys.executable,
+                    str(monitor_script),
+                    "--output",
+                    str(GPU_UTIL_PATH),
+                    "--interval",
+                    "1",
+                    "--stop-file",
+                    str(GPU_UTIL_STOP_PATH),
+                ],
+                cwd=str(REPO_DIR),
+            )
+
+        def stop_gpu_sampler(proc: subprocess.Popen | None) -> None:
+            if proc is None:
+                return
+            GPU_UTIL_STOP_PATH.write_text("stop", encoding="utf-8")
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.terminate()
+                proc.wait(timeout=10)
 
         FROZEN_RECIPE_ID = (
             "static-threshold-shuffle__pure-ic-returns-5d-val-ic__"
             "regime-current-only__ensemble__drop-edge-0p1"
         )
 
-        OBJECTIVE_VARIANTS = {
+        OBJECTIVE_VARIANTS_FULL = {
             'pure_ic_baseline': {
                 'loss_type': 'ic',
                 'selection_metric': 'val_ic',
@@ -189,11 +350,29 @@ cells = [
                 'lambdarank_ic_temperature': 1.0,
             },
         }
+        OBJECTIVE_VARIANTS = (
+            {
+                'lambdarank_ic_pair_cap_screen': {
+                    'loss_type': 'lambdarank_ic',
+                    'selection_metric': 'val_rank_ic',
+                    'lambdarank_ic_max_pairs_per_day': 4096,
+                    'lambdarank_ic_temperature': 1.0,
+                },
+            }
+            if SCREEN_MODE
+            else OBJECTIVE_VARIANTS_FULL
+        )
 
-        EXPECTED_JOB_COUNT = len(YEARS) * len(BASE_SEEDS) * len(OBJECTIVE_VARIANTS)
+        pair_multiplier = sum(
+            len(PAIR_CAPS) if variant["loss_type"] == "lambdarank_ic" else 1
+            for variant in OBJECTIVE_VARIANTS.values()
+        )
+        EXPECTED_JOB_COUNT = len(YEARS) * len(BASE_SEEDS) * pair_multiplier
         EXPECTED_TOTAL_MODELS = EXPECTED_JOB_COUNT * NUM_MODELS
-        assert EXPECTED_JOB_COUNT == (3 if SMOKE_MODE else 36)
-        assert EXPECTED_TOTAL_MODELS == (3 if SMOKE_MODE else 720)
+        expected_jobs_by_mode = len(SCREEN_PAIR_CAPS) if SCREEN_MODE else (3 if SMOKE_MODE else 36)
+        expected_models_by_mode = len(SCREEN_PAIR_CAPS) if SCREEN_MODE else (3 if SMOKE_MODE else 720)
+        assert EXPECTED_JOB_COUNT == expected_jobs_by_mode
+        assert EXPECTED_TOTAL_MODELS == expected_models_by_mode
 
         BASE_OVERRIDES = [
             "data.source=csv",
@@ -270,26 +449,35 @@ cells = [
         for year in YEARS:
             for base_seed in BASE_SEEDS:
                 for variant_name, variant in OBJECTIVE_VARIANTS.items():
-                    experiment = f"pit_temporal_{year}"
-                    name = f"lambdarank_ic_{variant_name}_{year}_seed{base_seed}"
-                    jobs.append(
-                        {
-                            "year": year,
-                            "base_seed": base_seed,
-                            "variant": variant_name,
-                            "loss_type": variant["loss_type"],
-                            "selection_metric": variant["selection_metric"],
-                            "name": name,
-                            "overrides": [
-                                f"+experiment={experiment}",
-                                *BASE_OVERRIDES,
-                                *loss_overrides_for_variant(variant),
-                                f"seed={base_seed}",
-                                f"experiment_name={name}",
-                                f"output_dir={TRAINING_OUTPUT_DIR.as_posix()}",
-                            ],
-                        }
-                    )
+                    variant_pair_caps = PAIR_CAPS if variant["loss_type"] == "lambdarank_ic" else [None]
+                    for max_pairs_per_day in variant_pair_caps:
+                        experiment = f"pit_temporal_{year}"
+                        job_variant = dict(variant)
+                        if max_pairs_per_day is not None:
+                            job_variant["lambdarank_ic_max_pairs_per_day"] = max_pairs_per_day
+                        pair_suffix = (
+                            f"_pairs{max_pairs_per_day}" if max_pairs_per_day is not None else ""
+                        )
+                        name = f"lambdarank_ic_{variant_name}{pair_suffix}_{year}_seed{base_seed}"
+                        jobs.append(
+                            {
+                                "year": year,
+                                "base_seed": base_seed,
+                                "variant": variant_name,
+                                "loss_type": job_variant["loss_type"],
+                                "selection_metric": job_variant["selection_metric"],
+                                "max_pairs_per_day": max_pairs_per_day,
+                                "name": name,
+                                "overrides": [
+                                    f"+experiment={experiment}",
+                                    *BASE_OVERRIDES,
+                                    *loss_overrides_for_variant(job_variant),
+                                    f"seed={base_seed}",
+                                    f"experiment_name={name}",
+                                    f"output_dir={TRAINING_OUTPUT_DIR.as_posix()}",
+                                ],
+                            }
+                        )
 
         if MAX_JOBS is not None:
             jobs = jobs[:MAX_JOBS]
@@ -300,8 +488,11 @@ cells = [
             "branch": BRANCH,
             "run_tag": RUN_TAG,
             "smoke_mode": SMOKE_MODE,
+            "screen_mode": SCREEN_MODE,
+            "budget_mode": BUDGET_MODE,
             "years": YEARS,
             "base_seeds": BASE_SEEDS,
+            "pair_caps": PAIR_CAPS,
             "num_models": NUM_MODELS,
             "num_epochs": NUM_EPOCHS,
             "early_stopping_patience": EARLY_STOPPING_PATIENCE,
@@ -320,6 +511,7 @@ cells = [
         for job in jobs:
             print("-", job["name"], job["loss_type"], job["selection_metric"])
         print("Manifest:", manifest_path)
+        write_heartbeat("manifest", completed_jobs=0)
         """
     ),
     md("## 4. Run Training Jobs"),
@@ -329,45 +521,103 @@ cells = [
             candidates = sorted(TRAINING_OUTPUT_DIR.glob(f"{job_name}/**/training_summary.json"))
             return candidates[-1] if candidates else None
 
-        results = []
-        if not RUN_TRAINING:
-            print("RUN_TRAINING is false; grid manifest only.")
-        for job in jobs if RUN_TRAINING else []:
-            print("=" * 100)
-            print("Starting:", job["name"])
-            cmd = [sys.executable, "-u", str(REPO_DIR / "run_experiment.py"), *job["overrides"]]
-            print("Command:", " ".join(cmd[:4]), "... +", len(job["overrides"]), "overrides")
-            env = {**os.environ, "PYTHONUNBUFFERED": "1"}
-            proc = subprocess.run(cmd, cwd=str(REPO_DIR), text=True, env=env)
-            summary_path = latest_training_summary(job["name"])
-            result = {
-                "name": job["name"],
-                "variant": job["variant"],
-                "loss_type": job["loss_type"],
-                "selection_metric": job["selection_metric"],
-                "year": job["year"],
-                "base_seed": job["base_seed"],
-                "returncode": int(proc.returncode),
-                "training_summary_path": str(summary_path) if summary_path else None,
-            }
-            if summary_path is not None:
-                result["training_summary"] = json.loads(summary_path.read_text(encoding="utf-8"))
-            results.append(result)
-            results_path = RUN_ROOT / "lambdarank_ic_pit_training_results.json"
-            results_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
-            print("Return code:", proc.returncode)
-            print("Training summary:", summary_path)
-            if proc.returncode != 0:
-                raise RuntimeError(f"Job failed: {job['name']}")
+        def write_results_artifacts(rows: list[dict]) -> None:
+            RESULTS_JSON_PATH.write_text(json.dumps(rows, indent=2), encoding="utf-8")
+            LEGACY_RESULTS_JSON_PATH.write_text(json.dumps(rows, indent=2), encoding="utf-8")
+            fieldnames = [
+                "name",
+                "variant",
+                "loss_type",
+                "selection_metric",
+                "year",
+                "base_seed",
+                "max_pairs_per_day",
+                "returncode",
+                "elapsed_seconds",
+                "training_summary_path",
+            ]
+            with RESULTS_CSV_PATH.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fieldnames)
+                writer.writeheader()
+                for row in rows:
+                    writer.writerow({key: row.get(key) for key in fieldnames})
 
-        print("Training loop complete.")
-        print("Results:", RUN_ROOT / "lambdarank_ic_pit_training_results.json")
+        results = []
+        gpu_sampler_proc = start_gpu_sampler()
+        try:
+            if not RUN_TRAINING:
+                print("RUN_TRAINING is false; grid manifest only.")
+                write_heartbeat("skipped", status="OK", completed_jobs=0)
+            for job in jobs if RUN_TRAINING else []:
+                write_heartbeat(
+                    "training",
+                    current_job=job["name"],
+                    completed_jobs=len(results),
+                )
+                print("=" * 100)
+                print("Starting:", job["name"])
+                cmd = [sys.executable, "-u", str(REPO_DIR / "run_experiment.py"), *job["overrides"]]
+                print("Command:", " ".join(cmd[:4]), "... +", len(job["overrides"]), "overrides")
+                env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+                start_time = time.perf_counter()
+                proc = subprocess.run(cmd, cwd=str(REPO_DIR), text=True, env=env)
+                elapsed_seconds = time.perf_counter() - start_time
+                summary_path = latest_training_summary(job["name"])
+                result = {
+                    "name": job["name"],
+                    "variant": job["variant"],
+                    "loss_type": job["loss_type"],
+                    "selection_metric": job["selection_metric"],
+                    "year": job["year"],
+                    "base_seed": job["base_seed"],
+                    "max_pairs_per_day": job["max_pairs_per_day"],
+                    "returncode": int(proc.returncode),
+                    "elapsed_seconds": round(elapsed_seconds, 3),
+                    "training_summary_path": str(summary_path) if summary_path else None,
+                }
+                if summary_path is not None:
+                    result["training_summary"] = json.loads(summary_path.read_text(encoding="utf-8"))
+                results.append(result)
+                write_results_artifacts(results)
+                print("Return code:", proc.returncode)
+                print("Training summary:", summary_path)
+                if proc.returncode != 0:
+                    raise RuntimeError(f"Job failed: {job['name']}")
+
+            print("Training loop complete.")
+            write_heartbeat("done", status="OK", completed_jobs=len(results))
+        except Exception as exc:
+            write_heartbeat(
+                "failed",
+                status="FAILED",
+                current_job=job["name"] if "job" in locals() else None,
+                completed_jobs=len(results),
+                error=str(exc),
+            )
+            raise
+        finally:
+            stop_gpu_sampler(gpu_sampler_proc)
+            if IN_COLAB:
+                try:
+                    import google.colab.runtime
+
+                    google.colab.runtime.unassign()
+                    print("Released Colab runtime with google.colab.runtime.unassign().")
+                except Exception as exc:
+                    print(
+                        "Runtime > Disconnect and delete runtime manually if "
+                        f"foreground cleanup did not complete: {exc}"
+                    )
+
+        print("Results:", RESULTS_JSON_PATH)
+        print("Legacy results:", LEGACY_RESULTS_JSON_PATH)
+        print("CSV results:", RESULTS_CSV_PATH)
         """
     ),
     md("## 5. Results Snapshot"),
     code(
         r"""
-        results_path = RUN_ROOT / "lambdarank_ic_pit_training_results.json"
+        results_path = RESULTS_JSON_PATH
         if results_path.exists():
             import pandas as pd
 

@@ -28,6 +28,7 @@ def test_portfolio_ic_notebook_pins_smoke_and_full_grid_contract() -> None:
         "Portfolio-IC Hybrid Loss PIT Grid",
         "Machine Learning Meets Markowitz",
         "docs/DEFAULT_EXPERIMENT_RECIPE.md",
+        'BRANCH = "codex/colab-gpu-utilization-hardening-20260620"',
         "static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1",
         "SMOKE_MODE = True",
         "SMOKE_YEARS = [2025]",
@@ -49,6 +50,26 @@ def test_portfolio_ic_notebook_pins_smoke_and_full_grid_contract() -> None:
         "EXPECTED_JOB_COUNT = len(YEARS) * len(BASE_SEEDS) * len(OBJECTIVE_VARIANTS)",
         "EXPECTED_TOTAL_MODELS = EXPECTED_JOB_COUNT * NUM_MODELS",
         "assert EXPECTED_JOB_COUNT == (2 if SMOKE_MODE else 24)",
+    ]
+
+    for token in required_tokens:
+        assert token in combined
+        assert token in generator
+
+
+def test_portfolio_ic_notebook_has_non_t4_gpu_gate_and_sampler() -> None:
+    combined = "\n".join(_cell_sources())
+    generator = GENERATOR_PATH.read_text(encoding="utf-8")
+
+    required_tokens = [
+        "G4/L4-class Colab runtime",
+        "not T4/CPU",
+        "BLOCKED_GPU_NAMES = (\"T4\",)",
+        "ALLOWED_GPU_MARKERS = (",
+        "STRICT_GPU_MARKERS: list[str] = []",
+        "GPU_UTIL_PATH = RUN_ROOT / \"gpu_util.csv\"",
+        "scripts/monitor_gpu_util.py",
+        "google.colab.runtime.unassign()",
     ]
 
     for token in required_tokens:

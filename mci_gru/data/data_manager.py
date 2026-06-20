@@ -729,6 +729,10 @@ def create_data_loaders(
     train_stock_masks: np.ndarray | None = None,
     val_stock_masks: np.ndarray | None = None,
     test_stock_masks: np.ndarray | None = None,
+    dataloader_num_workers: int = 0,
+    dataloader_pin_memory: bool = False,
+    dataloader_persistent_workers: bool = False,
+    dataloader_prefetch_factor: int | None = None,
 ) -> tuple:
     """
     Create train/val/test data loaders.
@@ -836,6 +840,15 @@ def create_data_loaders(
         use_sector_relation=use_sector_relation,
     )
 
+    loader_kwargs = {
+        "num_workers": dataloader_num_workers,
+        "pin_memory": dataloader_pin_memory,
+    }
+    if dataloader_num_workers > 0:
+        loader_kwargs["persistent_workers"] = dataloader_persistent_workers
+        if dataloader_prefetch_factor is not None:
+            loader_kwargs["prefetch_factor"] = dataloader_prefetch_factor
+
     train_shuffle = (not dynamic_graph) if shuffle_train is None else shuffle_train
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
@@ -843,6 +856,7 @@ def create_data_loaders(
         shuffle=train_shuffle,
         drop_last=False,
         collate_fn=collate_fn,
+        **loader_kwargs,
     )
 
     val_loader = torch.utils.data.DataLoader(
@@ -850,6 +864,7 @@ def create_data_loaders(
         batch_size=batch_size,
         shuffle=False,
         collate_fn=collate_fn,
+        **loader_kwargs,
     )
 
     test_loader = torch.utils.data.DataLoader(
@@ -857,6 +872,7 @@ def create_data_loaders(
         batch_size=1,
         shuffle=False,
         collate_fn=collate_fn,
+        **loader_kwargs,
     )
 
     print(
