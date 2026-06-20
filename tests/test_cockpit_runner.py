@@ -4,7 +4,7 @@ from datetime import date
 from typing import TYPE_CHECKING
 
 from mci_gru.cockpit.evidence import collect_local_evidence
-from mci_gru.cockpit.runner import run_local_cockpit_refresh
+from mci_gru.cockpit.runner import run_github_cockpit_refresh, run_local_cockpit_refresh
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -101,6 +101,58 @@ def test_run_local_cockpit_refresh_reports_dirty_paths(tmp_path: Path) -> None:
     assert result.dirty_paths == ["docs/agents/domain.md", "scratch.txt"]
     assert "**Run color:** red" in packet
     assert "Dirty paths before cockpit write: docs/agents/domain.md, scratch.txt" in packet
+
+
+def test_run_github_cockpit_refresh_switches_branch_and_syncs(tmp_path: Path) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    commands: list[list[str]] = []
+
+    def fake_run(args: list[str]) -> str:
+        commands.append(args)
+        command = " ".join(args)
+        if command == "git switch -C codex/cockpit-refresh-20260620":
+            return ""
+        if command == "git status --short":
+            return ""
+        if command == "git branch --format=%(refname:short)":
+            return "main\n"
+        if command == "git worktree list --porcelain":
+            return "worktree C:/repo\nHEAD 60e3d96\nbranch refs/heads/main\n"
+        if command == "git log -5 --oneline":
+            return "60e3d96 Add local MCI-GRU cockpit runner\n"
+        if command == "gh auth status":
+            return "Logged in"
+        if command.startswith("git status --short -- docs/agents/workstreams.md"):
+            return "M docs/agents/workstreams.md\nM docs/agents/cockpit/2026-06-20.md\n"
+        if command.startswith("git add docs/agents/workstreams.md"):
+            return ""
+        if command.startswith("git commit -m Refresh cockpit status for 2026-06-20"):
+            return "[codex/cockpit-refresh-20260620 abc123] Refresh cockpit status for 2026-06-20"
+        if command == "git push -u origin codex/cockpit-refresh-20260620":
+            return ""
+        if command.startswith("gh pr list"):
+            return "https://github.com/magilliam27/MCI-GRU/pull/99"
+        if command.startswith("gh issue list"):
+            return "100"
+        if command.startswith("gh label list"):
+            return "cockpit-reviewed\n"
+        if command.startswith("gh issue edit 100"):
+            return ""
+        if command.startswith("gh issue comment 100"):
+            return ""
+        raise AssertionError(command)
+
+    result = run_github_cockpit_refresh(
+        repo_root=repo,
+        run_date=date(2026, 6, 20),
+        run_command=fake_run,
+    )
+
+    assert commands[0] == ["git", "switch", "-C", "codex/cockpit-refresh-20260620"]
+    assert result.github is not None
+    assert result.github.pr_url == "https://github.com/magilliam27/MCI-GRU/pull/99"
+    assert result.register_path.exists()
+    assert any(command[:3] == ["gh", "issue", "comment"] for command in commands)
 
 
 def _repo_with_required_docs(repo: Path) -> Path:

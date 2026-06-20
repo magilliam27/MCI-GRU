@@ -9,7 +9,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from mci_gru.cockpit.runner import run_local_cockpit_refresh  # noqa: E402
+from mci_gru.cockpit.runner import run_github_cockpit_refresh, run_local_cockpit_refresh  # noqa: E402,I001
 
 
 def parse_args() -> argparse.Namespace:
@@ -28,12 +28,17 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    repo_root = Path(args.repo_root).resolve()
+    run_date = date.fromisoformat(args.date)
     if args.github_sync:
-        raise SystemExit("GitHub sync is not implemented in the local-first runner yet.")
-    result = run_local_cockpit_refresh(Path(args.repo_root).resolve(), date.fromisoformat(args.date))
+        result = run_github_cockpit_refresh(repo_root, run_date)
+    else:
+        result = run_local_cockpit_refresh(repo_root, run_date)
     print(f"Wrote {result.register_path}")
     print(f"Wrote {result.packet_path}")
     print(f"Run color: {result.color.value}")
+    if result.github is not None:
+        print(f"GitHub PR: {result.github.pr_url}")
     return 0
 
 

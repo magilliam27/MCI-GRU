@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from mci_gru.cockpit.evidence import collect_local_evidence
+from mci_gru.cockpit.github import GitHubSyncResult, cockpit_branch_name, sync_github
 from mci_gru.cockpit.models import (
     CockpitReport,
     Decision,
@@ -27,6 +29,8 @@ class CockpitRunResult:
     packet_path: Path
     color: RunColor
     dirty_paths: list[str]
+    report: CockpitReport
+    github: GitHubSyncResult | None = None
 
 
 INITIAL_WORKSTREAMS = [
@@ -117,6 +121,33 @@ def run_local_cockpit_refresh(
         packet_path=packet_path,
         color=color,
         dirty_paths=evidence.dirty_paths,
+        report=report,
+    )
+
+
+def run_github_cockpit_refresh(
+    repo_root: Path,
+    run_date: date,
+    run_command: RunCommand | None = None,
+) -> CockpitRunResult:
+    runner = run_command or _run_command(repo_root)
+    runner(["git", "switch", "-C", cockpit_branch_name(run_date)])
+    result = run_local_cockpit_refresh(repo_root, run_date, run_command=runner)
+    github = sync_github(
+        enabled=True,
+        repo_root=repo_root,
+        run_date=run_date,
+        run_color=result.color.value,
+        decision_queue=_decision_queue(result.report),
+        run_command=runner,
+    )
+    return CockpitRunResult(
+        register_path=result.register_path,
+        packet_path=result.packet_path,
+        color=result.color,
+        dirty_paths=result.dirty_paths,
+        report=result.report,
+        github=github,
     )
 
 
@@ -164,3 +195,15 @@ def _evidence_gaps(required_docs: dict[str, bool]) -> list[str]:
     gaps = [f"Missing required doc: {path}" for path, exists in required_docs.items() if not exists]
     gaps.append("No live GitHub issue or PR scan in local-only mode.")
     return gaps
+
+
+def _decision_queue(report: CockpitReport) -> list[str]:
+    return [f"{decision.workstream}: {decision.question}" for decision in report.decisions]
+
+
+def _run_command(repo_root: Path) -> RunCommand:
+    def run(args: list[str]) -> str:
+        completed = subprocess.run(args, cwd=repo_root, check=True, capture_output=True, text=True)
+        return completed.stdout
+
+    return run
