@@ -13,6 +13,21 @@ python -m pytest tests/ -k "test_no_lookahead" -v
 ruff check .
 ```
 
+On Windows PowerShell, prefer the repo venv and repo-local pytest temp:
+
+```powershell
+New-Item -ItemType Directory -Force .tmp_pytest | Out-Null
+$env:TMP = (Resolve-Path .tmp_pytest).Path
+$env:TEMP = $env:TMP
+.\.venv\Scripts\python.exe -m pytest tests/ -k "test_no_lookahead" -v --basetemp .tmp_pytest\pytest
+.\.venv\Scripts\python.exe -m pytest tests/ -m "not slow" -v --basetemp .tmp_pytest\pytest
+.\.venv\Scripts\ruff.exe check .
+.\.venv\Scripts\python.exe -m pytest tests/ -v --basetemp .tmp_pytest\pytest
+```
+
+If pytest passes but emits a Windows permission warning for `.pytest_cache`,
+append `-p no:cacheprovider` to disable cache writes for that run.
+
 Use the smallest command that proves the changed behavior first. Run broader
 checks before pushing shared pipeline, graph, model, or paper-trade changes.
 
@@ -20,12 +35,36 @@ checks before pushing shared pipeline, graph, model, or paper-trade changes.
 
 1. **Targeted proof**: run the specific test file or keyword for the changed
    behavior.
-2. **Repo health proof**: run `python -m pytest tests/ -m "not slow" -v` and
-   `ruff check .`.
-3. **Full confidence proof**: run `python -m pytest tests/ -v` for shared
-   contracts, release candidates, or important PRs.
+2. **Repo health proof**: run the non-slow suite plus `ruff check .`.
+3. **Full confidence proof**: run the full suite for shared contracts, release
+   candidates, or important PRs.
 
 Always report exact commands, exit status, skipped tests, and remaining risk.
+
+## Evidence Taxonomy
+
+- **Contract test**: a saved pytest that protects an invariant or regression.
+- **Local pytest/ruff**: targeted, non-slow, full-suite, or lint evidence from
+  this checkout.
+- **Local smoke**: a short `run_experiment.py` or paper-trade command that
+  proves wiring outside pytest.
+- **Live Colab smoke**: foreground notebook execution that proves the remote
+  runtime can start the path.
+- **Full Colab/Drive artifact proof**: completed notebook run with Drive-backed
+  outputs, metrics, and logs.
+
+FRED, LSEG, and GPU availability are evidence context. Report whether they were
+available for the run, but do not treat them as hard requirements for every
+local test.
+
+## Closeout Checklist
+
+- Interpreter path used, especially `.\.venv\Scripts\python.exe` on Windows.
+- Cwd, branch, and worktree.
+- Pytest temp override, including `TMP`/`TEMP` and `--basetemp`.
+- Command exit status.
+- Pass, skip, warning, and failure counts.
+- Residual risk or unverified surfaces.
 
 ## Test Categories
 

@@ -19,7 +19,7 @@
 | Document | Purpose |
 | --- | --- |
 | [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | Cheat sheet for common commands and workflows. |
-| [workflows/COLAB_PLAYWRIGHT_MCP_GUIDE.md](workflows/COLAB_PLAYWRIGHT_MCP_GUIDE.md) | Reusable agent runbook for operating authenticated Colab notebooks through Playwright MCP. |
+| [workflows/COLAB_CHROME_CONTROL_GUIDE.md](workflows/COLAB_CHROME_CONTROL_GUIDE.md) | Reusable agent runbook for operating authenticated Colab notebooks through Chrome control. |
 | [OUTPUT_MANAGEMENT.md](OUTPUT_MANAGEMENT.md) | Output directory structure, naming, cleanup, and persistence. |
 | [MLFLOW_TRACKING.md](MLFLOW_TRACKING.md) | MLflow experiment tracking setup and usage. |
 | [TSFM_PREDICTION_REPORT.md](TSFM_PREDICTION_REPORT.md) | Saved-prediction R2, sign, IC, and yearly decay report method. |

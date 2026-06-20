@@ -1,6 +1,6 @@
 # Notebook Best Practices
 
-Last updated: 2026-06-02
+Last updated: 2026-06-18
 
 This guide documents the notebook conventions used for MCI-GRU Colab experiment
 notebooks. Follow it when creating or modifying notebooks under `notebooks/`.
@@ -24,6 +24,25 @@ Treat Google Drive as durable storage, not as the notebook's active working
 filesystem. Mounted Drive is convenient but quota-limited; notebooks should do
 high-volume reads and writes on the Colab VM and copy compact artifacts to Drive
 at well-defined checkpoints.
+
+## Agent Operation
+
+When an agent needs to operate a notebook in Colab, default to the
+`chrome:control-chrome` workflow in
+`docs/workflows/COLAB_CHROME_CONTROL_GUIDE.md`. Chrome control is the preferred
+surface for the visible Colab UI because it can use the user's existing Chrome
+profile and logged-in Google, Drive, and Colab state.
+
+Use Playwright MCP only as a legacy fallback when Chrome control is unavailable,
+blocked, or explicitly requested. Keep long full-preset runs in the visible
+notebook UI, and use Drive artifacts as the durable source of truth when cell
+output does not stream.
+
+After any live Colab attempt, complete the mandatory Run Review in
+`docs/workflows/COLAB_CHROME_CONTROL_GUIDE.md`. Separate control-plane proof,
+local notebook checks, and Drive artifact evidence from actual full-run
+validation; a killed proof run or passing contract test is not proof that a
+remote Colab training run succeeded.
 
 ## Drive Path Discovery
 
