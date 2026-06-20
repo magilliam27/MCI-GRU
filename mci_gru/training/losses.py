@@ -80,17 +80,30 @@ def _standardize_cross_section(values: torch.Tensor, eps: float) -> torch.Tensor
 
 def _average_ranks(values: torch.Tensor) -> torch.Tensor:
     """Zero-based average ranks for a 1-D tensor; ties receive their mean rank."""
-    order = torch.argsort(values)
-    ranks = torch.empty(values.numel(), dtype=values.dtype, device=values.device)
-    sorted_values = values[order]
-    _unique_values, counts = torch.unique_consecutive(sorted_values, return_counts=True)
-    ends = counts.cumsum(dim=0)
-    starts = ends - counts
-    average_rank_by_group = (
-        starts.to(dtype=values.dtype) + ends.to(dtype=values.dtype) - 1.0
-    ) / 2.0
-    ranks[order] = torch.repeat_interleave(average_rank_by_group, counts)
+    ranks, _ = _average_ranks_and_tie_flag(values)
     return ranks
+
+
+def _average_ranks_and_tie_flag(values: torch.Tensor) -> tuple[torch.Tensor, bool]:
+    """Zero-based average ranks plus whether any tie group was present."""
+    order = torch.argsort(values)
+    sorted_values = values[order]
+    _unique, inverse, counts = torch.unique_consecutive(
+        sorted_values,
+        return_inverse=True,
+        return_counts=True,
+    )
+    group_ends = torch.cumsum(counts, dim=0)
+    group_starts = group_ends - counts
+    group_avg_ranks = (group_starts + group_ends - 1).to(dtype=values.dtype) / 2.0
+    ranks = torch.empty(values.numel(), dtype=values.dtype, device=values.device)
+    ranks[order] = group_avg_ranks[inverse]
+    has_ties = bool((counts > 1).any().item())
+    return ranks, has_ties
+
+
+def _pair_cache_key(n_items: int, device: torch.device) -> tuple[int, str, int | None]:
+    return n_items, device.type, device.index
 
 
 def _deterministic_pair_indices(
@@ -142,21 +155,25 @@ class LambdaRankICLoss(nn.Module):
         self.max_pairs_per_day = max_pairs_per_day
         self.temperature = temperature
         self.eps = eps
-        self._pair_index_cache: dict[
-            tuple[int, int, torch.device],
+        self._full_pair_index_cache: dict[
+            tuple[int, str, int | None],
+            tuple[torch.Tensor, torch.Tensor],
+        ] = {}
+        self._capped_pair_index_cache: dict[
+            tuple[int, str, int | None],
             tuple[torch.Tensor, torch.Tensor],
         ] = {}
 
-    def _all_pair_indices(
+    def _full_pair_indices(
         self,
         valid_count: int,
         device: torch.device,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        key = (valid_count, 0, device)
-        cached = self._pair_index_cache.get(key)
+        key = _pair_cache_key(valid_count, device)
+        cached = self._full_pair_index_cache.get(key)
         if cached is None:
             cached = torch.triu_indices(valid_count, valid_count, offset=1, device=device)
-            self._pair_index_cache[key] = (cached[0], cached[1])
+            self._full_pair_index_cache[key] = cached
         return cached
 
     def _capped_pair_indices(
@@ -164,12 +181,11 @@ class LambdaRankICLoss(nn.Module):
         valid_count: int,
         device: torch.device,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        key = (valid_count, self.max_pairs_per_day, device)
-        cached = self._pair_index_cache.get(key)
+        key = _pair_cache_key(valid_count, device)
+        cached = self._capped_pair_index_cache.get(key)
         if cached is None:
-            rows, cols = self._all_pair_indices(valid_count, device)
-            cached = _cap_pair_indices(rows, cols, self.max_pairs_per_day)
-            self._pair_index_cache[key] = cached
+            cached = _deterministic_pair_indices(valid_count, self.max_pairs_per_day, device)
+            self._capped_pair_index_cache[key] = cached
         return cached
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
@@ -181,21 +197,21 @@ class LambdaRankICLoss(nn.Module):
                 continue
 
             score_z = _standardize_cross_section(p[mask], self.eps)
-            label_ranks = _average_ranks(t[mask].detach())
+            label_ranks, has_label_ties = _average_ranks_and_tie_flag(t[mask].detach())
             pred_ranks = _average_ranks(score_z.detach())
-            left, right = self._all_pair_indices(valid_count, score_z.device)
 
-            label_diff = label_ranks[left] - label_ranks[right]
-            ordered = label_diff != 0
-            if not bool(ordered.any()):
-                continue
+            if has_label_ties:
+                left, right = self._full_pair_indices(valid_count, score_z.device)
+                label_diff = label_ranks[left] - label_ranks[right]
+                ordered = label_diff != 0
+                if not bool(ordered.any()):
+                    continue
 
-            if bool(ordered.all()):
-                left, right = self._capped_pair_indices(valid_count, score_z.device)
-            else:
                 left = left[ordered]
                 right = right[ordered]
                 left, right = _cap_pair_indices(left, right, self.max_pairs_per_day)
+            else:
+                left, right = self._capped_pair_indices(valid_count, score_z.device)
             label_diff = label_ranks[left] - label_ranks[right]
             direction = torch.sign(label_diff)
             score_diff = score_z[left] - score_z[right]
