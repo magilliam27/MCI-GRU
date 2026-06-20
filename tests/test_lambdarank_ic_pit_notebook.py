@@ -28,19 +28,21 @@ def test_lambdarank_ic_notebook_pins_branch_and_grid_contract() -> None:
         "LambdaRankIC Pairwise Rank IC PIT Grid",
         "LOSS_PATH_DECISION_2026-06-04.md",
         "docs/DEFAULT_EXPERIMENT_RECIPE.md",
-        'BRANCH = "codex/thermo-cleanup-review"',
-        "SMOKE_MODE = True",
-        "SMOKE_YEARS = [2025]",
+        'BRANCH = "codex/lambdarankic-lower-pair-screen"',
+        "SMOKE_MODE = False",
+        "SCREEN_MODE = True",
+        "SMOKE_YEARS = [2022]",
+        "SCREEN_YEARS = [2022]",
         "FULL_YEARS = [2022, 2023, 2024, 2025]",
         "SMOKE_BASE_SEEDS = [314159]",
+        "SCREEN_BASE_SEEDS = [314159]",
         "FULL_BASE_SEEDS = [314159, 271828, 161803]",
-        "NUM_MODELS = 1 if SMOKE_MODE else 20",
-        "NUM_EPOCHS = 1 if SMOKE_MODE else 100",
-        "EARLY_STOPPING_PATIENCE = 2 if SMOKE_MODE else 15",
-        "EXPECTED_JOB_COUNT = len(YEARS) * len(BASE_SEEDS) * len(OBJECTIVE_VARIANTS)",
+        "SCREEN_NUM_MODELS = 1",
+        "SCREEN_NUM_EPOCHS = 40",
+        "SCREEN_EARLY_STOPPING_PATIENCE = 8",
         "EXPECTED_TOTAL_MODELS = EXPECTED_JOB_COUNT * NUM_MODELS",
-        "assert EXPECTED_JOB_COUNT == (3 if SMOKE_MODE else 36)",
-        "assert EXPECTED_TOTAL_MODELS == (3 if SMOKE_MODE else 720)",
+        "expected_jobs_by_mode = len(SCREEN_PAIR_CAPS) if SCREEN_MODE else (3 if SMOKE_MODE else 36)",
+        "expected_models_by_mode = len(SCREEN_PAIR_CAPS) if SCREEN_MODE else (3 if SMOKE_MODE else 720)",
     ]
 
     for token in required_tokens:
@@ -71,6 +73,58 @@ def test_lambdarank_ic_notebook_emits_three_objective_variants() -> None:
         "training.selection_metric={variant['selection_metric']}",
         "training.lambdarank_ic_max_pairs_per_day",
         "training.lambdarank_ic_temperature",
+    ]
+
+    for token in required_tokens:
+        assert token in combined
+        assert token in generator
+
+
+def test_lambdarank_ic_notebook_has_lower_pair_screen_contract() -> None:
+    combined = "\n".join(_cell_sources())
+    generator = GENERATOR_PATH.read_text(encoding="utf-8")
+
+    required_tokens = [
+        'BRANCH = "codex/lambdarankic-lower-pair-screen"',
+        "SCREEN_MODE = True",
+        "SCREEN_YEARS = [2022]",
+        "SCREEN_BASE_SEEDS = [314159]",
+        "SCREEN_PAIR_CAPS = [512, 1024, 2048, 4096]",
+        "SCREEN_NUM_MODELS = 1",
+        "SCREEN_NUM_EPOCHS = 40",
+        "SCREEN_EARLY_STOPPING_PATIENCE = 8",
+        "for max_pairs_per_day in variant_pair_caps:",
+        "'lambdarank_ic_pair_cap_screen'",
+        '"screen_mode": SCREEN_MODE',
+        '"pair_caps": PAIR_CAPS',
+        '"budget_mode": BUDGET_MODE',
+        "time.perf_counter()",
+        '"elapsed_seconds": round(elapsed_seconds, 3)',
+        '"elapsed_seconds",',
+    ]
+
+    for token in required_tokens:
+        assert token in combined
+        assert token in generator
+
+
+def test_lambdarank_ic_notebook_has_colab_reliability_contract() -> None:
+    combined = "\n".join(_cell_sources())
+    generator = GENERATOR_PATH.read_text(encoding="utf-8")
+
+    required_tokens = [
+        "G4/L4-class Colab runtime",
+        "not T4/CPU",
+        "BLOCKED_GPU_NAMES = (\"T4\",)",
+        "Refusing to reuse existing run root",
+        "HEARTBEAT_PATH = RUN_ROOT / \"heartbeat.json\"",
+        "def write_heartbeat(",
+        "status: str = \"RUNNING\"",
+        "training_results.csv",
+        "training_results.json",
+        "Drive API fallback",
+        "google.colab.runtime.unassign()",
+        "Runtime > Disconnect and delete runtime",
     ]
 
     for token in required_tokens:
