@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from pathlib import Path
 from textwrap import dedent
 
 OUT = Path("notebooks/lambdarank_ic_pit_colab.ipynb")
+FULL_TRANCHE_OUT = Path("notebooks/lambdarank_ic_full_tranche_colab.ipynb")
 
 
 def md(text: str) -> dict:
@@ -482,6 +484,9 @@ cells = [
         if MAX_JOBS is not None:
             jobs = jobs[:MAX_JOBS]
 
+        ACTUAL_JOB_COUNT = len(jobs)
+        ACTUAL_TOTAL_MODELS = ACTUAL_JOB_COUNT * NUM_MODELS
+
         manifest = {
             "research_basis": "LOSS_PATH_DECISION_2026-06-04.md",
             "recipe_id": FROZEN_RECIPE_ID,
@@ -489,6 +494,7 @@ cells = [
             "run_tag": RUN_TAG,
             "smoke_mode": SMOKE_MODE,
             "screen_mode": SCREEN_MODE,
+            "max_jobs": MAX_JOBS,
             "budget_mode": BUDGET_MODE,
             "years": YEARS,
             "base_seeds": BASE_SEEDS,
@@ -498,6 +504,8 @@ cells = [
             "early_stopping_patience": EARLY_STOPPING_PATIENCE,
             "expected_job_count": EXPECTED_JOB_COUNT,
             "expected_total_models": EXPECTED_TOTAL_MODELS,
+            "actual_job_count": ACTUAL_JOB_COUNT,
+            "actual_total_models": ACTUAL_TOTAL_MODELS,
             "objective_variants": OBJECTIVE_VARIANTS,
             "jobs": jobs,
         }
@@ -506,8 +514,9 @@ cells = [
 
         print("Run root:", RUN_ROOT)
         print("Recipe:", FROZEN_RECIPE_ID)
-        print("Jobs:", len(jobs))
+        print("Jobs:", ACTUAL_JOB_COUNT)
         print("Expected total models:", EXPECTED_TOTAL_MODELS)
+        print("Actual total models:", ACTUAL_TOTAL_MODELS)
         for job in jobs:
             print("-", job["name"], job["loss_type"], job["selection_metric"])
         print("Manifest:", manifest_path)
@@ -645,6 +654,55 @@ cells = [
 ]
 
 
+def build_full_tranche_cells() -> list[dict]:
+    tranche_cells = deepcopy(cells)
+    tranche_cells[0] = md(
+        """
+        # LambdaRankIC Full-Recipe Confirmation Tranche
+
+        This notebook is the next step after the lower-pair LambdaRankIC screen.
+        It keeps the frozen pure-IC launch candidate, the Portfolio-IC hybrid,
+        and the LambdaRankIC candidate in the grid, but runs only the first
+        full-recipe tranche: year 2022, seed 314159, 20 models, 100 epochs,
+        patience 15, and the screen-winning LambdaRankIC pair cap `[512]`.
+
+        This is intentionally narrower than the whole 36-job / 720-model full
+        grid. It should answer whether the screen winner survives ensemble
+        scale before spending the full multi-year, multi-seed budget.
+
+        Operate this notebook from the visible Colab UI on a G4/L4-class Colab
+        runtime, not T4/CPU. Use Drive artifacts as truth if output streaming
+        stalls; Drive API fallback is preferred over repeated DriveFS remounts
+        for compact artifacts such as heartbeat and result files. If cleanup
+        does not run, use `Runtime > Disconnect and delete runtime` manually.
+        """
+    )
+    grid_source = "".join(tranche_cells[6]["source"])
+    replacements = {
+        "SCREEN_MODE = True": "SCREEN_MODE = False",
+        "MAX_JOBS = None": "MAX_JOBS = 3",
+        "FULL_PAIR_CAPS = [4096]": "FULL_PAIR_CAPS = [512]",
+        "Path(\"/content/drive/MyDrive/MCI-GRU-Ablations/lambdarank_ic_pit\")": (
+            "Path(\"/content/drive/MyDrive/MCI-GRU-Ablations/lambdarank_ic_full_tranche\")"
+        ),
+        'REPO_DIR / "results" / "lambdarank_ic_pit"': (
+            'REPO_DIR / "results" / "lambdarank_ic_full_tranche"'
+        ),
+        'LEGACY_RESULTS_JSON_PATH = RUN_ROOT / "lambdarank_ic_pit_training_results.json"': (
+            'LEGACY_RESULTS_JSON_PATH = RUN_ROOT / "lambdarank_ic_full_tranche_training_results.json"'
+        ),
+        'manifest_path = RUN_ROOT / "lambdarank_ic_pit_manifest.json"': (
+            'manifest_path = RUN_ROOT / "lambdarank_ic_full_tranche_manifest.json"'
+        ),
+    }
+    for old, new in replacements.items():
+        if old not in grid_source:
+            raise ValueError(f"Full-tranche source replacement missing: {old}")
+        grid_source = grid_source.replace(old, new)
+    tranche_cells[6]["source"] = grid_source.splitlines(keepends=True)
+    return tranche_cells
+
+
 def build_notebook(notebook_cells: list[dict]) -> dict:
     return {
         "cells": notebook_cells,
@@ -667,6 +725,11 @@ def main() -> None:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(build_notebook(cells), indent=2), encoding="utf-8")
     print(f"Wrote {OUT}")
+    FULL_TRANCHE_OUT.write_text(
+        json.dumps(build_notebook(build_full_tranche_cells()), indent=2),
+        encoding="utf-8",
+    )
+    print(f"Wrote {FULL_TRANCHE_OUT}")
 
 
 if __name__ == "__main__":
