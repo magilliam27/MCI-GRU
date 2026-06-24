@@ -86,3 +86,26 @@ def test_normalise_metadata_accepts_current_constituent_columns() -> None:
             "gics_sector_field": "TR.GICSSector",
         }
     ]
+
+
+def test_normalise_metadata_rejects_missing_constituent_ric_values() -> None:
+    raw = pd.DataFrame(
+        [
+            {
+                "Instrument": "AAA.N",
+                "Company Common Name": "AAA Corp",
+                "Company Market Cap": "1,250.5",
+                "GICS Sector": "Industrials",
+            },
+            {
+                "Instrument": None,
+                "Company Common Name": "Missing RIC Corp",
+                "Company Market Cap": "2,000.0",
+                "GICS Sector": "Industrials",
+            },
+        ]
+    )
+
+    metadata = _normalise_metadata(raw, "GICS Sector", "TR.GICSSector")
+
+    assert metadata["kdcode"].tolist() == ["AAA.N"]
