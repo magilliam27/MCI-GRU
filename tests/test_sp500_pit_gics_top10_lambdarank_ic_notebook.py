@@ -1,4 +1,5 @@
 import ast
+import importlib.util
 import json
 from pathlib import Path
 
@@ -18,6 +19,24 @@ def _code_cell_sources() -> list[str]:
         for cell in notebook["cells"]
         if cell.get("cell_type") == "code"
     ]
+
+
+def _load_generator_module():
+    spec = importlib.util.spec_from_file_location("top10_lambdarank_generator", GENERATOR_PATH)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_top10_lambdarank_screen_notebook_matches_generator_output() -> None:
+    checked_in_notebook = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
+    generator = _load_generator_module()
+
+    generated_notebook = generator.build_notebook(generator.cells)
+
+    assert checked_in_notebook == generated_notebook
 
 
 def test_top10_lambdarank_screen_pins_year_budget_and_complete_pair_contract() -> None:
@@ -44,6 +63,22 @@ def test_top10_lambdarank_screen_pins_year_budget_and_complete_pair_contract() -
     for token in required_tokens:
         assert token in combined
         assert token in generator
+
+
+def test_top10_lambdarank_screen_avoids_unsupported_backtest_flags() -> None:
+    sources = {
+        "notebook": "\n".join(_cell_sources()),
+        "generator": GENERATOR_PATH.read_text(encoding="utf-8"),
+    }
+    forbidden_tokens = [
+        "--spread_bps",
+        "--slippage_bps",
+        "--output_dir",
+    ]
+
+    for source_name, source in sources.items():
+        for token in forbidden_tokens:
+            assert token not in source, f"{token} unexpectedly found in {source_name}"
 
 
 def test_top10_lambdarank_screen_uses_reduced_2016_start_bundle_and_masked_panel() -> None:
