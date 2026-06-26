@@ -1,4 +1,4 @@
-"""Generate a Colab launcher for reduced PIT GICS top-10 LambdaRankIC screen runs."""
+"""Generate a Colab launcher for reduced PIT GICS top-10 LambdaRankIC runs."""
 
 from __future__ import annotations
 
@@ -30,13 +30,19 @@ def code(source: str) -> dict:
 cells = [
     md(
         """
-        # Top-10 PIT LambdaRankIC Screen
+        # Top-10 PIT LambdaRankIC Full Run
 
         This notebook launches the reduced S&P 500 PIT GICS top-10
-        LambdaRankIC screen described in
+        LambdaRankIC launcher first described as a screen in
         `docs/superpowers/specs/2026-06-25-top10-lambdarank-screen-design.md`.
-        It is intentionally a screen run: 2022 only, one seed, one model,
-        40 epochs, patience 8, and the complete 110-name pair cap.
+        It now defaults to the apples-to-apples full reduced-universe run:
+        2022, 2023, and 2024; one base seed; 20 models; 100 epochs;
+        patience 15; and the complete 110-name pair cap. The original screen
+        mode remains available with explicit `SCREEN_*` constants.
+
+        The reduced top-10 baseline keeps 2025 as a separate reference because
+        its selector-history rationale is not apples-to-apples with the
+        2022-2024 reduced-universe matrix.
 
         Operate it from the visible Colab UI on a G4/L4-class Colab runtime,
         not T4/CPU. Treat Drive artifacts as the source of truth: heartbeat,
@@ -159,11 +165,34 @@ cells = [
         RUN_TAG = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         RECIPE_ID = "static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1"
 
-        YEARS = [2022]
-        BASE_SEEDS = [314159]
-        NUM_MODELS = 1
-        NUM_EPOCHS = 40
-        EARLY_STOPPING_PATIENCE = 8
+        SCREEN_MODE = False
+        SKIP_COMPLETED_JOBS = True
+        RESUME_PREVIOUS_DRIVE_RUNS = True
+        RESUME_RUN_TAG = ""
+        BUDGET_MODE = "screen" if SCREEN_MODE else "full"
+        SCREEN_YEARS = [2022]
+        FULL_YEARS = [2022, 2023, 2024]
+        SCREEN_BASE_SEEDS = [314159]
+        FULL_BASE_SEEDS = [314159]
+        SCREEN_NUM_MODELS = 1
+        FULL_NUM_MODELS = 20
+        SCREEN_NUM_EPOCHS = 40
+        FULL_NUM_EPOCHS = 100
+        SCREEN_EARLY_STOPPING_PATIENCE = 8
+        FULL_EARLY_STOPPING_PATIENCE = 15
+        YEARS = SCREEN_YEARS if SCREEN_MODE else FULL_YEARS
+        BASE_SEEDS = SCREEN_BASE_SEEDS if SCREEN_MODE else FULL_BASE_SEEDS
+        NUM_MODELS = SCREEN_NUM_MODELS if SCREEN_MODE else FULL_NUM_MODELS
+        NUM_EPOCHS = SCREEN_NUM_EPOCHS if SCREEN_MODE else FULL_NUM_EPOCHS
+        EARLY_STOPPING_PATIENCE = (
+            SCREEN_EARLY_STOPPING_PATIENCE
+            if SCREEN_MODE
+            else FULL_EARLY_STOPPING_PATIENCE
+        )
+        EXPECTED_JOB_COUNT = len(YEARS) * len(BASE_SEEDS)
+        EXPECTED_TOTAL_MODELS = EXPECTED_JOB_COUNT * NUM_MODELS
+        assert EXPECTED_JOB_COUNT == (1 if SCREEN_MODE else 3)
+        assert EXPECTED_TOTAL_MODELS == (1 if SCREEN_MODE else 60)
         PAIR_CAP = 8192
         COMPLETE_PAIR_COUNT_110 = 5995
         assert PAIR_CAP >= COMPLETE_PAIR_COUNT_110
@@ -172,6 +201,7 @@ cells = [
         SLIPPAGE_BPS = 5
         MIN_RANK_DROP = 30
         PIT_MIN_SCOREABLE_STOCKS = 100
+        REQUIRE_APPLES_TO_APPLES_SELECTOR_HISTORY = True
         AUTO_DISCONNECT_RUNTIME = True
 
         MARKET_FILENAME = (
@@ -189,36 +219,64 @@ cells = [
 
         PIT_WINDOWS = {
             2022: {
-                "experiment_name": "sp500_pit_gics_top10_lambdarank_ic_screen_2022",
+                "experiment_name": "sp500_pit_gics_top10_lambdarank_ic_2022",
                 "train_start": "2016-01-01",
                 "train_end": "2020-12-31",
                 "val_start": "2021-01-08",
                 "val_end": "2021-12-31",
                 "test_start": "2022-01-08",
                 "test_end": "2022-12-31",
-            }
+            },
+            2023: {
+                "experiment_name": "sp500_pit_gics_top10_lambdarank_ic_2023",
+                "train_start": "2017-01-01",
+                "train_end": "2021-12-31",
+                "val_start": "2022-01-08",
+                "val_end": "2022-12-31",
+                "test_start": "2023-01-08",
+                "test_end": "2023-12-31",
+            },
+            2024: {
+                "experiment_name": "sp500_pit_gics_top10_lambdarank_ic_2024",
+                "train_start": "2018-01-01",
+                "train_end": "2022-12-31",
+                "val_start": "2023-01-08",
+                "val_end": "2023-12-31",
+                "test_start": "2024-01-08",
+                "test_end": "2024-12-31",
+            },
         }
+        REFERENCE_2025 = {
+            "role": "separate_reference",
+            "reason": "Reduced top-10 full mode follows the 2022-2024 apples-to-apples selector-history matrix.",
+        }
+        SCREEN_EXPERIMENT_SLUG = "sp500_gics_top10_lambdarank_ic_screen"
+        FULL_EXPERIMENT_SLUG = "sp500_gics_top10_lambdarank_ic_full"
+        EXPERIMENT_SLUG = SCREEN_EXPERIMENT_SLUG if SCREEN_MODE else FULL_EXPERIMENT_SLUG
 
         DRIVE_DATA_DIR = (
             Path("/content/drive/MyDrive/MCI_GRU_shared/data")
             if IN_COLAB
             else Path.cwd() / "data" / "raw"
         )
-        DRIVE_RUN_ROOT = (
-            Path("/content/drive/MyDrive/MCI-GRU-Ablations/sp500_gics_top10_lambdarank_ic_screen") / RUN_TAG
+        DRIVE_EXPERIMENT_ROOT = (
+            Path("/content/drive/MyDrive/MCI-GRU-Ablations") / EXPERIMENT_SLUG
             if IN_COLAB
-            else Path.cwd() / "drive_outputs" / "sp500_gics_top10_lambdarank_ic_screen" / RUN_TAG
+            else Path.cwd() / "drive_outputs" / EXPERIMENT_SLUG
         )
+        DRIVE_RUN_ROOT = DRIVE_EXPERIMENT_ROOT / RUN_TAG
         LOCAL_RUN_ROOT = (
-            Path("/content/mci_gru_runs/sp500_gics_top10_lambdarank_ic_screen") / RUN_TAG
+            Path("/content/mci_gru_runs") / EXPERIMENT_SLUG / RUN_TAG
             if IN_COLAB
-            else Path.cwd() / "results" / "sp500_gics_top10_lambdarank_ic_screen" / RUN_TAG
+            else Path.cwd() / "results" / EXPERIMENT_SLUG / RUN_TAG
         )
         LOG_DIR = DRIVE_RUN_ROOT / "logs"
         SUMMARY_DIR = DRIVE_RUN_ROOT / "summaries"
         ARTIFACT_DIR = DRIVE_RUN_ROOT / "artifacts"
         HEARTBEAT_PATH = DRIVE_RUN_ROOT / "heartbeat.json"
-        MANIFEST_FILENAME = "lambdarank_ic_sp500_pit_gics_top10_screen_manifest.json"
+        SCREEN_MANIFEST_FILENAME = "lambdarank_ic_sp500_pit_gics_top10_screen_manifest.json"
+        FULL_MANIFEST_FILENAME = "lambdarank_ic_sp500_pit_gics_top10_full_manifest.json"
+        MANIFEST_FILENAME = SCREEN_MANIFEST_FILENAME if SCREEN_MODE else FULL_MANIFEST_FILENAME
 
         for directory in [DRIVE_RUN_ROOT, LOCAL_RUN_ROOT, LOG_DIR, SUMMARY_DIR, ARTIFACT_DIR]:
             directory.mkdir(parents=True, exist_ok=True)
@@ -246,12 +304,22 @@ cells = [
                 "run_tag": RUN_TAG,
                 "branch": BRANCH,
                 "recipe_id": RECIPE_ID,
+                "budget_mode": BUDGET_MODE,
                 "years": YEARS,
-                "pair_cap": PAIR_CAP,
-                "complete_pair_count_110": COMPLETE_PAIR_COUNT_110,
-                "drive_run_root": str(DRIVE_RUN_ROOT),
-                "local_run_root": str(LOCAL_RUN_ROOT),
-                **extra,
+                "base_seeds": BASE_SEEDS,
+                "num_models": NUM_MODELS,
+                "num_epochs": NUM_EPOCHS,
+                "early_stopping_patience": EARLY_STOPPING_PATIENCE,
+                "expected_job_count": EXPECTED_JOB_COUNT,
+            "expected_total_models": EXPECTED_TOTAL_MODELS,
+            "pair_cap": PAIR_CAP,
+            "complete_pair_count_110": COMPLETE_PAIR_COUNT_110,
+            "resume_previous_drive_runs": RESUME_PREVIOUS_DRIVE_RUNS,
+            "resume_run_tag": RESUME_RUN_TAG,
+            "drive_experiment_root": str(DRIVE_EXPERIMENT_ROOT),
+            "drive_run_root": str(DRIVE_RUN_ROOT),
+            "local_run_root": str(LOCAL_RUN_ROOT),
+            **extra,
             }
             write_json(HEARTBEAT_PATH, payload)
 
@@ -303,6 +371,25 @@ cells = [
                 shutil.copy2(source, dest)
             print("Staged:", source, "->", dest)
             return dest
+
+        def selector_blockers(selector_start: str) -> list[dict]:
+            start_ts = pd.Timestamp(selector_start)
+            blockers = []
+            for year in YEARS:
+                train_start = pd.Timestamp(PIT_WINDOWS[year]["train_start"])
+                if start_ts > train_start + pd.Timedelta(days=7):
+                    blockers.append(
+                        {
+                            "year": year,
+                            "selector_start": selector_start,
+                            "required_train_start": PIT_WINDOWS[year]["train_start"],
+                            "reason": "selector snapshots begin after required train_start",
+                        }
+                    )
+            return blockers
+
+        def experiment_name_for(year: int, base_seed: int) -> str:
+            return f"{PIT_WINDOWS[year]['experiment_name']}_{BUDGET_MODE}_seed{base_seed}"
         """
     ),
     md("## 3. Data Staging And Audit"),
@@ -351,6 +438,7 @@ cells = [
             "market_date_max": str(market_preview["dt"].max()),
             "pit_interval_rows": int(len(pit_preview)),
             "pit_meta": pit_meta,
+            "selector_history_blockers": selector_blockers(selector_start),
         }
         EXPECTED_DATA_AUDIT = {
             "snapshot_dates": 127,
@@ -366,6 +454,14 @@ cells = [
         assert data_audit["bad_sector_cells"] == EXPECTED_DATA_AUDIT["bad_sector_cells"], data_audit
         assert data_audit["pit_union_kdcodes"] == EXPECTED_DATA_AUDIT["pit_union_kdcodes"], data_audit
         assert data_audit["missing_identifiers"] == EXPECTED_DATA_AUDIT["missing_identifiers"], data_audit
+        if data_audit["selector_history_blockers"] and REQUIRE_APPLES_TO_APPLES_SELECTOR_HISTORY:
+            raise RuntimeError(
+                "selector snapshots begin after required train_start for one or more years; "
+                "extend/re-pull LSEG selector snapshots before the apples-to-apples reduced "
+                "top-10 LambdaRankIC run. Set REQUIRE_APPLES_TO_APPLES_SELECTOR_HISTORY=False "
+                "only for a clearly labeled not apples-to-apples shorter-history run. "
+                f"Blockers: {data_audit['selector_history_blockers']}"
+            )
         write_json(DRIVE_RUN_ROOT / "data_audit.json", data_audit)
         write_heartbeat("RUNNING", "data_audit", data_audit=data_audit)
 
@@ -375,12 +471,12 @@ cells = [
     md("## 4. Hydra Overrides And Manifest"),
     code(
         r"""
-        def base_overrides(year: int, year_root: Path, repo_pit_csv: Path) -> list[str]:
+        def base_overrides(year: int, base_seed: int, year_root: Path, repo_pit_csv: Path) -> list[str]:
             window = PIT_WINDOWS[year]
             return [
-                f"experiment_name={window['experiment_name']}",
+                f"experiment_name={experiment_name_for(year, base_seed)}",
                 f"output_dir={year_root.as_posix()}",
-                "seed=314159",
+                f"seed={base_seed}",
                 "data.source=csv",
                 f"data.filename=data/raw/market/{MARKET_FILENAME}",
                 f"data.train_start={window['train_start']}",
@@ -394,9 +490,9 @@ cells = [
                 "data.pit_universe_mode=masked_panel",
                 "data.pit_min_scoreable_stocks=100",
                 "data.pit_breadth_policy=error",
-                "training.num_models=1",
-                "training.num_epochs=40",
-                "training.early_stopping_patience=8",
+                f"training.num_models={NUM_MODELS}",
+                f"training.num_epochs={NUM_EPOCHS}",
+                f"training.early_stopping_patience={EARLY_STOPPING_PATIENCE}",
                 "training.learning_rate=5e-5",
                 "training.lr_scheduler=cosine",
                 "training.loss_type=lambdarank_ic",
@@ -440,13 +536,21 @@ cells = [
             "run_tag": RUN_TAG,
             "branch": BRANCH,
             "recipe_id": RECIPE_ID,
+            "screen_mode": SCREEN_MODE,
+            "budget_mode": BUDGET_MODE,
             "years": YEARS,
             "base_seeds": BASE_SEEDS,
             "num_models": NUM_MODELS,
             "num_epochs": NUM_EPOCHS,
             "early_stopping_patience": EARLY_STOPPING_PATIENCE,
+            "expected_job_count": EXPECTED_JOB_COUNT,
+            "expected_total_models": EXPECTED_TOTAL_MODELS,
             "pair_cap": PAIR_CAP,
             "complete_pair_count_110": COMPLETE_PAIR_COUNT_110,
+            "skip_completed_jobs": SKIP_COMPLETED_JOBS,
+            "resume_previous_drive_runs": RESUME_PREVIOUS_DRIVE_RUNS,
+            "resume_run_tag": RESUME_RUN_TAG,
+            "drive_experiment_root": str(DRIVE_EXPERIMENT_ROOT),
             "top_k": TOP_K,
             "spread_bps": SPREAD_BPS,
             "slippage_bps": SLIPPAGE_BPS,
@@ -459,6 +563,8 @@ cells = [
             "market_meta_filename": MARKET_META_FILENAME,
             "pit_meta_filename": PIT_META_FILENAME,
             "data_audit": data_audit,
+            "reference_2025": REFERENCE_2025,
+            "require_apples_to_apples_selector_history": REQUIRE_APPLES_TO_APPLES_SELECTOR_HISTORY,
         }
         manifest_path = DRIVE_RUN_ROOT / MANIFEST_FILENAME
         write_json(manifest_path, manifest)
@@ -470,11 +576,17 @@ cells = [
     code(
         r"""
         def latest_run_dir(year_root: Path, experiment_name: str) -> Path:
+            run_dir = find_run_dir(year_root, experiment_name)
+            if run_dir is None:
+                raise FileNotFoundError(f"No run directory found under {year_root / experiment_name}")
+            return run_dir
+
+        def find_run_dir(year_root: Path, experiment_name: str) -> Path | None:
             candidates = sorted((year_root / experiment_name).glob("20*_??????"))
             if not candidates:
                 candidates = sorted((year_root / experiment_name).glob("*"))
             if not candidates:
-                raise FileNotFoundError(f"No run directory found under {year_root / experiment_name}")
+                return None
             return candidates[-1]
 
         def read_json_if_exists(path: Path) -> dict:
@@ -482,108 +594,238 @@ cells = [
                 return {}
             return json.loads(path.read_text(encoding="utf-8"))
 
+        def drive_job_root_for(year: int, base_seed: int) -> Path:
+            return ARTIFACT_DIR / "local_run_root" / str(year) / f"seed{base_seed}"
+
+        def prior_drive_run_roots() -> list[Path]:
+            roots: list[Path] = []
+            if RESUME_RUN_TAG:
+                resume_root = DRIVE_EXPERIMENT_ROOT / RESUME_RUN_TAG
+                if resume_root != DRIVE_RUN_ROOT:
+                    roots.append(resume_root)
+            if RESUME_PREVIOUS_DRIVE_RUNS and DRIVE_EXPERIMENT_ROOT.exists():
+                for prior_run_root in sorted(DRIVE_EXPERIMENT_ROOT.glob("20??????_??????"), reverse=True):
+                    if prior_run_root != DRIVE_RUN_ROOT:
+                        roots.append(prior_run_root)
+            deduped: list[Path] = []
+            seen: set[str] = set()
+            for root in roots:
+                key = root.as_posix()
+                if key not in seen:
+                    seen.add(key)
+                    deduped.append(root)
+            return deduped
+
+        def restore_drive_job_if_present(year_root: Path, drive_job_root: Path) -> None:
+            source_job_roots = [drive_job_root]
+            relative_job_root = drive_job_root.relative_to(ARTIFACT_DIR / "local_run_root")
+            for prior_run_root in prior_drive_run_roots():
+                source_job_roots.append(prior_run_root / "artifacts" / "local_run_root" / relative_job_root)
+            for source_job_root in source_job_roots:
+                if source_job_root.exists():
+                    year_root.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copytree(source_job_root, year_root, dirs_exist_ok=True)
+                    print("Restored prior Drive job artifacts:", source_job_root, "->", year_root)
+                    return
+
+        def sync_job_to_drive(year_root: Path, drive_job_root: Path) -> None:
+            if not year_root.exists():
+                return
+            drive_job_root.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(year_root, drive_job_root, dirs_exist_ok=True)
+            print("Synced job artifacts:", year_root, "->", drive_job_root)
+
         training_rows: list[dict] = []
         backtest_rows: list[dict] = []
 
-        try:
-            for year in YEARS:
-                window = PIT_WINDOWS[year]
-                year_root = LOCAL_RUN_ROOT / str(year)
-                overrides = base_overrides(year, year_root, repo_pit_csv)
-                write_json(DRIVE_RUN_ROOT / f"hydra_overrides_{year}.json", {"overrides": overrides})
-
-                train_cmd = [sys.executable, "run_experiment.py", *overrides]
-                run_stream(train_cmd, cwd=REPO_DIR, log_name=f"training_{year}.log", phase=f"training_{year}")
-
-                run_dir = latest_run_dir(year_root, window["experiment_name"])
-                pred_dir = run_dir / "averaged_predictions"
-                if not pred_dir.exists():
-                    raise FileNotFoundError(f"Missing averaged_predictions: {pred_dir}")
-
-                training_row = {
+        def append_training_row(
+            year: int,
+            base_seed: int,
+            run_dir: Path,
+            pred_dir: Path,
+            *,
+            skipped: bool,
+        ) -> None:
+            training_rows.append(
+                {
                     "year": year,
+                    "base_seed": base_seed,
+                    "budget_mode": BUDGET_MODE,
                     "status": "OK",
+                    "skipped": skipped,
                     "run_dir": str(run_dir),
                     "predictions_dir": str(pred_dir),
                     "training_summary": read_json_if_exists(run_dir / "training_summary.json"),
                     "evaluation_summary": read_json_if_exists(run_dir / "evaluation_summary.json"),
                 }
-                training_rows.append(training_row)
-                write_json(SUMMARY_DIR / "training_results.json", {"rows": training_rows})
-                write_csv(
-                    SUMMARY_DIR / "training_results.csv",
-                    training_rows,
-                    ["year", "status", "run_dir", "predictions_dir"],
-                )
+            )
+            write_json(SUMMARY_DIR / "training_results.json", {"rows": training_rows})
+            write_csv(
+                SUMMARY_DIR / "training_results.csv",
+                training_rows,
+                ["year", "base_seed", "budget_mode", "status", "skipped", "run_dir", "predictions_dir"],
+            )
 
-                env = os.environ.copy()
-                env["MPLBACKEND"] = "Agg"
-                backtest_cmd = [
-                    sys.executable,
-                    "tests/backtest_sp500_daily.py",
-                    "--predictions_dir",
-                    str(year_root / "averaged_predictions"),
-                    "--data_file",
-                    str(repo_market_csv),
-                    "--pit_universe_csv",
-                    str(repo_pit_csv),
-                    "--top_k",
-                    str(TOP_K),
-                    "--test_start",
-                    PIT_WINDOWS[year]["test_start"],
-                    "--test_end",
-                    PIT_WINDOWS[year]["test_end"],
-                    "--label_t",
-                    "5",
-                    "--transaction_costs",
-                    "--spread",
-                    str(SPREAD_BPS),
-                    "--slippage",
-                    str(SLIPPAGE_BPS),
-                    "--enable_rank_drop_gate",
-                    "--min_rank_drop",
-                    str(MIN_RANK_DROP),
-                    "--auto_save",
-                    "--backtest_suffix",
-                    "_top10_rankdrop",
-                ]
-                backtest_cmd[backtest_cmd.index(str(year_root / "averaged_predictions"))] = str(pred_dir)
-                run_stream(
-                    backtest_cmd,
-                    cwd=REPO_DIR,
-                    log_name=f"backtest_{year}.log",
-                    phase=f"backtest_{year}_rank-drop",
-                    env=env,
-                )
-
-                backtest_dir = run_dir / "backtest_top10_rankdrop"
-                backtest_row = {
+        def append_backtest_row(
+            year: int,
+            base_seed: int,
+            run_dir: Path,
+            pred_dir: Path,
+            *,
+            skipped: bool,
+        ) -> None:
+            backtest_dir = run_dir / "backtest_top10_rankdrop"
+            backtest_metrics_path = run_dir / "backtest_top10_rankdrop" / "backtest_metrics.json"
+            backtest_rows.append(
+                {
                     "year": year,
+                    "base_seed": base_seed,
+                    "budget_mode": BUDGET_MODE,
                     "status": "OK",
+                    "skipped": skipped,
                     "run_dir": str(run_dir),
                     "predictions_dir": str(pred_dir),
                     "backtest_dir": str(backtest_dir),
-                    "backtest_metrics": read_json_if_exists(backtest_dir / "backtest_metrics.json"),
+                    "backtest_metrics": read_json_if_exists(backtest_metrics_path),
                 }
-                backtest_rows.append(backtest_row)
-                write_json(SUMMARY_DIR / "backtest_results.json", {"rows": backtest_rows})
-                write_csv(
-                    SUMMARY_DIR / "backtest_results.csv",
-                    backtest_rows,
-                    ["year", "status", "run_dir", "predictions_dir", "backtest_dir"],
-                )
+            )
+            write_json(SUMMARY_DIR / "backtest_results.json", {"rows": backtest_rows})
+            write_csv(
+                SUMMARY_DIR / "backtest_results.csv",
+                backtest_rows,
+                [
+                    "year",
+                    "base_seed",
+                    "budget_mode",
+                    "status",
+                    "skipped",
+                    "run_dir",
+                    "predictions_dir",
+                    "backtest_dir",
+                ],
+            )
+
+        try:
+            for year in YEARS:
+                for base_seed in BASE_SEEDS:
+                    window = PIT_WINDOWS[year]
+                    job_name = experiment_name_for(year, base_seed)
+                    year_root = LOCAL_RUN_ROOT / str(year) / f"seed{base_seed}"
+                    drive_job_root = drive_job_root_for(year, base_seed)
+                    if SKIP_COMPLETED_JOBS:
+                        restore_drive_job_if_present(year_root, drive_job_root)
+                    existing_run_dir = find_run_dir(year_root, job_name)
+                    if SKIP_COMPLETED_JOBS and existing_run_dir is not None:
+                        existing_pred_dir = existing_run_dir / "averaged_predictions"
+                        existing_backtest_metrics = (
+                            existing_run_dir / "backtest_top10_rankdrop" / "backtest_metrics.json"
+                        )
+                        if existing_pred_dir.exists():
+                            append_training_row(
+                                year,
+                                base_seed,
+                                existing_run_dir,
+                                existing_pred_dir,
+                                skipped=True,
+                            )
+                            if existing_backtest_metrics.exists():
+                                print("Skipping completed job:", job_name)
+                                append_backtest_row(
+                                    year,
+                                    base_seed,
+                                    existing_run_dir,
+                                    existing_pred_dir,
+                                    skipped=True,
+                                )
+                                continue
+                            print("Skipping training; running missing backtest:", job_name)
+                            run_dir = existing_run_dir
+                            pred_dir = existing_pred_dir
+                        else:
+                            run_dir = None
+                            pred_dir = None
+                    else:
+                        run_dir = None
+                        pred_dir = None
+
+                    if run_dir is None:
+                        overrides = base_overrides(year, base_seed, year_root, repo_pit_csv)
+                        write_json(
+                            DRIVE_RUN_ROOT / f"hydra_overrides_{year}_seed{base_seed}.json",
+                            {"overrides": overrides},
+                        )
+
+                        train_cmd = [sys.executable, "run_experiment.py", *overrides]
+                        run_stream(
+                            train_cmd,
+                            cwd=REPO_DIR,
+                            log_name=f"training_{year}_seed{base_seed}.log",
+                            phase=f"training_{year}_seed{base_seed}",
+                        )
+
+                        run_dir = latest_run_dir(year_root, job_name)
+                        pred_dir = run_dir / "averaged_predictions"
+                        if not pred_dir.exists():
+                            raise FileNotFoundError(f"Missing averaged_predictions: {pred_dir}")
+                        append_training_row(year, base_seed, run_dir, pred_dir, skipped=False)
+                        sync_job_to_drive(year_root, drive_job_root)
+
+                    env = os.environ.copy()
+                    env["MPLBACKEND"] = "Agg"
+                    backtest_cmd = [
+                        sys.executable,
+                        "tests/backtest_sp500_daily.py",
+                        "--predictions_dir",
+                        str(year_root / "averaged_predictions"),
+                        "--data_file",
+                        str(repo_market_csv),
+                        "--pit_universe_csv",
+                        str(repo_pit_csv),
+                        "--top_k",
+                        str(TOP_K),
+                        "--test_start",
+                        PIT_WINDOWS[year]["test_start"],
+                        "--test_end",
+                        PIT_WINDOWS[year]["test_end"],
+                        "--label_t",
+                        "5",
+                        "--transaction_costs",
+                        "--spread",
+                        str(SPREAD_BPS),
+                        "--slippage",
+                        str(SLIPPAGE_BPS),
+                        "--enable_rank_drop_gate",
+                        "--min_rank_drop",
+                        str(MIN_RANK_DROP),
+                        "--auto_save",
+                        "--backtest_suffix",
+                        "_top10_rankdrop",
+                    ]
+                    backtest_cmd[backtest_cmd.index(str(year_root / "averaged_predictions"))] = str(pred_dir)
+                    run_stream(
+                        backtest_cmd,
+                        cwd=REPO_DIR,
+                        log_name=f"backtest_{year}_seed{base_seed}.log",
+                        phase=f"backtest_{year}_seed{base_seed}_rank-drop",
+                        env=env,
+                    )
+                    append_backtest_row(year, base_seed, run_dir, pred_dir, skipped=False)
+                    sync_job_to_drive(year_root, drive_job_root)
 
             summary = {
                 "status": "OK",
                 "run_tag": RUN_TAG,
                 "branch": BRANCH,
                 "recipe_id": RECIPE_ID,
+                "screen_mode": SCREEN_MODE,
+                "budget_mode": BUDGET_MODE,
                 "drive_run_root": str(DRIVE_RUN_ROOT),
                 "local_run_root": str(LOCAL_RUN_ROOT),
                 "manifest": str(manifest_path),
                 "data_audit": data_audit,
                 "training_rows": training_rows,
                 "backtest_rows": backtest_rows,
+                "reference_2025": REFERENCE_2025,
             }
             write_json(DRIVE_RUN_ROOT / "run_summary.json", summary)
             write_heartbeat("OK", "complete", run_summary=str(DRIVE_RUN_ROOT / "run_summary.json"))
