@@ -140,6 +140,12 @@ def test_run_github_cockpit_refresh_switches_branch_and_syncs(tmp_path: Path) ->
             return ""
         if command.startswith("gh issue comment 100"):
             return ""
+        if command == "git status --short -- docs/agents/cockpit/2026-06-20.md":
+            return "M docs/agents/cockpit/2026-06-20.md\n"
+        if command == "git add docs/agents/cockpit/2026-06-20.md":
+            return ""
+        if command.startswith("git commit -m Record cockpit GitHub sync evidence for 2026-06-20"):
+            return "[codex/cockpit-refresh-20260620 def456] Record cockpit GitHub sync evidence for 2026-06-20"
         raise AssertionError(command)
 
     result = run_github_cockpit_refresh(
@@ -152,7 +158,16 @@ def test_run_github_cockpit_refresh_switches_branch_and_syncs(tmp_path: Path) ->
     assert result.github is not None
     assert result.github.pr_url == "https://github.com/magilliam27/MCI-GRU/pull/99"
     assert result.register_path.exists()
+    packet = result.packet_path.read_text(encoding="utf-8")
+    assert "GitHub sync skipped" not in packet
+    assert "No live GitHub issue or PR scan in local-only mode." not in packet
+    assert "commented on cockpit issue #100" in packet
     assert any(command[:3] == ["gh", "issue", "comment"] for command in commands)
+    assert any(
+        command[:3] == ["git", "commit", "-m"]
+        and command[3] == "Record cockpit GitHub sync evidence for 2026-06-20"
+        for command in commands
+    )
 
 
 def _repo_with_required_docs(repo: Path) -> Path:

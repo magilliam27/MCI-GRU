@@ -78,6 +78,8 @@ tests/               ← pytest suite + backtest scripts
 
 - **Before editing**, read `docs/ARCHITECTURE.md` for the data flow and model structure.
 - **When docs disagree**, current code and the invariants in this file win; see `docs/agents/domain.md`.
+- **Before starting new Codex branches/worktrees**, base them on `origin/main` unless the user explicitly says to continue an existing feature branch; use a fresh `codex/<task-name>-YYYYMMDD` branch for scoped work.
+- **Before cleaning stale branches/worktrees**, follow `docs/agents/worktree-hygiene.md`; classify and report candidates first, and delete nothing without explicit user approval for the exact target.
 - **For automated Colab work**, default to `chrome:control-chrome` and the runbook in `docs/workflows/COLAB_CHROME_CONTROL_GUIDE.md`; use Playwright MCP only as a documented legacy fallback.
 - **For Colab evidence**, notebook contract tests are not live-run proof; live Colab claims need visible Chrome/Colab execution plus Drive artifacts (heartbeat/results), per `docs/workflows/COLAB_CHROME_CONTROL_GUIDE.md`.
 - **Before translating finance papers into implementation work**, use `skills/research-paper-to-mci-gru/` to produce an MCI-GRU-aware brief and GitHub-ready issue drafts.

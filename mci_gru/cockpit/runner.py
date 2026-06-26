@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from mci_gru.cockpit.evidence import collect_local_evidence
@@ -141,12 +141,15 @@ def run_github_cockpit_refresh(
         decision_queue=_decision_queue(result.report),
         run_command=runner,
     )
+    synced_report = _with_github_sync_result(result.report, github)
+    result.packet_path.write_text(render_cockpit_packet(synced_report), encoding="utf-8")
+    _commit_synced_cockpit_packet(run_date, runner, github)
     return CockpitRunResult(
         register_path=result.register_path,
         packet_path=result.packet_path,
         color=result.color,
         dirty_paths=result.dirty_paths,
-        report=result.report,
+        report=synced_report,
         github=github,
     )
 
@@ -195,6 +198,53 @@ def _evidence_gaps(required_docs: dict[str, bool]) -> list[str]:
     gaps = [f"Missing required doc: {path}" for path, exists in required_docs.items() if not exists]
     gaps.append("No live GitHub issue or PR scan in local-only mode.")
     return gaps
+
+
+def _with_github_sync_result(report: CockpitReport, github: GitHubSyncResult) -> CockpitReport:
+    local_only_gap = "No live GitHub issue or PR scan in local-only mode."
+    summary = (
+        "Local cockpit artifacts generated and synced to GitHub "
+        f"branch `{github.branch}`; PR: {github.pr_url}; cockpit issue: {github.cockpit_issue_url}."
+    )
+    if report.color == RunColor.RED:
+        summary += " Pre-existing dirty paths still need review."
+    return replace(
+        report,
+        executive_summary=summary,
+        github_actions_taken=[
+            GitHubAction(action="sync", target=github.branch, reason=action)
+            for action in github.actions_taken
+        ]
+        + [
+            GitHubAction(
+                action="sync",
+                target=github.branch,
+                reason="recorded GitHub sync evidence in cockpit packet",
+            )
+        ],
+        github_actions_skipped=[
+            GitHubAction(action="sync", target=github.branch, reason=action)
+            for action in github.actions_skipped
+        ],
+        verification_notes=[
+            *report.verification_notes,
+            f"GitHub sync completed: PR {github.pr_url}; cockpit issue {github.cockpit_issue_url}.",
+        ],
+        evidence_gaps=[gap for gap in report.evidence_gaps if gap != local_only_gap],
+    )
+
+
+def _commit_synced_cockpit_packet(
+    run_date: date,
+    runner: RunCommand,
+    github: GitHubSyncResult,
+) -> None:
+    packet_path = f"docs/agents/cockpit/{run_date.isoformat()}.md"
+    if not runner(["git", "status", "--short", "--", packet_path]).strip():
+        return
+    runner(["git", "add", packet_path])
+    runner(["git", "commit", "-m", f"Record cockpit GitHub sync evidence for {run_date.isoformat()}"])
+    runner(["git", "push", "-u", "origin", github.branch])
 
 
 def _decision_queue(report: CockpitReport) -> list[str]:
