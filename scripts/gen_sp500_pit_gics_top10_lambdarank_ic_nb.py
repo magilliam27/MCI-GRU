@@ -172,6 +172,7 @@ cells = [
         SLIPPAGE_BPS = 5
         MIN_RANK_DROP = 30
         PIT_MIN_SCOREABLE_STOCKS = 100
+        AUTO_DISCONNECT_RUNTIME = True
 
         MARKET_FILENAME = (
             "sp500_pit_gics_top10_mcap_monthly_20160104_20260622_"
@@ -592,11 +593,6 @@ cells = [
         finally:
             if LOCAL_RUN_ROOT.exists():
                 shutil.copytree(LOCAL_RUN_ROOT, ARTIFACT_DIR / "local_run_root", dirs_exist_ok=True)
-            if IN_COLAB and runtime is not None:
-                try:
-                    runtime.unassign()
-                except Exception as exc:
-                    print("Manual Runtime > Disconnect and delete runtime may still be needed:", exc)
         """
     ),
     md("## 6. Final Summary"),
@@ -615,6 +611,12 @@ cells = [
         print("Training results:", SUMMARY_DIR / "training_results.csv")
         print("Backtest results:", SUMMARY_DIR / "backtest_results.csv")
         print("Rank-drop backtest suffix: _top10_rankdrop")
+
+        if AUTO_DISCONNECT_RUNTIME and IN_COLAB and runtime is not None:
+            try:
+                runtime.unassign()
+            except Exception as exc:
+                print("Manual Runtime > Disconnect and delete runtime may still be needed:", exc)
         """
     ),
 ]

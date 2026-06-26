@@ -129,11 +129,27 @@ def test_top10_lambdarank_screen_preserves_recipe_and_colab_runtime_contract() -
         'BLOCKED_GPU_NAMES = ("T4",)',
         "ALLOWED_GPU_MARKERS = (",
         "FRED_API_KEY is required",
+        "AUTO_DISCONNECT_RUNTIME = True",
+        "if AUTO_DISCONNECT_RUNTIME and IN_COLAB and runtime is not None:",
     ]
 
     for token in required_tokens:
         assert token in combined
         assert token in generator
+
+
+def test_top10_lambdarank_screen_releases_runtime_after_final_summary() -> None:
+    code_cells = _code_cell_sources()
+    train_backtest_cell = code_cells[-2]
+    final_summary_cell = code_cells[-1]
+    generator = GENERATOR_PATH.read_text(encoding="utf-8")
+
+    assert "runtime.unassign()" not in train_backtest_cell
+    assert final_summary_cell.index('print("Backtest results:"') < final_summary_cell.index(
+        "runtime.unassign()"
+    )
+    assert 'print("Backtest results:"' in generator
+    assert "runtime.unassign()" in generator
 
 
 def test_top10_lambdarank_screen_writes_drive_truth_artifacts_and_backtests() -> None:
