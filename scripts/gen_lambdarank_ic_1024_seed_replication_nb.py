@@ -48,22 +48,24 @@ def transform_intro(text: str) -> str:
 
 def transform_setup(text: str) -> str:
     return text.replace(
-        'probe_cfg = TrainingConfig(\n'
+        "probe_cfg = TrainingConfig(\n"
         '    loss_type="lambdarank_ic",\n'
         '    selection_metric="val_rank_ic",\n'
-        '    lambdarank_ic_max_pairs_per_day=1024,\n'
+        "    lambdarank_ic_max_pairs_per_day=1024,\n"
         ")",
-        'probe_cfg = TrainingConfig(\n'
+        "probe_cfg = TrainingConfig(\n"
         '    loss_type="lambdarank_ic",\n'
         '    selection_metric="val_rank_ic",\n'
-        '    lambdarank_ic_max_pairs_per_day=1024,\n'
+        "    lambdarank_ic_max_pairs_per_day=1024,\n"
         ")",
     )
 
 
 def transform_manifest(text: str) -> str:
     text = text.replace("## 2. Build All-Year Job Matrix", "## 2. Build Five-Seed Job Matrix")
-    text = replace_once(text, "BASE_SEED = 314159", "BASE_SEEDS = [314159, 271828, 161803, 141421, 173205]")
+    text = replace_once(
+        text, "BASE_SEED = 314159", "BASE_SEEDS = [314159, 271828, 161803, 141421, 173205]"
+    )
     text = replace_all(text, "lambdarank_ic_1024_all_years", "lambdarank_ic_1024_seed_replication")
     text = replace_once(
         text,
@@ -131,10 +133,13 @@ for year in YEARS:
 
 
 def transform_training(text: str) -> str:
-    text = text.replace("## 3. Run Training And Saved-Prediction Backtests", "## 3. Run Resumable Training And Saved-Prediction Backtests")
+    text = text.replace(
+        "## 3. Run Training And Saved-Prediction Backtests",
+        "## 3. Run Resumable Training And Saved-Prediction Backtests",
+    )
     text = replace_once(
         text,
-        '''    row = {
+        """    row = {
         "year": job["year"],
         "training_job": job["name"],
         "scenario": scenario["name"],
@@ -143,8 +148,8 @@ def transform_training(text: str) -> str:
         "test_start": PIT_WINDOWS[job["year"]]["test_start"],
         "test_end": PIT_WINDOWS[job["year"]]["test_end"],
     }
-''',
-        '''    row = {
+""",
+        """    row = {
         "year": job["year"],
         "base_seed": job["base_seed"],
         "training_job": job["name"],
@@ -154,11 +159,11 @@ def transform_training(text: str) -> str:
         "test_start": PIT_WINDOWS[job["year"]]["test_start"],
         "test_end": PIT_WINDOWS[job["year"]]["test_end"],
     }
-''',
+""",
     )
     text = replace_once(
         text,
-        '''training_rows = []
+        """training_rows = []
 backtest_rows = []
 gpu_sampler_proc = start_gpu_sampler()
 try:
@@ -246,8 +251,8 @@ try:
         completed_training_jobs=len(training_rows),
         completed_backtests=len(backtest_rows),
     )
-''',
-        '''training_rows = json.loads(TRAINING_RESULTS_JSON.read_text(encoding="utf-8")) if TRAINING_RESULTS_JSON.exists() else []
+""",
+        """training_rows = json.loads(TRAINING_RESULTS_JSON.read_text(encoding="utf-8")) if TRAINING_RESULTS_JSON.exists() else []
 backtest_rows = json.loads(BACKTEST_RESULTS_JSON.read_text(encoding="utf-8")) if BACKTEST_RESULTS_JSON.exists() else []
 
 def completed_training_names() -> set[str]:
@@ -359,22 +364,22 @@ try:
         completed_training_jobs=len(training_rows),
         completed_backtests=len(backtest_rows),
     )
-''',
+""",
     )
     return text
 
 
 def transform_snapshot(text: str) -> str:
     return text.replace(
-        '''cols = [
+        """cols = [
         "year",
         "scenario",
-''',
-        '''cols = [
+""",
+        """cols = [
         "year",
         "base_seed",
         "scenario",
-''',
+""",
     )
 
 
@@ -391,10 +396,16 @@ def main() -> None:
         elif "probe_cfg = TrainingConfig(" in text:
             set_cell_text(cell, transform_setup(text))
         elif cell.get("cell_type") == "markdown" and "## 2. Build All-Year Job Matrix" in text:
-            set_cell_text(cell, text.replace("## 2. Build All-Year Job Matrix", "## 2. Build Five-Seed Job Matrix"))
+            set_cell_text(
+                cell,
+                text.replace("## 2. Build All-Year Job Matrix", "## 2. Build Five-Seed Job Matrix"),
+            )
         elif "YEARS = [2022, 2023, 2024, 2025]" in text:
             set_cell_text(cell, transform_manifest(text))
-        elif cell.get("cell_type") == "markdown" and "## 3. Run Training And Saved-Prediction Backtests" in text:
+        elif (
+            cell.get("cell_type") == "markdown"
+            and "## 3. Run Training And Saved-Prediction Backtests" in text
+        ):
             set_cell_text(
                 cell,
                 text.replace(
