@@ -353,9 +353,7 @@ def main(cfg: DictConfig):
                 dataloader_persistent_workers=cfg_w.training.dataloader_persistent_workers,
                 dataloader_prefetch_factor=cfg_w.training.dataloader_prefetch_factor,
             )
-            timing_summary["phases"]["loader_creation_seconds"] = (
-                perf_counter() - phase_started
-            )
+            timing_summary["phases"]["loader_creation_seconds"] = perf_counter() - phase_started
 
             num_features = len(data["feature_cols"])
             edge_dim = edge_feature_dim(cfg_w.graph)
@@ -381,9 +379,7 @@ def main(cfg: DictConfig):
                 )
 
             with window_ctx as window_tracking:
-                active_tracking = (
-                    window_tracking if window_tracking.enabled else tracking_manager
-                )
+                active_tracking = window_tracking if window_tracking.enabled else tracking_manager
                 phase_started = perf_counter()
                 results, avg_predictions = train_multiple_models(
                     model_factory=model_factory,
@@ -410,7 +406,9 @@ def main(cfg: DictConfig):
                     "best_val_losses": best_val_losses,
                     "best_val_ics": best_val_ics,
                     "best_val_rank_ics": best_val_rank_ics,
-                    "mean_best_val_loss": float(np.mean(best_val_losses)) if best_val_losses else None,
+                    "mean_best_val_loss": float(np.mean(best_val_losses))
+                    if best_val_losses
+                    else None,
                     "mean_best_val_ic": float(np.mean(best_val_ics)) if best_val_ics else None,
                     "mean_best_val_rank_ic": (
                         float(np.mean(best_val_rank_ics)) if best_val_rank_ics else None
@@ -444,9 +442,7 @@ def main(cfg: DictConfig):
                             "models_trained": len(results),
                             "mean_best_val_loss": training_summary["mean_best_val_loss"],
                             "mean_best_val_ic": training_summary["mean_best_val_ic"],
-                            "mean_best_val_rank_ic": training_summary[
-                                "mean_best_val_rank_ic"
-                            ],
+                            "mean_best_val_rank_ic": training_summary["mean_best_val_rank_ic"],
                         },
                         prefix="training.",
                     )
@@ -464,7 +460,9 @@ def main(cfg: DictConfig):
                             evaluation_summary_path,
                         ]:
                             if os.path.isfile(artifact):
-                                active_tracking.log_artifact(artifact, artifact_path="run_artifacts")
+                                active_tracking.log_artifact(
+                                    artifact, artifact_path="run_artifacts"
+                                )
                         for log_path in sorted(Path(wpath).glob("training_*.log")):
                             active_tracking.log_artifact(log_path, artifact_path="logs")
                     if cfg_w.tracking.log_predictions:

@@ -66,7 +66,9 @@ def test_long_history_presets_pin_frozen_recipe_semantics() -> None:
 
 
 def test_long_history_presets_do_not_make_252_first_pass() -> None:
-    preset_names = {path.stem for path in Path("configs/experiment").glob("long_history_his_t_*.yaml")}
+    preset_names = {
+        path.stem for path in Path("configs/experiment").glob("long_history_his_t_*.yaml")
+    }
 
     assert set(PRESETS) <= preset_names
     assert "long_history_his_t_252" not in preset_names

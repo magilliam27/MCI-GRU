@@ -59,7 +59,9 @@ def parse_args() -> argparse.Namespace:
         help="Directory for PIT snapshot outputs",
     )
     parser.add_argument("--delay", type=float, default=0.15, help="Seconds between calls")
-    parser.add_argument("--limit", type=int, default=None, help="Optional max dates for smoke tests")
+    parser.add_argument(
+        "--limit", type=int, default=None, help="Optional max dates for smoke tests"
+    )
     return parser.parse_args()
 
 

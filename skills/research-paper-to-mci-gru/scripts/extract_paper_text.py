@@ -131,7 +131,9 @@ def _infer_keywords(text: str, pdf_metadata: dict[str, Any]) -> list[str]:
     metadata_keywords = _metadata_value(pdf_metadata, "/Keywords", "Keywords")
     if metadata_keywords:
         return [k.strip() for k in re.split(r"[,;]", metadata_keywords) if k.strip()]
-    match = re.search(r"\bKeywords?:\s*(.*?)(?=\n\s*JEL Codes?:|\n\s*1\s+Introduction\b)", text, re.I | re.S)
+    match = re.search(
+        r"\bKeywords?:\s*(.*?)(?=\n\s*JEL Codes?:|\n\s*1\s+Introduction\b)", text, re.I | re.S
+    )
     if not match:
         return []
     return [k.strip() for k in re.split(r"[,;]", _clean_inline(match.group(1))) if k.strip()]
@@ -169,7 +171,9 @@ def extract_pdf(path: Path, max_pages: int | None = None) -> dict[str, Any]:
     try:
         import pypdf
     except ImportError as exc:
-        raise RuntimeError("pypdf is required to extract PDFs. Install it or paste paper text.") from exc
+        raise RuntimeError(
+            "pypdf is required to extract PDFs. Install it or paste paper text."
+        ) from exc
 
     reader = pypdf.PdfReader(str(path))
     pages = reader.pages[:max_pages] if max_pages is not None else reader.pages
@@ -241,7 +245,9 @@ def _json_default(value: Any) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Extract academic-paper text into Markdown or JSON.")
+    parser = argparse.ArgumentParser(
+        description="Extract academic-paper text into Markdown or JSON."
+    )
     parser.add_argument("pdf_path", type=Path, help="Local PDF path to extract.")
     parser.add_argument("-o", "--output", type=Path, help="Optional output path.")
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of Markdown.")

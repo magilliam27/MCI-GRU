@@ -171,8 +171,7 @@ def test_write_sensitivity_outputs_emits_cross_tabs_and_baseline_deltas(tmp_path
     summary_md = paths["summary_md"].read_text(encoding="utf-8")
 
     spread_year = scenario_year[
-        (scenario_year["scenario_id"] == "spread5_only_label5")
-        & (scenario_year["year"] == 2022)
+        (scenario_year["scenario_id"] == "spread5_only_label5") & (scenario_year["year"] == 2022)
     ].iloc[0]
     assert spread_year["backtest.total_return.mean"] == 0.11
 

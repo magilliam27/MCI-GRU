@@ -770,7 +770,9 @@ def load_pit_universe_for_backtest(csv_path: str | None) -> pd.DataFrame | None:
     return normalise_pit_intervals(pd.read_csv(csv_path))
 
 
-def _pit_active_rows(stock_data_df: pd.DataFrame, pit_universe_df: pd.DataFrame | None) -> pd.DataFrame:
+def _pit_active_rows(
+    stock_data_df: pd.DataFrame, pit_universe_df: pd.DataFrame | None
+) -> pd.DataFrame:
     if pit_universe_df is None:
         return stock_data_df
     pit = pit_universe_df.copy()
@@ -2405,9 +2407,7 @@ def print_results(results, model_name="MCI-GRU", num_tests=1, adjustment_method=
     )
     tr_cal = results.get("total_return_calendar_aligned")
     if tr_cal is not None:
-        print(
-            f"  {'Portf. Return (calendar)':<25} {tr_cal:>12.4f}  ({tr_cal * 100:.2f}%)"
-        )
+        print(f"  {'Portf. Return (calendar)':<25} {tr_cal:>12.4f}  ({tr_cal * 100:.2f}%)")
     print(
         f"  {'Excess Return':<25} {results['excess_return']:>12.4f}  ({results['excess_return'] * 100:.2f}%)"
     )
@@ -2929,9 +2929,7 @@ def setup_backtest_tracking(
     backtest automatically links itself beneath that parent run.
     """
     linked_metadata = (
-        None
-        if disable_mlflow_autolink
-        else load_run_metadata_from_predictions_dir(predictions_dir)
+        None if disable_mlflow_autolink else load_run_metadata_from_predictions_dir(predictions_dir)
     )
     tracking_enabled = enable_mlflow or linked_metadata is not None
 

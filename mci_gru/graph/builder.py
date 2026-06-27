@@ -84,8 +84,7 @@ class GraphBuilder:
             raise ValueError(f"top_k must be >= 0, got {top_k}")
         if top_k_metric not in self._VALID_TOP_K_METRICS:
             raise ValueError(
-                f"top_k_metric must be one of {self._VALID_TOP_K_METRICS}, "
-                f"got {top_k_metric!r}"
+                f"top_k_metric must be one of {self._VALID_TOP_K_METRICS}, got {top_k_metric!r}"
             )
 
         self.judge_value = judge_value
@@ -318,9 +317,7 @@ class GraphBuilder:
         n_feat = 4
         if self.use_multi_feature_edges and self.use_lead_lag_features:
             n_feat += 2
-        feat_mode = (
-            f"multi-feature({n_feat})" if self.use_multi_feature_edges else "scalar"
-        )
+        feat_mode = f"multi-feature({n_feat})" if self.use_multi_feature_edges else "scalar"
         print(
             f"Building graph ({mode}, lookback={self.corr_lookback_days} days, "
             f"edges={feat_mode})..."

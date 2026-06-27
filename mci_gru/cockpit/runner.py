@@ -99,7 +99,9 @@ def run_local_cockpit_refresh(
         blocked_workstreams=[row for row in workstreams if row.status == WorkstreamStatus.BLOCKED],
         local_only_work=[row for row in workstreams if row.status == WorkstreamStatus.LOCAL_ONLY],
         stale_or_archive_candidates=[
-            row for row in workstreams if row.status in {WorkstreamStatus.PARKED, WorkstreamStatus.STALE}
+            row
+            for row in workstreams
+            if row.status in {WorkstreamStatus.PARKED, WorkstreamStatus.STALE}
         ],
         github_actions_skipped=[
             GitHubAction(

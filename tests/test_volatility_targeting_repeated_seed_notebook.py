@@ -26,7 +26,7 @@ def test_issue8_repeated_seed_notebook_pins_candidate_grid() -> None:
 
     required_tokens = [
         "Issue #8 Volatility-Targeting Repeated-Seed Validation",
-        "BRANCH = \"codex/colab-gpu-utilization-hardening-20260620\"",
+        'BRANCH = "codex/colab-gpu-utilization-hardening-20260620"',
         "REPLICATION_BASE_SEEDS = [314159, 271828, 161803]",
         "YEARS = [2022, 2023, 2024, 2025]",
         '"baseline_vol"',
@@ -87,8 +87,8 @@ def test_issue8_repeated_seed_notebook_writes_matched_delta_artifacts() -> None:
         "issue8_vol_targeting_repeated_seed_seed_summary.csv",
         "issue8_vol_targeting_repeated_seed_year_variant_summary.csv",
         "issue8_vol_targeting_repeated_seed_summary.md",
-        "for (base_seed, year), group in results_df.groupby([\"base_seed\", \"year\"]):",
-        "baseline = group[group[\"variant\"] == \"baseline_vol\"]",
+        'for (base_seed, year), group in results_df.groupby(["base_seed", "year"]):',
+        'baseline = group[group["variant"] == "baseline_vol"]',
         "same-seed/year baseline",
     ]
 
@@ -102,14 +102,14 @@ def test_issue8_repeated_seed_notebook_runs_cost_rank_gate_backtests() -> None:
     generator = GENERATOR_PATH.read_text(encoding="utf-8")
 
     required_tokens = [
-        "BACKTEST_SUFFIX = \"_pit_daily_tc_rank_gate\"",
+        'BACKTEST_SUFFIX = "_pit_daily_tc_rank_gate"',
         "SPREAD_BPS = 10.0",
         "SLIPPAGE_BPS = 5.0",
         "MIN_RANK_DROP = 30",
         "--transaction_costs",
         "--enable_rank_drop_gate",
         "--min_rank_drop",
-        "ADJUSTMENT_METHOD = \"bhy\"",
+        'ADJUSTMENT_METHOD = "bhy"',
         "backtest_env = os.environ.copy()",
         "env=backtest_env",
     ]

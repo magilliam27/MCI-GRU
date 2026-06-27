@@ -167,10 +167,12 @@ class TestGraphSchedule:
         ew_a = torch.tensor([0.9, 0.9])
         ei_b = torch.tensor([[0, 2], [2, 0]], dtype=torch.long)
         ew_b = torch.tensor([0.85, 0.85])
-        return GraphSchedule([
-            ("2020-01-01", ei_a, ew_a),
-            ("2020-07-01", ei_b, ew_b),
-        ])
+        return GraphSchedule(
+            [
+                ("2020-01-01", ei_a, ew_a),
+                ("2020-07-01", ei_b, ew_b),
+            ]
+        )
 
     def test_lookup_before_first_snapshot_returns_first(self):
         sched = self._make_schedule()
@@ -232,10 +234,12 @@ class TestCollateWithSchedule:
         ew_a = torch.tensor([0.9, 0.9])
         ei_b = torch.tensor([[0, 1, 1, 2], [1, 0, 2, 1]], dtype=torch.long)
         ew_b = torch.tensor([0.9, 0.9, 0.85, 0.85])
-        schedule = GraphSchedule([
-            ("2020-01-01", ei_a, ew_a),
-            ("2020-07-01", ei_b, ew_b),
-        ])
+        schedule = GraphSchedule(
+            [
+                ("2020-01-01", ei_a, ew_a),
+                ("2020-07-01", ei_b, ew_b),
+            ]
+        )
 
         ts, graph, labels = _make_small_arrays(n_days=4, n_stocks=n_stocks)
         dates = ["2020-03-01", "2020-04-01", "2020-08-01", "2020-09-01"]
@@ -266,9 +270,7 @@ class TestCollateWithSchedule:
         assert ns == n_stocks
         assert b_dates == dates
 
-        expected_edges = (
-            ei_a.shape[1] + ei_a.shape[1] + ei_b.shape[1] + ei_b.shape[1]
-        )
+        expected_edges = ei_a.shape[1] + ei_a.shape[1] + ei_b.shape[1] + ei_b.shape[1]
         assert b_ei.shape[1] == expected_edges
 
 
@@ -310,9 +312,7 @@ class TestCreateDataLoaders:
 
     def test_dynamic_loader_preserves_batch_size(self):
         """With precomputed graphs, batch_size is no longer forced to 1."""
-        train_loader, val_loader, test_loader = self._loaders(
-            dynamic_graph=True, batch_size=8
-        )
+        train_loader, val_loader, test_loader = self._loaders(dynamic_graph=True, batch_size=8)
         assert train_loader.batch_size == 8
         assert val_loader.batch_size == 8
         assert test_loader.batch_size == 1
@@ -326,17 +326,13 @@ class TestCreateDataLoaders:
         assert isinstance(train_loader.sampler, SequentialSampler)
 
     def test_dynamic_loader_can_shuffle_when_explicitly_enabled(self):
-        train_loader, _, _ = self._loaders(
-            dynamic_graph=True, batch_size=4, shuffle_train=True
-        )
+        train_loader, _, _ = self._loaders(dynamic_graph=True, batch_size=4, shuffle_train=True)
         from torch.utils.data import RandomSampler
 
         assert isinstance(train_loader.sampler, RandomSampler)
 
     def test_static_loader_can_disable_shuffle_when_explicitly_disabled(self):
-        train_loader, _, _ = self._loaders(
-            dynamic_graph=False, batch_size=4, shuffle_train=False
-        )
+        train_loader, _, _ = self._loaders(dynamic_graph=False, batch_size=4, shuffle_train=False)
         from torch.utils.data import SequentialSampler
 
         assert isinstance(train_loader.sampler, SequentialSampler)
@@ -481,9 +477,7 @@ class TestMultiFeatureEdges:
         # Column 1 == |corr|.
         np.testing.assert_allclose(ea[:, 1].numpy(), np.abs(m[rows, cols]), rtol=1e-5, atol=1e-6)
         # Column 2 == corr^2.
-        np.testing.assert_allclose(
-            ea[:, 2].numpy(), m[rows, cols] ** 2, rtol=1e-5, atol=1e-6
-        )
+        np.testing.assert_allclose(ea[:, 2].numpy(), m[rows, cols] ** 2, rtol=1e-5, atol=1e-6)
         # Column 3 (rank_pct) is in (0, 1] and the maximum rank in each row is 1.0.
         assert ((ea[:, 3] > 0) & (ea[:, 3] <= 1.0 + 1e-6)).all()
         for r in np.unique(rows):
@@ -582,9 +576,7 @@ class TestMultiFeatureSchedulePassthrough:
     def test_collate_concats_2d_edge_features(self):
         n_stocks = 3
         ei_a = torch.tensor([[0, 1], [1, 0]], dtype=torch.long)
-        ea_a = torch.tensor(
-            [[0.9, 0.9, 0.81, 1.0], [0.9, 0.9, 0.81, 1.0]], dtype=torch.float
-        )
+        ea_a = torch.tensor([[0.9, 0.9, 0.81, 1.0], [0.9, 0.9, 0.81, 1.0]], dtype=torch.float)
         ei_b = torch.tensor([[0, 1, 1, 2], [1, 0, 2, 1]], dtype=torch.long)
         ea_b = torch.tensor(
             [
@@ -595,10 +587,12 @@ class TestMultiFeatureSchedulePassthrough:
             ],
             dtype=torch.float,
         )
-        schedule = GraphSchedule([
-            ("2020-01-01", ei_a, ea_a),
-            ("2020-07-01", ei_b, ea_b),
-        ])
+        schedule = GraphSchedule(
+            [
+                ("2020-01-01", ei_a, ea_a),
+                ("2020-07-01", ei_b, ea_b),
+            ]
+        )
 
         ts, graph, labels = _make_small_arrays(n_days=4, n_stocks=n_stocks)
         dates = ["2020-03-01", "2020-04-01", "2020-08-01", "2020-09-01"]
@@ -652,9 +646,7 @@ class TestGATBlockEdgeDim:
             edge_feature_dim=4,
         )
         x = torch.randn(4, 8)
-        edge_index = torch.tensor(
-            [[0, 1, 2, 3, 0, 2], [1, 0, 3, 2, 2, 0]], dtype=torch.long
-        )
+        edge_index = torch.tensor([[0, 1, 2, 3, 0, 2], [1, 0, 3, 2, 2, 0]], dtype=torch.long)
         edge_attr = torch.randn(edge_index.shape[1], 4)
 
         out = block(x, edge_index, edge_attr)
