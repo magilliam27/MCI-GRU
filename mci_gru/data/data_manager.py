@@ -7,6 +7,8 @@ different sources (CSV, LSEG) and preparing it for model training.
 
 from __future__ import annotations
 
+import os
+import time
 import warnings
 from datetime import datetime
 from functools import partial
@@ -17,12 +19,16 @@ import torch
 from torch.utils.data import Dataset
 
 from mci_gru.data.path_resolver import resolve_project_data_path
+from mci_gru.data.pit import filter_edges_by_stock_mask
 
 if TYPE_CHECKING:
     import numpy as np
 
     from mci_gru.config import DataConfig
     from mci_gru.graph.builder import GraphSchedule
+
+STOCK_BOND_CORR_WINDOW_DAYS = 756
+STOCK_BOND_CORR_MIN_PERIODS = STOCK_BOND_CORR_WINDOW_DAYS
 
 
 class DataManager:
@@ -270,13 +276,43 @@ class DataManager:
         except Exception:
             fred = None
 
+        def _env_int(name: str, default: int) -> int:
+            try:
+                return int(os.environ.get(name, str(default)))
+            except ValueError:
+                return default
+
+        def _env_float(name: str, default: float) -> float:
+            try:
+                return float(os.environ.get(name, str(default)))
+            except ValueError:
+                return default
+
+        fred_max_attempts = max(1, _env_int("MCI_GRU_FRED_MAX_ATTEMPTS", 1))
+        fred_retry_seconds = max(0.0, _env_float("MCI_GRU_FRED_RETRY_SECONDS", 0.0))
+
         def try_fred(series_id: str, value_name: str):
             if fred is None:
                 return None
-            try:
-                return fred.get_series(series_id, start, end, value_name, lag_days=1)
-            except Exception:
-                return None
+            for attempt in range(1, fred_max_attempts + 1):
+                try:
+                    return fred.get_series(series_id, start, end, value_name, lag_days=1)
+                except Exception as exc:
+                    if attempt >= fred_max_attempts:
+                        print(
+                            f"FRED fetch failed for {value_name} ({series_id}) "
+                            f"after {fred_max_attempts} attempt(s): "
+                            f"{type(exc).__name__}: {exc}"
+                        )
+                        return None
+                    print(
+                        f"FRED fetch failed for {value_name} ({series_id}) "
+                        f"on attempt {attempt}/{fred_max_attempts}: "
+                        f"{type(exc).__name__}: {exc}. Retrying..."
+                    )
+                    if fred_retry_seconds > 0:
+                        time.sleep(fred_retry_seconds)
+            return None
 
         # FRED-primary variables.
         yield_10y = try_fred(FRED_SERIES_10Y, "yield_10y")
@@ -364,10 +400,18 @@ class DataManager:
         base["regime_market"] = pd.to_numeric(base["regime_market"], errors="coerce")
         base["regime_volatility"] = pd.to_numeric(base["regime_volatility"], errors="coerce")
 
-        # Stock-bond correlation proxy: rolling corr between market returns and yield-10y changes.
-        market_ret = base["regime_market"].pct_change()
-        yield_change = base["yield_10y"].diff()
-        base["regime_stock_bond_corr"] = market_ret.rolling(63, min_periods=21).corr(yield_change)
+        # Paper-guided stock-bond regime: roughly three years of daily observations.
+        # The merged FRED/LSEG panel can be sparse because series publish on
+        # different calendars. Forward-fill the two raw inputs before deriving
+        # changes so rolling correlation is not all-null on staggered calendars.
+        market_for_corr = base["regime_market"].ffill()
+        yield_10y_for_corr = base["yield_10y"].ffill()
+        market_ret = market_for_corr.pct_change(fill_method=None)
+        yield_change = yield_10y_for_corr.diff()
+        base["regime_stock_bond_corr"] = market_ret.rolling(
+            STOCK_BOND_CORR_WINDOW_DAYS,
+            min_periods=STOCK_BOND_CORR_MIN_PERIODS,
+        ).corr(yield_change)
 
         # Fill sparse macro holidays/weekends while preserving time direction.
         for col in [
@@ -375,11 +419,13 @@ class DataManager:
             "regime_yield_curve",
             "regime_oil",
             "regime_copper",
-            "regime_stock_bond_corr",
             "regime_monetary_policy",
             "regime_volatility",
         ]:
             base[col] = pd.to_numeric(base[col], errors="coerce").ffill().bfill()
+        base["regime_stock_bond_corr"] = pd.to_numeric(
+            base["regime_stock_bond_corr"], errors="coerce"
+        ).ffill()
 
         base = base[
             [
@@ -505,11 +551,19 @@ class CombinedDataset(Dataset):
     This ensures time series and graph data stay aligned when shuffling.
     """
 
-    def __init__(self, X_time_series, X_graph, y, sample_dates: list[str] | None = None):
+    def __init__(
+        self,
+        X_time_series,
+        X_graph,
+        y,
+        sample_dates: list[str] | None = None,
+        stock_masks=None,
+    ):
         self.X_time_series = X_time_series
         self.X_graph = X_graph
         self.y = y
         self.sample_dates = sample_dates
+        self.stock_masks = stock_masks
 
     def __len__(self):
         return len(self.y)
@@ -522,6 +576,8 @@ class CombinedDataset(Dataset):
         }
         if self.sample_dates is not None:
             item["date"] = self.sample_dates[idx]
+        if self.stock_masks is not None:
+            item["stock_mask"] = self.stock_masks[idx]
         return item
 
 
@@ -567,6 +623,14 @@ def combined_collate_fn(
     labels = torch.stack([item["label"] for item in batch])
 
     has_dates = "date" in batch[0]
+    has_stock_mask = "stock_mask" in batch[0]
+    stock_masks = (
+        torch.stack([torch.as_tensor(item["stock_mask"], dtype=torch.bool) for item in batch])
+        if has_stock_mask
+        else None
+    )
+    if stock_masks is not None:
+        time_series = time_series * stock_masks[:, :, None, None].to(time_series.dtype)
     use_schedule = graph_schedule is not None and has_dates
 
     graph_features_list = []
@@ -574,7 +638,7 @@ def combined_collate_fn(
     edge_weight_list = []
 
     for i, item in enumerate(batch):
-        graph_features_list.append(item["graph_features"])
+        graph_features = item["graph_features"]
 
         if use_schedule:
             ei, ew = graph_schedule.get_graph_for_date(item["date"])
@@ -582,6 +646,13 @@ def combined_collate_fn(
         else:
             ei, ew = edge_index, edge_weight
             valid_from = static_graph_valid_from
+
+        if stock_masks is not None:
+            item_mask = stock_masks[i].to(device=ei.device)
+            graph_features = graph_features * item_mask[:, None].to(graph_features.dtype)
+            ei, ew = filter_edges_by_stock_mask(ei, ew, item_mask)
+
+        graph_features_list.append(graph_features)
 
         if append_snapshot_age_days and ew.dim() == 2 and valid_from is not None and has_dates:
             age = _snapshot_age_days(item["date"], valid_from)
@@ -596,6 +667,8 @@ def combined_collate_fn(
     batched_edge_weight = torch.cat(edge_weight_list, dim=0)
 
     batch_dates = [item["date"] for item in batch] if has_dates else None
+    if stock_masks is not None:
+        batch_dates = {"dates": batch_dates, "stock_mask": stock_masks}
 
     batched_ei_sec = None
     batched_ew_sec = None
@@ -603,10 +676,19 @@ def combined_collate_fn(
         esi_list = []
         esw_list = []
         for i in range(len(batch)):
-            esi_list.append(edge_index_sector + (i * num_stocks))
-            esw_list.append(edge_weight_sector)
-        batched_ei_sec = torch.cat(esi_list, dim=1)
-        batched_ew_sec = torch.cat(esw_list, dim=0)
+            esi = edge_index_sector
+            esw = edge_weight_sector
+            if stock_masks is not None:
+                esi, esw = filter_edges_by_stock_mask(
+                    esi,
+                    esw,
+                    stock_masks[i].to(device=esi.device),
+                )
+            esi_list.append(esi + (i * num_stocks))
+            esw_list.append(esw)
+        if esi_list:
+            batched_ei_sec = torch.cat(esi_list, dim=1)
+            batched_ew_sec = torch.cat(esw_list, dim=0)
 
     return (
         time_series,
@@ -644,6 +726,13 @@ def create_data_loaders(
     edge_index_sector: torch.Tensor | None = None,
     edge_weight_sector: torch.Tensor | None = None,
     use_sector_relation: bool = False,
+    train_stock_masks: np.ndarray | None = None,
+    val_stock_masks: np.ndarray | None = None,
+    test_stock_masks: np.ndarray | None = None,
+    dataloader_num_workers: int = 0,
+    dataloader_pin_memory: bool = False,
+    dataloader_persistent_workers: bool = False,
+    dataloader_prefetch_factor: int | None = None,
 ) -> tuple:
     """
     Create train/val/test data loaders.
@@ -692,29 +781,51 @@ def create_data_loaders(
     X_test_ts = torch.from_numpy(stock_features_test).float()
     X_test_graph = torch.from_numpy(x_graph_test).float()
     y_test_dummy = torch.zeros(len(X_test_ts), X_test_graph.shape[1], dtype=torch.float32)
+    train_mask_t = (
+        torch.as_tensor(train_stock_masks, dtype=torch.bool)
+        if train_stock_masks is not None
+        else None
+    )
+    val_mask_t = (
+        torch.as_tensor(val_stock_masks, dtype=torch.bool) if val_stock_masks is not None else None
+    )
+    test_mask_t = (
+        torch.as_tensor(test_stock_masks, dtype=torch.bool)
+        if test_stock_masks is not None
+        else None
+    )
 
     print(f"  Train: ts={X_train_ts.shape}, graph={X_train_graph.shape}, labels={y_train.shape}")
     print(f"  Val: ts={X_val_ts.shape}, graph={X_val_graph.shape}, labels={y_val.shape}")
     print(f"  Test: ts={X_test_ts.shape}, graph={X_test_graph.shape}")
 
-    attach_dates = dynamic_graph or append_snapshot_age_days
+    attach_dates = (
+        dynamic_graph
+        or append_snapshot_age_days
+        or train_mask_t is not None
+        or val_mask_t is not None
+        or test_mask_t is not None
+    )
     train_dataset = CombinedDataset(
         X_train_ts,
         X_train_graph,
         y_train,
         sample_dates=train_dates if attach_dates else None,
+        stock_masks=train_mask_t,
     )
     val_dataset = CombinedDataset(
         X_val_ts,
         X_val_graph,
         y_val,
         sample_dates=val_dates if attach_dates else None,
+        stock_masks=val_mask_t,
     )
     test_dataset = CombinedDataset(
         X_test_ts,
         X_test_graph,
         y_test_dummy,
         sample_dates=test_dates if attach_dates else None,
+        stock_masks=test_mask_t,
     )
 
     collate_fn = partial(
@@ -729,6 +840,15 @@ def create_data_loaders(
         use_sector_relation=use_sector_relation,
     )
 
+    loader_kwargs = {
+        "num_workers": dataloader_num_workers,
+        "pin_memory": dataloader_pin_memory,
+    }
+    if dataloader_num_workers > 0:
+        loader_kwargs["persistent_workers"] = dataloader_persistent_workers
+        if dataloader_prefetch_factor is not None:
+            loader_kwargs["prefetch_factor"] = dataloader_prefetch_factor
+
     train_shuffle = (not dynamic_graph) if shuffle_train is None else shuffle_train
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
@@ -736,6 +856,7 @@ def create_data_loaders(
         shuffle=train_shuffle,
         drop_last=False,
         collate_fn=collate_fn,
+        **loader_kwargs,
     )
 
     val_loader = torch.utils.data.DataLoader(
@@ -743,6 +864,7 @@ def create_data_loaders(
         batch_size=batch_size,
         shuffle=False,
         collate_fn=collate_fn,
+        **loader_kwargs,
     )
 
     test_loader = torch.utils.data.DataLoader(
@@ -750,6 +872,7 @@ def create_data_loaders(
         batch_size=1,
         shuffle=False,
         collate_fn=collate_fn,
+        **loader_kwargs,
     )
 
     print(

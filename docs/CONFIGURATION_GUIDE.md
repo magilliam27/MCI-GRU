@@ -62,6 +62,38 @@ filename: sp500_data.csv
 python run_experiment.py +data=csv_sp500
 ```
 
+### True Rolling PIT S&P 500 Panel
+
+Use `data.pit_universe_mode=masked_panel` when the model should score the
+real-world S&P 500 opportunity set for each date instead of the old continuous
+member subset. The pipeline keeps a fixed PIT union axis internally, then uses
+daily `active_member`, `feature_ready`, `loss`, and `tradable` masks for
+training, validation, prediction export, graph batching, and evaluation.
+
+```yaml
+data:
+  use_pit_universe: true
+  pit_universe_csv: data/raw/constituents/sp500_pit_joiner_leaver_20160101_20260513_pit_universe.csv
+  pit_universe_mode: masked_panel
+  pit_min_scoreable_stocks: 450
+  pit_breadth_policy: error
+```
+
+Pre-membership OHLCV is allowed for lookback features because it was public at
+the time. A future joiner is still excluded from loss and prediction rows until
+its `valid_from` date. Legacy temporal constituent CSVs (`sp500_constituents_2016`
+and similar) are not PIT-clean membership histories; use Joiner/Leaver interval
+artifacts for true rolling panels.
+
+Ready-made experiment presets:
+
+```bash
+python run_experiment.py +experiment=pit_temporal_2022
+python run_experiment.py +experiment=pit_temporal_2023
+python run_experiment.py +experiment=pit_temporal_2024
+python run_experiment.py +experiment=pit_temporal_2025
+```
+
 ## Regime Inputs
 
 Global regime features use the live FRED/LSEG-backed loader by default. Leave
@@ -79,7 +111,39 @@ escape hatch, emits a `DeprecationWarning`, and requires `dt` plus all seven
 regime variables if used. Do not set it for production training, paper-trade
 inference, or notebook runs.
 
-## Default Settings
+## Default Frozen Experiment Recipe
+
+Production-style confirmation notebooks and PIT validation runs should use the
+frozen recipe documented in
+[`DEFAULT_EXPERIMENT_RECIPE.md`](DEFAULT_EXPERIMENT_RECIPE.md):
+`static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1`.
+
+Core overrides:
+
+| Category | Setting | Frozen recipe value |
+|----------|---------|---------------------|
+| Experiment | seed | `1729` |
+| Training | num_models | `20` |
+| Training | num_epochs | `100` |
+| Training | early_stopping_patience | `15` |
+| Training | loss_type | `ic` |
+| Training | label_type | `returns` |
+| Training | selection_metric | `val_ic` |
+| Training | shuffle_train | `true` |
+| Model | label_t | `5` |
+| Graph | update_frequency_months | `0` |
+| Graph | corr_lookback_days | `252` |
+| Graph | top_k / top_k_metric | `0` / `corr` |
+| Graph | use_multi_feature_edges | `true` |
+| Graph | drop_edge_p | `0.1` |
+| Graph | lead-lag / snapshot-age | disabled |
+| Features | momentum | `features=with_momentum`, weekly momentum on, static 50/50 blend |
+| Features | global regime | `include_global_regime=true`, `regime_strict=true`, `regime_include_subsequent_returns=false` |
+
+`FRED_API_KEY` is required for the full recipe unless a smoke run explicitly
+disables global regime features.
+
+## Hydra Base Defaults
 
 Values below reflect **`configs/config.yaml`** merged with **`configs/data/sp500.yaml`** (Hydra `defaults`). Python dataclass defaults in `mci_gru/config.py` match these where duplicated.
 
@@ -90,6 +154,8 @@ Values below reflect **`configs/config.yaml`** merged with **`configs/data/sp500
 | Data | val | 2024-01-08 to 2024-12-31 (gap after `train_end` **>** `label_t` days — label embargo) |
 | Data | test | 2025-01-08 to 2025-12-31 (gap after `val_end` **>** `label_t` days) |
 | Data | skip_embargo_check | `false` (`ExperimentConfig` raises if gaps are too small; set `true` only for legacy repro) |
+| Data | pit_universe_mode | `row_filter` by default; use `masked_panel` for true rolling PIT candidates |
+| Data | pit_min_scoreable_stocks | `450` when PIT masked-panel mode is active |
 | Model | his_t | 10 |
 | Model | label_t | 5 |
 | Model | gru_hidden_sizes | [32, 10] |
@@ -106,7 +172,7 @@ Values below reflect **`configs/config.yaml`** merged with **`configs/data/sp500
 
 ## Common Configurations
 
-### Basic Training (Uses All Defaults)
+### Basic Training (Hydra Base Config)
 
 ```bash
 python run_experiment.py
@@ -137,6 +203,44 @@ python run_experiment.py +data=csv_sp500
 ```bash
 python run_experiment.py experiment_name=lookback_20 model.his_t=20
 ```
+
+### Long-History Presets
+
+Issue #23 adds controlled long-history presets for testing whether more
+temporal context helps the frozen production-style recipe. These presets keep
+the frozen graph, feature, loss, label, selection, and ensemble semantics fixed;
+`model.his_t` is the intended experimental factor.
+
+```bash
+python run_experiment.py +experiment=long_history_his_t_21
+python run_experiment.py +experiment=long_history_his_t_63
+python run_experiment.py +experiment=long_history_his_t_126
+```
+
+`his_t=252` is intentionally not a first-pass preset. Treat it as a gated
+manual candidate after the shorter windows pass memory and runtime checks.
+
+For a cheap mechanics smoke, use the non-PIT anchored historical snapshot universe
+set rather than the base `sp500_data.csv` fallback. The 2025-style
+local surface is `data=temporal_2019`, which points at
+`sp500_2019_universe_data_through_2026.csv`. Override only the runtime cost and
+any unavailable external inputs:
+
+```bash
+python run_experiment.py +experiment=long_history_his_t_21 data=temporal_2019 training.num_epochs=1 training.num_models=1 training.early_stopping_patience=2 tracking.enabled=false features.include_global_regime=false features.regime_strict=false
+```
+
+Do not treat non-PIT smoke metrics as model-performance evidence. Full
+long-history evaluation should run the generated Colab notebook:
+
+```bash
+python scripts/gen_long_history_pit_eval_nb.py
+```
+
+Then open `notebooks/long_history_pit_eval_colab.ipynb` in Colab. The notebook
+evaluates `his_t=10`, `21`, `63`, and `126` across the 2022, 2023, 2024, and
+2025 true PIT masked-panel presets, with `his_t=252` behind
+`INCLUDE_HIS_T_252 = False`.
 
 ### With VIX Features
 

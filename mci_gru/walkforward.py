@@ -121,10 +121,18 @@ def merge_walkforward_summary(summaries: list[dict]) -> dict:
         return {}
     losses = [s["mean_best_val_loss"] for s in summaries if s.get("mean_best_val_loss") is not None]
     ics = [s["mean_best_val_ic"] for s in summaries if s.get("mean_best_val_ic") is not None]
+    rank_ics = [
+        s["mean_best_val_rank_ic"]
+        for s in summaries
+        if s.get("mean_best_val_rank_ic") is not None
+    ]
     merged = {
         "n_windows": len(summaries),
         "mean_best_val_loss_across_windows": float(sum(losses) / len(losses)) if losses else None,
         "mean_best_val_ic_across_windows": float(sum(ics) / len(ics)) if ics else None,
+        "mean_best_val_rank_ic_across_windows": (
+            float(sum(rank_ics) / len(rank_ics)) if rank_ics else None
+        ),
         "windows": summaries,
     }
     eval_keys: set[str] = set()

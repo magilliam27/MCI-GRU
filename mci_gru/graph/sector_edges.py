@@ -5,7 +5,6 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-import numpy as np
 import torch
 
 
@@ -57,7 +56,7 @@ def build_sector_edges(
         if len(group) <= 1:
             continue
         g_sorted = sorted(group)
-        for i, src in enumerate(g_sorted):
+        for src in g_sorted:
             others = [x for x in g_sorted if x != src]
             if not others:
                 continue

@@ -12,7 +12,9 @@ Graph resolution is handled upstream by the collate function (via
 (7 core tensors + optional sector ``edge_index`` / ``edge_weight``) from the loaders.
 """
 
+import json
 import os
+import time
 from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass
@@ -28,9 +30,9 @@ from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 
 from mci_gru.config import ExperimentConfig
 from mci_gru.training.losses import (
-    CombinedMSEICLoss,
-    ICLoss,
-    mean_information_coefficient,
+    build_training_loss,
+    information_coefficient_sum_count,
+    rank_information_coefficient_sum_count,
 )
 from mci_gru.utils.seeding import set_seed
 
@@ -40,6 +42,7 @@ if TYPE_CHECKING:
 
 def _unpack_loader_batch(batch, device: torch.device):
     """Move graph batch tensors to *device*; supports 7- or 9-tuple collate output."""
+    non_blocking = device.type == "cuda"
     if len(batch) == 7:
         time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates = batch
         edge_index_sector = None
@@ -57,15 +60,22 @@ def _unpack_loader_batch(batch, device: torch.device):
             edge_weight_sector,
         ) = batch
 
-    time_series = time_series.to(device)
-    labels = labels.to(device)
-    graph_features = graph_features.to(device)
-    edge_index = edge_index.to(device)
-    edge_weight = edge_weight.to(device)
+    stock_mask = None
+    if isinstance(batch_dates, dict):
+        stock_mask = batch_dates.get("stock_mask")
+        batch_dates = batch_dates.get("dates")
+
+    time_series = time_series.to(device, non_blocking=non_blocking)
+    labels = labels.to(device, non_blocking=non_blocking)
+    graph_features = graph_features.to(device, non_blocking=non_blocking)
+    edge_index = edge_index.to(device, non_blocking=non_blocking)
+    edge_weight = edge_weight.to(device, non_blocking=non_blocking)
+    if stock_mask is not None:
+        stock_mask = stock_mask.to(device, non_blocking=non_blocking)
     if edge_index_sector is not None:
-        edge_index_sector = edge_index_sector.to(device)
+        edge_index_sector = edge_index_sector.to(device, non_blocking=non_blocking)
     if edge_weight_sector is not None:
-        edge_weight_sector = edge_weight_sector.to(device)
+        edge_weight_sector = edge_weight_sector.to(device, non_blocking=non_blocking)
 
     return (
         time_series,
@@ -77,6 +87,7 @@ def _unpack_loader_batch(batch, device: torch.device):
         batch_dates,
         edge_index_sector,
         edge_weight_sector,
+        stock_mask,
     )
 
 
@@ -84,10 +95,34 @@ def _unpack_loader_batch(batch, device: torch.device):
 class TrainingResult:
     best_val_loss: float
     best_val_ic: float
+    best_val_rank_ic: float
     final_train_loss: float
     epochs_trained: int
     best_model_path: str
     predictions: np.ndarray | None = None
+
+
+def prediction_rows_for_date(
+    predictions: np.ndarray,
+    kdcode_list: list[str],
+    date: str,
+    prediction_mask: np.ndarray | None = None,
+) -> list[list[object]]:
+    """Build prediction CSV rows, optionally filtering to PIT-tradable stocks."""
+    mask = (
+        np.asarray(prediction_mask, dtype=bool)
+        if prediction_mask is not None
+        else np.ones(len(kdcode_list), dtype=bool)
+    )
+    rows: list[list[object]] = []
+    for i, kdcode in enumerate(kdcode_list):
+        if i >= len(predictions) or i >= len(mask) or not bool(mask[i]):
+            continue
+        score = float(predictions[i])
+        if not np.isfinite(score):
+            continue
+        rows.append([kdcode, date, round(score, 5)])
+    return rows
 
 
 def _build_lr_scheduler(
@@ -161,8 +196,11 @@ class Trainer:
         # Training state
         self.best_val_loss = float("inf")
         self.best_val_ic = float("-inf")
+        self.best_val_rank_ic = float("-inf")
         self.patience_counter = 0
         self.epoch = 0
+        self._profile_rows_written = 0
+        self._profile_path: str | None = None
 
     def train(
         self,
@@ -175,7 +213,8 @@ class Trainer:
             train_loader: Training data loader
             val_loader: Validation data loader
             epoch_callback: Optional per-epoch callback; receives
-                (epoch, train_loss, val_loss, val_ic, best_val_loss, best_val_ic).
+                (epoch, train_loss, val_loss, val_ic, val_rank_ic,
+                 best_val_loss, best_val_ic, best_val_rank_ic).
 
         Returns:
             TrainingResult with training metrics
@@ -187,12 +226,8 @@ class Trainer:
             lr=training_cfg.learning_rate,
             weight_decay=training_cfg.weight_decay,
         )
-        if training_cfg.loss_type == "ic":
-            criterion = ICLoss()
-        elif training_cfg.loss_type == "combined":
-            criterion = CombinedMSEICLoss(alpha=training_cfg.ic_loss_alpha)
-        else:
-            criterion = nn.MSELoss()
+        criterion, loss_label = build_training_loss(training_cfg)
+        criterion = criterion.to(self.device)
 
         steps_per_epoch = len(train_loader)
         scheduler = _build_lr_scheduler(optimizer, training_cfg, steps_per_epoch)
@@ -202,6 +237,16 @@ class Trainer:
 
         output_path = self.output_path
         os.makedirs(output_path, exist_ok=True)
+        self._profile_rows_written = 0
+        self._profile_path = None
+        if training_cfg.profile_batches > 0:
+            profile_name = "training_step_profile.jsonl"
+            if self.checkpoint_path is not None:
+                checkpoint_stem = os.path.basename(self.checkpoint_path).removesuffix("_best.pth")
+                profile_name = f"training_step_profile_{checkpoint_stem}.jsonl"
+            self._profile_path = os.path.join(output_path, profile_name)
+            with open(self._profile_path, "w", encoding="utf-8"):
+                pass
         best_model_path = (
             self.checkpoint_path
             if self.checkpoint_path
@@ -211,18 +256,12 @@ class Trainer:
 
         self.best_val_loss = float("inf")
         self.best_val_ic = float("-inf")
+        self.best_val_rank_ic = float("-inf")
         self.patience_counter = 0
         final_train_loss = 0.0
 
         print(f"Training on {self.device}...")
-        print(
-            f"  Loss: {training_cfg.loss_type}"
-            + (
-                f" (alpha={training_cfg.ic_loss_alpha})"
-                if training_cfg.loss_type == "combined"
-                else ""
-            )
-        )
+        print(f"  Loss: {loss_label}")
         print(f"  Selection metric: {training_cfg.selection_metric}")
         print(f"  LR scheduler: {training_cfg.lr_scheduler}")
         print(f"  AMP (CUDA): {use_amp}")
@@ -237,16 +276,20 @@ class Trainer:
             )
             final_train_loss = train_loss
 
-            val_loss, val_ic = self._validate(val_loader, criterion, use_amp)
+            val_loss, val_ic, val_rank_ic = self._validate(val_loader, criterion, use_amp)
 
             print(
                 f"Epoch [{epoch + 1}/{training_cfg.num_epochs}] - Train Loss: {train_loss:.6f}, "
-                f"Val Loss: {val_loss:.6f}, Val IC: {val_ic:.6f}"
+                f"Val Loss: {val_loss:.6f}, Val IC: {val_ic:.6f}, "
+                f"Val Rank IC: {val_rank_ic:.6f}"
             )
 
             improved = False
             if training_cfg.selection_metric == "val_ic":
                 if val_ic > self.best_val_ic:
+                    improved = True
+            elif training_cfg.selection_metric == "val_rank_ic":
+                if val_rank_ic > self.best_val_rank_ic:
                     improved = True
             else:
                 if val_loss < self.best_val_loss:
@@ -255,10 +298,14 @@ class Trainer:
             if improved:
                 self.best_val_loss = val_loss
                 self.best_val_ic = val_ic
+                self.best_val_rank_ic = val_rank_ic
                 self.patience_counter = 0
                 torch.save(self.model.state_dict(), best_model_path)
                 print(
-                    f"  -> New best model saved (val_loss={self.best_val_loss:.6f}, val_ic={self.best_val_ic:.6f})"
+                    "  -> New best model saved "
+                    f"(val_loss={self.best_val_loss:.6f}, "
+                    f"val_ic={self.best_val_ic:.6f}, "
+                    f"val_rank_ic={self.best_val_rank_ic:.6f})"
                 )
             else:
                 self.patience_counter += 1
@@ -272,8 +319,10 @@ class Trainer:
                             train_loss,
                             val_loss,
                             val_ic,
+                            val_rank_ic,
                             self.best_val_loss,
                             self.best_val_ic,
+                            self.best_val_rank_ic,
                         )
                     break
 
@@ -283,24 +332,45 @@ class Trainer:
                     train_loss,
                     val_loss,
                     val_ic,
+                    val_rank_ic,
                     self.best_val_loss,
                     self.best_val_ic,
+                    self.best_val_rank_ic,
                 )
 
         return TrainingResult(
             best_val_loss=self.best_val_loss,
             best_val_ic=self.best_val_ic,
+            best_val_rank_ic=self.best_val_rank_ic,
             final_train_loss=final_train_loss,
             epochs_trained=epoch + 1,
             best_model_path=best_model_path,
         )
+
+    def _sync_cuda_if_needed(self, profiling_active: bool) -> None:
+        if profiling_active and self.device.type == "cuda":
+            torch.cuda.synchronize(self.device)
+
+    def _write_profile_row(self, row: dict[str, object]) -> None:
+        if self._profile_path is None:
+            return
+        with open(self._profile_path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(row, sort_keys=True) + "\n")
+        self._profile_rows_written += 1
 
     def _train_epoch(self, train_loader, optimizer, criterion, scaler, scheduler, use_amp) -> float:
         self.model.train()
         total_loss = 0.0
         num_samples = 0
 
-        for batch in train_loader:
+        profile_limit = self.config.training.profile_batches
+        profiling_active = profile_limit > 0
+        batch_wait_start = time.perf_counter()
+        for batch_index, batch in enumerate(train_loader):
+            batch_received = time.perf_counter()
+            data_wait_seconds = batch_received - batch_wait_start
+
+            h2d_start = time.perf_counter()
             (
                 time_series,
                 labels,
@@ -311,10 +381,14 @@ class Trainer:
                 _batch_dates,
                 edge_index_sector,
                 edge_weight_sector,
+                stock_mask,
             ) = _unpack_loader_batch(batch, self.device)
+            self._sync_cuda_if_needed(profiling_active)
+            h2d_seconds = time.perf_counter() - h2d_start
             batch_size = time_series.shape[0]
 
             optimizer.zero_grad(set_to_none=True)
+            forward_start = time.perf_counter()
             with autocast("cuda", enabled=use_amp):
                 outputs = self.model(
                     time_series,
@@ -324,11 +398,18 @@ class Trainer:
                     n_stocks,
                     edge_index_sector=edge_index_sector,
                     edge_weight_sector=edge_weight_sector,
+                    stock_mask=stock_mask,
                 )
                 loss = criterion(outputs, labels)
+            self._sync_cuda_if_needed(profiling_active)
+            forward_loss_seconds = time.perf_counter() - forward_start
 
+            backward_start = time.perf_counter()
             scaler.scale(loss).backward()
+            self._sync_cuda_if_needed(profiling_active)
+            backward_seconds = time.perf_counter() - backward_start
 
+            optimizer_start = time.perf_counter()
             if self.config.training.gradient_clip > 0:
                 scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(
@@ -341,16 +422,46 @@ class Trainer:
 
             if scheduler is not None:
                 scheduler.step()
+            self._sync_cuda_if_needed(profiling_active)
+            optimizer_seconds = time.perf_counter() - optimizer_start
 
-            total_loss += loss.item() * batch_size
+            loss_value = loss.item()
+            if profile_limit > 0 and self._profile_rows_written < profile_limit:
+                cuda_memory_allocated = 0
+                cuda_max_memory_allocated = 0
+                if self.device.type == "cuda":
+                    cuda_memory_allocated = int(torch.cuda.memory_allocated(self.device))
+                    cuda_max_memory_allocated = int(torch.cuda.max_memory_allocated(self.device))
+                self._write_profile_row(
+                    {
+                        "epoch": self.epoch,
+                        "batch_index": batch_index,
+                        "device": str(self.device),
+                        "batch_size": int(batch_size),
+                        "loss": float(loss_value),
+                        "data_wait_seconds": data_wait_seconds,
+                        "h2d_seconds": h2d_seconds,
+                        "forward_loss_seconds": forward_loss_seconds,
+                        "backward_seconds": backward_seconds,
+                        "optimizer_seconds": optimizer_seconds,
+                        "cuda_memory_allocated_bytes": cuda_memory_allocated,
+                        "cuda_max_memory_allocated_bytes": cuda_max_memory_allocated,
+                    }
+                )
+
+            total_loss += loss_value * batch_size
             num_samples += batch_size
+            batch_wait_start = time.perf_counter()
 
         return total_loss / num_samples if num_samples > 0 else 0.0
 
-    def _validate(self, val_loader, criterion, use_amp) -> tuple[float, float]:
+    def _validate(self, val_loader, criterion, use_amp) -> tuple[float, float, float]:
         self.model.eval()
         total_loss = 0.0
         total_ic = 0.0
+        total_ic_rows = 0
+        total_rank_ic = 0.0
+        total_rank_ic_rows = 0
         num_samples = 0
 
         with torch.no_grad():
@@ -365,6 +476,7 @@ class Trainer:
                     _batch_dates,
                     edge_index_sector,
                     edge_weight_sector,
+                    stock_mask,
                 ) = _unpack_loader_batch(batch, self.device)
                 batch_size = time_series.shape[0]
 
@@ -377,17 +489,26 @@ class Trainer:
                         n_stocks,
                         edge_index_sector=edge_index_sector,
                         edge_weight_sector=edge_weight_sector,
+                        stock_mask=stock_mask,
                     )
                     loss = criterion(outputs, labels)
-                ic = mean_information_coefficient(outputs, labels)
+                ic_sum, ic_count = information_coefficient_sum_count(outputs, labels)
+                rank_ic_sum, rank_ic_count = rank_information_coefficient_sum_count(
+                    outputs,
+                    labels,
+                )
 
                 total_loss += loss.item() * batch_size
-                total_ic += ic.item() * batch_size
+                total_ic += ic_sum.item()
+                total_ic_rows += ic_count
+                total_rank_ic += rank_ic_sum.item()
+                total_rank_ic_rows += rank_ic_count
                 num_samples += batch_size
 
         mean_loss = total_loss / num_samples if num_samples > 0 else 0.0
-        mean_ic = total_ic / num_samples if num_samples > 0 else 0.0
-        return mean_loss, mean_ic
+        mean_ic = total_ic / total_ic_rows if total_ic_rows > 0 else 0.0
+        mean_rank_ic = total_rank_ic / total_rank_ic_rows if total_rank_ic_rows > 0 else 0.0
+        return mean_loss, mean_ic, mean_rank_ic
 
     def predict(self, test_loader, kdcode_list: list[str], test_dates: list[str]) -> np.ndarray:
         """
@@ -415,6 +536,7 @@ class Trainer:
                     _batch_dates,
                     edge_index_sector,
                     edge_weight_sector,
+                    stock_mask,
                 ) = _unpack_loader_batch(batch, self.device)
 
                 with autocast("cuda", enabled=use_amp):
@@ -426,8 +548,11 @@ class Trainer:
                         n_stocks,
                         edge_index_sector=edge_index_sector,
                         edge_weight_sector=edge_weight_sector,
+                        stock_mask=stock_mask,
                     )
-                predictions = outputs.squeeze().cpu().numpy()
+                if stock_mask is not None:
+                    outputs = outputs.masked_fill(~stock_mask, float("nan"))
+                predictions = outputs.squeeze(0).cpu().numpy()
                 all_predictions.append(predictions)
 
         return np.array(all_predictions)
@@ -438,6 +563,7 @@ class Trainer:
         kdcode_list: list[str],
         test_dates: list[str],
         output_dir: str,
+        prediction_masks: np.ndarray | None = None,
     ):
         """
         Args:
@@ -445,15 +571,14 @@ class Trainer:
             kdcode_list: Stock codes
             test_dates: Test dates
             output_dir: Output directory
+            prediction_masks: Optional boolean ``(n_dates, n_stocks)`` tradable mask
         """
         os.makedirs(output_dir, exist_ok=True)
 
         for idx, date in enumerate(test_dates):
             if idx < len(predictions):
-                data = [
-                    [kdcode_list[i], date, round(float(predictions[idx][i]), 5)]
-                    for i in range(len(kdcode_list))
-                ]
+                mask = prediction_masks[idx] if prediction_masks is not None else None
+                data = prediction_rows_for_date(predictions[idx], kdcode_list, date, mask)
                 df = pd.DataFrame(columns=["kdcode", "dt", "score"], data=data)
                 df.to_csv(os.path.join(output_dir, f"{date}.csv"), index=False)
 
@@ -483,6 +608,7 @@ def train_multiple_models(
     test_dates: list[str],
     output_path: str | None = None,
     tracking_manager: Optional["MLflowTrackingManager"] = None,
+    test_prediction_masks: np.ndarray | None = None,
 ) -> tuple[list[TrainingResult], np.ndarray]:
     """
     Per paper Section 4.1.2: Train num_models and average predictions.
@@ -502,6 +628,7 @@ def train_multiple_models(
         test_dates: List of test dates
         output_path: Optional output path override (for Hydra managed paths)
         tracking_manager: Optional MLflow tracking manager
+        test_prediction_masks: Optional boolean tradable mask for test prediction exports
 
     Returns:
         Tuple of (list of training results, averaged predictions)
@@ -555,7 +682,8 @@ def train_multiple_models(
 
             print(
                 f"Model {model_id + 1} training complete. Best val loss: {result.best_val_loss:.6f}, "
-                f"best val IC: {result.best_val_ic:.6f}"
+                f"best val IC: {result.best_val_ic:.6f}, "
+                f"best val Rank IC: {result.best_val_rank_ic:.6f}"
             )
 
             trainer.last_best_model_path = result.best_model_path
@@ -564,13 +692,20 @@ def train_multiple_models(
             all_predictions.append(predictions)
 
             pred_dir = os.path.join(base_output_path, f"predictions_model_{model_id}")
-            trainer.save_predictions(predictions, kdcode_list, test_dates, pred_dir)
+            trainer.save_predictions(
+                predictions,
+                kdcode_list,
+                test_dates,
+                pred_dir,
+                prediction_masks=test_prediction_masks,
+            )
 
             if child_tracking is not None and child_tracking.enabled:
                 child_tracking.log_metrics(
                     {
                         "best_val_loss": result.best_val_loss,
                         "best_val_ic": result.best_val_ic,
+                        "best_val_rank_ic": result.best_val_rank_ic,
                         "final_train_loss": result.final_train_loss,
                         "epochs_trained": result.epochs_trained,
                     }
@@ -592,10 +727,8 @@ def train_multiple_models(
 
     for idx, date in enumerate(test_dates):
         if idx < len(avg_predictions):
-            data = [
-                [kdcode_list[i], date, round(float(avg_predictions[idx][i]), 5)]
-                for i in range(len(kdcode_list))
-            ]
+            mask = test_prediction_masks[idx] if test_prediction_masks is not None else None
+            data = prediction_rows_for_date(avg_predictions[idx], kdcode_list, date, mask)
             df_pred = pd.DataFrame(columns=["kdcode", "dt", "score"], data=data)
             df_pred.to_csv(os.path.join(avg_pred_dir, f"{date}.csv"), index=False)
 

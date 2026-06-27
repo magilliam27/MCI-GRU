@@ -203,7 +203,7 @@ class GraphBuilder:
         max_lag = max(self.lead_lag_days) if self.lead_lag_days else 1
         lag_norms = np.zeros(len(rows), dtype=np.float32)
         lag_corrs = np.zeros(len(rows), dtype=np.float32)
-        for e, (ri, ci) in enumerate(zip(rows, cols)):
+        for e, (ri, ci) in enumerate(zip(rows, cols, strict=False)):
             a = vals[:, int(ri)]
             b = vals[:, int(ci)]
             L = min(len(a), len(b))

@@ -1,0 +1,17 @@
+{
+  "created_at_utc": "2026-06-22T19:02:06.755939+00:00",
+  "source": "refinitiv.data.get_history",
+  "selected_pit_universe": "data\\raw\\constituents\\sp500_pit_gics_top10_mcap_monthly_20160104_20260622_pit_universe.csv",
+  "start": "2015-01-01",
+  "end": "2026-06-22",
+  "requested_identifiers": 205,
+  "resolved_identifiers_with_rows": 205,
+  "missing_identifiers": [],
+  "rows": 565871,
+  "date_min": "2015-01-02",
+  "date_max": "2026-06-18",
+  "outputs": {
+    "prices": "data\\raw\\market\\sp500_pit_gics_top10_mcap_monthly_20160104_20260622_lseg_20150101_20260622.csv",
+    "coverage": "data\\raw\\market\\sp500_pit_gics_top10_mcap_monthly_20160104_20260622_lseg_20150101_20260622_coverage.csv"
+  }
+}

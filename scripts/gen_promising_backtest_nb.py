@@ -6,7 +6,6 @@ import json
 import textwrap
 from pathlib import Path
 
-
 OUT = Path("notebooks/promising_models_backtest_colab.ipynb")
 
 

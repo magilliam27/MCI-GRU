@@ -5,11 +5,22 @@
 
 ## Quick Commands
 
-```bash
-python -m pytest tests/ -v                         # run all tests
-python run_experiment.py training.num_epochs=2 training.num_models=1 data.source=csv tracking.enabled=false  # smoke run (CSV + no MLflow)
-python paper_trade/scripts/run_nightly.py           # nightly paper-trade pipeline
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/ -v --basetemp .tmp_pytest\pytest  # Windows-preferred full suite
+.\.venv\Scripts\python.exe run_experiment.py training.num_epochs=2 training.num_models=1 data.source=csv tracking.enabled=false  # smoke run (CSV + no MLflow)
+.\.venv\Scripts\python.exe paper_trade/scripts/run_nightly.py  # nightly paper-trade pipeline
 ```
+
+## Default Experiment Recipe
+
+For production-style confirmation notebooks and PIT validation runs, use the
+frozen recipe in `docs/DEFAULT_EXPERIMENT_RECIPE.md`:
+`static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1`.
+It means a 20-model, 100-epoch, patience-15 ensemble; pure IC loss; raw 5-day
+return labels; `selection_metric=val_ic`; shuffled static threshold graph;
+multi-feature edges; `drop_edge_p=0.1`; static weekly momentum; and strict
+current-only global regime features. `FRED_API_KEY` is required unless a smoke
+run explicitly disables global regime.
 
 ## Repository Map
 
@@ -18,6 +29,10 @@ AGENTS.md            ← you are here (start point for all agents)
 docs/
 ├── ARCHITECTURE.md  ← model, pipeline, graph, data flow (READ THIS FIRST)
 ├── CONFIGURATION_GUIDE.md
+├── DEFAULT_EXPERIMENT_RECIPE.md
+├── TESTING_GUIDE.md
+├── agents/          ← issue tracker, triage labels, source-of-truth policy
+├── research/        ← current/archive research evidence lifecycle
 ├── QUICK_REFERENCE.md
 ├── REGIME_DATA_CONTRACT.md
 ├── BACKTEST_FAIRNESS_AUDIT.md
@@ -48,6 +63,9 @@ tests/               ← pytest suite + backtest scripts
 3. **`combined_collate_fn` returns a 9-tuple**: `(time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates, edge_index_sector, edge_weight_sector)`. The first seven entries match the historical contract; the last two are `None` unless `graph.use_sector_relation=true`. `edge_weight` is `(E,)`, `(E, 4)`, or wider when lead-lag / snapshot-age columns are enabled; collate concatenates along dim 0.
 4. **Ensemble averaging**: `train_multiple_models` trains N independent models; prediction = mean.
 5. **Paper-trade inference does not use `GraphBuilder`**: it loads a frozen `graph_data.pt`.
+6. **True PIT masked panels keep breadth**: `data.pit_universe_mode=masked_panel`
+   keeps a fixed PIT union axis and carries daily stock masks; do not replace it
+   with complete-stock filtering or continuous-member/stayer-only filtering.
 
 ## Environment
 
@@ -59,20 +77,23 @@ tests/               ← pytest suite + backtest scripts
 ## How to Work in This Repo
 
 - **Before editing**, read `docs/ARCHITECTURE.md` for the data flow and model structure.
+- **When docs disagree**, current code and the invariants in this file win; see `docs/agents/domain.md`.
+- **For automated Colab work**, default to `chrome:control-chrome` and the runbook in `docs/workflows/COLAB_CHROME_CONTROL_GUIDE.md`; use Playwright MCP only as a documented legacy fallback.
+- **For Colab evidence**, notebook contract tests are not live-run proof; live Colab claims need visible Chrome/Colab execution plus Drive artifacts (heartbeat/results), per `docs/workflows/COLAB_CHROME_CONTROL_GUIDE.md`.
 - **Before translating finance papers into implementation work**, use `skills/research-paper-to-mci-gru/` to produce an MCI-GRU-aware brief and GitHub-ready issue drafts.
 - **Before adding features**, read `mci_gru/features/registry.py` for the plugin pattern.
 - **Before changing the graph**, read `mci_gru/graph/builder.py`, `docs/ARCHITECTURE.md` (Graph section), and `docs/agent_references/cursor/plans/graph_signal_upgrades_c28cf640.plan.md` (audit + roadmap).
 - **Before touching paper_trade/**, understand that it uses frozen checkpoints — do not import `GraphBuilder`.
-- **Run tests** after every change: `python -m pytest tests/ -v`
+- **Run tests** after every change with the repo venv and repo-local pytest temp on Windows: `.\.venv\Scripts\python.exe -m pytest tests/ -v --basetemp .tmp_pytest\pytest`; system Python/profile temp has been unreliable here. See `docs/TESTING_GUIDE.md`.
 - **Config changes** go through Hydra YAML in `configs/` — see `docs/CONFIGURATION_GUIDE.md`.
 
 ## Testing
 
-```bash
-python -m pytest tests/ -v                                    # full suite
-python -m pytest tests/test_dynamic_graph_updates.py -v       # single file
-python -m pytest tests/ -k "test_no_lookahead" -v             # by keyword
-python -m pytest tests/ -m "not slow" -v                      # skip slow tests
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/ -v --basetemp .tmp_pytest\pytest
+.\.venv\Scripts\python.exe -m pytest tests/test_dynamic_graph_updates.py -v --basetemp .tmp_pytest\pytest
+.\.venv\Scripts\python.exe -m pytest tests/ -k "test_no_lookahead" -v --basetemp .tmp_pytest\pytest
+.\.venv\Scripts\python.exe -m pytest tests/ -m "not slow" -v --basetemp .tmp_pytest\pytest
 ```
 
 Tests verify: no-lookahead invariants, dynamic graph wiring, momentum blend modes,
@@ -109,3 +130,4 @@ The file `docs/agent_references/cursor/plans/graph_signal_upgrades_c28cf640.plan
 - `results/`, `outputs/`, `*.pth`, `*.pt` are gitignored — don't reference them as source of truth
 - The `archive/` directory contains legacy code — do not treat as current
 - `seed_results/` and `_uncertain/` are experimental artifacts, not production code
+- Handoffs are operational continuity notes, not research evidence; use `docs/research/README.md` for current/archive evidence status.

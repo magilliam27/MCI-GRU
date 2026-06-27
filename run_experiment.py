@@ -32,6 +32,7 @@ import sys
 from contextlib import nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 import hydra
@@ -118,6 +119,26 @@ def _compute_evaluation_summary(
         "top_k_values": config.evaluation.top_k_values,
         "metrics": metrics,
     }
+
+
+def _select_training_objective_value(
+    selection_metric: str,
+    wf_summaries: list[dict[str, Any]],
+    merged_summary: dict[str, Any] | None,
+) -> float | None:
+    """Return the summary objective matching the configured checkpoint metric."""
+    if selection_metric == "val_loss":
+        key = "mean_best_val_loss"
+    elif selection_metric == "val_rank_ic":
+        key = "mean_best_val_rank_ic"
+    else:
+        key = "mean_best_val_ic"
+
+    if merged_summary is not None:
+        return merged_summary.get(f"{key}_across_windows")
+    if wf_summaries:
+        return wf_summaries[-1].get(key)
+    return None
 
 
 def setup_logging(output_dir: str, experiment_name: str) -> logging.Logger:
@@ -242,10 +263,22 @@ def main(cfg: DictConfig):
             )
             logger.info("=" * 80)
 
+            window_started = perf_counter()
+            timing_summary: dict[str, Any] = {
+                "walkforward_window": wi,
+                "output_path": wpath,
+                "started_at_utc": datetime.now(timezone.utc).isoformat(),
+                "phases": {
+                    "backtest_replay_handoff_seconds": 0.0,
+                },
+            }
+
+            phase_started = perf_counter()
             if config.data.experiment_mode == "index_level":
                 data = prepare_data_index_level(cfg_w, feature_engineer)
             else:
                 data = prepare_data(cfg_w, feature_engineer)
+            timing_summary["phases"]["prepare_data_seconds"] = perf_counter() - phase_started
 
             metadata = {
                 "norm_means": {k: float(v) for k, v in data["norm_means"].items()},
@@ -260,6 +293,8 @@ def main(cfg: DictConfig):
                 "walkforward_window": wi,
                 "graph_static_valid_from": data.get("graph_static_valid_from"),
                 "feature_reference_path": "feature_reference.json",
+                "pit_universe_mode": data.get("pit_universe_mode"),
+                "pit_breadth": data.get("pit_breadth"),
                 **_data_file_fingerprint(cfg_w.data.filename, logger),
             }
             metadata_path = os.path.join(wpath, "run_metadata.json")
@@ -286,6 +321,7 @@ def main(cfg: DictConfig):
 
             logger.info("\nCreating data loaders...")
             dynamic_graph = cfg_w.graph.update_frequency_months > 0
+            phase_started = perf_counter()
             train_loader, val_loader, test_loader = create_data_loaders(
                 stock_features_train=data["stock_features_train"],
                 x_graph_train=data["x_graph_train"],
@@ -309,6 +345,16 @@ def main(cfg: DictConfig):
                 edge_index_sector=data.get("edge_index_sector"),
                 edge_weight_sector=data.get("edge_weight_sector"),
                 use_sector_relation=cfg_w.graph.use_sector_relation,
+                train_stock_masks=data.get("train_tradable_mask"),
+                val_stock_masks=data.get("val_tradable_mask"),
+                test_stock_masks=data.get("test_tradable_mask"),
+                dataloader_num_workers=cfg_w.training.dataloader_num_workers,
+                dataloader_pin_memory=cfg_w.training.dataloader_pin_memory,
+                dataloader_persistent_workers=cfg_w.training.dataloader_persistent_workers,
+                dataloader_prefetch_factor=cfg_w.training.dataloader_prefetch_factor,
+            )
+            timing_summary["phases"]["loader_creation_seconds"] = (
+                perf_counter() - phase_started
             )
 
             num_features = len(data["feature_cols"])
@@ -320,7 +366,7 @@ def main(cfg: DictConfig):
                 "use_sector_relation": cfg_w.graph.use_sector_relation,
             }
 
-            def model_factory():
+            def model_factory(num_features=num_features, model_cfg_dict=model_cfg_dict):
                 return create_model(num_features, model_cfg_dict)
 
             logger.info("\n" + "=" * 80)
@@ -338,6 +384,7 @@ def main(cfg: DictConfig):
                 active_tracking = (
                     window_tracking if window_tracking.enabled else tracking_manager
                 )
+                phase_started = perf_counter()
                 results, avg_predictions = train_multiple_models(
                     model_factory=model_factory,
                     config=cfg_w,
@@ -348,17 +395,26 @@ def main(cfg: DictConfig):
                     test_dates=data["test_dates"],
                     output_path=wpath,
                     tracking_manager=active_tracking,
+                    test_prediction_masks=data.get("test_tradable_mask"),
+                )
+                timing_summary["phases"]["model_training_prediction_export_seconds"] = (
+                    perf_counter() - phase_started
                 )
 
                 best_val_losses = [r.best_val_loss for r in results]
                 best_val_ics = [r.best_val_ic for r in results]
+                best_val_rank_ics = [r.best_val_rank_ic for r in results]
                 training_summary = {
                     "experiment_name": cfg_w.experiment_name,
                     "models_trained": len(results),
                     "best_val_losses": best_val_losses,
                     "best_val_ics": best_val_ics,
+                    "best_val_rank_ics": best_val_rank_ics,
                     "mean_best_val_loss": float(np.mean(best_val_losses)) if best_val_losses else None,
                     "mean_best_val_ic": float(np.mean(best_val_ics)) if best_val_ics else None,
+                    "mean_best_val_rank_ic": (
+                        float(np.mean(best_val_rank_ics)) if best_val_rank_ics else None
+                    ),
                     "walkforward_window": wi,
                 }
                 training_summary_path = os.path.join(wpath, "training_summary.json")
@@ -366,10 +422,14 @@ def main(cfg: DictConfig):
                     json.dump(training_summary, f, indent=2)
                 logger.info(f"Training summary saved to: {training_summary_path}")
 
+                phase_started = perf_counter()
                 evaluation_summary = _compute_evaluation_summary(
                     avg_predictions,
                     data["test_labels"],
                     cfg_w,
+                )
+                timing_summary["phases"]["evaluation_summary_seconds"] = (
+                    perf_counter() - phase_started
                 )
                 evaluation_summary_path = os.path.join(wpath, "evaluation_summary.json")
                 with open(evaluation_summary_path, "w") as f:
@@ -384,6 +444,9 @@ def main(cfg: DictConfig):
                             "models_trained": len(results),
                             "mean_best_val_loss": training_summary["mean_best_val_loss"],
                             "mean_best_val_ic": training_summary["mean_best_val_ic"],
+                            "mean_best_val_rank_ic": training_summary[
+                                "mean_best_val_rank_ic"
+                            ],
                         },
                         prefix="training.",
                     )
@@ -391,6 +454,7 @@ def main(cfg: DictConfig):
                         evaluation_summary["metrics"],
                         prefix="evaluation.",
                     )
+                    artifact_sync_started = perf_counter()
                     if cfg_w.tracking.log_artifacts:
                         for artifact in [
                             metadata_path,
@@ -408,6 +472,28 @@ def main(cfg: DictConfig):
                             Path(wpath) / "averaged_predictions",
                             artifact_path="predictions/averaged",
                         )
+                    timing_summary["phases"]["artifact_sync_seconds"] = (
+                        perf_counter() - artifact_sync_started
+                    )
+                else:
+                    timing_summary["phases"]["artifact_sync_seconds"] = 0.0
+
+                timing_summary["completed_at_utc"] = datetime.now(timezone.utc).isoformat()
+                timing_summary["elapsed_seconds"] = perf_counter() - window_started
+                timing_summary_path = os.path.join(wpath, "timing_summary.json")
+                with open(timing_summary_path, "w") as f:
+                    json.dump(timing_summary, f, indent=2)
+                logger.info(f"Timing summary saved to: {timing_summary_path}")
+
+                if (
+                    active_tracking.enabled
+                    and cfg_w.tracking.log_artifacts
+                    and os.path.isfile(timing_summary_path)
+                ):
+                    active_tracking.log_artifact(
+                        timing_summary_path,
+                        artifact_path="run_artifacts",
+                    )
 
         if use_wf_subdir and wf_summaries:
             merged = merge_walkforward_summary(wf_summaries)
@@ -415,9 +501,17 @@ def main(cfg: DictConfig):
             with open(merged_path, "w") as f:
                 json.dump(merged, f, indent=2)
             logger.info("Walk-forward aggregate summary: %s", merged_path)
-            objective_value = merged.get("mean_best_val_ic_across_windows")
+            objective_value = _select_training_objective_value(
+                config.training.selection_metric,
+                wf_summaries,
+                merged,
+            )
         elif wf_summaries:
-            objective_value = wf_summaries[-1].get("mean_best_val_ic")
+            objective_value = _select_training_objective_value(
+                config.training.selection_metric,
+                wf_summaries,
+                None,
+            )
 
         logger.info("\n" + "=" * 80)
         logger.info("Experiment Complete")

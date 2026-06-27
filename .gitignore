@@ -5,7 +5,14 @@ venv*/
 # Python
 __pycache__/
 .pytest_cache/
+.tmp_pytest/
+.tmp_pytest_cache/
+/tmp/
+.codex-docs-cache/
+.codex_tmp/
 .codex-tmp/
+.codex/worktrees/
+.playwright-mcp/
 *.py[cod]
 *$py.class
 *.so
@@ -31,6 +38,11 @@ multirun/
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb_checkpoints
+
+# Local Colab/browser screenshots
+/colab*.png
+/oauth*.png
+/portfolio_ic_*.png
 
 # Data files (keep structure, ignore large files)
 *.parquet

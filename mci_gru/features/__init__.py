@@ -28,6 +28,8 @@ from mci_gru.features.registry import (
 from mci_gru.features.volatility import (
     add_vix_features,
     add_volatility_features,
+    add_volatility_targeting_features,
+    get_volatility_targeting_features,
 )
 
 __all__ = [
@@ -36,7 +38,9 @@ __all__ = [
     "add_momentum_continuous",
     "add_momentum_buffered",
     "add_volatility_features",
+    "add_volatility_targeting_features",
     "add_vix_features",
+    "get_volatility_targeting_features",
     "add_regime_features",
     "REGIME_FEATURES",
     "FeatureEngineer",

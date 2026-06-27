@@ -36,6 +36,10 @@ class DataConfig:
             (train / val / test) and intersect; mitigates full-calendar survivorship bias.
         use_pit_universe: If True, apply ``pit_universe_csv`` row validity when set.
         pit_universe_csv: Optional CSV with kdcode, valid_from, valid_to for PIT filtering.
+        pit_universe_mode: ``row_filter`` keeps the legacy row-filter flow;
+            ``masked_panel`` keeps a fixed PIT union axis and uses daily masks.
+        pit_min_scoreable_stocks: Minimum expected PIT-tradable candidates per normal date.
+        pit_breadth_policy: ``error``, ``warn``, or ``off`` when candidate breadth is low.
     """
 
     universe: str = "sp500"
@@ -55,6 +59,9 @@ class DataConfig:
     filter_stocks_per_split: bool = False
     use_pit_universe: bool = False
     pit_universe_csv: str | None = None
+    pit_universe_mode: str = "row_filter"
+    pit_min_scoreable_stocks: int = 450
+    pit_breadth_policy: str = "error"
 
     def __post_init__(self):
         if self.experiment_mode not in ("stock_level", "index_level"):
@@ -76,6 +83,18 @@ class DataConfig:
             raise ValueError(
                 f"normalisation must be 'zscore' or 'rank_gauss', got {self.normalisation!r}"
             )
+        if self.pit_universe_mode not in ("row_filter", "masked_panel"):
+            raise ValueError(
+                "pit_universe_mode must be 'row_filter' or 'masked_panel', "
+                f"got {self.pit_universe_mode!r}"
+            )
+        if self.pit_breadth_policy not in ("error", "warn", "off"):
+            raise ValueError(
+                "pit_breadth_policy must be 'error', 'warn', or 'off', "
+                f"got {self.pit_breadth_policy!r}"
+            )
+        if self.pit_min_scoreable_stocks < 0:
+            raise ValueError("pit_min_scoreable_stocks must be >= 0")
 
 
 @dataclass
@@ -98,6 +117,12 @@ class FeatureConfig:
         momentum_buffer_low: Low buffer percentile for buffered encoding
         momentum_buffer_high: High buffer percentile for buffered encoding
         include_volatility: Whether to add volatility features
+        include_volatility_targeting: Whether to add Harvey-style volatility-targeting features
+        volatility_targeting_half_lives: EWM volatility half-lives for volatility-targeting features
+        volatility_target_vol: Annualized volatility target used for target-vol scale proxies
+        volatility_target_scale_clip: Lower/upper bounds for target-vol scale multiplier proxies
+        volatility_targeting_interaction_return_window: Trailing return window for momentum-vol interaction
+        volatility_targeting_components: Vol-targeting component names to include
         include_vix: Whether to add VIX features
         include_credit_spread: Whether to add credit spread features (IG/HY from FRED)
         include_global_regime: Whether to add global scalar regime features
@@ -140,6 +165,14 @@ class FeatureConfig:
     momentum_buffer_low: float = 0.1
     momentum_buffer_high: float = 0.9
     include_volatility: bool = False
+    include_volatility_targeting: bool = False
+    volatility_targeting_half_lives: list[int] = field(default_factory=lambda: [20, 60, 90])
+    volatility_target_vol: float = 0.10
+    volatility_target_scale_clip: list[float] = field(default_factory=lambda: [0.25, 4.0])
+    volatility_targeting_interaction_return_window: int = 21
+    volatility_targeting_components: list[str] = field(
+        default_factory=lambda: ["ewm_vol", "scale", "dynamics", "scaled_return"]
+    )
     include_vix: bool = False
     include_credit_spread: bool = False
     include_global_regime: bool = False
@@ -191,6 +224,28 @@ class FeatureConfig:
             raise ValueError("momentum_dynamic_min_history must be > 0")
         if self.momentum_dynamic_min_state_observations <= 0:
             raise ValueError("momentum_dynamic_min_state_observations must be > 0")
+        if len(self.volatility_targeting_half_lives) < 2:
+            raise ValueError("volatility_targeting_half_lives must contain at least two values")
+        if any(half_life <= 0 for half_life in self.volatility_targeting_half_lives):
+            raise ValueError("volatility_targeting_half_lives must contain positive integers")
+        if len(set(self.volatility_targeting_half_lives)) != len(
+            self.volatility_targeting_half_lives
+        ):
+            raise ValueError("volatility_targeting_half_lives must not contain duplicates")
+        if self.volatility_target_vol <= 0:
+            raise ValueError("volatility_target_vol must be > 0")
+        if len(self.volatility_target_scale_clip) != 2:
+            raise ValueError("volatility_target_scale_clip must contain two values")
+        clip_low, clip_high = self.volatility_target_scale_clip
+        if clip_low <= 0 or clip_high <= clip_low:
+            raise ValueError("volatility_target_scale_clip must be positive and increasing")
+        if self.volatility_targeting_interaction_return_window <= 0:
+            raise ValueError("volatility_targeting_interaction_return_window must be > 0")
+        from mci_gru.features.volatility import resolve_volatility_targeting_components
+
+        self.volatility_targeting_components = resolve_volatility_targeting_components(
+            self.volatility_targeting_components
+        )
         if not (0 < self.regime_similarity_quantile < 0.5):
             raise ValueError("regime_similarity_quantile must be in (0, 0.5)")
         if self.regime_change_months <= 0:
@@ -438,8 +493,13 @@ class TrainingConfig:
         early_stopping_patience: Epochs to wait before early stopping
         weight_decay: L2 regularization weight
         gradient_clip: Maximum gradient norm (0 = no clipping)
-        loss_type: Loss function (mse, ic, combined)
+        loss_type: Loss function (mse, ic, combined, portfolio_ic, lambdarank_ic)
         ic_loss_alpha: Weight for IC component when loss_type=combined (0 to 1)
+        portfolio_ic_top_k: Soft top-k breadth when loss_type=portfolio_ic
+        portfolio_ic_weight: Weight for the soft top-k utility term
+        portfolio_ic_temperature: Sigmoid temperature for soft top-k inclusion
+        lambdarank_ic_max_pairs_per_day: Deterministic pair cap per row for lambdarank_ic
+        lambdarank_ic_temperature: Logistic pairwise temperature for lambdarank_ic
         label_type: Label representation -- "returns" for raw forward returns,
                      "rank" for cross-sectional rank percentiles per day.
                      Rank labels use only same-day information so they
@@ -447,10 +507,15 @@ class TrainingConfig:
         warmup_steps: Linear LR warmup steps (optimizer steps) before cosine decay
         lr_scheduler: "cosine" (warmup + cosine) or "none" (constant LR)
         use_amp: Enable CUDA autocast + GradScaler when device is CUDA
-        selection_metric: "val_ic" (maximize) or "val_loss" (minimize) for early stopping / checkpointing
+        selection_metric: "val_ic", "val_rank_ic", or "val_loss" for early stopping / checkpointing
         shuffle_train: Optional override for training DataLoader shuffling. ``None`` keeps
                        the historical behavior: shuffled for static graphs, sequential for
                        dynamic graphs.
+        dataloader_num_workers: Number of worker processes for PyTorch DataLoader.
+        dataloader_pin_memory: Pin CPU memory before CUDA transfer when using DataLoader.
+        dataloader_persistent_workers: Keep worker processes alive between epochs.
+        dataloader_prefetch_factor: Number of batches loaded in advance by each worker.
+        profile_batches: Number of first train batches to profile per training run (0 disables).
         walkforward: Optional rolling / expanding window orchestration (see :class:`WalkforwardConfig`).
     """
 
@@ -463,18 +528,28 @@ class TrainingConfig:
     gradient_clip: float = 1.0
     loss_type: str = "combined"
     ic_loss_alpha: float = 0.5
+    portfolio_ic_top_k: int = 10
+    portfolio_ic_weight: float = 0.25
+    portfolio_ic_temperature: float = 0.25
+    lambdarank_ic_max_pairs_per_day: int = 4096
+    lambdarank_ic_temperature: float = 1.0
     label_type: str = "returns"
     warmup_steps: int = 1000
     lr_scheduler: str = "cosine"
     use_amp: bool = True
     selection_metric: str = "val_ic"
     shuffle_train: bool | None = None
+    dataloader_num_workers: int = 0
+    dataloader_pin_memory: bool = False
+    dataloader_persistent_workers: bool = False
+    dataloader_prefetch_factor: int | None = None
+    profile_batches: int = 0
     walkforward: WalkforwardConfig = field(default_factory=WalkforwardConfig)
 
-    _VALID_LOSS_TYPES = ("mse", "ic", "combined")
+    _VALID_LOSS_TYPES = ("mse", "ic", "combined", "portfolio_ic", "lambdarank_ic")
     _VALID_LABEL_TYPES = ("returns", "rank")
     _VALID_LR_SCHEDULERS = ("none", "cosine")
-    _VALID_SELECTION_METRICS = ("val_loss", "val_ic")
+    _VALID_SELECTION_METRICS = ("val_loss", "val_ic", "val_rank_ic")
 
     def __post_init__(self):
         wf = self.walkforward
@@ -490,12 +565,41 @@ class TrainingConfig:
             raise ValueError("num_epochs must be > 0")
         if self.num_models <= 0:
             raise ValueError("num_models must be > 0")
+        if self.dataloader_num_workers < 0:
+            raise ValueError("dataloader_num_workers must be >= 0")
+        if self.dataloader_prefetch_factor is not None and self.dataloader_prefetch_factor <= 0:
+            raise ValueError("dataloader_prefetch_factor must be > 0 when set")
+        if self.dataloader_num_workers == 0 and self.dataloader_persistent_workers:
+            raise ValueError("dataloader_persistent_workers requires dataloader_num_workers > 0")
+        if self.dataloader_num_workers == 0 and self.dataloader_prefetch_factor is not None:
+            raise ValueError("dataloader_prefetch_factor requires dataloader_num_workers > 0")
+        if self.profile_batches < 0:
+            raise ValueError("profile_batches must be >= 0")
         if self.loss_type not in self._VALID_LOSS_TYPES:
             raise ValueError(
                 f"loss_type must be one of {self._VALID_LOSS_TYPES}, got {self.loss_type!r}"
             )
         if not 0 <= self.ic_loss_alpha <= 1:
             raise ValueError(f"ic_loss_alpha must be in [0, 1], got {self.ic_loss_alpha}")
+        if self.portfolio_ic_top_k <= 0:
+            raise ValueError(f"portfolio_ic_top_k must be > 0, got {self.portfolio_ic_top_k}")
+        if not 0 <= self.portfolio_ic_weight <= 1:
+            raise ValueError(
+                f"portfolio_ic_weight must be in [0, 1], got {self.portfolio_ic_weight}"
+            )
+        if self.portfolio_ic_temperature <= 0:
+            raise ValueError(
+                f"portfolio_ic_temperature must be > 0, got {self.portfolio_ic_temperature}"
+            )
+        if self.lambdarank_ic_max_pairs_per_day <= 0:
+            raise ValueError(
+                "lambdarank_ic_max_pairs_per_day must be > 0, "
+                f"got {self.lambdarank_ic_max_pairs_per_day}"
+            )
+        if self.lambdarank_ic_temperature <= 0:
+            raise ValueError(
+                f"lambdarank_ic_temperature must be > 0, got {self.lambdarank_ic_temperature}"
+            )
         if self.label_type not in self._VALID_LABEL_TYPES:
             raise ValueError(
                 f"label_type must be one of {self._VALID_LABEL_TYPES}, got {self.label_type!r}"
@@ -670,6 +774,20 @@ class ExperimentConfig:
             "features.include_credit_spread": self.features.include_credit_spread,
             "features.include_global_regime": self.features.include_global_regime,
             "features.include_volatility": self.features.include_volatility,
+            "features.include_volatility_targeting": self.features.include_volatility_targeting,
+            "features.volatility_targeting_half_lives": str(
+                self.features.volatility_targeting_half_lives
+            ),
+            "features.volatility_target_vol": self.features.volatility_target_vol,
+            "features.volatility_target_scale_clip": str(
+                self.features.volatility_target_scale_clip
+            ),
+            "features.volatility_targeting_interaction_return_window": (
+                self.features.volatility_targeting_interaction_return_window
+            ),
+            "features.volatility_targeting_components": (
+                str(self.features.volatility_targeting_components)
+            ),
             "features.regime_include_subsequent_returns": self.features.regime_include_subsequent_returns,
             "features.regime_subsequent_return_horizons": str(
                 self.features.regime_subsequent_return_horizons
@@ -691,7 +809,21 @@ class ExperimentConfig:
             "training.num_models": self.training.num_models,
             "training.loss_type": self.training.loss_type,
             "training.ic_loss_alpha": self.training.ic_loss_alpha,
+            "training.portfolio_ic_top_k": self.training.portfolio_ic_top_k,
+            "training.portfolio_ic_weight": self.training.portfolio_ic_weight,
+            "training.portfolio_ic_temperature": self.training.portfolio_ic_temperature,
+            "training.lambdarank_ic_max_pairs_per_day": (
+                self.training.lambdarank_ic_max_pairs_per_day
+            ),
+            "training.lambdarank_ic_temperature": self.training.lambdarank_ic_temperature,
             "training.shuffle_train": self.training.shuffle_train,
+            "training.dataloader_num_workers": self.training.dataloader_num_workers,
+            "training.dataloader_pin_memory": self.training.dataloader_pin_memory,
+            "training.dataloader_persistent_workers": (
+                self.training.dataloader_persistent_workers
+            ),
+            "training.dataloader_prefetch_factor": self.training.dataloader_prefetch_factor,
+            "training.profile_batches": self.training.profile_batches,
             # Evaluation
             "evaluation.top_k_values": str(self.evaluation.top_k_values),
             "evaluation.bootstrap_enabled": self.evaluation.bootstrap_enabled,

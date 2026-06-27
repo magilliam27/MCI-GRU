@@ -1,11 +1,11 @@
 ---
 name: research-paper-to-mci-gru
-description: Use when translating an academic finance paper, local PDF, extracted paper text, factor paper, anomaly paper, asset-pricing paper, portfolio paper, or risk-premium paper into an MCI-GRU-specific implementation brief and GitHub-ready issue drafts.
+description: Use when translating an academic finance paper, local PDF, extracted paper text, factor paper, anomaly paper, asset-pricing paper, portfolio paper, or risk-premium paper into an MCI-GRU-specific implementation brief, tracked evaluation document, and GitHub-ready issue drafts.
 ---
 
 # Research Paper to MCI-GRU
 
-Translate finance research into an MCI-GRU-aware Research-to-Implementation Brief. Produce a brief plus issue drafts; do not implement code or create GitHub issues unless the user explicitly asks after reviewing the drafts.
+Translate finance research into an MCI-GRU-aware Research-to-Implementation Brief. Persist the findings as a tracked evaluation document plus issue drafts; do not implement code or create GitHub issues unless the user explicitly asks after reviewing the drafts.
 
 ## Intake
 
@@ -34,7 +34,8 @@ Read `references/mci-gru-surfaces.md` for the surface taxonomy and invariant che
 3. Rank MCI-GRU landing zones. For each mechanism, name primary, secondary, and rejected surfaces with repo evidence as `path: concept/function/config behavior`.
 4. Give a Feasibility Opinion for every proposed slice: effort (`easy win`, `medium`, `long-term`), confidence (`high`, `medium`, `low`), one-sentence rationale, and main blocker (`data`, `code complexity`, `no-lookahead risk`, `validation cost`, or `production readiness`).
 5. Draft at most four GitHub-ready Implementation Slices by default. Use categories from the taxonomy in `references/mci-gru-surfaces.md`.
-6. Emit ADR candidates only when the choice is hard to reverse, surprising without context, and has real alternatives with trade-offs.
+6. Write the brief to `docs/research-paper-evaluations/<YYYY-MM-DD>-<paper-slug>.md`. Create the directory if needed. If a record for the same paper already exists, update it only when the user is revising that evaluation; otherwise create a new dated record.
+7. Emit ADR candidates only when the choice is hard to reverse, surprising without context, and has real alternatives with trade-offs.
 
 ## Brief Format
 
@@ -55,6 +56,22 @@ Use exactly these top-level sections:
 ## Open Questions
 ```
 
+Prepend the persisted document with YAML frontmatter so evaluated ideas are easy to grep:
+
+```yaml
+---
+paper_title: "<paper title>"
+source: "<local path, URL, or pasted text>"
+evaluated_on: "YYYY-MM-DD"
+status: "evaluated"
+decision: "pursue | defer | reject | blocked"
+primary_landing_zone: "<Feature | Graph | Model | Training/evaluation | Config/experiment | Notebook | Paper-trade | ADR | Data>"
+data_gate: "clear | partial | blocked"
+recommended_next_action: "<one short sentence>"
+github_issue_urls: []
+---
+```
+
 Each GitHub-ready slice must include:
 
 - Category and title
@@ -68,6 +85,8 @@ Each GitHub-ready slice must include:
 ## Guardrails
 
 - Draft issues by default; create issues only on explicit user request.
+- Always persist the evaluation document before claiming the paper has been evaluated. In the final response, link to the document and summarize only the decision, recommended next action, and any blocked data.
+- When GitHub issues are later created from the drafts, update the evaluation document's `github_issue_urls` list and the relevant slice text with the issue links.
 - Block missing-data ideas rather than inventing proxies.
 - Treat paper-trade as rejected or long-term until offline validation exists.
 - Do not treat research artifacts as source of truth when they conflict with no-lookahead, label embargo, dynamic graph timing, or backtest fairness.

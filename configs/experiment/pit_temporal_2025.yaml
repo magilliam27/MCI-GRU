@@ -1,0 +1,21 @@
+# @package _global_
+# True rolling PIT S&P 500 panel: train 2019-2023, val 2024, test 2025.
+
+experiment_name: pit_true_rolling_2025
+
+data:
+  universe: sp500
+  source: csv
+  filename: data/raw/market/sp500_2019_universe_data_through_2026.csv
+  train_start: "2019-01-01"
+  train_end: "2023-12-31"
+  val_start: "2024-01-22"
+  val_end: "2024-12-31"
+  test_start: "2025-01-22"
+  test_end: "2025-12-31"
+  filter_stocks_per_split: false
+  use_pit_universe: true
+  pit_universe_csv: data/raw/constituents/sp500_pit_joiner_leaver_20160101_20260513_pit_universe.csv
+  pit_universe_mode: masked_panel
+  pit_min_scoreable_stocks: 450
+  pit_breadth_policy: error

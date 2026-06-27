@@ -7,7 +7,13 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 
-from mci_gru.config import DataConfig, ExperimentConfig, ModelConfig, TrainingConfig, WalkforwardConfig
+from mci_gru.config import (
+    DataConfig,
+    ExperimentConfig,
+    ModelConfig,
+    TrainingConfig,
+    WalkforwardConfig,
+)
 from mci_gru.data.data_manager import CombinedDataset, combined_collate_fn
 from mci_gru.graph.builder import GraphBuilder, GraphSchedule
 from mci_gru.models import create_model
