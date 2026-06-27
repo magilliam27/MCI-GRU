@@ -99,7 +99,9 @@ def run_local_cockpit_refresh(
         blocked_workstreams=[row for row in workstreams if row.status == WorkstreamStatus.BLOCKED],
         local_only_work=[row for row in workstreams if row.status == WorkstreamStatus.LOCAL_ONLY],
         stale_or_archive_candidates=[
-            row for row in workstreams if row.status in {WorkstreamStatus.PARKED, WorkstreamStatus.STALE}
+            row
+            for row in workstreams
+            if row.status in {WorkstreamStatus.PARKED, WorkstreamStatus.STALE}
         ],
         github_actions_skipped=[
             GitHubAction(
@@ -243,7 +245,9 @@ def _commit_synced_cockpit_packet(
     if not runner(["git", "status", "--short", "--", packet_path]).strip():
         return
     runner(["git", "add", packet_path])
-    runner(["git", "commit", "-m", f"Record cockpit GitHub sync evidence for {run_date.isoformat()}"])
+    runner(
+        ["git", "commit", "-m", f"Record cockpit GitHub sync evidence for {run_date.isoformat()}"]
+    )
     runner(["git", "push", "-u", "origin", github.branch])
 
 
