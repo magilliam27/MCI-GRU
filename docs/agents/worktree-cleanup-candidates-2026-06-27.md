@@ -55,7 +55,7 @@ provenance. They should not be removed without a specific keep/toss decision.
 
 | Surface | State | Evidence | Decision needed |
 | --- | --- | --- | --- |
-| `C:/Users/magil/MCI-GRU` dirty files | Active top-10 checkout | `AGENTS.md` adds the origin-main branch rule; untracked `MCI_GRU_PROGRAM_MAP_2026-06-19.md`; untracked `MCI_GRU_RESEARCH_OPPORTUNITY_SCAN_2026-06-19.md`; untracked pytest review cost-rank-gate summary. | Preserve these on a branch, move them to a handoff/report branch, or discard the scratch output. |
+| `C:/Users/magil/MCI-GRU` dirty files | Active top-10 checkout | `AGENTS.md` adds the origin-main branch rule; untracked `docs/agents/agentic-engineering-process-plan.md`; untracked `MCI_GRU_PROGRAM_MAP_2026-06-19.md`; untracked `MCI_GRU_RESEARCH_OPPORTUNITY_SCAN_2026-06-19.md`; untracked pytest review cost-rank-gate summary. | Preserve these on a branch, move them to a handoff/report branch, or discard the scratch output. |
 | `C:/Users/magil/.codex/worktrees/81be/MCI-GRU` | Dirty detached HEAD | Untracked `docs/handoffs/2026-06-21-loss-function-research-map.md`; detached at `0d6b7c4`. | Preserve the handoff, or discard the worktree. |
 | `C:/Users/magil/.codex/worktrees/8ab5/MCI-GRU` | Dirty detached HEAD | Untracked `docs/handoffs/2026-06-21-lambdarankic-pair-cap-investigation.md`; detached at `0d6b7c4`. | Preserve the handoff, or discard the worktree. |
 | `C:/Users/magil/.codex/worktrees/8c5d/MCI-GRU` | Dirty detached HEAD | Untracked research docs and `scripts/data/export_sp500_gics_top10_mcap.py`; detached at `0d6b7c4`. | Preserve the research/export artifacts, or discard the worktree. |
