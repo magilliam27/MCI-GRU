@@ -17,6 +17,12 @@ which need later archive review.
 
 ## Current Evidence Map
 
+Current branch-local research maps:
+
+| Report | Status |
+| --- | --- |
+| `docs/research/current/MCI_GRU_TOP_UNIVERSITY_RESEARCH_SCAN_2026-06-21.md` | Active June 21 research map and source of truth for evidence-harness wave ordering. |
+
 Keep these root-level reports easy to find until a follow-up pass moves or
 reclassifies them:
 

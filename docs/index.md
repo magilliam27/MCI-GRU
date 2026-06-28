@@ -23,12 +23,14 @@
 | [OUTPUT_MANAGEMENT.md](OUTPUT_MANAGEMENT.md) | Output directory structure, naming, cleanup, and persistence. |
 | [MLFLOW_TRACKING.md](MLFLOW_TRACKING.md) | MLflow experiment tracking setup and usage. |
 | [TSFM_PREDICTION_REPORT.md](TSFM_PREDICTION_REPORT.md) | Saved-prediction R2, sign, IC, and yearly decay report method. |
+| [evaluation/EVIDENCE_HARNESS.md](evaluation/EVIDENCE_HARNESS.md) | Additive run manifests, trial ledgers, saved-prediction audits, PIT availability reports, and capacity replay. |
 
 ## Research Evidence
 
 | Document | Purpose |
 | --- | --- |
 | [research/README.md](research/README.md) | Current/archive research evidence lifecycle and report status map. |
+| [research/current/MCI_GRU_TOP_UNIVERSITY_RESEARCH_SCAN_2026-06-21.md](research/current/MCI_GRU_TOP_UNIVERSITY_RESEARCH_SCAN_2026-06-21.md) | Active June 21 research map for evidence-harness wave ordering and guarded opportunities. |
 
 Keep detailed current and superseded evidence lists in
 [research/README.md](research/README.md), not in this top-level index.
