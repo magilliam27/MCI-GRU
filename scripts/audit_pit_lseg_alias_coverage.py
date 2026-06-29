@@ -82,9 +82,7 @@ def find_suffixed_candidates(original: str, pit_universe: pd.DataFrame) -> list[
     intervals = normalise_pit_intervals(pit_universe)
     prefix = f"{original}^"
     values = {
-        str(kdcode)
-        for kdcode in intervals["kdcode"].astype(str)
-        if str(kdcode).startswith(prefix)
+        str(kdcode) for kdcode in intervals["kdcode"].astype(str) if str(kdcode).startswith(prefix)
     }
     return sorted(values)
 
@@ -196,7 +194,9 @@ def run_alias_coverage_audit(
     candidates_by_original = {
         original: find_suffixed_candidates(original, intervals) for original in unresolved_originals
     }
-    candidate_kdcodes = sorted({kdcode for values in candidates_by_original.values() for kdcode in values})
+    candidate_kdcodes = sorted(
+        {kdcode for values in candidates_by_original.values() for kdcode in values}
+    )
     tradable_dates, loss_dates = _scoreable_dates_by_candidate(
         market,
         intervals,
@@ -330,7 +330,9 @@ def run_alias_coverage_audit(
         )
     daily_impact = pd.DataFrame(daily_rows)
 
-    found_rows = candidates[candidates["candidate_found"].map(bool)] if not candidates.empty else candidates
+    found_rows = (
+        candidates[candidates["candidate_found"].map(bool)] if not candidates.empty else candidates
+    )
     found_market_rows = (
         found_rows[found_rows["has_market_rows"].map(bool)] if not found_rows.empty else found_rows
     )
@@ -351,13 +353,13 @@ def run_alias_coverage_audit(
             )
         ),
         "candidate_rows": int(len(found_rows)),
-        "distinct_candidates": int(found_rows["candidate"].nunique()) if not found_rows.empty else 0,
+        "distinct_candidates": int(found_rows["candidate"].nunique())
+        if not found_rows.empty
+        else 0,
         "candidates_with_market_rows": int(len(found_market_rows)),
         "original_active_member_days": int(daily_impact["original_active_count"].sum()),
         "candidate_covered_active_days": int(daily_impact["covered_by_candidate_count"].sum()),
-        "candidate_scoreable_active_days": int(
-            daily_impact["scoreable_by_candidate_count"].sum()
-        ),
+        "candidate_scoreable_active_days": int(daily_impact["scoreable_by_candidate_count"].sum()),
         "uncovered_active_member_days": int(daily_impact["uncovered_active_count"].sum()),
         "unscoreable_active_member_days": int(daily_impact["unscoreable_active_count"].sum()),
         "max_daily_original_active_count": int(daily_impact["original_active_count"].max())
@@ -415,7 +417,9 @@ def _yearly_impact(daily_impact: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def render_markdown(result: AliasCoverageAudit, title: str = "PIT LSEG Alias Coverage Audit") -> str:
+def render_markdown(
+    result: AliasCoverageAudit, title: str = "PIT LSEG Alias Coverage Audit"
+) -> str:
     """Render a compact Markdown audit artifact."""
     summary_rows = pd.DataFrame(
         [{"metric": key, "value": value} for key, value in result.summary.items()]
@@ -443,45 +447,48 @@ def render_markdown(result: AliasCoverageAudit, title: str = "PIT LSEG Alias Cov
     if len(peak_daily) > 40:
         peak_daily = pd.concat([peak_daily.head(20), peak_daily.tail(20)], ignore_index=True)
 
-    return "\n\n".join(
-        [
-            f"# {title}",
-            "This audit checks whether unresolved original LSEG identifiers have suffixed "
-            "historical RIC candidates in the PIT universe and market rows in the PIT-union "
-            "market panel.",
-            "## Summary",
-            _markdown_table(summary_rows, ["metric", "value"]),
-            "## Candidate Coverage",
-            _markdown_table(result.candidates, candidate_columns),
-            "## Validation Breadth Impact By Year",
-            _markdown_table(
-                yearly,
-                [
-                    "year",
-                    "original_active_member_days",
-                    "candidate_covered_active_days",
-                    "candidate_scoreable_active_days",
-                    "uncovered_active_member_days",
-                    "unscoreable_active_member_days",
-                ],
-            ),
-            "## Daily Impact Rows",
-            "Rows are shown for dates with non-zero unresolved-original activity. "
-            "For long outputs this table shows the first and last 20 such dates; use the "
-            "companion daily CSV for the full daily series.",
-            _markdown_table(
-                peak_daily,
-                [
-                    "date",
-                    "original_active_count",
-                    "covered_by_candidate_count",
-                    "scoreable_by_candidate_count",
-                    "uncovered_active_count",
-                    "unscoreable_active_count",
-                ],
-            ),
-        ]
-    ) + "\n"
+    return (
+        "\n\n".join(
+            [
+                f"# {title}",
+                "This audit checks whether unresolved original LSEG identifiers have suffixed "
+                "historical RIC candidates in the PIT universe and market rows in the PIT-union "
+                "market panel.",
+                "## Summary",
+                _markdown_table(summary_rows, ["metric", "value"]),
+                "## Candidate Coverage",
+                _markdown_table(result.candidates, candidate_columns),
+                "## Validation Breadth Impact By Year",
+                _markdown_table(
+                    yearly,
+                    [
+                        "year",
+                        "original_active_member_days",
+                        "candidate_covered_active_days",
+                        "candidate_scoreable_active_days",
+                        "uncovered_active_member_days",
+                        "unscoreable_active_member_days",
+                    ],
+                ),
+                "## Daily Impact Rows",
+                "Rows are shown for dates with non-zero unresolved-original activity. "
+                "For long outputs this table shows the first and last 20 such dates; use the "
+                "companion daily CSV for the full daily series.",
+                _markdown_table(
+                    peak_daily,
+                    [
+                        "date",
+                        "original_active_count",
+                        "covered_by_candidate_count",
+                        "scoreable_by_candidate_count",
+                        "uncovered_active_count",
+                        "unscoreable_active_count",
+                    ],
+                ),
+            ]
+        )
+        + "\n"
+    )
 
 
 def write_audit_outputs(
@@ -532,7 +539,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    unresolved = args.unresolved if args.unresolved is not None else load_unresolved_originals(args.meta_json)
+    unresolved = (
+        args.unresolved
+        if args.unresolved is not None
+        else load_unresolved_originals(args.meta_json)
+    )
     output_format = args.output_format
     if output_format is None:
         output_format = "csv" if args.output.suffix.lower() == ".csv" else "markdown"

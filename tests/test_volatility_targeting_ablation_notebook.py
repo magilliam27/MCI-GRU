@@ -55,9 +55,9 @@ def test_issue8_ablation_notebook_uses_current_pit_recipe_and_g4_preflight() -> 
         "G4/L4-class Colab runtime, not T4/CPU",
         "ALLOWED_GPU_MARKERS = (",
         "STRICT_GPU_MARKERS: list[str] = []",
-        "GPU_UTIL_PATH = RUN_ROOT / \"gpu_util.csv\"",
+        'GPU_UTIL_PATH = RUN_ROOT / "gpu_util.csv"',
         "scripts/monitor_gpu_util.py",
-        "BRANCH = \"codex/colab-gpu-utilization-hardening-20260620\"",
+        'BRANCH = "codex/colab-gpu-utilization-hardening-20260620"',
         "FRED_API_KEY loaded from Colab Secrets.",
         "features=with_momentum",
         "features.include_global_regime=true",
@@ -85,7 +85,7 @@ def test_issue8_ablation_notebook_runs_cost_rank_gate_backtests_and_writes_delta
     generator = GENERATOR_PATH.read_text(encoding="utf-8")
 
     required_tokens = [
-        "BACKTEST_SUFFIX = \"_pit_daily_tc_rank_gate\"",
+        'BACKTEST_SUFFIX = "_pit_daily_tc_rank_gate"',
         "SPREAD_BPS = 10.0",
         "SLIPPAGE_BPS = 5.0",
         "MIN_RANK_DROP = 30",

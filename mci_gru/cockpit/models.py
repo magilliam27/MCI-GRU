@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import StrEnum
 from typing import TYPE_CHECKING
+
+from mci_gru.cockpit._compat import StrEnum
 
 if TYPE_CHECKING:
     from datetime import date

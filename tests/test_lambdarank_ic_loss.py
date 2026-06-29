@@ -58,18 +58,11 @@ def _reference_lambdarank_ic_loss(
         n_float = float(valid_count)
         pred_rank_sep = (pred_ranks[right] - pred_ranks[left]).abs()
         weights = (
-            12.0
-            * pred_rank_sep
-            * label_diff.abs()
-            / (n_float * (n_float * n_float - 1.0))
+            12.0 * pred_rank_sep * label_diff.abs() / (n_float * (n_float * n_float - 1.0))
         ).detach()
         weight_sum = weights.sum()
         if (not torch.isfinite(weight_sum)) or float(weight_sum.item()) <= eps:
-            weights = (
-                12.0
-                * label_diff.abs()
-                / (n_float * (n_float * n_float - 1.0))
-            ).detach()
+            weights = (12.0 * label_diff.abs() / (n_float * (n_float * n_float - 1.0))).detach()
             weight_sum = weights.sum()
         if (not torch.isfinite(weight_sum)) or float(weight_sum.item()) <= eps:
             continue

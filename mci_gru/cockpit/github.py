@@ -104,7 +104,13 @@ def create_issue(
     run_command: CommandRunner,
     repo: str = "magilliam27/MCI-GRU",
 ) -> str:
-    existing_labels = set(_split_lines(run_command(["gh", "label", "list", "--repo", repo, "--json", "name", "--jq", ".[].name"])))
+    existing_labels = set(
+        _split_lines(
+            run_command(
+                ["gh", "label", "list", "--repo", repo, "--json", "name", "--jq", ".[].name"]
+            )
+        )
+    )
     labels_to_apply = [label for label in labels if label in existing_labels]
     command = ["gh", "issue", "create", "--repo", repo, "--title", title, "--body", body]
     if labels_to_apply:
@@ -207,12 +213,29 @@ def _apply_existing_labels(
     actions_taken: list[str],
     actions_skipped: list[str],
 ) -> None:
-    existing = set(_split_lines(runner(["gh", "label", "list", "--repo", repo, "--json", "name", "--jq", ".[].name"])))
+    existing = set(
+        _split_lines(
+            runner(["gh", "label", "list", "--repo", repo, "--json", "name", "--jq", ".[].name"])
+        )
+    )
     labels_to_apply = [label for label in labels if label in existing]
     missing = [label for label in labels if label not in existing]
     if labels_to_apply:
-        runner(["gh", "issue", "edit", str(issue_number), "--repo", repo, "--add-label", ",".join(labels_to_apply)])
-        actions_taken.append(f"applied labels to cockpit issue #{issue_number}: {', '.join(labels_to_apply)}")
+        runner(
+            [
+                "gh",
+                "issue",
+                "edit",
+                str(issue_number),
+                "--repo",
+                repo,
+                "--add-label",
+                ",".join(labels_to_apply),
+            ]
+        )
+        actions_taken.append(
+            f"applied labels to cockpit issue #{issue_number}: {', '.join(labels_to_apply)}"
+        )
     if missing:
         actions_skipped.append(f"missing labels: {', '.join(missing)}")
 

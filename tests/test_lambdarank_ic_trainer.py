@@ -134,7 +134,4 @@ def test_select_training_objective_respects_selection_metric() -> None:
     assert _select_training_objective_value("val_rank_ic", [final_summary], None) == 0.2
     assert _select_training_objective_value("val_loss", [final_summary], merged_summary) == 0.6
     assert _select_training_objective_value("val_ic", [final_summary], merged_summary) == 0.3
-    assert (
-        _select_training_objective_value("val_rank_ic", [final_summary], merged_summary)
-        == 0.4
-    )
+    assert _select_training_objective_value("val_rank_ic", [final_summary], merged_summary) == 0.4

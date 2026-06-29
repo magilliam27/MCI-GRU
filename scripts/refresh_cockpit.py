@@ -16,8 +16,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Refresh MCI-GRU cockpit Markdown artifacts. GitHub sync is disabled by default."
     )
-    parser.add_argument("--date", default=date.today().isoformat(), help="Run date in YYYY-MM-DD format.")
-    parser.add_argument("--repo-root", default=".", help="Repository root. Defaults to current directory.")
+    parser.add_argument(
+        "--date", default=date.today().isoformat(), help="Run date in YYYY-MM-DD format."
+    )
+    parser.add_argument(
+        "--repo-root", default=".", help="Repository root. Defaults to current directory."
+    )
     parser.add_argument(
         "--github-sync",
         action="store_true",

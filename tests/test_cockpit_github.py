@@ -98,7 +98,9 @@ def test_create_issue_applies_only_existing_labels() -> None:
     )
 
     assert url.endswith("/101")
-    create_command = next(command for command in commands if command[:3] == ["gh", "issue", "create"])
+    create_command = next(
+        command for command in commands if command[:3] == ["gh", "issue", "create"]
+    )
     assert "ready-for-agent" in create_command
     assert "missing-label" not in create_command
 

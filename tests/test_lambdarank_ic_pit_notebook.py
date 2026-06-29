@@ -115,14 +115,14 @@ def test_lambdarank_ic_notebook_has_colab_reliability_contract() -> None:
     required_tokens = [
         "G4/L4-class Colab runtime",
         "not T4/CPU",
-        "BLOCKED_GPU_NAMES = (\"T4\",)",
+        'BLOCKED_GPU_NAMES = ("T4",)',
         "ALLOWED_GPU_MARKERS = (",
         "STRICT_GPU_MARKERS: list[str] = []",
         "Refusing to reuse existing run root",
-        "HEARTBEAT_PATH = RUN_ROOT / \"heartbeat.json\"",
-        "GPU_UTIL_PATH = RUN_ROOT / \"gpu_util.csv\"",
+        'HEARTBEAT_PATH = RUN_ROOT / "heartbeat.json"',
+        'GPU_UTIL_PATH = RUN_ROOT / "gpu_util.csv"',
         "def write_heartbeat(",
-        "status: str = \"RUNNING\"",
+        'status: str = "RUNNING"',
         "training_results.csv",
         "training_results.json",
         "scripts/monitor_gpu_util.py",
@@ -140,7 +140,7 @@ def test_lambdarank_ic_notebook_preserves_pit_recipe_and_fails_fast() -> None:
     generator = GENERATOR_PATH.read_text(encoding="utf-8")
 
     required_tokens = [
-        "TrainingConfig(loss_type=\"lambdarank_ic\", selection_metric=\"val_rank_ic\")",
+        'TrainingConfig(loss_type="lambdarank_ic", selection_metric="val_rank_ic")',
         "build_training_loss(probe_cfg)",
         "features.include_global_regime=true",
         "features.regime_include_subsequent_returns=false",
