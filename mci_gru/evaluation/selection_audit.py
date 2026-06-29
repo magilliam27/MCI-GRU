@@ -47,41 +47,60 @@ def build_selection_audit(
     market_data = pd.read_csv(market_data_path)
     realized = realized_returns_from_market_data(market_data, label_t=label_t)
     aligned = align_prediction_comparison(predictions, realized)
-    score_matrix = _pivot(aligned, "mci_gru_score")
-    return_matrix = _pivot(aligned, "realized_return")
+    if aligned.empty:
+        score_matrix = np.empty((0, 0), dtype=np.float64)
+        return_matrix = np.empty((0, 0), dtype=np.float64)
+    else:
+        score_matrix = _pivot(aligned, "mci_gru_score")
+        return_matrix = _pivot(aligned, "realized_return")
 
     pearson = daily_ic_series(score_matrix, return_matrix, method="pearson")
     spearman = daily_ic_series(score_matrix, return_matrix, method="spearman")
     rank_ic_mean = _nanmean(spearman)
-    nw_std = newey_west_std(spearman, lags=max(0, label_t - 1))
-    t_stat = _newey_west_t_stat(rank_ic_mean, nw_std, len(spearman))
-    p_value = float(2.0 * stats.t.sf(abs(t_stat), df=max(len(spearman) - 1, 1)))
+    valid_spearman_count = int(np.isfinite(spearman).sum())
+    if valid_spearman_count:
+        nw_std = newey_west_std(spearman, lags=max(0, label_t - 1))
+        t_stat = _newey_west_t_stat(rank_ic_mean, nw_std, len(spearman))
+        p_value = float(2.0 * stats.t.sf(abs(t_stat), df=max(len(spearman) - 1, 1)))
+        bootstrap_ci = moving_block_bootstrap_ci(
+            spearman,
+            statistic=lambda values: float(np.nanmean(values)),
+            block_size=max(1, label_t),
+            n_resamples=bootstrap_resamples,
+            seed=bootstrap_seed,
+            ci_level=0.95,
+        )
+    else:
+        t_stat = None
+        p_value = None
+        bootstrap_ci = None
     top_k_return_map = _top_k_return_map(score_matrix, return_matrix, top_k_values)
+    reasons = _insufficient_evidence_reasons(
+        aligned,
+        valid_spearman_count=valid_spearman_count,
+        top_k_return_map=top_k_return_map,
+    )
 
     return {
         "schema_version": 1,
+        "status": "INSUFFICIENT_EVIDENCE" if reasons else "OK",
+        "insufficient_evidence_reasons": reasons,
         "predictions_dir": str(Path(predictions_dir).resolve()),
         "market_data_path": str(Path(market_data_path).resolve()),
         "label_t": int(label_t),
         "trial_count": int(trial_count),
         "sample": {
             "aligned_observations": int(len(aligned)),
-            "n_dates": int(aligned["dt"].nunique()),
-            "n_kdcodes": int(aligned["kdcode"].nunique()),
+            "n_dates": int(aligned["dt"].nunique()) if "dt" in aligned else 0,
+            "n_kdcodes": int(aligned["kdcode"].nunique()) if "kdcode" in aligned else 0,
+            "valid_ic_days": valid_spearman_count,
         },
         "ic": {
             "pearson_mean": _nanmean(pearson),
             "spearman_mean": rank_ic_mean,
             "spearman_newey_west_t": t_stat,
             "spearman_p_value": p_value,
-            "spearman_bootstrap_ci": moving_block_bootstrap_ci(
-                spearman,
-                statistic=lambda values: float(np.nanmean(values)),
-                block_size=max(1, label_t),
-                n_resamples=bootstrap_resamples,
-                seed=bootstrap_seed,
-                ci_level=0.95,
-            ),
+            "spearman_bootstrap_ci": bootstrap_ci,
         },
         "top_k": _top_k_summary(top_k_return_map),
         "deflated_sharpe": {
@@ -90,7 +109,9 @@ def build_selection_audit(
         },
         "multiple_testing": {
             "method": "bhy_single_family_v0",
-            "bhy_adjusted_p_value": bhy_adjust_p_value(p_value, trial_count),
+            "bhy_adjusted_p_value": bhy_adjust_p_value(p_value, trial_count)
+            if p_value is not None
+            else None,
         },
     }
 
@@ -208,6 +229,22 @@ def _top_k_summary(return_map: dict[int, np.ndarray]) -> dict[str, Any]:
             "n_days": int(returns.size),
         }
     return summary
+
+
+def _insufficient_evidence_reasons(
+    aligned: pd.DataFrame,
+    *,
+    valid_spearman_count: int,
+    top_k_return_map: dict[int, np.ndarray],
+) -> list[str]:
+    reasons: list[str] = []
+    if aligned.empty:
+        reasons.append("no_aligned_observations")
+    if valid_spearman_count == 0:
+        reasons.append("no_valid_ic_days")
+    if not any(returns.size for returns in top_k_return_map.values()):
+        reasons.append("no_top_k_return_observations")
+    return reasons
 
 
 def _expected_max_sharpe(trial_count: int, standard_error: float) -> float:

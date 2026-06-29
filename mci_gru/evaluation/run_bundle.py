@@ -85,6 +85,7 @@ def build_run_manifest(
     mlflow_run_id: str | None = None,
     seed_policy: str | None = None,
     paper_trade_eligible: bool | None = None,
+    repo_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     root = Path(run_dir)
     predictions_dir = root / "averaged_predictions"
@@ -100,7 +101,7 @@ def build_run_manifest(
         "sibling_trial_ids": sibling_trial_ids or [],
         "provenance": {
             "command": command or _metadata_lookup(metadata, "command", "run_command", "argv"),
-            "git": _git_state(root),
+            "git": _git_state(Path(repo_dir) if repo_dir is not None else root, metadata=metadata),
             "environment": _environment_summary(),
         },
         "config": config,
@@ -168,6 +169,7 @@ def write_run_manifest(
     mlflow_run_id: str | None = None,
     seed_policy: str | None = None,
     paper_trade_eligible: bool | None = None,
+    repo_dir: str | Path | None = None,
     force: bool = False,
 ) -> dict[str, Path]:
     root = Path(run_dir)
@@ -182,10 +184,15 @@ def write_run_manifest(
         mlflow_run_id=mlflow_run_id,
         seed_policy=seed_policy,
         paper_trade_eligible=paper_trade_eligible,
+        repo_dir=repo_dir,
     )
     validation = validate_run_bundle(root)
     manifest_path = root / "run_manifest.json"
     validation_path = root / "artifact_validation.json"
+    if not force:
+        for path in (manifest_path, validation_path):
+            if path.exists():
+                raise FileExistsError(f"Refusing to overwrite existing artifact: {path}")
     write_json_artifact(manifest_path, manifest, force=force)
     write_json_artifact(validation_path, validation, force=force)
     return {"manifest": manifest_path, "validation": validation_path}
@@ -299,7 +306,10 @@ def _stable_json_hash(value: Any) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _git_state(path: Path) -> dict[str, Any]:
+def _git_state(path: Path, *, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    metadata = metadata or {}
+    git_metadata = metadata.get("git") if isinstance(metadata.get("git"), dict) else {}
+
     def run_git(*args: str) -> str | None:
         try:
             result = subprocess.run(
@@ -316,11 +326,17 @@ def _git_state(path: Path) -> dict[str, Any]:
         return result.stdout.strip()
 
     status_short = run_git("status", "--short")
+    commit = run_git("rev-parse", "HEAD") or git_metadata.get("commit")
+    branch = run_git("branch", "--show-current") or git_metadata.get("branch")
+    dirty = bool(status_short) if status_short is not None else git_metadata.get("dirty")
     return {
-        "commit": run_git("rev-parse", "HEAD"),
-        "branch": run_git("branch", "--show-current"),
-        "dirty": bool(status_short),
-        "status_short": status_short,
+        "repo_dir": str(path.resolve()),
+        "commit": commit,
+        "branch": branch,
+        "dirty": bool(dirty) if dirty is not None else None,
+        "status_short": status_short
+        if status_short is not None
+        else git_metadata.get("status_short"),
     }
 
 

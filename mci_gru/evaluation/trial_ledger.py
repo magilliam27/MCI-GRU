@@ -6,6 +6,8 @@ from typing import Any
 
 import pandas as pd
 
+from mci_gru.evaluation.artifacts import to_jsonable
+
 
 def flatten_mapping(payload: dict[str, Any], prefix: str = "") -> dict[str, Any]:
     out: dict[str, Any] = {}
@@ -50,14 +52,24 @@ def build_trial_record(
     return row
 
 
-def write_trial_ledger(records: list[dict[str, Any]], output_dir: str | Path) -> dict[str, Path]:
+def write_trial_ledger(
+    records: list[dict[str, Any]], output_dir: str | Path, *, force: bool = False
+) -> dict[str, Path]:
     out_dir = Path(output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
     csv_path = out_dir / "trial_ledger.csv"
     jsonl_path = out_dir / "trial_ledger.jsonl"
-    pd.DataFrame(records).to_csv(csv_path, index=False)
+    if not force:
+        for path in (csv_path, jsonl_path):
+            if path.exists():
+                raise FileExistsError(f"Refusing to overwrite existing artifact: {path}")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    jsonable_records = [to_jsonable(record) for record in records]
+    pd.DataFrame(jsonable_records).to_csv(csv_path, index=False)
     jsonl_path.write_text(
-        "".join(json.dumps(record, sort_keys=True) + "\n" for record in records),
+        "".join(
+            json.dumps(record, sort_keys=True, allow_nan=False) + "\n"
+            for record in jsonable_records
+        ),
         encoding="utf-8",
     )
     return {"csv": csv_path, "jsonl": jsonl_path}

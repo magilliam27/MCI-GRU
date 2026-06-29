@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from mci_gru.evaluation.trial_ledger import build_trial_record, write_trial_ledger
 
@@ -45,3 +46,20 @@ def test_write_trial_ledger_writes_csv_and_jsonl(tmp_path: Path) -> None:
         json.loads(line) for line in paths["jsonl"].read_text(encoding="utf-8").splitlines()
     ]
     assert [row["status"] for row in jsonl_rows] == ["OK", "FAILED"]
+
+
+def test_write_trial_ledger_strict_jsonl_and_force_guard(tmp_path: Path) -> None:
+    output_dir = tmp_path / "ledger"
+    records = [{"trial_id": "a", "score": float("nan"), "risk": float("inf")}]
+
+    paths = write_trial_ledger(records, output_dir)
+    jsonl_text = paths["jsonl"].read_text(encoding="utf-8")
+
+    assert "NaN" not in jsonl_text
+    assert "Infinity" not in jsonl_text
+    assert json.loads(jsonl_text)["score"] is None
+    assert json.loads(jsonl_text)["risk"] is None
+    with pytest.raises(FileExistsError):
+        write_trial_ledger(records, output_dir)
+    forced_paths = write_trial_ledger(records, output_dir, force=True)
+    assert forced_paths["csv"].is_file()

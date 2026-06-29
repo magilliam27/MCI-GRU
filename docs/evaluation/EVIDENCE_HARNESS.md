@@ -1,4 +1,4 @@
-﻿# Evidence Harness
+# Evidence Harness
 
 This harness implements the first no-retraining evidence wave from
 `docs/research/current/MCI_GRU_TOP_UNIVERSITY_RESEARCH_SCAN_2026-06-21.md`.
@@ -9,12 +9,12 @@ predictions, PIT inputs, and market data.
 
 | Artifact | Writer | Purpose |
 | --- | --- | --- |
-| `run_manifest.json` | `scripts/build_run_bundle_manifest.py` | Hashes core artifacts plus config, git, graph, checkpoint, data/PIT, environment, seed, MLflow, and paper-trade eligibility provenance for an existing run folder. |
+| `run_manifest.json` | `scripts/build_run_bundle_manifest.py` | Hashes core artifacts plus config, command, repo-dir git state, graph, checkpoint, data/PIT, environment, seed, MLflow, and paper-trade eligibility provenance for an existing run folder. |
 | `artifact_validation.json` | `scripts/build_run_bundle_manifest.py` | Reports missing core artifacts without modifying the run. |
 | `trial_ledger.csv` / `trial_ledger.jsonl` | `scripts/build_trial_ledger.py` | Lists candidate, failed, skipped, abandoned, and promoted trials. |
-| `selection_audit_summary.json` | `scripts/run_saved_prediction_selection_audit.py` | Computes saved-prediction IC, top-k returns, bootstrap CIs, BHY multiple-testing haircut, and deflated-Sharpe evidence for Sharpe-style claims. |
+| `selection_audit_summary.json` | `scripts/run_saved_prediction_selection_audit.py` | Computes saved-prediction IC, top-k returns, bootstrap CIs, BHY multiple-testing haircut, deflated-Sharpe evidence for Sharpe-style claims, and explicit insufficient-evidence status. |
 | `pit_availability_report.json` | `scripts/write_pit_availability_report.py` | Reports PIT breadth, missingness, staleness, and tradability without changing masks; optional calendars catch full-day market-panel outages. |
-| `capacity_replay.json` / `capacity_replay.csv` | `scripts/run_saved_prediction_capacity_replay.py` | Replays saved scores through T+1 open, open-to-open gross/net returns, turnover, cost grid, rank-drop grid, lagged-ADV capacity, clipping, and unfillable diagnostics. |
+| `capacity_replay.json` / `capacity_replay.csv` | `scripts/run_saved_prediction_capacity_replay.py` | Replays saved scores through T+1 open, open-to-open gross/net returns, turnover, cost grid, rank-drop grid, lagged-ADV capacity, optional lagged-volatility gates, clipping, and unfillable diagnostics. |
 
 ## Invariants
 
@@ -25,7 +25,7 @@ predictions, PIT inputs, and market data.
 - JSON artifacts are strict JSON; non-finite numeric values are written as `null`.
 - Filesystem artifacts remain the source of truth; MLflow IDs and links are additive context.
 - PIT masked-panel breadth stays intact; tradability and staleness are reported as separate evidence.
-- Capacity calculations use lagged ADV and volatility known by the prediction date; realized T+1 volume is diagnostic only.
+- Capacity calculations use lagged ADV and optional lagged-volatility thresholds known by the prediction date; realized T+1 volume is diagnostic only.
 - Capacity replay scores at T close, enters at the next market open, and holds open-to-open unless a different future contract is named.
 - Saved-prediction audits use validation and trial-ledger context for selection evidence; final test windows do not steer defaults.
 
@@ -44,8 +44,8 @@ artifacts are preserved, hashed, and referenced by a current report.
 ## Command Sketches
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\build_run_bundle_manifest.py --run-dir outputs\run_id --selection-rule "validation rank IC" --paper-trade-eligible false
+.\.venv\Scripts\python.exe scripts\build_run_bundle_manifest.py --run-dir outputs\run_id --repo-dir . --selection-rule "validation rank IC" --paper-trade-eligible false
 .\.venv\Scripts\python.exe scripts\run_saved_prediction_selection_audit.py --predictions-dir outputs\run_id\averaged_predictions --market-data-path data\market.csv --output-dir outputs\run_id\evidence --trial-count 12 --top-k 20
 .\.venv\Scripts\python.exe scripts\write_pit_availability_report.py --market-data data\market.csv --pit-universe data\pit_universe.csv --calendar data\trading_calendar.csv --output outputs\run_id\evidence\pit_availability_report.json
-.\.venv\Scripts\python.exe scripts\run_saved_prediction_capacity_replay.py --predictions outputs\run_id\averaged_predictions --market-data data\market.csv --output-dir outputs\run_id\evidence --aum 1000000 --top-k 20 --spread-bps 5 --slippage-bps 0 --min-rank-drop 30
+.\.venv\Scripts\python.exe scripts\run_saved_prediction_capacity_replay.py --predictions outputs\run_id\averaged_predictions --market-data data\market.csv --output-dir outputs\run_id\evidence --aum 1000000 --top-k 20 --spread-bps 5 --slippage-bps 0 --min-rank-drop 30 --max-lagged-volatility 0.08
 ```

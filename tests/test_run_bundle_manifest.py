@@ -57,6 +57,23 @@ def test_build_run_manifest_hashes_core_artifacts_and_provenance(tmp_path: Path)
     assert manifest["prediction_artifact"]["sha256"]
 
 
+def test_build_run_manifest_uses_repo_dir_for_external_run_git_provenance(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "external_drive_run"
+    predictions_dir = run_dir / "averaged_predictions"
+    predictions_dir.mkdir(parents=True)
+    _write_json(run_dir / "run_metadata.json", {"config": {}})
+    _write_json(run_dir / "training_summary.json", {})
+    _write_json(run_dir / "evaluation_summary.json", {})
+    (predictions_dir / "predictions.csv").write_text("dt,kdcode,score\n", encoding="utf-8")
+
+    manifest = build_run_manifest(run_dir, repo_dir=Path.cwd())
+
+    assert manifest["provenance"]["git"]["commit"]
+    assert manifest["provenance"]["git"]["repo_dir"] == str(Path.cwd().resolve())
+
+
 def test_validate_run_bundle_reports_missing_artifacts(tmp_path: Path) -> None:
     run_dir = tmp_path / "run"
     run_dir.mkdir()

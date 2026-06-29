@@ -22,6 +22,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--spread-bps", type=float, action="append", default=None)
     parser.add_argument("--slippage-bps", type=float, action="append", default=None)
     parser.add_argument("--min-rank-drop", type=int, action="append", default=None)
+    parser.add_argument("--max-lagged-volatility", type=float, action="append", default=None)
     parser.add_argument("--force", action="store_true")
     return parser.parse_args(argv)
 
@@ -39,6 +40,7 @@ def main(argv: list[str] | None = None) -> None:
         spread_bps_values=args.spread_bps or [0.0],
         slippage_bps_values=args.slippage_bps or [0.0],
         rank_drop_values=rank_drop_values,
+        max_lagged_volatility_values=args.max_lagged_volatility,
     )
     paths = write_capacity_replay(report, args.output_dir, force=args.force)
     print(f"capacity_replay_json: {paths['json']}")

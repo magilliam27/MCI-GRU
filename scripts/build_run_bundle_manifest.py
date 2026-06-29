@@ -26,6 +26,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--mlflow-run-id", default=None)
     parser.add_argument("--seed-policy", default=None)
     parser.add_argument("--paper-trade-eligible", type=_optional_bool, default=None)
+    parser.add_argument("--repo-dir", default=None)
     parser.add_argument("--force", action="store_true")
     return parser.parse_args(argv)
 
@@ -43,6 +44,7 @@ def main(argv: list[str] | None = None) -> None:
         mlflow_run_id=args.mlflow_run_id,
         seed_policy=args.seed_policy,
         paper_trade_eligible=args.paper_trade_eligible,
+        repo_dir=args.repo_dir,
         force=args.force,
     )
     for name, path in paths.items():

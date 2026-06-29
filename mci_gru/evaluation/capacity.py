@@ -53,6 +53,7 @@ def compute_capacity_replay(
     spread_bps_values: list[float] | None = None,
     slippage_bps_values: list[float] | None = None,
     rank_drop_values: list[int | None] | None = None,
+    max_lagged_volatility_values: list[float | None] | None = None,
 ) -> dict[str, Any]:
     """Replay saved scores through T+1 open execution, costs, and lagged capacity."""
     if max_adv_participation <= 0.0:
@@ -71,12 +72,17 @@ def compute_capacity_replay(
     spreads = spread_bps_values or [0.0]
     slippages = slippage_bps_values or [0.0]
     rank_drop_grid = rank_drop_values if rank_drop_values is not None else [None]
+    volatility_grid = (
+        max_lagged_volatility_values if max_lagged_volatility_values is not None else [None]
+    )
     if any(value < 0.0 for value in spreads):
         raise ValueError("spread_bps_values must be non-negative")
     if any(value < 0.0 for value in slippages):
         raise ValueError("slippage_bps_values must be non-negative")
     if any(value is not None and value < 0 for value in rank_drop_grid):
         raise ValueError("rank_drop_values must be non-negative")
+    if any(value is not None and value <= 0.0 for value in volatility_grid):
+        raise ValueError("max_lagged_volatility_values must be positive when provided")
 
     preds = predictions.copy()
     preds["dt"] = pd.to_datetime(preds["dt"])
@@ -95,19 +101,21 @@ def compute_capacity_replay(
             for spread_bps in spreads:
                 for slippage_bps in slippages:
                     for rank_drop_min in rank_drop_grid:
-                        rows.extend(
-                            _replay_scenario(
-                                merged,
-                                market,
-                                market_dates=market_dates,
-                                top_k=top_k,
-                                aum=aum,
-                                spread_bps=spread_bps,
-                                slippage_bps=slippage_bps,
-                                rank_drop_min=rank_drop_min,
-                                max_adv_participation=max_adv_participation,
+                        for max_lagged_volatility in volatility_grid:
+                            rows.extend(
+                                _replay_scenario(
+                                    merged,
+                                    market,
+                                    market_dates=market_dates,
+                                    top_k=top_k,
+                                    aum=aum,
+                                    spread_bps=spread_bps,
+                                    slippage_bps=slippage_bps,
+                                    rank_drop_min=rank_drop_min,
+                                    max_adv_participation=max_adv_participation,
+                                    max_lagged_volatility=max_lagged_volatility,
+                                )
                             )
-                        )
 
     return {
         "schema_version": 1,
@@ -115,6 +123,7 @@ def compute_capacity_replay(
             "timing": "score_at_t_close_enter_t_plus_1_open_hold_open_to_open",
             "uses_lagged_adv": True,
             "uses_lagged_volatility": True,
+            "uses_lagged_volatility_gate": any(value is not None for value in volatility_grid),
             "realized_t_plus_1_volume_ex_post_only": True,
             "adv_lookback_days": adv_lookback_days,
             "max_adv_participation": max_adv_participation,
@@ -126,6 +135,9 @@ def compute_capacity_replay(
             "spread_bps_values": [float(value) for value in spreads],
             "slippage_bps_values": [float(value) for value in slippages],
             "rank_drop_values": [None if value is None else int(value) for value in rank_drop_grid],
+            "max_lagged_volatility_values": [
+                None if value is None else float(value) for value in volatility_grid
+            ],
         },
         "rows": rows,
     }
@@ -157,6 +169,7 @@ def _replay_scenario(
     slippage_bps: float,
     rank_drop_min: int | None,
     max_adv_participation: float,
+    max_lagged_volatility: float | None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     prev_holdings: list[dict[str, Any]] | None = None
@@ -198,6 +211,7 @@ def _replay_scenario(
             returns,
             target_notional=target_notional,
             max_adv_participation=max_adv_participation,
+            max_lagged_volatility=max_lagged_volatility,
         )
 
         rows.append(
@@ -271,11 +285,17 @@ def _capacity_metrics(
     *,
     target_notional: float,
     max_adv_participation: float,
+    max_lagged_volatility: float | None,
 ) -> dict[str, Any]:
     lagged_adv = selected["lagged_adv"].replace([np.inf, -np.inf], np.nan)
     lagged_volatility = selected["lagged_volatility"].replace([np.inf, -np.inf], np.nan)
     valid_adv = lagged_adv.where(lagged_adv > 0.0)
     participation = target_notional / valid_adv
+    adv_breaches = (participation > max_adv_participation).fillna(False)
+    if max_lagged_volatility is None:
+        volatility_breaches = pd.Series(False, index=selected.index)
+    else:
+        volatility_breaches = (lagged_volatility > max_lagged_volatility).fillna(False)
     max_trade_notional = max_adv_participation * valid_adv
     clipped_notional = (target_notional - max_trade_notional).clip(lower=0.0)
     entry_dollar_volume = execution["entry_open"] * execution["entry_volume"]
@@ -289,11 +309,14 @@ def _capacity_metrics(
         "missing_exit_open_count": int(execution["exit_open"].isna().sum()),
         "max_participation": _safe_float(participation.max(skipna=True)),
         "median_participation": _safe_float(participation.median(skipna=True)),
-        "capacity_breach_count": int((participation > max_adv_participation).sum()),
+        "capacity_breach_count": int(adv_breaches.sum()),
         "missing_adv_count": int(valid_adv.isna().sum()),
         "clipped_count": int((clipped_notional > 0.0).sum()),
         "clipped_total_notional": _safe_float(clipped_notional.sum(skipna=True)),
         "max_lagged_volatility": _safe_float(lagged_volatility.max(skipna=True)),
+        "max_lagged_volatility_threshold": _safe_float(max_lagged_volatility),
+        "volatility_breach_count": int(volatility_breaches.sum()),
+        "gate_breach_count": int((adv_breaches | volatility_breaches).sum()),
         "missing_volatility_count": int(lagged_volatility.isna().sum()),
         "max_ex_post_entry_participation": _safe_float(ex_post_participation.max(skipna=True)),
     }

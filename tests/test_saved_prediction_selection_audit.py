@@ -24,6 +24,7 @@ def test_selection_audit_computes_ic_topk_multiple_testing_and_deflated_sharpe(
     )
 
     assert audit["schema_version"] == 1
+    assert audit["status"] == "OK"
     assert audit["trial_count"] == 4
     assert audit["sample"]["aligned_observations"] == 4
     assert audit["ic"]["pearson_mean"] == pytest.approx(1.0)
@@ -32,6 +33,33 @@ def test_selection_audit_computes_ic_topk_multiple_testing_and_deflated_sharpe(
     assert audit["deflated_sharpe"]["1"]["method"] == "bailey_lopez_de_prado_v0"
     assert 0.0 <= audit["deflated_sharpe"]["1"]["p_value"] <= 1.0
     assert 0.0 <= audit["multiple_testing"]["bhy_adjusted_p_value"] <= 1.0
+
+
+def test_selection_audit_flags_insufficient_evidence_when_alignment_is_empty(
+    tmp_path: Path,
+) -> None:
+    predictions_dir = tmp_path / "averaged_predictions"
+    predictions_dir.mkdir()
+    pd.DataFrame({"dt": ["2024-01-02"], "kdcode": ["AAA"], "score": [0.5]}).to_csv(
+        predictions_dir / "predictions.csv", index=False
+    )
+    market_path = tmp_path / "market.csv"
+    pd.DataFrame({"dt": ["2024-01-02"], "kdcode": ["AAA"], "close": [100.0]}).to_csv(
+        market_path, index=False
+    )
+
+    audit = build_selection_audit(
+        predictions_dir=predictions_dir,
+        market_data_path=market_path,
+        label_t=1,
+        top_k_values=[1],
+        trial_count=2,
+        bootstrap_resamples=5,
+    )
+
+    assert audit["status"] == "INSUFFICIENT_EVIDENCE"
+    assert "no_aligned_observations" in audit["insufficient_evidence_reasons"]
+    assert audit["ic"]["spearman_p_value"] is None
 
 
 def test_selection_audit_cli_uses_requested_top_k_without_default_duplicates(
