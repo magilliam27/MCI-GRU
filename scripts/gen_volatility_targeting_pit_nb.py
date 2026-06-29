@@ -423,7 +423,7 @@ def full_run_cells() -> list[dict]:
     )
     replace_cell_text(
         full_cells[6],
-        '''VARIANTS = {
+        """VARIANTS = {
     "baseline_vol": [
         "features.include_volatility=true",
         "features.include_volatility_targeting=false",
@@ -436,8 +436,8 @@ def full_run_cells() -> list[dict]:
         "features.volatility_target_scale_clip=[0.25,4.0]",
         "features.volatility_targeting_interaction_return_window=21",
     ],
-}''',
-        '''VARIANTS = {
+}""",
+        """VARIANTS = {
     "vol_targeting": [
         "features.include_volatility=true",
         "features.include_volatility_targeting=true",
@@ -446,7 +446,7 @@ def full_run_cells() -> list[dict]:
         "features.volatility_target_scale_clip=[0.25,4.0]",
         "features.volatility_targeting_interaction_return_window=21",
     ],
-}''',
+}""",
     )
     return full_cells
 

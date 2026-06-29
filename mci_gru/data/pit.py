@@ -155,8 +155,7 @@ def apply_label_mask(labels: np.ndarray, mask: np.ndarray) -> np.ndarray:
 def candidate_breadth(dates: list[str], tradable_mask: np.ndarray) -> list[dict[str, int | str]]:
     mask = np.asarray(tradable_mask, dtype=bool)
     return [
-        {"date": str(date), "scoreable_count": int(mask[i].sum())}
-        for i, date in enumerate(dates)
+        {"date": str(date), "scoreable_count": int(mask[i].sum())} for i, date in enumerate(dates)
     ]
 
 

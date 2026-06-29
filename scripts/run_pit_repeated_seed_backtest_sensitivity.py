@@ -174,7 +174,9 @@ def resolve_training_rows(
             continue
         if seed_filter and base_seed not in seed_filter:
             continue
-        if year not in PIT_WINDOWS and (_is_blank(raw.get("test_start")) or _is_blank(raw.get("test_end"))):
+        if year not in PIT_WINDOWS and (
+            _is_blank(raw.get("test_start")) or _is_blank(raw.get("test_end"))
+        ):
             raise ValueError(f"No default PIT test window is known for year {year}.")
 
         run_dir, predictions_dir = _resolve_run_and_predictions_dir(raw, run_root)
@@ -327,7 +329,9 @@ def run_sensitivity_job(
     if result_csv.exists():
         result_df = pd.read_csv(result_csv)
         if len(result_df):
-            result.update({f"backtest.{key}": value for key, value in result_df.iloc[0].to_dict().items()})
+            result.update(
+                {f"backtest.{key}": value for key, value in result_df.iloc[0].to_dict().items()}
+            )
             yearly_copy_dir = options.output_dir / "yearly" / scenario.scenario_id / row.name
             yearly_copy_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(result_csv, yearly_copy_dir / "backtest_results.csv")
@@ -363,7 +367,9 @@ def write_sensitivity_outputs(
     output_dir.mkdir(parents=True, exist_ok=True)
     results_csv = output_dir / "pit_repeated_seed_backtest_sensitivity_results.csv"
     daily_returns_csv = output_dir / "pit_repeated_seed_backtest_sensitivity_daily_returns.csv"
-    scenario_year_crosstab_csv = output_dir / "pit_repeated_seed_backtest_sensitivity_year_crosstab.csv"
+    scenario_year_crosstab_csv = (
+        output_dir / "pit_repeated_seed_backtest_sensitivity_year_crosstab.csv"
+    )
     seed_crosstab_csv = output_dir / "pit_repeated_seed_backtest_sensitivity_seed_crosstab.csv"
     metric_deltas_csv = output_dir / "pit_repeated_seed_backtest_sensitivity_metric_deltas.csv"
     summary_md = output_dir / "pit_repeated_seed_backtest_sensitivity_summary.md"
@@ -566,7 +572,9 @@ def _resolve_run_and_predictions_dir(raw: dict[str, Any], run_root: Path) -> tup
     candidates = sorted((run_root / "training_runs" / str(name)).glob("*"))
     candidates = [path for path in candidates if path.is_dir()]
     if not candidates:
-        raise FileNotFoundError(f"Could not find training run directory for {name!r} under {run_root}")
+        raise FileNotFoundError(
+            f"Could not find training run directory for {name!r} under {run_root}"
+        )
     run_dir = candidates[-1]
     return run_dir, run_dir / "averaged_predictions"
 
@@ -603,9 +611,13 @@ def _validate_job_inputs(
     options: BacktestSensitivityOptions,
 ) -> None:
     if not job.training_row.predictions_dir.is_dir():
-        raise FileNotFoundError(f"Predictions directory not found: {job.training_row.predictions_dir}")
+        raise FileNotFoundError(
+            f"Predictions directory not found: {job.training_row.predictions_dir}"
+        )
     if not any(job.training_row.predictions_dir.glob("*.csv")):
-        raise FileNotFoundError(f"No prediction CSV files found in {job.training_row.predictions_dir}")
+        raise FileNotFoundError(
+            f"No prediction CSV files found in {job.training_row.predictions_dir}"
+        )
     if not options.data_file.is_file():
         raise FileNotFoundError(f"Market data file not found: {options.data_file}")
     if not options.pit_universe_csv.is_file():
@@ -648,12 +660,28 @@ def _build_group_summary(df: pd.DataFrame, group_cols: list[str]) -> pd.DataFram
 def _build_metric_deltas(df: pd.DataFrame, baseline_scenario_id: str) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(
-            columns=["scenario_id", "base_seed", "year", "metric", "value", "baseline_value", "delta_vs_baseline"]
+            columns=[
+                "scenario_id",
+                "base_seed",
+                "year",
+                "metric",
+                "value",
+                "baseline_value",
+                "delta_vs_baseline",
+            ]
         )
     ok_df = df[df.get("status", pd.Series(dtype=str)).astype(str).str.upper().eq("OK")].copy()
     if ok_df.empty:
         return pd.DataFrame(
-            columns=["scenario_id", "base_seed", "year", "metric", "value", "baseline_value", "delta_vs_baseline"]
+            columns=[
+                "scenario_id",
+                "base_seed",
+                "year",
+                "metric",
+                "value",
+                "baseline_value",
+                "delta_vs_baseline",
+            ]
         )
 
     baseline = ok_df[ok_df["scenario_id"].astype(str).eq(baseline_scenario_id)]
@@ -721,7 +749,9 @@ def _build_summary_markdown(
             "",
             "## Scenario x Year",
             "",
-            _markdown_table(scenario_year_df) if not scenario_year_df.empty else "No scenario-year rows.",
+            _markdown_table(scenario_year_df)
+            if not scenario_year_df.empty
+            else "No scenario-year rows.",
             "",
             "## Scenario x Seed",
             "",
@@ -729,7 +759,9 @@ def _build_summary_markdown(
             "",
             "## Deltas vs Baseline",
             "",
-            _markdown_table(deltas_df) if not deltas_df.empty else "No baseline-matched delta rows.",
+            _markdown_table(deltas_df)
+            if not deltas_df.empty
+            else "No baseline-matched delta rows.",
             "",
             "## Raw Rows",
             "",

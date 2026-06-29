@@ -52,7 +52,9 @@ def daily_ic_series(
     preds = _as_2d(predictions)
     rets = _as_2d(true_returns)
     if preds.shape != rets.shape:
-        raise ValueError(f"predictions and true_returns shapes differ: {preds.shape} != {rets.shape}")
+        raise ValueError(
+            f"predictions and true_returns shapes differ: {preds.shape} != {rets.shape}"
+        )
     if method not in ("pearson", "spearman"):
         raise ValueError("method must be 'pearson' or 'spearman'")
 

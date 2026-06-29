@@ -80,11 +80,7 @@ def run_monitor(model_dir: Path, results_dir: Path, date: str | None = None) -> 
         summary = summarize_drift(rows)
         summary["date"] = monitor_date
         summary["top_features"] = sorted(
-            [
-                row
-                for row in rows
-                if row.get("status") in {"OK", "WARN", "ALERT"}
-            ],
+            [row for row in rows if row.get("status") in {"OK", "WARN", "ALERT"}],
             key=lambda row: row.get("psi", 0.0),
             reverse=True,
         )[:10]

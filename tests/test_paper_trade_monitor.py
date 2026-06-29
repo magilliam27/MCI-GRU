@@ -22,7 +22,9 @@ def test_monitor_writes_feature_drift_outputs(tmp_path: Path):
     }
     (model_dir / "feature_reference.json").write_text(json.dumps(reference), encoding="utf-8")
     (model_dir / "run_metadata.json").write_text(
-        json.dumps({"feature_cols": ["x", "y"], "feature_reference_path": "feature_reference.json"}),
+        json.dumps(
+            {"feature_cols": ["x", "y"], "feature_reference_path": "feature_reference.json"}
+        ),
         encoding="utf-8",
     )
     pd.DataFrame(
@@ -55,7 +57,14 @@ def test_report_includes_feature_drift_section():
         orders=pd.DataFrame(),
         holdings=pd.DataFrame(),
         daily_return=pd.DataFrame(),
-        rolling={"num_days": 0, "rolling_vol_ann": float("nan"), "sharpe_proxy": float("nan"), "max_drawdown": 0.0, "win_rate": float("nan"), "avg_daily_return": float("nan")},
+        rolling={
+            "num_days": 0,
+            "rolling_vol_ann": float("nan"),
+            "sharpe_proxy": float("nan"),
+            "max_drawdown": 0.0,
+            "win_rate": float("nan"),
+            "avg_daily_return": float("nan"),
+        },
         state_dir=Path("."),
         drift_summary=drift,
     )

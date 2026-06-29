@@ -75,7 +75,9 @@ def test_ablation_colab_notebook_has_final_confirmation_signal_check() -> None:
     assert "FINAL_CONFIRMATION_NUM_MODELS = 20" in combined
     assert "FINAL_CONFIRMATION_NUM_EPOCHS = 100" in combined
     assert "FINAL_CONFIRMATION_EARLY_STOPPING_PATIENCE = 15" in combined
-    assert "training.early_stopping_patience={FINAL_CONFIRMATION_EARLY_STOPPING_PATIENCE}" in combined
+    assert (
+        "training.early_stopping_patience={FINAL_CONFIRMATION_EARLY_STOPPING_PATIENCE}" in combined
+    )
     assert "FINAL_CONFIRMATION_BOOTSTRAP_RESAMPLES = 1000" in combined
     assert "ic_ci_pass" in combined
     assert "top20_ci_pass" in combined

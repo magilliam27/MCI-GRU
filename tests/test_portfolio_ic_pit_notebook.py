@@ -64,10 +64,10 @@ def test_portfolio_ic_notebook_has_non_t4_gpu_gate_and_sampler() -> None:
     required_tokens = [
         "G4/L4-class Colab runtime",
         "not T4/CPU",
-        "BLOCKED_GPU_NAMES = (\"T4\",)",
+        'BLOCKED_GPU_NAMES = ("T4",)',
         "ALLOWED_GPU_MARKERS = (",
         "STRICT_GPU_MARKERS: list[str] = []",
-        "GPU_UTIL_PATH = RUN_ROOT / \"gpu_util.csv\"",
+        'GPU_UTIL_PATH = RUN_ROOT / "gpu_util.csv"',
         "scripts/monitor_gpu_util.py",
         "google.colab.runtime.unassign()",
     ]

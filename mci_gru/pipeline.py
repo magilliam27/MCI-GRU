@@ -155,11 +155,7 @@ def _filter_to_masked_pit_panel(
     end: str,
 ) -> pd.DataFrame:
     """Keep PIT-union rows in the experiment calendar without requiring full coverage."""
-    mask = (
-        df["kdcode"].isin(kdcode_list)
-        & (df["dt"] >= start)
-        & (df["dt"] <= end)
-    )
+    mask = df["kdcode"].isin(kdcode_list) & (df["dt"] >= start) & (df["dt"] <= end)
     return df.loc[mask].sort_values(["dt", "kdcode"]).reset_index(drop=True)
 
 
@@ -362,8 +358,7 @@ def prepare_data(
 
     pit_intervals = None
     true_pit_masked = (
-        config.data.use_pit_universe
-        and config.data.pit_universe_mode == "masked_panel"
+        config.data.use_pit_universe and config.data.pit_universe_mode == "masked_panel"
     )
     if config.data.use_pit_universe:
         if not config.data.pit_universe_csv:
@@ -572,7 +567,9 @@ def prepare_data(
         "rank_gauss_reference": rank_gauss_reference,
         "feature_reference": feature_reference,
         "pit_breadth": pit_breadth,
-        "pit_universe_mode": config.data.pit_universe_mode if config.data.use_pit_universe else None,
+        "pit_universe_mode": config.data.pit_universe_mode
+        if config.data.use_pit_universe
+        else None,
     }
 
 
@@ -628,8 +625,7 @@ def prepare_data_index_level(
         (df_filtered["dt"] >= config.data.val_start) & (df_filtered["dt"] <= config.data.val_end)
     ]
     test_df = df_filtered[
-        (df_filtered["dt"] >= config.data.test_start)
-        & (df_filtered["dt"] <= config.data.test_end)
+        (df_filtered["dt"] >= config.data.test_start) & (df_filtered["dt"] <= config.data.test_end)
     ]
     feature_reference = _build_feature_reference(train_df, feature_cols)
 

@@ -14,6 +14,10 @@ import torch
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _normalise_cli_path(path: Path) -> str:
+    return str(path).replace(chr(92), "/")
+
+
 def _write_synthetic_csv(path: Path) -> None:
     dates = pd.bdate_range("2020-01-01", periods=70)
     stocks = ["A.N", "B.N", "C.N", "D.N"]
@@ -68,6 +72,38 @@ def _assert_collate_contract() -> None:
         raise AssertionError(f"combined_collate_fn returned {len(batch)} items, expected 9")
 
 
+def _build_smoke_command(csv_path: Path, run_dir: Path) -> list[str]:
+    return [
+        sys.executable,
+        "run_experiment.py",
+        "features=base",
+        "data.source=csv",
+        f"data.filename={_normalise_cli_path(csv_path)}",
+        "data.train_start=2020-01-01",
+        "data.train_end=2020-02-14",
+        "data.val_start=2020-02-18",
+        "data.val_end=2020-02-28",
+        "data.test_start=2020-03-03",
+        "data.test_end=2020-03-20",
+        "model.his_t=3",
+        "model.label_t=1",
+        "model.gru_hidden_sizes=[8,4]",
+        "model.hidden_size_gat1=8",
+        "model.output_gat1=4",
+        "model.gat_heads=1",
+        "model.hidden_size_gat2=8",
+        "model.num_hidden_states=4",
+        "model.cross_attn_heads=1",
+        "model.use_self_attention=false",
+        "training.num_epochs=1",
+        "training.num_models=1",
+        "training.batch_size=2",
+        "training.warmup_steps=0",
+        "tracking.enabled=false",
+        f"hydra.run.dir={_normalise_cli_path(run_dir)}",
+    ]
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="mci_gru_ci_") as tmp:
         tmp_path = Path(tmp)
@@ -75,34 +111,7 @@ def main() -> int:
         run_dir = tmp_path / "run"
         _write_synthetic_csv(csv_path)
 
-        cmd = [
-            sys.executable,
-            "run_experiment.py",
-            "features=base",
-            f"data.filename={str(csv_path).replace(chr(92), '/')}",
-            "data.train_start=2020-01-01",
-            "data.train_end=2020-02-14",
-            "data.val_start=2020-02-18",
-            "data.val_end=2020-02-28",
-            "data.test_start=2020-03-03",
-            "data.test_end=2020-03-20",
-            "model.his_t=3",
-            "model.label_t=1",
-            "model.gru_hidden_sizes=[8,4]",
-            "model.hidden_size_gat1=8",
-            "model.output_gat1=4",
-            "model.gat_heads=1",
-            "model.hidden_size_gat2=8",
-            "model.num_hidden_states=4",
-            "model.cross_attn_heads=1",
-            "model.use_self_attention=false",
-            "training.num_epochs=1",
-            "training.num_models=1",
-            "training.batch_size=2",
-            "training.warmup_steps=0",
-            "tracking.enabled=false",
-            f"hydra.run.dir={str(run_dir).replace(chr(92), '/')}",
-        ]
+        cmd = _build_smoke_command(csv_path, run_dir)
         result = subprocess.run(cmd, cwd=PROJECT_ROOT, text=True, capture_output=True, timeout=180)
         if result.returncode != 0:
             print(result.stdout)

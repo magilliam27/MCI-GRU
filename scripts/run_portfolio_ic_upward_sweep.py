@@ -34,7 +34,7 @@ PIT_WINDOWS = {
     2024: ("2024-01-22", "2024-12-31"),
     2025: ("2025-01-22", "2025-12-31"),
 }
-ALLOWED_GPU_MARKERS = ('G4', 'L4', 'A100', 'H100', 'V100', 'RTX PRO', 'BLACKWELL')
+ALLOWED_GPU_MARKERS = ("G4", "L4", "A100", "H100", "V100", "RTX PRO", "BLACKWELL")
 BLOCKED_GPU_NAMES = ("T4",)
 STRICT_GPU_MARKERS: list[str] = []
 
@@ -56,7 +56,9 @@ def detect_gpu_name() -> str:
         check=False,
     )
     if proc.returncode != 0:
-        raise RuntimeError("nvidia-smi failed. Attach a GPU runtime before launching.\n" + proc.stderr)
+        raise RuntimeError(
+            "nvidia-smi failed. Attach a GPU runtime before launching.\n" + proc.stderr
+        )
     name = proc.stdout.strip().splitlines()[0].strip() if proc.stdout.strip() else ""
     if not name:
         raise RuntimeError("No GPU name returned by nvidia-smi.")
@@ -75,7 +77,9 @@ def detect_gpu_name() -> str:
     return name
 
 
-def start_gpu_sampler(repo_dir: Path, summary_dir: Path) -> tuple[subprocess.Popen[str], Path] | tuple[None, None]:
+def start_gpu_sampler(
+    repo_dir: Path, summary_dir: Path
+) -> tuple[subprocess.Popen[str], Path] | tuple[None, None]:
     monitor_script = repo_dir / "scripts" / "monitor_gpu_util.py"
     if not monitor_script.exists():
         raise FileNotFoundError(f"Missing GPU monitor: {monitor_script}")
@@ -117,7 +121,10 @@ def weight_variant_name(weight: float) -> str:
 
 def build_base_overrides(repo_dir: Path, training_output_dir: Path) -> list[str]:
     market_csv = repo_dir / "data/raw/market/sp500_pit_union_lseg_20150101_20260513.csv"
-    pit_csv = repo_dir / "data/raw/constituents/sp500_pit_joiner_leaver_20160101_20260513_pit_universe.csv"
+    pit_csv = (
+        repo_dir
+        / "data/raw/constituents/sp500_pit_joiner_leaver_20160101_20260513_pit_universe.csv"
+    )
     regime_csv = repo_dir / "data/raw/regime/pit_repeated_seed_regime_inputs_20260520_183538.csv"
     for path in (market_csv, pit_csv, regime_csv):
         if not path.exists():
@@ -239,7 +246,9 @@ def count_checkpoints(run_dir: Path) -> int:
     checkpoint_dir = run_dir / "checkpoints"
     if not checkpoint_dir.is_dir():
         return 0
-    return sum(1 for idx in range(NUM_MODELS) if (checkpoint_dir / f"model_{idx}_best.pth").is_file())
+    return sum(
+        1 for idx in range(NUM_MODELS) if (checkpoint_dir / f"model_{idx}_best.pth").is_file()
+    )
 
 
 def existing_run_score(run_dir: Path) -> tuple[int, int, int, str]:
@@ -254,7 +263,9 @@ def best_existing_run_dir(training_output_dir: Path, job_name: str) -> Path | No
     if not base.is_dir():
         return None
     candidates = [path for path in base.iterdir() if path.is_dir()]
-    candidates = [path for path in candidates if count_prediction_dirs(path) or count_checkpoints(path)]
+    candidates = [
+        path for path in candidates if count_prediction_dirs(path) or count_checkpoints(path)
+    ]
     if not candidates:
         return None
     return max(candidates, key=existing_run_score)
@@ -320,7 +331,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"[{job_index}/{len(jobs)}] skipping OK job: {job['name']}", flush=True)
                 continue
 
-            run_dir = best_existing_run_dir(training_output_dir, job["name"]) if args.resume else None
+            run_dir = (
+                best_existing_run_dir(training_output_dir, job["name"]) if args.resume else None
+            )
             if run_dir is None:
                 run_dir = new_run_dir(training_output_dir, job["name"])
             run_dir.mkdir(parents=True, exist_ok=True)
@@ -358,8 +371,14 @@ def main(argv: list[str] | None = None) -> int:
             elapsed_minutes = round((time.time() - start) / 60.0, 3)
             summary_path = run_dir / "training_summary.json"
             eval_path = run_dir / "evaluation_summary.json"
-            summary = json.loads(summary_path.read_text(encoding="utf-8")) if summary_path.exists() else {}
-            evaluation = json.loads(eval_path.read_text(encoding="utf-8")) if eval_path.exists() else {}
+            summary = (
+                json.loads(summary_path.read_text(encoding="utf-8"))
+                if summary_path.exists()
+                else {}
+            )
+            evaluation = (
+                json.loads(eval_path.read_text(encoding="utf-8")) if eval_path.exists() else {}
+            )
             result = {
                 "name": job["name"],
                 "variant": job["variant"],

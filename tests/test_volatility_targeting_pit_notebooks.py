@@ -33,7 +33,7 @@ def test_volatility_pit_notebooks_have_real_gpu_gate() -> None:
         "G4/L4-class Colab runtime, not T4/CPU",
         "nvidia-smi",
         "ALLOWED_GPU_MARKERS = (",
-        "BLOCKED_GPU_NAMES = (\"T4\",)",
+        'BLOCKED_GPU_NAMES = ("T4",)',
         "STRICT_GPU_MARKERS: list[str] = []",
         "GPU_UTIL_PATH",
         "scripts/monitor_gpu_util.py",

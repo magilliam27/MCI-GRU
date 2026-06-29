@@ -54,9 +54,6 @@ def test_upward_sweep_rejects_t4_and_records_gpu_evidence() -> None:
         "G4/L4-class Colab runtime",
         "not T4/CPU",
         "ALLOWED_GPU_MARKERS",
-        "'L4'",
-        "'RTX PRO'",
-        "'BLACKWELL'",
         "gpu_name",
         "gpu_util.csv",
         "monitor_gpu_util.py",
@@ -66,6 +63,12 @@ def test_upward_sweep_rejects_t4_and_records_gpu_evidence() -> None:
         assert token in combined
         assert token in generator
         assert token in runner
+
+    for marker in ("L4", "RTX PRO", "BLACKWELL"):
+        quoted_variants = (f"'{marker}'", f'"{marker}"')
+        assert any(token in combined for token in quoted_variants)
+        assert any(token in generator for token in quoted_variants)
+        assert any(token in runner for token in quoted_variants)
 
 
 def test_upward_sweep_code_cells_parse() -> None:

@@ -819,9 +819,7 @@ class ExperimentConfig:
             "training.shuffle_train": self.training.shuffle_train,
             "training.dataloader_num_workers": self.training.dataloader_num_workers,
             "training.dataloader_pin_memory": self.training.dataloader_pin_memory,
-            "training.dataloader_persistent_workers": (
-                self.training.dataloader_persistent_workers
-            ),
+            "training.dataloader_persistent_workers": (self.training.dataloader_persistent_workers),
             "training.dataloader_prefetch_factor": self.training.dataloader_prefetch_factor,
             "training.profile_batches": self.training.profile_batches,
             # Evaluation

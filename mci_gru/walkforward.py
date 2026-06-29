@@ -40,9 +40,7 @@ def generate_walkforward_configs(base: ExperimentConfig) -> list[ExperimentConfi
         train_end = train_start + relativedelta(years=wf.window_train_years)
         widx = 0
         while train_end < global_end and (wf.max_windows is None or widx < wf.max_windows):
-            cfg = _one_window_from_train_end(
-                base, train_start, train_end, lt, wf, global_end
-            )
+            cfg = _one_window_from_train_end(base, train_start, train_end, lt, wf, global_end)
             if cfg is not None:
                 windows.append(cfg)
                 widx += 1
@@ -54,9 +52,7 @@ def generate_walkforward_configs(base: ExperimentConfig) -> list[ExperimentConfi
             train_end = train_start + relativedelta(years=wf.window_train_years)
             if train_end >= global_end:
                 break
-            cfg = _one_window_from_train_end(
-                base, train_start, train_end, lt, wf, global_end
-            )
+            cfg = _one_window_from_train_end(base, train_start, train_end, lt, wf, global_end)
             if cfg is not None:
                 windows.append(cfg)
                 widx += 1
@@ -122,9 +118,7 @@ def merge_walkforward_summary(summaries: list[dict]) -> dict:
     losses = [s["mean_best_val_loss"] for s in summaries if s.get("mean_best_val_loss") is not None]
     ics = [s["mean_best_val_ic"] for s in summaries if s.get("mean_best_val_ic") is not None]
     rank_ics = [
-        s["mean_best_val_rank_ic"]
-        for s in summaries
-        if s.get("mean_best_val_rank_ic") is not None
+        s["mean_best_val_rank_ic"] for s in summaries if s.get("mean_best_val_rank_ic") is not None
     ]
     merged = {
         "n_windows": len(summaries),

@@ -98,7 +98,9 @@ def _extend_workstreams(lines: list[str], title: str, workstreams: list[Workstre
         lines.extend(["None.", ""])
         return
     for workstream in workstreams:
-        lines.append(f"- **{workstream.name}** ({workstream.status.value}): {workstream.next_action}")
+        lines.append(
+            f"- **{workstream.name}** ({workstream.status.value}): {workstream.next_action}"
+        )
     lines.append("")
 
 

@@ -17,9 +17,7 @@ def rank_scores(scores_df: pd.DataFrame) -> pd.DataFrame:
     if missing:
         raise ValueError(f"Scores DataFrame missing columns: {sorted(missing)}")
     ranked = scores_df.copy()
-    ranked = ranked.sort_values(["score", "kdcode"], ascending=[False, True]).reset_index(
-        drop=True
-    )
+    ranked = ranked.sort_values(["score", "kdcode"], ascending=[False, True]).reset_index(drop=True)
     ranked["rank"] = np.arange(1, len(ranked) + 1, dtype=int)
     return ranked
 
@@ -127,7 +125,9 @@ def top_k_returns(predictions: np.ndarray, true_returns: np.ndarray, top_k: int)
     preds = np.asarray(predictions, dtype=np.float64)
     rets = np.asarray(true_returns, dtype=np.float64)
     if preds.shape != rets.shape:
-        raise ValueError(f"predictions and true_returns shapes differ: {preds.shape} != {rets.shape}")
+        raise ValueError(
+            f"predictions and true_returns shapes differ: {preds.shape} != {rets.shape}"
+        )
     if preds.ndim != 2:
         raise ValueError("predictions and true_returns must be 2-D")
     out: list[float] = []
