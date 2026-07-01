@@ -134,6 +134,52 @@ def test_collect_local_evidence_builds_git_topology_snapshot(tmp_path: Path) -> 
     ]
 
 
+def test_collect_local_evidence_marks_worktree_status_errors_as_attention(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+
+    def fake_run(args: list[str]) -> str:
+        command = " ".join(args)
+        if command == "git status --short --branch":
+            return "## main\n"
+        if command == "git branch --format=%(refname:short)":
+            return "main\n"
+        if command == "git branch --all --no-merged origin/main":
+            return ""
+        if command == "git rev-list --left-right --count origin/main...HEAD":
+            return "0\t0\n"
+        if command == "git worktree list --porcelain":
+            return (
+                "worktree C:/repo\n"
+                "HEAD 60e3d96\n"
+                "branch refs/heads/main\n"
+                "\n"
+                "worktree C:/repo/.codex/worktrees/locked/MCI-GRU\n"
+                "HEAD badcafe\n"
+                "branch refs/heads/codex/locked-worktree\n"
+            )
+        if args[:2] == ["git", "-c"] and args[3] == "-C":
+            if args[4] == "C:/repo":
+                return "## main\n"
+            raise subprocess.CalledProcessError(
+                returncode=128,
+                cmd=args,
+                stderr="fatal: detected dubious ownership",
+            )
+        if command == "git log -5 --oneline":
+            return "60e3d96 Add local MCI-GRU cockpit runner\n"
+        raise AssertionError(command)
+
+    evidence = collect_local_evidence(repo, run_command=fake_run)
+
+    locked = evidence.git_topology.worktrees[1]
+    assert locked.branch == "codex/locked-worktree"
+    assert locked.status_error
+    assert evidence.git_topology.dirty_worktrees == [locked]
+    assert evidence.git_topology.has_attention_items is True
+
+
 def test_default_cockpit_runners_apply_safe_directory_to_git_commands(
     tmp_path: Path,
     monkeypatch,
