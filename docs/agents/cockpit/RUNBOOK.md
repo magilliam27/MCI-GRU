@@ -56,11 +56,20 @@ Read-only evidence to collect:
 
 ```bash
 git status --short
+git status --short --branch
 git branch --show-current
 git worktree list --porcelain
 git branch --all --no-merged origin/main
+git rev-list --left-right --count origin/main...HEAD
 gh pr list --state all --json number,title,state,isDraft,headRefName,baseRefName,mergedAt,updatedAt,url
 gh issue view 38 --json number,title,state,updatedAt,url,comments
+```
+
+On Windows/Codex worktrees, per-worktree status checks should use a local
+safe-directory override rather than changing global git config:
+
+```bash
+git -c safe.directory=<worktree-path> -C <worktree-path> status --porcelain=v1 -b --untracked-files=all
 ```
 
 For each durable workstream, the cockpit must name the canonical continuation
@@ -147,6 +156,34 @@ Check for:
 - pushed branches with no open PR, grouped by workstream when possible;
 - active or `ready-for-agent` issues that lack a named branch, open PR, or
   explicit "not started" state.
+
+## Git Tree Impact
+
+Each daily packet must include a `Git Tree Impact` section that summarizes:
+
+- current branch;
+- snapshot timing, especially whether the packet was collected before GitHub
+  sync commits/pushes;
+- `origin/main...HEAD` divergence;
+- count and names of branches not merged into `origin/main`, labelled as
+  local, remote-only, or local+remote;
+- total, detached, and dirty worktrees;
+- dirty or detached worktree paths that require review.
+
+Primary repo git commands should run with `safe.directory` set for the current
+checkout. Secondary worktree status probes should set `safe.directory` for the
+worktree path being inspected.
+
+The workstream register should be live-topology-first. Seeded workstream names
+may enrich matching branches/worktrees, but unmatched local branches, worktree
+branches, and remote-only unmerged branches should get explicit `Git surface:`
+rows so they cannot disappear from the solo-dev continuation map.
+
+Use `green` only when no branch/worktree attention items are found. Use
+`yellow` when there is normal solo-dev branch pressure, such as unmerged
+branches, detached worktrees, or non-current dirty worktrees. Use `red` when
+the current checkout itself is dirty before cockpit generation or required
+docs are missing.
 
 If live sync goes sideways, inspect and recover with:
 

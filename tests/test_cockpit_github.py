@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from datetime import date
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
 
 from mci_gru.cockpit.github import (
     GitHubSyncDisabled,
+    _run_command,
     close_issue_with_evidence,
     cockpit_branch_name,
     create_issue,
@@ -77,6 +79,31 @@ def test_sync_github_creates_branch_pr_issue_and_comment_with_fake_runner(
     assert any(command[:2] == ["git", "add"] for command in commands)
     assert any(command[:3] == ["gh", "pr", "list"] and "--state" in command for command in commands)
     assert any(command[:3] == ["gh", "issue", "comment"] for command in commands)
+
+
+def test_default_github_runner_applies_safe_directory_to_git_commands(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    seen_commands: list[list[str]] = []
+
+    def fake_run(
+        args: list[str],
+        cwd: Path,
+        check: bool,
+        capture_output: bool,
+        text: bool,
+    ) -> SimpleNamespace:
+        seen_commands.append(args)
+        return SimpleNamespace(stdout="")
+
+    monkeypatch.setattr("mci_gru.cockpit.github.subprocess.run", fake_run)
+
+    _run_command(tmp_path)(["git", "status", "--short"])
+    _run_command(tmp_path)(["gh", "auth", "status"])
+
+    assert seen_commands[0] == ["git", "-c", f"safe.directory={tmp_path}", "status", "--short"]
+    assert seen_commands[1] == ["gh", "auth", "status"]
 
 
 def test_create_issue_applies_only_existing_labels() -> None:

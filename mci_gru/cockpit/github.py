@@ -4,6 +4,8 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from mci_gru.cockpit.git import with_safe_directory
+
 if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import date
@@ -262,7 +264,13 @@ def _split_lines(output: str) -> list[str]:
 
 def _run_command(repo_root: Path) -> CommandRunner:
     def run(args: list[str]) -> str:
-        completed = subprocess.run(args, cwd=repo_root, check=True, capture_output=True, text=True)
+        completed = subprocess.run(
+            with_safe_directory(args, repo_root),
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
         return completed.stdout
 
     return run
