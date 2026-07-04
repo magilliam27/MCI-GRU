@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from nb_lib import LOCAL_PY310_METADATA, write_notebook
+from nb_lib import LOCAL_PY310_METADATA, backtest_engine_path_expr, write_notebook
 from nb_lib import code_lines as code
 from nb_lib import md_lines as md
 
@@ -309,7 +309,7 @@ rel_market_bt = MARKET_CSV.relative_to(REPO_ROOT).as_posix()
 
 bt_cmd = [
     sys.executable,
-    str(REPO_ROOT / "tests" / "backtest_sp500.py"),
+    __BACKTEST_ENGINE_PATH_EXPR__,
     "--predictions_dir",
     str(PRED_DIR),
     "--data_file",
@@ -349,7 +349,10 @@ metrics_file = BACKTEST_DIR / "backtest_metrics.json"
 if metrics_file.is_file():
     with open(metrics_file, encoding="utf-8") as f:
         print(json.dumps(json.load(f), indent=2)[:4000])
-"""
+""".replace(
+            "__BACKTEST_ENGINE_PATH_EXPR__",
+            backtest_engine_path_expr("backtest_sp500", repo_var="REPO_ROOT", quote='"'),
+        )
     )
 )
 

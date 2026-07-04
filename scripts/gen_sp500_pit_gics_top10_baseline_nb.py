@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from nb_lib import COLAB_GPU_METADATA_BARE_KERNEL, write_notebook
+from nb_lib import COLAB_GPU_METADATA_BARE_KERNEL, backtest_engine_path_expr, write_notebook
 from nb_lib import code_lines as code
 from nb_lib import md_lines as md
 
@@ -412,7 +412,7 @@ cells = [
                     sys.executable,
                     "-X",
                     "utf8",
-                    str(REPO_DIR / "tests" / "backtest_sp500_daily.py"),
+                    __BACKTEST_ENGINE_PATH_EXPR__,
                     "--predictions_dir",
                     str(pred_dir),
                     "--data_file",
@@ -464,7 +464,10 @@ cells = [
                 shutil.copytree(LOCAL_RUN_ROOT, dest / "local_run_root", dirs_exist_ok=True)
             if IN_COLAB and runtime is not None:
                 runtime.unassign()
-        """
+        """.replace(
+            "__BACKTEST_ENGINE_PATH_EXPR__",
+            backtest_engine_path_expr("backtest_sp500_daily", quote='"'),
+        )
     ),
 ]
 

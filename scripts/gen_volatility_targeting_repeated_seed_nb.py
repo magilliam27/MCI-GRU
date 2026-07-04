@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from nb_lib import code, md, write_notebook
+from nb_lib import backtest_engine_path_expr, code, md, write_notebook
 
 OUT = Path("notebooks/volatility_targeting_repeated_seed_colab.ipynb")
 
@@ -475,7 +475,7 @@ cells = [
                     sys.executable,
                     "-X",
                     "utf8",
-                    str(REPO_DIR / "tests/backtest_sp500_daily.py"),
+                    __BACKTEST_ENGINE_PATH_EXPR__,
                     "--predictions_dir",
                     str(predictions_dir),
                     "--data_file",
@@ -668,7 +668,10 @@ cells = [
             summary_lines.append(seed_summary_df.to_markdown(index=False))
         summary_md_path.write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
         print("Summary:", summary_md_path)
-        """
+        """.replace(
+            "__BACKTEST_ENGINE_PATH_EXPR__",
+            backtest_engine_path_expr("backtest_sp500_daily", quote='"', split_path=False),
+        )
     ),
 ]
 

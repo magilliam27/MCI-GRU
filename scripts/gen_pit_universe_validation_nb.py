@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from nb_lib import backtest_engine_path_expr, write_notebook
 from nb_lib import code_lines as code
 from nb_lib import md_lines as md
-from nb_lib import write_notebook
 
 OUT = Path("notebooks/pit_universe_validation_colab.ipynb")
 
@@ -687,7 +687,7 @@ cells = [
             suffix = '_' + scenario['scenario']
             cmd = [
                 sys.executable,
-                str(REPO_DIR / 'tests' / 'backtest_sp500.py'),
+                __BACKTEST_ENGINE_PATH_EXPR__,
                 '--predictions_dir', str(pred_dir),
                 '--data_file', str(REPO_DIR / 'data' / 'raw' / 'market' / training_row['data_filename']),
                 '--test_start', training_row['test_start'],
@@ -757,7 +757,10 @@ cells = [
                     for key, value in result_df.iloc[0].to_dict().items():
                         row.setdefault(f'backtest.{key}', value)
             return row
-        """
+        """.replace(
+            "__BACKTEST_ENGINE_PATH_EXPR__",
+            backtest_engine_path_expr("backtest_sp500"),
+        )
     ),
     md("## 7. Run Training And Backtests"),
     code(

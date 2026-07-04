@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from nb_lib import backtest_engine_path_expr, write_notebook
 from nb_lib import code_lines as code
 from nb_lib import md_lines as md
-from nb_lib import write_notebook
 
 OUT = Path("notebooks/pit_repeated_seed_replication_colab.ipynb")
 
@@ -966,7 +966,7 @@ cells = [
                 sys.executable,
                 '-X',
                 'utf8',
-                str(REPO_DIR / 'tests' / 'backtest_sp500_daily.py'),
+                __BACKTEST_ENGINE_PATH_EXPR__,
                 '--predictions_dir',
                 str(pred_dir),
                 '--data_file',
@@ -1059,7 +1059,10 @@ cells = [
                     'Expected cost/rank-gated backtests did not all complete. '
                     f'Missing={missing}; failed={failed[:5]}. Inspect backtest_results.csv and logs.'
                 )
-        """
+        """.replace(
+            "__BACKTEST_ENGINE_PATH_EXPR__",
+            backtest_engine_path_expr("backtest_sp500_daily"),
+        )
     ),
     md("## 6. Execute Training, Breadth Checks, And Backtests"),
     code(

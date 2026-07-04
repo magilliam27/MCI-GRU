@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from nb_lib import LOCAL_PY310_METADATA, write_notebook
+from nb_lib import LOCAL_PY310_METADATA, backtest_engine_path_expr, write_notebook
 from nb_lib import code_lines as code
 from nb_lib import md_lines as md
 
@@ -247,7 +247,7 @@ cells = [
             suffix = '_' + scenario['scenario']
             cmd = [
                 sys.executable,
-                str(REPO_DIR / 'tests' / 'backtest_sp500.py'),
+                __BACKTEST_ENGINE_PATH_EXPR__,
                 '--predictions_dir', str(predictions_dir),
                 '--data_file', str(DATA_FILE),
                 '--test_start', TEST_START,
@@ -373,7 +373,10 @@ cells = [
             'source_backtest_dir',
         ] if c in results_df.columns]
         display(results_df[display_cols])
-        """
+        """.replace(
+            "__BACKTEST_ENGINE_PATH_EXPR__",
+            backtest_engine_path_expr("backtest_sp500"),
+        )
     ),
     md("## 6. Visualize Backtest Comparison"),
     code(

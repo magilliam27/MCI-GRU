@@ -187,6 +187,32 @@ elif REQUIRE_G4_L4_GPU:
 """
 
 
+#: Directory (relative to the repo root) currently holding the backtest
+#: engines. WS-C flips this single value to "scripts" when the engines move.
+BACKTEST_ENGINE_DIR = "tests"
+
+
+def backtest_engine_path_expr(
+    engine: str,
+    *,
+    repo_var: str = "REPO_DIR",
+    quote: str = "'",
+    split_path: bool = True,
+) -> str:
+    """Source-text expression for the backtest engine script path, spliced
+    into generated notebook cells (e.g. ``str(REPO_DIR / 'tests' /
+    'backtest_sp500.py')``). This is the single place WS-C edits when the
+    engines move from ``tests/`` to ``scripts/``.
+
+    ``engine`` is ``"backtest_sp500"`` or ``"backtest_sp500_daily"``.
+    ``quote`` and ``split_path`` preserve the historical per-generator
+    formatting so regenerated notebooks stay byte-identical.
+    """
+    if split_path:
+        return f"str({repo_var} / {quote}{BACKTEST_ENGINE_DIR}{quote} / {quote}{engine}.py{quote})"
+    return f"str({repo_var} / {quote}{BACKTEST_ENGINE_DIR}/{engine}.py{quote})"
+
+
 def _tuple_literal(values: tuple[str, ...]) -> str:
     if not values:
         return "()"
