@@ -134,6 +134,5 @@ The file `docs/agent_references/cursor/plans/graph_signal_upgrades_c28cf640.plan
 ## Key Gotchas
 
 - `results/`, `outputs/`, `*.pth`, `*.pt` are gitignored — don't reference them as source of truth
-- The `archive/` directory contains legacy code — do not treat as current
-- `seed_results/` and `_uncertain/` are experimental artifacts, not production code
+- `seed_results/` holds committed experiment artifacts — not production code; do not treat as source of truth
 - Handoffs are operational continuity notes, not research evidence; use `docs/research/README.md` for current/archive evidence status.
