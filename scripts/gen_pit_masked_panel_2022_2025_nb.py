@@ -2,31 +2,13 @@
 
 from __future__ import annotations
 
-import json
-import textwrap
 from pathlib import Path
 
+from nb_lib import code_lines as code
+from nb_lib import md_lines as md
+from nb_lib import write_notebook
+
 OUT = Path("notebooks/pit_masked_panel_2022_2025_colab.ipynb")
-
-
-def md(source: str) -> dict:
-    source = textwrap.dedent(source).strip()
-    return {
-        "cell_type": "markdown",
-        "metadata": {},
-        "source": [line + "\n" for line in source.splitlines()],
-    }
-
-
-def code(source: str) -> dict:
-    source = textwrap.dedent(source).strip("\n")
-    return {
-        "cell_type": "code",
-        "execution_count": None,
-        "metadata": {},
-        "outputs": [],
-        "source": [line + "\n" for line in source.splitlines()],
-    }
 
 
 cells = [
@@ -958,22 +940,14 @@ cells = [
 ]
 
 
-nb = {
-    "cells": cells,
-    "metadata": {
-        "colab": {"provenance": []},
-        "kernelspec": {
-            "display_name": "Python 3",
-            "language": "python",
-            "name": "python3",
-        },
-        "language_info": {"name": "python", "version": "3.10.0"},
+METADATA = {
+    "colab": {"provenance": []},
+    "kernelspec": {
+        "display_name": "Python 3",
+        "language": "python",
+        "name": "python3",
     },
-    "nbformat": 4,
-    "nbformat_minor": 5,
+    "language_info": {"name": "python", "version": "3.10.0"},
 }
 
-
-OUT.parent.mkdir(parents=True, exist_ok=True)
-OUT.write_text(json.dumps(nb, indent=1), encoding="utf-8")
-print(f"Wrote {OUT}")
+write_notebook(cells, OUT, metadata=METADATA, indent=1)

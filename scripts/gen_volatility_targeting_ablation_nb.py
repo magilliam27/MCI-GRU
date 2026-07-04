@@ -2,29 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from textwrap import dedent
+
+from nb_lib import code, md, write_notebook
 
 OUT = Path("notebooks/volatility_targeting_ablation_colab.ipynb")
-
-
-def md(text: str) -> dict:
-    return {
-        "cell_type": "markdown",
-        "metadata": {},
-        "source": dedent(text).strip().splitlines(keepends=True),
-    }
-
-
-def code(text: str) -> dict:
-    return {
-        "cell_type": "code",
-        "execution_count": None,
-        "metadata": {},
-        "outputs": [],
-        "source": dedent(text).strip().splitlines(keepends=True),
-    }
 
 
 cells = [
@@ -729,28 +711,8 @@ cells = [
 ]
 
 
-def build_notebook() -> dict:
-    return {
-        "cells": cells,
-        "metadata": {
-            "accelerator": "GPU",
-            "colab": {"provenance": []},
-            "kernelspec": {
-                "display_name": "Python 3",
-                "language": "python",
-                "name": "python3",
-            },
-            "language_info": {"name": "python"},
-        },
-        "nbformat": 4,
-        "nbformat_minor": 5,
-    }
-
-
 def main() -> None:
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(build_notebook(), indent=1), encoding="utf-8")
-    print(f"Wrote {OUT}")
+    write_notebook(cells, OUT, indent=1)
 
 
 if __name__ == "__main__":

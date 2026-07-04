@@ -3,30 +3,12 @@
 from __future__ import annotations
 
 import copy
-import json
 from pathlib import Path
-from textwrap import dedent
+
+from nb_lib import code, md, write_notebook
 
 OUT = Path("notebooks/volatility_targeting_pit_colab.ipynb")
 FULL_OUT = Path("notebooks/volatility_targeting_full_pit_colab.ipynb")
-
-
-def md(text: str) -> dict:
-    return {
-        "cell_type": "markdown",
-        "metadata": {},
-        "source": dedent(text).strip().splitlines(keepends=True),
-    }
-
-
-def code(text: str) -> dict:
-    return {
-        "cell_type": "code",
-        "execution_count": None,
-        "metadata": {},
-        "outputs": [],
-        "source": dedent(text).strip().splitlines(keepends=True),
-    }
 
 
 def replace_cell_text(cell: dict, old: str, new: str) -> None:
@@ -368,24 +350,6 @@ cells = [
 ]
 
 
-def build_notebook(notebook_cells: list[dict]) -> dict:
-    return {
-        "cells": notebook_cells,
-        "metadata": {
-            "accelerator": "GPU",
-            "colab": {"provenance": []},
-            "kernelspec": {
-                "display_name": "Python 3",
-                "language": "python",
-                "name": "python3",
-            },
-            "language_info": {"name": "python"},
-        },
-        "nbformat": 4,
-        "nbformat_minor": 5,
-    }
-
-
 def full_run_cells() -> list[dict]:
     full_cells = copy.deepcopy(cells)
     replace_cell_text(
@@ -452,15 +416,8 @@ def full_run_cells() -> list[dict]:
 
 
 def main() -> None:
-    notebook = build_notebook(cells)
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(notebook, indent=1), encoding="utf-8")
-    print(f"Wrote {OUT}")
-
-    full_notebook = build_notebook(full_run_cells())
-    FULL_OUT.parent.mkdir(parents=True, exist_ok=True)
-    FULL_OUT.write_text(json.dumps(full_notebook, indent=1), encoding="utf-8")
-    print(f"Wrote {FULL_OUT}")
+    write_notebook(cells, OUT, indent=1)
+    write_notebook(full_run_cells(), FULL_OUT, indent=1)
 
 
 if __name__ == "__main__":
