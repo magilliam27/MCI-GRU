@@ -5,6 +5,27 @@ from pathlib import Path
 NOTEBOOK_PATH = Path("notebooks/lambdarank_ic_pit_colab.ipynb")
 GENERATOR_PATH = Path("scripts/gen_lambdarank_ic_pit_nb.py")
 
+# Setup-cell text now emitted by nb_lib.colab_setup_cell rather than being
+# duplicated in the generator source; assert these against the generated
+# notebook only (the notebook is the real contract).
+SHARED_SETUP_TOKENS = {
+    'BRANCH = "codex/colab-gpu-utilization-hardening-20260620"',
+    "G4/L4-class Colab runtime",
+    "not T4/CPU",
+    'BLOCKED_GPU_NAMES = ("T4",)',
+    "ALLOWED_GPU_MARKERS = (",
+    "STRICT_GPU_MARKERS: list[str] = []",
+}
+
+
+def _assert_tokens(required_tokens: list[str]) -> None:
+    combined = "\n".join(_cell_sources())
+    generator = GENERATOR_PATH.read_text(encoding="utf-8")
+    for token in required_tokens:
+        assert token in combined
+        if token not in SHARED_SETUP_TOKENS:
+            assert token in generator
+
 
 def _cell_sources() -> list[str]:
     notebook = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
@@ -21,9 +42,6 @@ def _code_cell_sources() -> list[str]:
 
 
 def test_lambdarank_ic_notebook_pins_branch_and_grid_contract() -> None:
-    combined = "\n".join(_cell_sources())
-    generator = GENERATOR_PATH.read_text(encoding="utf-8")
-
     required_tokens = [
         "LambdaRankIC Pairwise Rank IC PIT Grid",
         "LOSS_PATH_DECISION_2026-06-04.md",
@@ -45,15 +63,10 @@ def test_lambdarank_ic_notebook_pins_branch_and_grid_contract() -> None:
         "expected_models_by_mode = len(SCREEN_PAIR_CAPS) if SCREEN_MODE else (3 if SMOKE_MODE else 720)",
     ]
 
-    for token in required_tokens:
-        assert token in combined
-        assert token in generator
+    _assert_tokens(required_tokens)
 
 
 def test_lambdarank_ic_notebook_emits_three_objective_variants() -> None:
-    combined = "\n".join(_cell_sources())
-    generator = GENERATOR_PATH.read_text(encoding="utf-8")
-
     required_tokens = [
         "'pure_ic_baseline'",
         "'portfolio_ic_hybrid'",
@@ -75,15 +88,10 @@ def test_lambdarank_ic_notebook_emits_three_objective_variants() -> None:
         "training.lambdarank_ic_temperature",
     ]
 
-    for token in required_tokens:
-        assert token in combined
-        assert token in generator
+    _assert_tokens(required_tokens)
 
 
 def test_lambdarank_ic_notebook_has_lower_pair_screen_contract() -> None:
-    combined = "\n".join(_cell_sources())
-    generator = GENERATOR_PATH.read_text(encoding="utf-8")
-
     required_tokens = [
         'BRANCH = "codex/colab-gpu-utilization-hardening-20260620"',
         "SCREEN_MODE = True",
@@ -103,15 +111,10 @@ def test_lambdarank_ic_notebook_has_lower_pair_screen_contract() -> None:
         '"elapsed_seconds",',
     ]
 
-    for token in required_tokens:
-        assert token in combined
-        assert token in generator
+    _assert_tokens(required_tokens)
 
 
 def test_lambdarank_ic_notebook_has_colab_reliability_contract() -> None:
-    combined = "\n".join(_cell_sources())
-    generator = GENERATOR_PATH.read_text(encoding="utf-8")
-
     required_tokens = [
         "G4/L4-class Colab runtime",
         "not T4/CPU",
@@ -130,15 +133,10 @@ def test_lambdarank_ic_notebook_has_colab_reliability_contract() -> None:
         "Runtime > Disconnect and delete runtime",
     ]
 
-    for token in required_tokens:
-        assert token in combined
-        assert token in generator
+    _assert_tokens(required_tokens)
 
 
 def test_lambdarank_ic_notebook_preserves_pit_recipe_and_fails_fast() -> None:
-    combined = "\n".join(_cell_sources())
-    generator = GENERATOR_PATH.read_text(encoding="utf-8")
-
     required_tokens = [
         'TrainingConfig(loss_type="lambdarank_ic", selection_metric="val_rank_ic")',
         "build_training_loss(probe_cfg)",
@@ -157,9 +155,7 @@ def test_lambdarank_ic_notebook_preserves_pit_recipe_and_fails_fast() -> None:
         "lambdarank_ic_pit_training_results.json",
     ]
 
-    for token in required_tokens:
-        assert token in combined
-        assert token in generator
+    _assert_tokens(required_tokens)
 
 
 def test_lambdarank_ic_notebook_code_cells_parse() -> None:
