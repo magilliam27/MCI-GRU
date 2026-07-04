@@ -1,6 +1,10 @@
 import json
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.requires_data
+
 NOTEBOOK_PATH = Path("notebooks/ablation_evaluation_loop_colab.ipynb")
 FULL_FACTORIAL_NOTEBOOK_PATH = Path("notebooks/full_feature_factorial_ablation_colab.ipynb")
 

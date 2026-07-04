@@ -2,6 +2,10 @@ import ast
 import json
 from pathlib import Path
 
+import pytest
+
+pytestmark = [pytest.mark.requires_lseg, pytest.mark.requires_fred]
+
 NOTEBOOK_PATH = Path("notebooks/pit_repeated_seed_replication_colab.ipynb")
 GENERATOR_PATH = Path("scripts/gen_pit_repeated_seed_replication_nb.py")
 

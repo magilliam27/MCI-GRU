@@ -2,6 +2,10 @@ import ast
 import json
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.requires_lseg
+
 NOTEBOOK_PATH = Path("notebooks/sp500_pit_gics_top10_baseline_colab.ipynb")
 GENERATOR_PATH = Path("scripts/gen_sp500_pit_gics_top10_baseline_nb.py")
 

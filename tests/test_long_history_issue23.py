@@ -3,7 +3,10 @@ import importlib
 import json
 from pathlib import Path
 
+import pytest
 from omegaconf import OmegaConf
+
+pytestmark = pytest.mark.requires_data
 
 PRESETS = {
     "long_history_his_t_21": 21,
