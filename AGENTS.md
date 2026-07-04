@@ -70,7 +70,13 @@ tests/               ← pytest suite + backtest scripts
 ## Environment
 
 - Python 3.10+
-- See `pyproject.toml` for all dependencies (install: `pip install -e ".[dev]"`)
+- **Dependency manifest:** `pyproject.toml` is source of truth for version ranges.
+  - `requirements.lock` — pinned dev+fred closure (Windows-reference; regenerate with
+    `pip-compile --extra=dev --extra=fred -o requirements.lock pyproject.toml`; do not
+    pip-sync shared venvs).
+  - `requirements.txt` — Colab-facing core ranges (kept as ranges, NOT pins, so Colab's
+    preinstalled torch/CUDA satisfies them; keep manually in sync with `pyproject.toml`).
+- Install for development: `pip install -e ".[dev,fred]"` (CI uses CPU torch index on ubuntu).
 - `FRED_API_KEY` env var required when credit spread or regime features are enabled
 - See `.env.example` for all environment variables
 
