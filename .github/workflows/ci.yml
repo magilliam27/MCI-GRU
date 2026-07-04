@@ -18,6 +18,7 @@ jobs:
       - run: pip install ruff==0.15.12
       - run: ruff check .
       - run: ruff format --check .
+      - run: python scripts/check_docs_sot.py
 
   test:
     name: Test
