@@ -15,7 +15,6 @@ from mci_gru.tracking import (
     load_run_metadata_from_predictions_dir,
     resolve_tracking_uri,
 )
-from run_experiment import dict_to_config
 from tests.backtest_sp500 import setup_backtest_tracking
 
 mlflow = pytest.importorskip("mlflow")
@@ -48,10 +47,28 @@ def test_config_builders_include_tracking_settings():
     assert created.tracking.experiment_name == "custom-exp"
     assert created.tracking.log_predictions is True
 
+    # Hydra round-trip: create_config_from_dict must ingest an
+    # OmegaConf.to_container product identically to a plain dict.
     hydra_cfg = OmegaConf.create(config_dict)
-    typed = dict_to_config(hydra_cfg)
+    typed = create_config_from_dict(OmegaConf.to_container(hydra_cfg, resolve=True))
     assert typed.tracking.enabled is True
+    assert typed.tracking.tracking_uri == "custom_mlruns"
     assert typed.tracking.experiment_name == "custom-exp"
+    assert typed.tracking.log_predictions is True
+
+
+def test_hydra_ingestion_seed_fallback_is_1729():
+    """Regression pin: config dicts without a `seed` key fall back to 1729.
+
+    The deleted run_experiment.dict_to_config used 42; 1729 (the
+    ExperimentConfig default, matched by configs/config.yaml) is the single
+    ingestion path's fallback.
+    """
+    assert create_config_from_dict({}).seed == 1729
+
+    hydra_cfg = OmegaConf.create({"experiment_name": "no-seed"})
+    typed = create_config_from_dict(OmegaConf.to_container(hydra_cfg, resolve=True))
+    assert typed.seed == 1729
 
 
 def test_mlflow_manager_round_trip_logs_params_metrics_and_artifacts():
