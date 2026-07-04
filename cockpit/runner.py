@@ -4,10 +4,10 @@ import subprocess
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
-from mci_gru.cockpit.evidence import collect_local_evidence
-from mci_gru.cockpit.git import with_safe_directory
-from mci_gru.cockpit.github import GitHubSyncResult, cockpit_branch_name, sync_github
-from mci_gru.cockpit.models import (
+from cockpit.evidence import collect_local_evidence
+from cockpit.git import with_safe_directory
+from cockpit.github import GitHubSyncResult, cockpit_branch_name, sync_github
+from cockpit.models import (
     BranchEvidence,
     CockpitReport,
     Decision,
@@ -18,13 +18,13 @@ from mci_gru.cockpit.models import (
     WorkstreamStatus,
     WorktreeEvidence,
 )
-from mci_gru.cockpit.render import render_cockpit_packet, render_workstream_register
+from cockpit.render import render_cockpit_packet, render_workstream_register
 
 if TYPE_CHECKING:
     from datetime import date
     from pathlib import Path
 
-    from mci_gru.cockpit.evidence import LocalEvidence, RunCommand
+    from cockpit.evidence import LocalEvidence, RunCommand
 
 
 @dataclass(frozen=True)

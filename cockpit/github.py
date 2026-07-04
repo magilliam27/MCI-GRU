@@ -4,7 +4,7 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from mci_gru.cockpit.git import with_safe_directory
+from cockpit.git import with_safe_directory
 
 if TYPE_CHECKING:
     from collections.abc import Callable

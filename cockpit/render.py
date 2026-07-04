@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from datetime import date
 
-    from mci_gru.cockpit.models import CockpitReport, GitHubAction, Workstream
+    from cockpit.models import CockpitReport, GitHubAction, Workstream
 
 
 REGISTER_COLUMNS = [

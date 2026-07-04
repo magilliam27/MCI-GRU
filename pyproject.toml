@@ -35,7 +35,7 @@ dev = [
 all = ["mci-gru[tracking,fred,dev]"]
 
 [tool.setuptools.packages.find]
-include = ["mci_gru*"]
+include = ["mci_gru*", "cockpit*"]
 
 # --- Ruff (linting + formatting) ---
 
@@ -74,7 +74,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["mci_gru"]
+known-first-party = ["mci_gru", "cockpit"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -4,7 +4,7 @@
 
 **Goal:** Build a conservative local-first cockpit runner that creates `docs/agents/workstreams.md` and dated `docs/agents/cockpit/YYYY-MM-DD.md` packets, then add guarded GitHub sync surfaces once the local artifacts are stable.
 
-**Architecture:** Add a small `mci_gru.cockpit` package with typed records, Markdown renderers, local evidence collection, and an explicit runner. Keep GitHub write behavior behind a separate gateway and opt-in flags so the first useful version can run safely without network or mutation.
+**Architecture:** Add a small `cockpit` package with typed records, Markdown renderers, local evidence collection, and an explicit runner. Keep GitHub write behavior behind a separate gateway and opt-in flags so the first useful version can run safely without network or mutation.
 
 **Tech Stack:** Python standard library, dataclasses, Markdown files, subprocess-injected command runner, pytest, ruff.
 
@@ -12,11 +12,11 @@
 
 ## File Structure
 
-- Create `mci_gru/cockpit/__init__.py`: public cockpit API exports.
-- Create `mci_gru/cockpit/models.py`: controlled statuses, workstream rows, run color, decision queue, GitHub action records, and cockpit report dataclasses.
-- Create `mci_gru/cockpit/render.py`: pure Markdown rendering for the workstream register and daily packet.
-- Create `mci_gru/cockpit/evidence.py`: local evidence collection from repo docs, git state, handoffs, research map, branches, and worktrees.
-- Create `mci_gru/cockpit/runner.py`: orchestration that turns evidence into seeded workstreams and writes cockpit files.
+- Create `cockpit/__init__.py`: public cockpit API exports.
+- Create `cockpit/models.py`: controlled statuses, workstream rows, run color, decision queue, GitHub action records, and cockpit report dataclasses.
+- Create `cockpit/render.py`: pure Markdown rendering for the workstream register and daily packet.
+- Create `cockpit/evidence.py`: local evidence collection from repo docs, git state, handoffs, research map, branches, and worktrees.
+- Create `cockpit/runner.py`: orchestration that turns evidence into seeded workstreams and writes cockpit files.
 - Create `scripts/refresh_cockpit.py`: thin CLI wrapper with local-only default behavior.
 - Create `tests/test_cockpit_render.py`: renderer tests with deterministic records.
 - Create `tests/test_cockpit_runner.py`: local runner tests using a temp repo-like directory and injected evidence.
@@ -40,9 +40,9 @@
 ### Task 1: Cockpit Models And Renderer Tests
 
 **Files:**
-- Create: `mci_gru/cockpit/__init__.py`
-- Create: `mci_gru/cockpit/models.py`
-- Create: `mci_gru/cockpit/render.py`
+- Create: `cockpit/__init__.py`
+- Create: `cockpit/models.py`
+- Create: `cockpit/render.py`
 - Test: `tests/test_cockpit_render.py`
 
 - [ ] **Step 1: Write failing tests for workstream and packet rendering**
@@ -54,7 +54,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from mci_gru.cockpit.models import (
+from cockpit.models import (
     CockpitReport,
     Decision,
     GitHubAction,
@@ -62,7 +62,7 @@ from mci_gru.cockpit.models import (
     Workstream,
     WorkstreamStatus,
 )
-from mci_gru.cockpit.render import render_cockpit_packet, render_workstream_register
+from cockpit.render import render_cockpit_packet, render_workstream_register
 
 
 def test_render_workstream_register_uses_controlled_columns() -> None:
@@ -146,11 +146,11 @@ Run:
 python -m pytest tests/test_cockpit_render.py -v
 ```
 
-Expected: FAIL with `ModuleNotFoundError: No module named 'mci_gru.cockpit'`.
+Expected: FAIL with `ModuleNotFoundError: No module named 'cockpit'`.
 
 - [ ] **Step 3: Add cockpit dataclasses**
 
-Create `mci_gru/cockpit/models.py`:
+Create `cockpit/models.py`:
 
 ```python
 from __future__ import annotations
@@ -225,14 +225,14 @@ class CockpitReport:
 
 - [ ] **Step 4: Add pure Markdown renderers**
 
-Create `mci_gru/cockpit/render.py`:
+Create `cockpit/render.py`:
 
 ```python
 from __future__ import annotations
 
 from datetime import date
 
-from mci_gru.cockpit.models import CockpitReport, GitHubAction, Workstream
+from cockpit.models import CockpitReport, GitHubAction, Workstream
 
 
 REGISTER_COLUMNS = [
@@ -355,10 +355,10 @@ def _escape_cell(value: str) -> str:
 
 - [ ] **Step 5: Add public exports**
 
-Create `mci_gru/cockpit/__init__.py`:
+Create `cockpit/__init__.py`:
 
 ```python
-from mci_gru.cockpit.models import (
+from cockpit.models import (
     CockpitReport,
     Decision,
     GitHubAction,
@@ -366,7 +366,7 @@ from mci_gru.cockpit.models import (
     Workstream,
     WorkstreamStatus,
 )
-from mci_gru.cockpit.render import render_cockpit_packet, render_workstream_register
+from cockpit.render import render_cockpit_packet, render_workstream_register
 
 __all__ = [
     "CockpitReport",
@@ -395,7 +395,7 @@ Expected: PASS for both tests.
 ### Task 2: Local Evidence Collection
 
 **Files:**
-- Create: `mci_gru/cockpit/evidence.py`
+- Create: `cockpit/evidence.py`
 - Test: `tests/test_cockpit_runner.py`
 
 - [ ] **Step 1: Write failing tests for local evidence collection**
@@ -407,7 +407,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mci_gru.cockpit.evidence import collect_local_evidence
+from cockpit.evidence import collect_local_evidence
 
 
 def test_collect_local_evidence_records_dirty_paths_and_required_docs(tmp_path: Path) -> None:
@@ -451,11 +451,11 @@ Run:
 python -m pytest tests/test_cockpit_runner.py::test_collect_local_evidence_records_dirty_paths_and_required_docs -v
 ```
 
-Expected: FAIL with `ModuleNotFoundError` or `ImportError` for `mci_gru.cockpit.evidence`.
+Expected: FAIL with `ModuleNotFoundError` or `ImportError` for `cockpit.evidence`.
 
 - [ ] **Step 3: Implement local evidence collection**
 
-Create `mci_gru/cockpit/evidence.py`:
+Create `cockpit/evidence.py`:
 
 ```python
 from __future__ import annotations
@@ -545,7 +545,7 @@ Expected: PASS.
 ### Task 3: Local Runner Writes Cockpit Artifacts
 
 **Files:**
-- Create: `mci_gru/cockpit/runner.py`
+- Create: `cockpit/runner.py`
 - Modify: `tests/test_cockpit_runner.py`
 
 - [ ] **Step 1: Write failing tests for artifact writing**
@@ -555,7 +555,7 @@ Append to `tests/test_cockpit_runner.py`:
 ```python
 from datetime import date
 
-from mci_gru.cockpit.runner import run_local_cockpit_refresh
+from cockpit.runner import run_local_cockpit_refresh
 
 
 def test_run_local_cockpit_refresh_writes_register_and_packet(tmp_path: Path) -> None:
@@ -604,11 +604,11 @@ Run:
 python -m pytest tests/test_cockpit_runner.py::test_run_local_cockpit_refresh_writes_register_and_packet -v
 ```
 
-Expected: FAIL with `ModuleNotFoundError` or `ImportError` for `mci_gru.cockpit.runner`.
+Expected: FAIL with `ModuleNotFoundError` or `ImportError` for `cockpit.runner`.
 
 - [ ] **Step 3: Implement seeded local runner**
 
-Create `mci_gru/cockpit/runner.py`:
+Create `cockpit/runner.py`:
 
 ```python
 from __future__ import annotations
@@ -617,9 +617,9 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from mci_gru.cockpit.evidence import RunCommand, collect_local_evidence
-from mci_gru.cockpit.models import CockpitReport, GitHubAction, RunColor, Workstream, WorkstreamStatus
-from mci_gru.cockpit.render import render_cockpit_packet, render_workstream_register
+from cockpit.evidence import RunCommand, collect_local_evidence
+from cockpit.models import CockpitReport, GitHubAction, RunColor, Workstream, WorkstreamStatus
+from cockpit.render import render_cockpit_packet, render_workstream_register
 
 
 @dataclass(frozen=True)
@@ -711,7 +711,7 @@ def _executive_summary(dirty_paths: list[str]) -> str:
 
 
 def _dirty_state_decision():
-    from mci_gru.cockpit.models import Decision
+    from cockpit.models import Decision
 
     return Decision(
         workstream="Git and worktree hygiene",
@@ -791,7 +791,7 @@ import argparse
 from datetime import date
 from pathlib import Path
 
-from mci_gru.cockpit.runner import run_local_cockpit_refresh
+from cockpit.runner import run_local_cockpit_refresh
 
 
 def parse_args() -> argparse.Namespace:
@@ -967,7 +967,7 @@ Expected: PASS.
 Run:
 
 ```bash
-ruff check mci_gru/cockpit scripts/refresh_cockpit.py tests/test_cockpit_render.py tests/test_cockpit_runner.py tests/test_cockpit_cli.py
+ruff check cockpit scripts/refresh_cockpit.py tests/test_cockpit_render.py tests/test_cockpit_runner.py tests/test_cockpit_cli.py
 ```
 
 Expected: PASS.
@@ -977,7 +977,7 @@ Expected: PASS.
 ### Task 7: Guarded GitHub Gateway Design Stub
 
 **Files:**
-- Create: `mci_gru/cockpit/github.py`
+- Create: `cockpit/github.py`
 - Test: `tests/test_cockpit_github.py`
 
 - [ ] **Step 1: Write failing tests for disabled-by-default GitHub sync**
@@ -989,7 +989,7 @@ from __future__ import annotations
 
 import pytest
 
-from mci_gru.cockpit.github import GitHubSyncDisabled, sync_github
+from cockpit.github import GitHubSyncDisabled, sync_github
 
 
 def test_sync_github_requires_explicit_enablement() -> None:
@@ -1005,11 +1005,11 @@ Run:
 python -m pytest tests/test_cockpit_github.py -v
 ```
 
-Expected: FAIL with missing `mci_gru.cockpit.github`.
+Expected: FAIL with missing `cockpit.github`.
 
 - [ ] **Step 3: Add explicit disabled gateway**
 
-Create `mci_gru/cockpit/github.py`:
+Create `cockpit/github.py`:
 
 ```python
 from __future__ import annotations

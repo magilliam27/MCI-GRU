@@ -5,8 +5,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from mci_gru.cockpit.git import with_safe_directory
-from mci_gru.cockpit.models import BranchEvidence, GitTopologySnapshot, WorktreeEvidence
+from cockpit.git import with_safe_directory
+from cockpit.models import BranchEvidence, GitTopologySnapshot, WorktreeEvidence
 
 RunCommand = Callable[[list[str]], str]
 

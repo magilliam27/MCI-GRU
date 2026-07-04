@@ -4,7 +4,7 @@ import builtins
 import importlib.util
 from pathlib import Path
 
-from mci_gru.cockpit.models import RunColor, WorkstreamStatus
+from cockpit.models import RunColor, WorkstreamStatus
 
 
 def test_cockpit_status_enums_behave_as_strings() -> None:
@@ -28,7 +28,7 @@ def test_strenum_compat_fallback_supports_python_310_import_path(monkeypatch) ->
         return real_import(name, globals, locals, fromlist, level)
 
     monkeypatch.setattr(builtins, "__import__", import_without_stdlib_strenum)
-    compat_path = Path("mci_gru/cockpit/_compat.py")
+    compat_path = Path("cockpit/_compat.py")
     spec = importlib.util.spec_from_file_location("cockpit_compat_py310_probe", compat_path)
     assert spec is not None
     assert spec.loader is not None
