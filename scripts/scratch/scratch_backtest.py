@@ -14,7 +14,7 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, REPO_ROOT)
 os.chdir(REPO_ROOT)
 
-from tests.backtest_sp500 import (  # noqa: E402
+from mci_gru.evaluation.backtest_engine import (  # noqa: E402
     DEFAULT_CONFIG,
     calculate_forward_returns,
     load_predictions,

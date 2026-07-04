@@ -747,7 +747,7 @@ cells = [
     code(
         r"""
         # This harness is intentionally lightweight and pandas-only. Use it for quick policy checks
-        # on a prediction folder. For final numbers, rerun tests/backtest_sp500.py.
+        # on a prediction folder. For final numbers, rerun scripts/backtest_sp500.py.
 
         PREDICTIONS_DIR = REPO_DIR / 'seed_results/2022/seed7/averaged_predictions'
         STOCK_DATA_FILE = REPO_DIR / 'data/raw/market/sp500_2016_universe_data.csv'
@@ -903,7 +903,7 @@ cells = [
             '## Suggested next probes',
             '',
             '1. Retrieve rich holdings artifacts for imported `full` 2022 prior rows.',
-            '2. Rerun exact `tests/backtest_sp500.py` counterfactuals for rankdrop on/off and min_rank_drop values.',
+            '2. Rerun exact `scripts/backtest_sp500.py` counterfactuals for rankdrop on/off and min_rank_drop values.',
             '3. Compute monthly rank IC / top-minus-bottom realized spread from prediction files when available.',
             '4. Compare long-held loser lists across seeds for k5/k10/k15.',
         ]

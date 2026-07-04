@@ -1,7 +1,9 @@
 # Backtest Fairness Audit
 
 > **Note (March 2026):** This audit references `evaluate_sp500.py`, which has
-> since been refactored into `tests/backtest_sp500.py`. The findings and line
+> since been refactored into `tests/backtest_sp500.py` (now
+> `mci_gru/evaluation/backtest_engine.py` with CLI `scripts/backtest_sp500.py`
+> as of WS-C, July 2026). The findings and line
 > references apply to the codebase as it existed at audit time. Some issues
 > documented here may have been addressed in subsequent commits.
 

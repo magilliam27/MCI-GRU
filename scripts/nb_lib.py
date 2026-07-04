@@ -189,7 +189,7 @@ elif REQUIRE_G4_L4_GPU:
 
 #: Directory (relative to the repo root) currently holding the backtest
 #: engines. WS-C flips this single value to "scripts" when the engines move.
-BACKTEST_ENGINE_DIR = "tests"
+BACKTEST_ENGINE_DIR = "scripts"
 
 
 def backtest_engine_path_expr(

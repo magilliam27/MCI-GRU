@@ -23,7 +23,7 @@ Workflow aligned with `Seed_test (1).ipynb`:
 2. **Data** — market panel CSV only (path or Colab upload under `data/raw/market/`); regime inputs come from FRED, not a separate file
 3. **Train** — `run_experiment.py` (Hydra); outputs under `results/<experiment_name>/<timestamp>/`
 4. **Inspect** — `training_summary.json`, `run_metadata.json`, `averaged_predictions/`
-5. **Backtest** — `tests/backtest_sp500.py --auto_save`
+5. **Backtest** — `scripts/backtest_sp500.py --auto_save`
 6. **Package** — zip the run directory (+ backtest folder); Colab `files.download`
 
 **Label horizon:** Training uses `model.label_t` (e.g. 21). Backtest uses `--label_t` for the return / holding window (default **5** in the script). Set `--label_t` to match the horizon you want to simulate (they need not equal `model.label_t`, but you should know what each means).

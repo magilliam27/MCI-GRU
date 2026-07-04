@@ -23,20 +23,20 @@ python run_experiment.py output_dir=/path/to/output
 
 ## Backtesting
 
-Backtesting is done via `tests/backtest_sp500.py` and `tests/backtest_sp500_daily.py`:
+Backtesting is done via `scripts/backtest_sp500.py` and `scripts/backtest_sp500_daily.py`:
 
 ```bash
 # Basic backtest
-python tests/backtest_sp500.py --predictions_dir path/to/averaged_predictions
+python scripts/backtest_sp500.py --predictions_dir path/to/averaged_predictions
 
 # With auto-save and plot
-python tests/backtest_sp500.py \
+python scripts/backtest_sp500.py \
     --predictions_dir path/to/averaged_predictions \
     --auto_save \
     --plot
 
 # With transaction costs (separate directory)
-python tests/backtest_sp500.py \
+python scripts/backtest_sp500.py \
     --predictions_dir path/to/averaged_predictions \
     --auto_save \
     --backtest_suffix _with_costs \

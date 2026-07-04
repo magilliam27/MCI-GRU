@@ -1,7 +1,7 @@
 """Run repeated-seed PIT saved predictions through backtest sensitivity scenarios.
 
 This is replay-only. It reads an existing repeated-seed run root, reuses saved
-``averaged_predictions`` folders, and invokes ``tests/backtest_sp500_daily.py``.
+``averaged_predictions`` folders, and invokes ``scripts/backtest_sp500_daily.py``.
 It never calls training code.
 """
 
@@ -142,7 +142,7 @@ def default_scenarios(
                     "Diagnostic only unless model.label_t was 21. For the Option A run, "
                     "saved predictions were produced by 5-day trained models; this "
                     "changes prediction-vs-forward-return evaluation fields, while "
-                    "daily P&L remains open-to-open in tests/backtest_sp500_daily.py."
+                    "daily P&L remains open-to-open in scripts/backtest_sp500_daily.py."
                 ),
             )
         )
@@ -456,7 +456,7 @@ def main(argv: list[str] | None = None) -> int:
         python_executable=args.python_executable,
         backtest_script=args.backtest_script.expanduser().resolve()
         if args.backtest_script
-        else repo_dir / "tests" / "backtest_sp500_daily.py",
+        else repo_dir / "scripts" / "backtest_sp500_daily.py",
         data_file=data_file,
         pit_universe_csv=pit_universe_csv,
         output_dir=output_dir,
@@ -735,7 +735,7 @@ def _build_summary_markdown(
         "against a 5 bps spread-only setup with zero slippage.",
         "",
         "The label_t=21 row is a diagnostic when the saved model trained with label_t=5. ",
-        "In tests/backtest_sp500_daily.py, label_t changes the prediction-vs-forward-return ",
+        "In scripts/backtest_sp500_daily.py, label_t changes the prediction-vs-forward-return ",
         "evaluation fields; the portfolio P&L path remains daily open-to-open.",
         "",
         f"Baseline scenario for deltas: `{baseline_scenario_id}`.",

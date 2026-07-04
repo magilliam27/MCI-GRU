@@ -4,7 +4,7 @@ This guide explains how training outputs are organized and persisted, including 
 
 ## Overview
 
-`run_experiment.py` organizes all outputs under timestamped directories. Backtesting is a separate workflow (see `tests/backtest_sp500.py`) and is not part of the training run.
+`run_experiment.py` organizes all outputs under timestamped directories. Backtesting is a separate workflow (see `scripts/backtest_sp500.py`) and is not part of the training run.
 
 ## MLflow Integration
 
@@ -143,4 +143,4 @@ latest = runs[-1]
 - Hydra: https://hydra.cc/
 - Config management: `configs/` directory
 - Colab notebook: `colab_workflow.ipynb`
-- Backtesting: `tests/backtest_sp500.py` (separate workflow)
+- Backtesting: `scripts/backtest_sp500.py` (separate workflow)

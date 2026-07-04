@@ -582,7 +582,7 @@ python -m pytest tests/test_regime_features.py -v
 Full backtesting with transaction cost modeling, multiple testing adjustments, and multi-day holding periods:
 
 ```bash
-python tests/backtest_sp500.py \
+python scripts/backtest_sp500.py \
     --predictions_dir path/to/averaged_predictions \
     --auto_save \
     --plot

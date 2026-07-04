@@ -39,7 +39,7 @@ from paper_trade.scripts.infer import (  # noqa: E402
 
 DEFAULT_MODEL_DIR = "paper_trade/Model/seed7_w_regime"
 DEFAULT_CSV = "data/raw/market/sp500_2019_universe_data_through_2026.csv"
-BACKTEST_SCRIPT = PROJECT_ROOT / "tests" / "backtest_sp500.py"
+BACKTEST_SCRIPT = PROJECT_ROOT / "scripts" / "backtest_sp500.py"
 
 
 def get_trading_dates(csv_path: str, num_days: int) -> list[str]:

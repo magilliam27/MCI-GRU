@@ -16,7 +16,7 @@ cells = [
         """
         # MCI-GRU Promising Models Backtest - Google Colab
 
-        Runs the strongest recommended-confirmation candidates through the repository backtesting framework. The notebook uses `tests/backtest_sp500.py` for portfolio simulation so the outputs follow the same open-to-open timing, rank-drop gate, transaction-cost, turnover, and reporting conventions as the rest of the project.
+        Runs the strongest recommended-confirmation candidates through the repository backtesting framework. The notebook uses `scripts/backtest_sp500.py` for portfolio simulation so the outputs follow the same open-to-open timing, rank-drop gate, transaction-cost, turnover, and reporting conventions as the rest of the project.
         """
     ),
     md("## 1. Mount Drive, Clone Repo, Install Dependencies"),
@@ -509,7 +509,7 @@ cells = [
             '## Primary Scenario',
             '',
             f"- `{PRIMARY_SCENARIO['scenario']}` uses top-k={PRIMARY_SCENARIO['top_k']}, daily open-to-open rebalancing, transaction costs enabled with spread={PRIMARY_SCENARIO['spread_bps']} bps and slippage={PRIMARY_SCENARIO['slippage_bps']} bps, and rank-drop gate min_rank_drop={PRIMARY_SCENARIO['min_rank_drop']}.",
-            '- Backtest outputs are produced by `tests/backtest_sp500.py`, including `backtest_metrics.json`, `daily_returns.csv`, `portfolio_holdings.csv`, `trades.csv`, and `equity_curve.png` for each candidate/scenario.',
+            '- Backtest outputs are produced by `scripts/backtest_sp500.py`, including `backtest_metrics.json`, `daily_returns.csv`, `portfolio_holdings.csv`, `trades.csv`, and `equity_curve.png` for each candidate/scenario.',
             '- Treat this as the next filter after IC/top-20 return confirmation: prefer candidates that keep positive excess return and reasonable drawdown after costs and turnover.',
             '',
             '## Artifacts',

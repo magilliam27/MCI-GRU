@@ -4,7 +4,8 @@ Portfolio decision engine for the paper trading pipeline.
 Loads today's scores, applies the rank-drop gate against prior holdings,
 determines exits and new entries, and outputs a target portfolio + orders.
 
-Replicates the rank-drop gate logic from tests/backtest_sp500.py lines 1052-1091.
+Replicates the rank-drop gate logic from the backtest engine
+(mci_gru/evaluation/backtest_engine.py, formerly tests/backtest_sp500.py lines 1052-1091).
 
 Usage:
     python paper_trade/scripts/portfolio.py

@@ -9,13 +9,13 @@ from omegaconf import OmegaConf
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from mci_gru.config import TrackingConfig, create_config_from_dict
+from mci_gru.evaluation.backtest_engine import setup_backtest_tracking
 from mci_gru.tracking import (
     MLflowTrackingManager,
     load_run_metadata,
     load_run_metadata_from_predictions_dir,
     resolve_tracking_uri,
 )
-from tests.backtest_sp500 import setup_backtest_tracking
 
 mlflow = pytest.importorskip("mlflow")
 from mlflow.tracking import MlflowClient  # noqa: E402
