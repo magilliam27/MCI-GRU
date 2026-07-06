@@ -128,6 +128,7 @@ class CockpitReport:
     color: RunColor
     executive_summary: str
     decisions: list[Decision] = field(default_factory=list)
+    decision_workstreams: list[Workstream] = field(default_factory=list)
     active_workstreams: list[Workstream] = field(default_factory=list)
     blocked_workstreams: list[Workstream] = field(default_factory=list)
     local_only_work: list[Workstream] = field(default_factory=list)

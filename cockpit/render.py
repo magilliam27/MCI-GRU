@@ -51,6 +51,7 @@ def render_cockpit_packet(report: CockpitReport) -> str:
     ]
     _extend_bullets(lines, "Git Tree Impact", report.git_tree_impact)
     _extend_decisions(lines, report)
+    _extend_workstreams(lines, "Workstreams Needing Decisions", report.decision_workstreams)
     _extend_workstreams(lines, "Active Workstreams", report.active_workstreams)
     _extend_workstreams(lines, "Blocked Workstreams", report.blocked_workstreams)
     _extend_workstreams(lines, "Local-Only Work", report.local_only_work)

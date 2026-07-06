@@ -316,6 +316,22 @@ def test_run_local_cockpit_refresh_surfaces_git_topology_without_placeholders(
     ) in packet
     assert "Worktrees: 2 total, 0 detached, 0 dirty" in packet
     assert "git rev-list --left-right --count origin/main...HEAD" in packet
+    assert "## Workstreams Needing Decisions" in packet
+    assert (
+        "- **LambdaRankIC** (needs-user-decision): Choose the canonical continuation "
+        "surface before continuing this workstream."
+    ) in packet
+    assert (
+        "- **Portfolio-IC** (needs-user-decision): Decide whether to promote, park, "
+        "or rerun current evidence."
+    ) in packet
+    assert (
+        "- **LambdaRankIC:** Choose the canonical continuation surface before continuing this workstream."
+        in packet
+    )
+    assert (
+        "- **Portfolio-IC:** Decide whether to promote, park, or rerun current evidence." in packet
+    )
 
 
 def test_run_local_cockpit_refresh_surfaces_unmatched_real_git_topology(

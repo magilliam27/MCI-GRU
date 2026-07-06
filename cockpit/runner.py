@@ -128,6 +128,7 @@ def run_local_cockpit_refresh(
         color=color,
         executive_summary=_executive_summary(evidence, workstreams),
         decisions=_decisions(evidence, color, workstreams),
+        decision_workstreams=_decision_workstreams(workstreams),
         active_workstreams=[row for row in workstreams if row.status == WorkstreamStatus.ACTIVE],
         blocked_workstreams=[row for row in workstreams if row.status == WorkstreamStatus.BLOCKED],
         local_only_work=[row for row in workstreams if row.status == WorkstreamStatus.LOCAL_ONLY],
@@ -489,6 +490,9 @@ def _decisions(
     decisions: list[Decision] = []
     if evidence.dirty_paths:
         decisions.append(_dirty_state_decision())
+    decisions.extend(
+        _workstream_decision(workstream) for workstream in _decision_workstreams(workstreams)
+    )
     topology = evidence.git_topology
     if color != RunColor.GREEN and (
         topology.has_attention_items or _classification_surface_count(workstreams)
@@ -501,6 +505,23 @@ def _decisions(
             )
         )
     return decisions
+
+
+def _decision_workstreams(workstreams: list[Workstream]) -> list[Workstream]:
+    return [
+        workstream
+        for workstream in workstreams
+        if workstream.status == WorkstreamStatus.NEEDS_USER_DECISION
+        and not workstream.name.startswith("Git surface: ")
+    ]
+
+
+def _workstream_decision(workstream: Workstream) -> Decision:
+    return Decision(
+        workstream=workstream.name,
+        question=workstream.next_action,
+        options="Continue, park, archive, or choose a canonical branch/worktree.",
+    )
 
 
 def _dirty_state_decision() -> Decision:
