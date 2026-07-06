@@ -32,8 +32,10 @@ jobs:
           python-version: "3.10"
           cache: pip
 
-      - name: Install PyTorch (CPU)
-        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Install PyTorch (CPU, PyPI fallback)
+        # download-r2.pytorch.org intermittently rejects non-browser TLS clients
+        # (Cloudflare bot mitigation); fall back to the larger PyPI wheel.
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu || pip install torch
 
       - name: Install torch-geometric
         run: pip install torch-geometric
