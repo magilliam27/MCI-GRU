@@ -1,7 +1,9 @@
 # Regime Data Contract
 
 This document defines the regime input contract for global scalar regime
-features. The canonical workflow is the live FRED/LSEG-backed loader in
+features. The canonical column lists live in `mci_gru/regime_contract.py`
+(`REGIME_REQUIRED_VARIABLES`, `REGIME_OPTIONAL_VARIABLES`, `REGIME_VARIABLES`).
+The canonical workflow is the live FRED/LSEG-backed loader in
 `DataManager.load_regime_inputs`; CSV regime inputs are a deprecated legacy
 escape hatch.
 

@@ -11,6 +11,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from mci_gru.evaluation.metrics import evaluate_predictions
+
 KEY_COLUMNS = ["dt", "kdcode"]
 DEFAULT_MODEL_NAME = "mci_gru"
 
@@ -335,8 +337,6 @@ def _model_metrics(
     top_k_values: list[int] | None,
     label_t: int,
 ) -> dict[str, Any]:
-    from mci_gru.training.metrics import evaluate_predictions
-
     pred = frame[score_col].to_numpy(dtype=np.float64)
     ret = frame["realized_return"].to_numpy(dtype=np.float64)
     metrics: dict[str, Any] = {

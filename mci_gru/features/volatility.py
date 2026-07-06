@@ -3,6 +3,11 @@
 import numpy as np
 import pandas as pd
 
+from mci_gru.config import (
+    DEFAULT_VOLATILITY_TARGETING_COMPONENTS,  # noqa: F401 — re-export
+    resolve_volatility_targeting_components,
+)
+
 # Volatility feature columns
 VOLATILITY_FEATURES = ["volatility_5d", "volatility_21d", "vol_ratio"]
 VIX_FEATURES = ["vix", "vix_change", "vix_regime"]
@@ -10,12 +15,6 @@ DEFAULT_VOLATILITY_TARGETING_HALF_LIVES = [20, 60, 90]
 DEFAULT_VOLATILITY_TARGET_VOL = 0.10
 DEFAULT_VOLATILITY_TARGET_SCALE_CLIP = (0.25, 4.0)
 DEFAULT_VOLATILITY_TARGET_INTERACTION_RETURN_WINDOW = 21
-DEFAULT_VOLATILITY_TARGETING_COMPONENTS = [
-    "ewm_vol",
-    "scale",
-    "dynamics",
-    "scaled_return",
-]
 
 
 def _validate_volatility_targeting_controls(
@@ -39,31 +38,6 @@ def _validate_volatility_targeting_controls(
     if interaction_return_window <= 0:
         raise ValueError("volatility_target_interaction_return_window must be > 0")
     return resolved_half_lives
-
-
-def resolve_volatility_targeting_components(
-    components: list[str] | tuple[str, ...] | None = None,
-) -> list[str]:
-    """Normalize and validate volatility-targeting component names."""
-    if components is None:
-        return list(DEFAULT_VOLATILITY_TARGETING_COMPONENTS)
-    if not components:
-        raise ValueError("volatility_targeting_components must contain at least one component")
-
-    resolved_components = list(components)
-    if len(set(resolved_components)) != len(resolved_components):
-        raise ValueError("volatility_targeting_components must not contain duplicates")
-
-    valid_components = set(DEFAULT_VOLATILITY_TARGETING_COMPONENTS)
-    unknown_components = [name for name in resolved_components if name not in valid_components]
-    if unknown_components:
-        valid = ", ".join(DEFAULT_VOLATILITY_TARGETING_COMPONENTS)
-        unknown = ", ".join(unknown_components)
-        raise ValueError(
-            f"Unknown volatility-targeting component: {unknown}. Expected one of: {valid}"
-        )
-
-    return resolved_components
 
 
 def get_volatility_targeting_features(

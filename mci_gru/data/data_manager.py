@@ -222,7 +222,7 @@ class DataManager:
             dt, regime_market, regime_yield_curve, regime_oil, regime_copper,
             regime_stock_bond_corr, regime_monetary_policy, regime_volatility
         """
-        from mci_gru.features.regime import REGIME_VARIABLES
+        from mci_gru.regime_contract import REGIME_VARIABLES
 
         if regime_inputs_csv:
             warnings.warn(
