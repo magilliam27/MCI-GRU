@@ -32,6 +32,11 @@ from mci_gru.data.preprocessing import (
     generate_graph_features,
     generate_time_series_features,
 )
+from mci_gru.data.transforms import (
+    compute_zscore_norm_stats,
+    impute_feature_nans_by_day,
+    normalize_features_zscore,
+)
 from mci_gru.graph import GraphBuilder
 from mci_gru.graph.sector_edges import build_sector_edges, load_sector_map_csv
 
@@ -93,16 +98,7 @@ def _compute_norm_stats(
     train_end: str,
 ) -> tuple[dict[str, float], dict[str, float]]:
     """Compute per-feature mean/std from the training period."""
-    train_df = df[df["dt"] <= train_end]
-    means: dict[str, float] = {}
-    stds: dict[str, float] = {}
-    for col in feature_cols:
-        if col in train_df.columns:
-            means[col] = train_df[col].mean()
-            stds[col] = train_df[col].std()
-            if stds[col] == 0:
-                stds[col] = 1.0
-    return means, stds
+    return compute_zscore_norm_stats(df, feature_cols, train_end)
 
 
 def _build_feature_reference(
@@ -206,15 +202,7 @@ def _apply_normalisation(
     stds: dict[str, float],
 ) -> pd.DataFrame:
     """3-sigma clipping followed by z-score normalisation."""
-    df = df.copy()
-    for col in feature_cols:
-        if col not in df.columns:
-            continue
-        m = means.get(col, 0.0)
-        s = stds.get(col, 1.0)
-        df[col] = np.clip(df[col], m - 3 * s, m + 3 * s)
-        df[col] = (df[col] - m) / s
-    return df
+    return normalize_features_zscore(df, feature_cols, means, stds)
 
 
 def _stock_feature_row_slice(
@@ -344,16 +332,7 @@ def prepare_data(
 
     # Per-day mean imputation
     print("Filling NaN values...")
-    parts = []
-    for _, df_day in df.groupby("dt"):
-        df_day = df_day.copy()
-        for col in feature_cols:
-            if col in df_day.columns:
-                df_day[col] = df_day[col].fillna(df_day[col].mean())
-        df_day = df_day.fillna(0.0)
-        parts.append(df_day)
-    df_filled = pd.concat(parts)
-    del parts
+    df_filled = impute_feature_nans_by_day(df, feature_cols)
     gc.collect()
 
     pit_intervals = None
