@@ -3178,7 +3178,7 @@ def evaluate_multiple_models(save_path, num_models=10, config=None):
 # ============================================================================
 
 
-def main():
+def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(
         description="Evaluate MCI-GRU model predictions per paper methodology"
     )
@@ -3360,7 +3360,7 @@ def main():
         "'block' = whole portfolio of top_k stocks rebalances every holding_period days (retail).",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     # Build config
     config = {

@@ -1,9 +1,9 @@
-"""DEPRECATED shim — the daily backtest CLI moved in WS-C.
+"""DEPRECATED shim — the daily backtest CLI moved in WS-C; engine merged in WS-N.
 
-The self-contained daily engine now lives at ``scripts/backtest_sp500_daily.py``.
-This shim re-exports its namespace and keeps
-``python tests/backtest_sp500_daily.py`` working for one release cycle; invoke
-``scripts/backtest_sp500_daily.py`` instead.
+The daily CLI wrapper lives at ``scripts/backtest_sp500_daily.py`` and delegates
+to ``mci_gru/evaluation/backtest_engine.py``. This shim re-exports the engine
+namespace and keeps ``python tests/backtest_sp500_daily.py`` working for one
+release cycle; invoke ``scripts/backtest_sp500_daily.py`` instead.
 """
 
 from __future__ import annotations
