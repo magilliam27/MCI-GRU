@@ -1,0 +1,22 @@
+{
+  "ARR": 0.558609747924736,
+  "ASR": 20.053832095736272,
+  "AVoL": 0.027855511368498214,
+  "CR": 239.29839213330243,
+  "IR": 0.15192455179976053,
+  "MAE": 0.6331855918140297,
+  "MDD": -0.0023343648193572463,
+  "MSE": 0.4962863176360612,
+  "benchmark_return": 0.10286093830741327,
+  "days_skipped_by_rank_gate": 0,
+  "days_with_gate_exits": 0,
+  "end_date": "2025-04-29",
+  "excess_return": 0.010547953255462428,
+  "min_rank_drop": null,
+  "num_trading_days": 61,
+  "rank_gate_enabled": false,
+  "start_date": "2025-02-04",
+  "total_return": 0.1134088915628757,
+  "total_return_calendar_aligned": 0.1134088915628757,
+  "transaction_costs_enabled": false
+}
