@@ -9,6 +9,7 @@ Provides:
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -50,6 +51,8 @@ from mci_gru.features.volatility import (
     get_volatility_targeting_features,
     resolve_volatility_targeting_components,
 )
+
+logger = logging.getLogger(__name__)
 
 # Pre-defined feature sets
 FEATURE_SETS = {
@@ -318,9 +321,9 @@ class FeatureEngineer:
         Returns:
             DataFrame with features added
         """
-        print("=" * 60)
-        print("Feature Engineering Pipeline")
-        print("=" * 60)
+        logger.info("=" * 60)
+        logger.info("Feature Engineering Pipeline")
+        logger.info("=" * 60)
 
         # Always add base features (turnover)
         df = add_base_features(df)
@@ -437,9 +440,9 @@ class FeatureEngineer:
         if self.include_volume_features:
             df = add_volume_features(df)
 
-        print("=" * 60)
-        print("Feature engineering complete")
-        print("=" * 60)
+        logger.info("=" * 60)
+        logger.info("Feature engineering complete")
+        logger.info("=" * 60)
 
         return df
 

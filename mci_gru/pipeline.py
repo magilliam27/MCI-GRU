@@ -10,6 +10,7 @@ paper_trade/scripts/infer.py.
 from __future__ import annotations
 
 import gc
+import logging
 from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING, Any
 
@@ -45,6 +46,8 @@ if TYPE_CHECKING:
     from mci_gru.config import ExperimentConfig, GraphConfig
     from mci_gru.features import FeatureEngineer
     from mci_gru.graph.schedule import GraphSchedule
+
+logger = logging.getLogger(__name__)
 
 # ── staged pipeline dataclasses ──────────────────────────────────────────
 
@@ -146,16 +149,16 @@ def load_auxiliary_data(
     if config.features.include_vix:
         try:
             vix_df = data_manager.load_vix()
-            print(f"Loaded VIX data: {len(vix_df)} observations")
+            logger.info(f"Loaded VIX data: {len(vix_df)} observations")
         except Exception as exc:
-            print(f"Warning: Could not load VIX data: {exc}")
+            logger.warning(f"Warning: Could not load VIX data: {exc}")
 
     if config.features.include_credit_spread:
         try:
             credit_df = data_manager.load_credit_spreads()
-            print(f"Loaded credit spread data: {len(credit_df)} observations")
+            logger.info(f"Loaded credit spread data: {len(credit_df)} observations")
         except Exception as exc:
-            print(f"Warning: Could not load credit spread data: {exc}")
+            logger.warning(f"Warning: Could not load credit spread data: {exc}")
 
     if config.features.include_global_regime:
         try:
@@ -169,12 +172,12 @@ def load_auxiliary_data(
                 regime_inputs_csv=config.features.regime_inputs_csv or None,
                 regime_enforce_lag_days=config.features.regime_enforce_lag_days,
             )
-            print(f"Loaded regime input data: {len(regime_df)} observations")
+            logger.info(f"Loaded regime input data: {len(regime_df)} observations")
         except Exception as exc:
             if config.features.regime_strict:
                 raise
-            print(f"Warning: Could not load regime input data: {exc}")
-            print("Continuing with zero-filled regime features (soft-fail)")
+            logger.warning(f"Warning: Could not load regime input data: {exc}")
+            logger.warning("Continuing with zero-filled regime features (soft-fail)")
 
     return vix_df, credit_df, regime_df
 
@@ -264,7 +267,7 @@ def _audit_pit_breadth(
     )
     if policy == "error":
         raise ValueError(message)
-    print(f"Warning: {message}")
+    logger.warning(f"Warning: {message}")
     return summary
 
 
@@ -326,7 +329,7 @@ def _build_tensors(
     fill_missing_labels: bool = True,
 ) -> dict[str, Any]:
     """Build time-series tensors, graph features, and labels."""
-    print("Generating time series features...")
+    logger.info("Generating time series features...")
     stock_features = generate_time_series_features(
         df_filtered, kdcode_list, feature_cols, his_t, use_polars=use_polars
     )
@@ -341,14 +344,14 @@ def _build_tensors(
     stock_features_val = stock_features[va0:va1]
     stock_features_test = stock_features[te0:te1]
 
-    print("Generating graph features...")
+    logger.info("Generating graph features...")
     x_graph_train = generate_graph_features(
         train_df, kdcode_list, feature_cols, train_dates[his_t:]
     )
     x_graph_val = generate_graph_features(val_df, kdcode_list, feature_cols, val_dates)
     x_graph_test = generate_graph_features(test_df, kdcode_list, feature_cols, test_dates)
 
-    print("Computing labels...")
+    logger.info("Computing labels...")
     train_labels = compute_labels(
         df_for_labels,
         kdcode_list,
@@ -372,7 +375,7 @@ def _build_tensors(
     )
 
     if label_type == "rank":
-        print("Converting labels to cross-sectional rank percentiles...")
+        logger.info("Converting labels to cross-sectional rank percentiles...")
         train_labels = apply_rank_labels(train_labels)
         val_labels = apply_rank_labels(val_labels)
         test_labels = apply_rank_labels(test_labels)
@@ -411,7 +414,7 @@ def engineer_features(
 ) -> tuple[pd.DataFrame, list[str]]:
     df = feature_engineer.transform(df, vix_df, credit_df, regime_df)
     feature_cols = feature_engineer.get_feature_columns()
-    print(f"Feature columns ({len(feature_cols)}): {feature_cols}")
+    logger.info(f"Feature columns ({len(feature_cols)}): {feature_cols}")
     return df, feature_cols
 
 
@@ -441,7 +444,7 @@ def fit_normalisation(
         means, stds = _compute_norm_stats(norm_source, feature_cols, train_end)
         df_norm = _apply_normalisation(df_filled, feature_cols, means, stds)
     elif mode == "rank_gauss":
-        print("Applying rank-Gaussian normalisation (train fit)...")
+        logger.info("Applying rank-Gaussian normalisation (train fit)...")
         rank_source = df_filled
         if pit.masked_panel:
             rank_source = _apply_pit_universe(df_filled, pit.csv_path)
@@ -481,7 +484,7 @@ def select_universe(
             config.data.test_end,
         )
         data_manager.kdcode_list = kdcode_list
-        print(
+        logger.info(
             f"  PIT union axis: {len(kdcode_list)} stocks with any membership interval "
             f"from {config.data.train_start} to {config.data.test_end}"
         )
@@ -573,7 +576,7 @@ def apply_pit_masks_to_tensors(
     val_labels = apply_label_mask(tensors.val_labels, val_masks.loss)
     test_labels = apply_label_mask(tensors.test_labels, test_masks.loss)
     if label_type == "rank":
-        print("Converting masked labels to PIT cross-sectional rank percentiles...")
+        logger.info("Converting masked labels to PIT cross-sectional rank percentiles...")
         train_labels = apply_rank_labels(train_labels, train_masks.loss)
         val_labels = apply_rank_labels(val_labels, val_masks.loss)
         test_labels = apply_rank_labels(test_labels, test_masks.loss)
@@ -641,7 +644,7 @@ def build_correlation_graph(
     train_start: str,
     test_end: str,
 ) -> GraphArtifacts:
-    print("Building correlation graph...")
+    logger.info("Building correlation graph...")
     graph_builder = GraphBuilder(
         judge_value=graph_config.judge_value,
         update_frequency_months=graph_config.update_frequency_months,
@@ -690,24 +693,24 @@ def prepare_data(
 
     Returns a dict consumed by the training loop and metric evaluation.
     """
-    print("=" * 80)
-    print("Preparing Data")
-    print("=" * 80)
+    logger.info("=" * 80)
+    logger.info("Preparing Data")
+    logger.info("=" * 80)
 
     data_manager, df = load_raw_data(config)
     vix_df, credit_df, regime_df = load_auxiliary_data(data_manager, config)
     df, feature_cols = engineer_features(df, feature_engineer, vix_df, credit_df, regime_df)
 
-    print("Filling NaN values...")
+    logger.info("Filling NaN values...")
     df_filled = impute_feature_nans_by_day(df, feature_cols)
     gc.collect()
 
     pit = resolve_pit_context(config)
     if pit.intervals is not None:
         if pit.masked_panel:
-            print("Using true PIT masked-panel mode (fixed union axis + daily masks)...")
+            logger.info("Using true PIT masked-panel mode (fixed union axis + daily masks)...")
         else:
-            print("Applying legacy PIT universe row filter...")
+            logger.info("Applying legacy PIT universe row filter...")
             df_filled = _apply_pit_universe(df_filled, pit.csv_path)
 
     norm_fit, df_norm = fit_normalisation(
@@ -800,9 +803,9 @@ def prepare_data_index_level(
     Uses a trivial 1-node / 0-edge graph so the rest of the pipeline runs
     unchanged.
     """
-    print("=" * 80)
-    print("Preparing Data (index-level mode; no stock-level survivorship bias)")
-    print("=" * 80)
+    logger.info("=" * 80)
+    logger.info("Preparing Data (index-level mode; no stock-level survivorship bias)")
+    logger.info("=" * 80)
 
     data_manager = DataManager(config.data)
     df = data_manager.load_index_series()
@@ -812,7 +815,7 @@ def prepare_data_index_level(
 
     df = feature_engineer.transform(df, vix_df, credit_df, regime_df)
     feature_cols = feature_engineer.get_feature_columns()
-    print(f"Feature columns ({len(feature_cols)}): {feature_cols}")
+    logger.info(f"Feature columns ({len(feature_cols)}): {feature_cols}")
 
     for col in feature_cols:
         if col in df.columns:

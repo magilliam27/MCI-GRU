@@ -4,6 +4,7 @@ Ensemble training for MCI-GRU experiments.
 Trains multiple independently seeded models and averages their predictions.
 """
 
+import logging
 import os
 from contextlib import nullcontext
 from typing import TYPE_CHECKING, Optional
@@ -18,6 +19,8 @@ from mci_gru.utils.seeding import set_seed
 
 if TYPE_CHECKING:
     from mci_gru.tracking import MLflowTrackingManager
+
+logger = logging.getLogger(__name__)
 
 
 def train_multiple_models(
@@ -65,12 +68,12 @@ def train_multiple_models(
     all_predictions = []
 
     for model_id in range(config.training.num_models):
-        print(f"\n{'=' * 60}")
-        print(f"Training Model {model_id + 1}/{config.training.num_models}")
-        print(f"{'=' * 60}")
+        logger.info(f"\n{'=' * 60}")
+        logger.info(f"Training Model {model_id + 1}/{config.training.num_models}")
+        logger.info(f"{'=' * 60}")
 
         model_seed = config.seed + model_id
-        print(f"Model seed: {model_seed}")
+        logger.info(f"Model seed: {model_seed}")
         set_seed(model_seed)
 
         model = model_factory()
@@ -102,7 +105,7 @@ def train_multiple_models(
             )
             all_results.append(result)
 
-            print(
+            logger.info(
                 f"Model {model_id + 1} training complete. Best val loss: {result.best_val_loss:.6f}, "
                 f"best val IC: {result.best_val_ic:.6f}, "
                 f"best val Rank IC: {result.best_val_rank_ic:.6f}"
@@ -154,6 +157,6 @@ def train_multiple_models(
             df_pred = pd.DataFrame(columns=["kdcode", "dt", "score"], data=data)
             df_pred.to_csv(os.path.join(avg_pred_dir, f"{date}.csv"), index=False)
 
-    print(f"\nAveraged predictions saved to {avg_pred_dir}")
+    logger.info(f"\nAveraged predictions saved to {avg_pred_dir}")
 
     return all_results, avg_predictions

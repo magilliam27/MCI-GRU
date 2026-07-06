@@ -7,6 +7,7 @@ different sources (CSV, LSEG) and preparing it for model training.
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 import warnings
@@ -20,6 +21,8 @@ from torch.utils.data import Dataset
 
 from mci_gru.data.path_resolver import resolve_project_data_path
 from mci_gru.data.pit import filter_edges_by_stock_mask
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import numpy as np
@@ -101,13 +104,13 @@ class DataManager:
 
     def _load_from_csv(self) -> pd.DataFrame:
         resolved_path = resolve_project_data_path(self.config.filename)
-        print(f"Loading data from {resolved_path}...")
+        logger.info(f"Loading data from {resolved_path}...")
 
         df = pd.read_csv(resolved_path)
 
-        print(f"  Loaded {len(df)} rows")
-        print(f"  Date range: {df['dt'].min()} to {df['dt'].max()}")
-        print(f"  Stocks: {df['kdcode'].nunique()}")
+        logger.info(f"  Loaded {len(df)} rows")
+        logger.info(f"  Date range: {df['dt'].min()} to {df['dt'].max()}")
+        logger.info(f"  Stocks: {df['kdcode'].nunique()}")
 
         self.df = df
         return df
@@ -299,13 +302,13 @@ class DataManager:
                     return fred.get_series(series_id, start, end, value_name, lag_days=1)
                 except Exception as exc:
                     if attempt >= fred_max_attempts:
-                        print(
+                        logger.warning(
                             f"FRED fetch failed for {value_name} ({series_id}) "
                             f"after {fred_max_attempts} attempt(s): "
                             f"{type(exc).__name__}: {exc}"
                         )
                         return None
-                    print(
+                    logger.warning(
                         f"FRED fetch failed for {value_name} ({series_id}) "
                         f"on attempt {attempt}/{fred_max_attempts}: "
                         f"{type(exc).__name__}: {exc}. Retrying..."
@@ -453,13 +456,13 @@ class DataManager:
         Returns:
             Filtered DataFrame and list of stock codes
         """
-        print("Filtering stocks with complete data...")
+        logger.info("Filtering stocks with complete data...")
 
         date_mask = (df["dt"] >= self.config.train_start) & (df["dt"] <= self.config.test_end)
         df_period = df[date_mask].copy()
         period_dates = sorted(df_period["dt"].unique())
 
-        print(
+        logger.info(
             f"  Period: {len(period_dates)} trading days from {period_dates[0]} to {period_dates[-1]}"
         )
 
@@ -467,7 +470,7 @@ class DataManager:
         kdcode_list = kdcode_counts[kdcode_counts == len(period_dates)].index.tolist()
         kdcode_list = sorted(kdcode_list)
 
-        print(f"  Stocks with complete data: {len(kdcode_list)}")
+        logger.info(f"  Stocks with complete data: {len(kdcode_list)}")
 
         if len(kdcode_list) == 0:
             raise ValueError("No stocks have complete data across the entire period!")
@@ -480,7 +483,7 @@ class DataManager:
 
     def filter_complete_stocks_per_split(self, df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
         """Keep stocks that appear on every trading day within train, val, and test separately."""
-        print("Filtering stocks with per-split complete data...")
+        logger.info("Filtering stocks with per-split complete data...")
 
         train_mask = (df["dt"] >= self.config.train_start) & (df["dt"] <= self.config.train_end)
         val_mask = (df["dt"] >= self.config.val_start) & (df["dt"] <= self.config.val_end)
@@ -500,10 +503,10 @@ class DataManager:
         k_test = _complete_kdcodes(test_mask)
         kdcode_list = sorted(k_train & k_val & k_test)
 
-        print(
+        logger.info(
             f"  Train-complete: {len(k_train)}, val-complete: {len(k_val)}, test-complete: {len(k_test)}"
         )
-        print(f"  Intersection (usable in all splits): {len(kdcode_list)}")
+        logger.info(f"  Intersection (usable in all splits): {len(kdcode_list)}")
 
         if len(kdcode_list) == 0:
             raise ValueError(
@@ -537,9 +540,9 @@ class DataManager:
         val_dates = sorted(val_df["dt"].unique())
         test_dates = sorted(test_df["dt"].unique())
 
-        print(f"  Training: {len(train_dates)} days ({train_dates[0]} to {train_dates[-1]})")
-        print(f"  Validation: {len(val_dates)} days ({val_dates[0]} to {val_dates[-1]})")
-        print(f"  Test: {len(test_dates)} days ({test_dates[0]} to {test_dates[-1]})")
+        logger.info(f"  Training: {len(train_dates)} days ({train_dates[0]} to {train_dates[-1]})")
+        logger.info(f"  Validation: {len(val_dates)} days ({val_dates[0]} to {val_dates[-1]})")
+        logger.info(f"  Test: {len(test_dates)} days ({test_dates[0]} to {test_dates[-1]})")
 
         return train_df, val_df, test_df
 
@@ -768,7 +771,7 @@ def create_data_loaders(
         Tuple of (train_loader, val_loader, test_loader). Each batch is a **9-tuple**
         from ``combined_collate_fn`` (see that function's docstring).
     """
-    print("Creating data loaders...")
+    logger.info("Creating data loaders...")
 
     X_train_ts = torch.from_numpy(stock_features_train).float()
     X_train_graph = torch.from_numpy(x_graph_train).float()
@@ -795,9 +798,11 @@ def create_data_loaders(
         else None
     )
 
-    print(f"  Train: ts={X_train_ts.shape}, graph={X_train_graph.shape}, labels={y_train.shape}")
-    print(f"  Val: ts={X_val_ts.shape}, graph={X_val_graph.shape}, labels={y_val.shape}")
-    print(f"  Test: ts={X_test_ts.shape}, graph={X_test_graph.shape}")
+    logger.info(
+        f"  Train: ts={X_train_ts.shape}, graph={X_train_graph.shape}, labels={y_train.shape}"
+    )
+    logger.info(f"  Val: ts={X_val_ts.shape}, graph={X_val_graph.shape}, labels={y_val.shape}")
+    logger.info(f"  Test: ts={X_test_ts.shape}, graph={X_test_graph.shape}")
 
     attach_dates = (
         dynamic_graph
@@ -875,7 +880,7 @@ def create_data_loaders(
         **loader_kwargs,
     )
 
-    print(
+    logger.info(
         f"  Created loaders: train={len(train_loader)} batches, val={len(val_loader)} batches, test={len(test_loader)} batches"
     )
 

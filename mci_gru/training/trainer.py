@@ -13,6 +13,7 @@ Graph resolution is handled upstream by the collate function (via
 """
 
 import json
+import logging
 import os
 import time
 from collections.abc import Callable
@@ -32,6 +33,8 @@ from mci_gru.training.losses import (
     information_coefficient_sum_count,
     rank_information_coefficient_sum_count,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _unpack_loader_batch(batch, device: torch.device):
@@ -254,13 +257,13 @@ class Trainer:
         self.patience_counter = 0
         final_train_loss = 0.0
 
-        print(f"Training on {self.device}...")
-        print(f"  Loss: {loss_label}")
-        print(f"  Selection metric: {training_cfg.selection_metric}")
-        print(f"  LR scheduler: {training_cfg.lr_scheduler}")
-        print(f"  AMP (CUDA): {use_amp}")
-        print(f"  Max epochs: {training_cfg.num_epochs}")
-        print(f"  Early stopping patience: {training_cfg.early_stopping_patience}")
+        logger.info(f"Training on {self.device}...")
+        logger.info(f"  Loss: {loss_label}")
+        logger.info(f"  Selection metric: {training_cfg.selection_metric}")
+        logger.info(f"  LR scheduler: {training_cfg.lr_scheduler}")
+        logger.info(f"  AMP (CUDA): {use_amp}")
+        logger.info(f"  Max epochs: {training_cfg.num_epochs}")
+        logger.info(f"  Early stopping patience: {training_cfg.early_stopping_patience}")
 
         for epoch in range(training_cfg.num_epochs):
             self.epoch = epoch
@@ -272,7 +275,7 @@ class Trainer:
 
             val_loss, val_ic, val_rank_ic = self._validate(val_loader, criterion, use_amp)
 
-            print(
+            logger.info(
                 f"Epoch [{epoch + 1}/{training_cfg.num_epochs}] - Train Loss: {train_loss:.6f}, "
                 f"Val Loss: {val_loss:.6f}, Val IC: {val_ic:.6f}, "
                 f"Val Rank IC: {val_rank_ic:.6f}"
@@ -295,7 +298,7 @@ class Trainer:
                 self.best_val_rank_ic = val_rank_ic
                 self.patience_counter = 0
                 torch.save(self.model.state_dict(), best_model_path)
-                print(
+                logger.info(
                     "  -> New best model saved "
                     f"(val_loss={self.best_val_loss:.6f}, "
                     f"val_ic={self.best_val_ic:.6f}, "
@@ -304,7 +307,7 @@ class Trainer:
             else:
                 self.patience_counter += 1
                 if self.patience_counter >= training_cfg.early_stopping_patience:
-                    print(
+                    logger.info(
                         f"Early stopping at epoch {epoch + 1} (patience={training_cfg.early_stopping_patience})"
                     )
                     if epoch_callback is not None:
@@ -587,6 +590,6 @@ class Trainer:
 
         if os.path.exists(best_model_path):
             self.model.load_state_dict(torch.load(best_model_path, weights_only=True))
-            print(f"Loaded best model from {best_model_path}")
+            logger.info(f"Loaded best model from {best_model_path}")
         else:
-            print(f"No saved model found at {best_model_path}")
+            logger.info(f"No saved model found at {best_model_path}")

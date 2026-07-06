@@ -6,6 +6,7 @@ via the refinitiv-data library. Requires Refinitiv Workspace to be running.
 """
 
 import contextlib
+import logging
 import time
 
 import pandas as pd
@@ -13,6 +14,8 @@ from tqdm import tqdm
 
 from mci_gru.data.reshape import COLUMN_MAPPING, reshape_lseg_to_standard
 from mci_gru.data.universes import get_chain_ric, get_universe_info
+
+logger = logging.getLogger(__name__)
 
 
 class LSEGLoader:
@@ -51,7 +54,7 @@ class LSEGLoader:
         try:
             self.rd.open_session()
             self.connected = True
-            print("Connected to Refinitiv Workspace")
+            logger.info("Connected to Refinitiv Workspace")
             return True
         except Exception as e:
             raise RuntimeError(
@@ -64,7 +67,7 @@ class LSEGLoader:
             with contextlib.suppress(BaseException):
                 self.rd.close_session()
             self.connected = False
-            print("Disconnected from Refinitiv")
+            logger.info("Disconnected from Refinitiv")
 
     def _ensure_connected(self):
         if not self.connected:
@@ -85,7 +88,7 @@ class LSEGLoader:
         chain_ric = get_chain_ric(universe)
         info = get_universe_info(universe)
 
-        print(f"Fetching constituents for {info['name']} ({chain_ric})...")
+        logger.info(f"Fetching constituents for {info['name']} ({chain_ric})...")
 
         try:
             constituents = self.rd.get_data(
@@ -96,12 +99,12 @@ class LSEGLoader:
                 raise ValueError(f"No constituents found for {universe}")
 
             rics = constituents["Instrument"].tolist()
-            print(f"  Found {len(rics)} constituents")
+            logger.info(f"  Found {len(rics)} constituents")
 
             return rics
 
         except Exception as e:
-            print(f"  Error fetching constituents: {e}")
+            logger.info(f"  Error fetching constituents: {e}")
             raise
 
     def get_historical_prices(
@@ -137,9 +140,9 @@ class LSEGLoader:
         # 'OPEN', 'HIGH', etc. causes errors because these aren't valid
         # field codes for the historical pricing endpoint.
 
-        print(f"Fetching historical prices for {len(rics)} stocks...")
-        print(f"  Date range: {start} to {end}")
-        print(f"  Batch size: {batch_size}")
+        logger.info(f"Fetching historical prices for {len(rics)} stocks...")
+        logger.info(f"  Date range: {start} to {end}")
+        logger.info(f"  Batch size: {batch_size}")
 
         all_data = []
 
@@ -154,7 +157,7 @@ class LSEGLoader:
                     all_data.append(df)
 
             except Exception as e:
-                print(f"  Warning: Error fetching batch {i // batch_size + 1}: {e}")
+                logger.warning(f"  Warning: Error fetching batch {i // batch_size + 1}: {e}")
 
             if i + batch_size < len(rics):
                 time.sleep(delay_between_batches)
@@ -168,7 +171,7 @@ class LSEGLoader:
         if convert_ric_to_ticker and "kdcode" in df.columns:
             df["kdcode"] = df["kdcode"].apply(self._ric_to_ticker)
 
-        print(f"  Fetched {len(df)} rows for {df['kdcode'].nunique()} stocks")
+        logger.info(f"  Fetched {len(df)} rows for {df['kdcode'].nunique()} stocks")
 
         return df
 
@@ -256,7 +259,7 @@ class LSEGLoader:
         """
         self._ensure_connected()
 
-        print(f"Fetching VIX data from {start} to {end}...")
+        logger.info(f"Fetching VIX data from {start} to {end}...")
 
         # Try multiple VIX RICs - different ones may be available
         # depending on user's entitlements
@@ -283,17 +286,17 @@ class LSEGLoader:
                     else:
                         continue
 
-                print(f"  Fetched {len(df)} VIX observations (using {ric})")
+                logger.info(f"  Fetched {len(df)} VIX observations (using {ric})")
                 return df
 
             except Exception as e:
                 if self._is_permission_error(e):
-                    print(f"  No permission for {ric}, trying alternatives...")
+                    logger.info(f"  No permission for {ric}, trying alternatives...")
                     continue
-                print(f"  Error with {ric}: {e}")
+                logger.info(f"  Error with {ric}: {e}")
                 continue
 
-        print("  Warning: VIX data unavailable (no permission or data). Skipping.")
+        logger.warning("  Warning: VIX data unavailable (no permission or data). Skipping.")
         return None
 
     def get_treasury_yields(self, start: str, end: str) -> pd.DataFrame | None:
@@ -310,7 +313,7 @@ class LSEGLoader:
         """
         self._ensure_connected()
 
-        print(f"Fetching Treasury yields from {start} to {end}...")
+        logger.info(f"Fetching Treasury yields from {start} to {end}...")
 
         # Try multiple RIC combinations for Treasury yields
         treasury_rics_options = [
@@ -340,17 +343,19 @@ class LSEGLoader:
                 if "yield_10y" in df.columns and "yield_2y" in df.columns:
                     df["yield_curve"] = df["yield_10y"] - df["yield_2y"]
 
-                print(f"  Fetched {len(df)} Treasury observations (using {rics})")
+                logger.info(f"  Fetched {len(df)} Treasury observations (using {rics})")
                 return df
 
             except Exception as e:
                 if self._is_permission_error(e):
-                    print(f"  No permission for {rics}, trying alternatives...")
+                    logger.info(f"  No permission for {rics}, trying alternatives...")
                     continue
-                print(f"  Error with {rics}: {e}")
+                logger.info(f"  Error with {rics}: {e}")
                 continue
 
-        print("  Warning: Treasury yield data unavailable (no permission or data). Skipping.")
+        logger.warning(
+            "  Warning: Treasury yield data unavailable (no permission or data). Skipping."
+        )
         return None
 
     def get_series(self, ric: str, start: str, end: str, value_name: str) -> pd.DataFrame | None:
@@ -376,9 +381,9 @@ class LSEGLoader:
             return series.sort_values("dt").drop_duplicates(subset=["dt"], keep="last")
         except Exception as e:
             if self._is_permission_error(e):
-                print(f"  No permission for {ric}, skipping.")
+                logger.warning(f"  No permission for {ric}, skipping.")
                 return None
-            print(f"  Error fetching series {ric}: {e}")
+            logger.warning(f"  Error fetching series {ric}: {e}")
             return None
 
     def fetch_universe_data(
@@ -409,7 +414,7 @@ class LSEGLoader:
         """
         self._ensure_connected()
 
-        print(f"Fetching complete data for {universe}...")
+        logger.info(f"Fetching complete data for {universe}...")
 
         rics = self.get_universe_constituents(universe)
         df = self.get_historical_prices(
@@ -423,12 +428,12 @@ class LSEGLoader:
                 # Use ffill() instead of deprecated fillna(method='ffill')
                 df["vix"] = df["vix"].ffill().fillna(20)
             else:
-                print("  Using default VIX value (20) since data unavailable")
+                logger.info("  Using default VIX value (20) since data unavailable")
                 df["vix"] = 20.0
 
         if cache_path:
             df.to_csv(cache_path, index=False)
-            print(f"  Cached data to {cache_path}")
+            logger.info(f"  Cached data to {cache_path}")
 
         return df
 

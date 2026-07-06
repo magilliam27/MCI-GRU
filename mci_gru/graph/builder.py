@@ -5,6 +5,7 @@ time-indexed sequence of precomputed snapshots so that dynamic-graph mode
 no longer requires batch_size=1 during training.
 """
 
+import logging
 from datetime import datetime
 
 import pandas as pd
@@ -21,6 +22,8 @@ from mci_gru.graph.correlation import (
     compute_correlation_matrix as compute_correlation_matrix_impl,
 )
 from mci_gru.graph.schedule import GraphSchedule
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["GraphBuilder", "GraphSchedule"]
 
@@ -100,7 +103,7 @@ class GraphBuilder:
         if self.use_multi_feature_edges and self.use_lead_lag_features:
             n_feat += 2
         feat_mode = f"multi-feature({n_feat})" if self.use_multi_feature_edges else "scalar"
-        print(
+        logger.info(
             f"Building graph ({mode}, lookback={self.corr_lookback_days} days, "
             f"edges={feat_mode})..."
         )
@@ -114,7 +117,7 @@ class GraphBuilder:
         self.current_edge_index = edge_index
         self.current_edge_weight = edge_weight
 
-        print(f"  Graph built: {edge_index.shape[1]} edges for {len(kdcode_list)} nodes")
+        logger.info(f"  Graph built: {edge_index.shape[1]} edges for {len(kdcode_list)} nodes")
 
         return edge_index, edge_weight
 
@@ -138,7 +141,7 @@ class GraphBuilder:
         update_dates = self.get_update_dates(start_date, end_date)
         snapshots: list[tuple[str, torch.Tensor, torch.Tensor]] = []
 
-        print(
+        logger.info(
             f"Precomputing {len(update_dates)} graph snapshot(s) "
             f"({start_date} to {end_date}, every {self.update_frequency_months} months)..."
         )
@@ -148,7 +151,7 @@ class GraphBuilder:
             snapshots.append((date, ei, ew))
 
         schedule = GraphSchedule(snapshots)
-        print(f"  GraphSchedule ready: {schedule.num_snapshots} snapshots")
+        logger.info(f"  GraphSchedule ready: {schedule.num_snapshots} snapshots")
         return schedule
 
     # ------------------------------------------------------------------
@@ -185,7 +188,9 @@ class GraphBuilder:
         if not self.should_update(current_date):
             return None, None
 
-        print(f"Updating graph (last update: {self.last_update_date}, current: {current_date})")
+        logger.info(
+            f"Updating graph (last update: {self.last_update_date}, current: {current_date})"
+        )
         return self.build_graph(df, kdcode_list, current_date, show_progress)
 
     def get_current_graph(self) -> tuple[torch.Tensor, torch.Tensor]:

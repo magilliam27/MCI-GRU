@@ -10,8 +10,12 @@ Three encoding variants are available:
 - Buffered: With no-trade zones for weak signals
 """
 
+import logging
+
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 # Momentum feature columns
 MOMENTUM_BASE_FEATURES = [
@@ -393,7 +397,7 @@ def add_momentum_binary(
         - cycle_correction: 1 if Correction state, else 0
         - cycle_bear: 1 if Bear state, else 0
     """
-    print("Computing binary momentum features...")
+    logger.info("Computing binary momentum features...")
     df = _compute_raw_momentum(df, fast_window, slow_window, include_weekly_momentum)
 
     slow_position = _compute_binary_position(df["slow_momentum"])
@@ -427,8 +431,8 @@ def add_momentum_binary(
     df = _add_cycle_features(df, slow_position, fast_position)
     df = df.drop(columns=["_daily_return"])
 
-    print(f"  Added momentum features: {get_momentum_features(include_weekly_momentum)}")
-    print(f"  Rows with valid slow momentum: {(df['slow_momentum'] != 0).sum()} / {len(df)}")
+    logger.info(f"  Added momentum features: {get_momentum_features(include_weekly_momentum)}")
+    logger.info(f"  Rows with valid slow momentum: {(df['slow_momentum'] != 0).sum()} / {len(df)}")
 
     return df
 
@@ -452,7 +456,7 @@ def add_momentum_continuous(
     This variant keeps the actual momentum values instead of converting
     to binary +1/-1 signals, allowing the model to learn from momentum magnitude.
     """
-    print("Computing continuous momentum features...")
+    logger.info("Computing continuous momentum features...")
     df = _compute_raw_momentum(df, fast_window, slow_window, include_weekly_momentum)
 
     slow_position = _compute_binary_position(df["slow_momentum"])
@@ -504,7 +508,7 @@ def add_momentum_continuous(
     df = _add_cycle_features(df, slow_position, fast_position)
     df = df.drop(columns=["_daily_return"])
 
-    print("  Added continuous momentum features")
+    logger.info("  Added continuous momentum features")
     return df
 
 
@@ -531,7 +535,7 @@ def add_momentum_buffered(
     - Moderate signals: Scaled linearly
     - Extreme signals: Clipped (potential mean reversion concern)
     """
-    print(
+    logger.info(
         f"Computing buffered momentum features (buffer_low={buffer_low}, buffer_high={buffer_high})..."
     )
     df = _compute_raw_momentum(df, fast_window, slow_window, include_weekly_momentum)
@@ -600,7 +604,7 @@ def add_momentum_buffered(
     df = _add_cycle_features(df, slow_position, fast_position)
     df = df.drop(columns=["_daily_return"])
 
-    print("  Added buffered momentum features")
+    logger.info("  Added buffered momentum features")
     return df
 
 
