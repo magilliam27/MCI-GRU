@@ -32,6 +32,11 @@ from mci_gru.config import DataConfig  # noqa: E402
 from mci_gru.data.data_manager import (  # noqa: E402
     DataManager,
 )
+from mci_gru.data.transforms import (  # noqa: E402
+    build_single_date_tensors,
+    impute_feature_nans_by_day,
+    normalize_features_zscore,
+)
 from mci_gru.features import FeatureEngineer  # noqa: E402
 from mci_gru.graph.utils import edge_feature_dim  # noqa: E402
 from mci_gru.models import create_model  # noqa: E402
@@ -180,53 +185,30 @@ def prepare_inference_data(
     df_window = df[df["dt"].isin(window_dates)].copy()
 
     print("Filling NaN values...")
-    grouped = df_window.groupby("dt")
-    filled_parts = []
-    for _dt_val, df_day in grouped:
-        df_day = df_day.copy()
-        for col in feature_cols:
-            if col in df_day.columns:
-                df_day[col] = df_day[col].fillna(df_day[col].mean())
-        df_day = df_day.fillna(0.0)
-        filled_parts.append(df_day)
-    df_window = pd.concat(filled_parts)
+    df_window = impute_feature_nans_by_day(df_window, feature_cols)
 
     print("Normalizing with saved training statistics...")
-    for col in feature_cols:
-        if col in df_window.columns:
-            m, s = means[col], stds[col]
-            df_window[col] = np.clip(df_window[col], m - 3 * s, m + 3 * s)
-            df_window[col] = (df_window[col] - m) / s
+    df_window = normalize_features_zscore(
+        df_window,
+        feature_cols,
+        means,
+        stds,
+        default_mean=None,
+        default_std=None,
+    )
 
-    print("Building time-series tensor...")
-    stock_to_idx = {kd: i for i, kd in enumerate(kdcode_list)}
-    n_stocks = len(kdcode_list)
-    n_features = len(feature_cols)
+    print("Building time-series and graph feature tensors...")
+    time_series, graph_features = build_single_date_tensors(
+        df_window,
+        kdcode_list,
+        feature_cols,
+        his_t,
+        target_date,
+    )
 
     lookback_dates = window_dates[:his_t]
-    pivot = np.zeros((his_t, n_stocks, n_features), dtype=np.float32)
-
-    for _, row in df_window[df_window["dt"].isin(lookback_dates)].iterrows():
-        kd = row["kdcode"]
-        dt_val = row["dt"]
-        if kd in stock_to_idx and dt_val in lookback_dates:
-            s_idx = stock_to_idx[kd]
-            d_idx = lookback_dates.index(dt_val)
-            pivot[d_idx, s_idx, :] = row[feature_cols].values.astype(np.float32)
-
-    time_series = pivot.transpose(1, 0, 2)
-    time_series = time_series[np.newaxis, ...]
-
-    print("Building graph features tensor...")
-    graph_date = window_dates[-1]
-    graph_features = np.zeros((1, n_stocks, n_features), dtype=np.float32)
-    df_graph_day = df_window[df_window["dt"] == graph_date]
-    for _, row in df_graph_day.iterrows():
-        kd = row["kdcode"]
-        if kd in stock_to_idx:
-            s_idx = stock_to_idx[kd]
-            graph_features[0, s_idx, :] = row[feature_cols].values.astype(np.float32)
-
+    n_stocks = len(kdcode_list)
+    n_features = len(feature_cols)
     print(f"  Prediction date: {target_date}")
     print(f"  Lookback window: {lookback_dates[0]} to {lookback_dates[-1]}")
     print(f"  Stocks: {n_stocks}, Features: {n_features}")
@@ -235,6 +217,41 @@ def prepare_inference_data(
         observed = graph_features[0].copy()
         return time_series, graph_features, kdcode_list, target_date, observed
     return time_series, graph_features, kdcode_list, target_date
+
+
+def load_frozen_model_and_graph(
+    model_dir: Path,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
+    """Load frozen graph_data.pt edges onto *device*."""
+    graph_data_path = model_dir / "graph_data.pt"
+    if not graph_data_path.exists():
+        raise FileNotFoundError(f"graph_data.pt not found in {model_dir}")
+
+    graph_data = torch.load(str(graph_data_path), map_location=device, weights_only=True)
+    edge_index = graph_data["edge_index"].to(device)
+    edge_weight = graph_data["edge_weight"].to(device)
+    edge_index_sector = graph_data.get("edge_index_sector")
+    edge_weight_sector = graph_data.get("edge_weight_sector")
+    if edge_index_sector is not None:
+        edge_index_sector = edge_index_sector.to(device)
+    if edge_weight_sector is not None:
+        edge_weight_sector = edge_weight_sector.to(device)
+    return edge_index, edge_weight, edge_index_sector, edge_weight_sector
+
+
+def load_frozen_checkpoint(
+    ckpt_path: Path,
+    num_features: int,
+    model_cfg: dict,
+    device: torch.device,
+) -> torch.nn.Module:
+    """Load one frozen ensemble checkpoint onto *device* in eval mode."""
+    model = create_model(num_features, model_cfg)
+    model.load_state_dict(torch.load(str(ckpt_path), map_location=device, weights_only=True))
+    model.to(device)
+    model.eval()
+    return model
 
 
 def run_inference(
@@ -255,19 +272,10 @@ def run_inference(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"\nRunning inference on {device}...")
 
-    graph_data_path = model_dir / "graph_data.pt"
-    if not graph_data_path.exists():
-        raise FileNotFoundError(f"graph_data.pt not found in {model_dir}")
-
-    graph_data = torch.load(str(graph_data_path), weights_only=True)
-    edge_index = graph_data["edge_index"].to(device)
-    edge_weight = graph_data["edge_weight"].to(device)
-    edge_index_sector = graph_data.get("edge_index_sector")
-    edge_weight_sector = graph_data.get("edge_weight_sector")
-    if edge_index_sector is not None:
-        edge_index_sector = edge_index_sector.to(device)
-    if edge_weight_sector is not None:
-        edge_weight_sector = edge_weight_sector.to(device)
+    edge_index, edge_weight, edge_index_sector, edge_weight_sector = load_frozen_model_and_graph(
+        model_dir,
+        device,
+    )
     if append_snapshot_age_days and edge_weight.dim() == 2 and static_graph_valid_from:
         ds = datetime.strptime(pred_date[:10], "%Y-%m-%d").date()
         dv = datetime.strptime(static_graph_valid_from[:10], "%Y-%m-%d").date()
@@ -294,10 +302,7 @@ def run_inference(
 
     all_preds = []
     for ckpt_path in ckpt_files:
-        model = create_model(num_features, model_cfg)
-        model.load_state_dict(torch.load(str(ckpt_path), map_location=device, weights_only=True))
-        model.to(device)
-        model.eval()
+        model = load_frozen_checkpoint(ckpt_path, num_features, model_cfg, device)
 
         with torch.no_grad():
             output = model(
