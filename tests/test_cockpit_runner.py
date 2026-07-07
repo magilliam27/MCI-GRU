@@ -5,8 +5,8 @@ from datetime import date
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
-from mci_gru.cockpit.evidence import collect_local_evidence
-from mci_gru.cockpit.runner import (
+from cockpit.evidence import collect_local_evidence
+from cockpit.runner import (
     _run_command,
     run_github_cockpit_refresh,
     run_local_cockpit_refresh,
@@ -168,7 +168,7 @@ def test_default_cockpit_runners_apply_safe_directory_to_git_commands(
             return SimpleNamespace(stdout="60e3d96 Add local MCI-GRU cockpit runner\n")
         raise AssertionError(command)
 
-    monkeypatch.setattr("mci_gru.cockpit.evidence.subprocess.run", fake_evidence_run)
+    monkeypatch.setattr("cockpit.evidence.subprocess.run", fake_evidence_run)
 
     collect_local_evidence(repo)
 
@@ -192,7 +192,7 @@ def test_default_cockpit_runners_apply_safe_directory_to_git_commands(
         seen_runner_commands.append(args)
         return SimpleNamespace(stdout="")
 
-    monkeypatch.setattr("mci_gru.cockpit.runner.subprocess.run", fake_runner_run)
+    monkeypatch.setattr("cockpit.runner.subprocess.run", fake_runner_run)
     _run_command(repo)(["git", "status", "--short"])
 
     assert seen_runner_commands == [["git", "-c", f"safe.directory={repo}", "status", "--short"]]

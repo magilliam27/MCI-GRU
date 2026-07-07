@@ -68,7 +68,7 @@ If a training run was tracked, the run directory contains `mlflow_run.json`.
 A backtest can auto-link itself to the tracked training experiment:
 
 ```bash
-python -m tests.backtest_sp500 \
+python scripts/backtest_sp500.py \
   --predictions_dir results/baseline/20260310_010203/averaged_predictions \
   --auto_save
 ```
@@ -78,7 +78,7 @@ When that metadata file is present, the backtest creates a **linked child run** 
 ### Standalone backtest logging
 
 ```bash
-python -m tests.backtest_sp500 \
+python scripts/backtest_sp500.py \
   --predictions_dir path/to/averaged_predictions \
   --auto_save \
   --enable_mlflow \

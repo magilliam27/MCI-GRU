@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from mci_gru.cockpit.models import (
+from cockpit.models import (
     CockpitReport,
     Decision,
     GitHubAction,
@@ -10,7 +10,7 @@ from mci_gru.cockpit.models import (
     Workstream,
     WorkstreamStatus,
 )
-from mci_gru.cockpit.render import render_cockpit_packet, render_workstream_register
+from cockpit.render import render_cockpit_packet, render_workstream_register
 
 
 def test_render_workstream_register_uses_controlled_columns() -> None:

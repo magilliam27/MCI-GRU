@@ -2,31 +2,13 @@
 
 from __future__ import annotations
 
-import json
-import textwrap
 from pathlib import Path
 
+from nb_lib import LOCAL_PY310_METADATA, backtest_engine_path_expr, write_notebook
+from nb_lib import code_lines as code
+from nb_lib import md_lines as md
+
 OUT = Path("notebooks/promising_models_backtest_colab.ipynb")
-
-
-def md(source: str) -> dict:
-    source = textwrap.dedent(source).strip()
-    return {
-        "cell_type": "markdown",
-        "metadata": {},
-        "source": [line + "\n" for line in source.splitlines()],
-    }
-
-
-def code(source: str) -> dict:
-    source = textwrap.dedent(source).strip("\n")
-    return {
-        "cell_type": "code",
-        "execution_count": None,
-        "metadata": {},
-        "outputs": [],
-        "source": [line + "\n" for line in source.splitlines()],
-    }
 
 
 cells = [
@@ -34,7 +16,7 @@ cells = [
         """
         # MCI-GRU Promising Models Backtest - Google Colab
 
-        Runs the strongest recommended-confirmation candidates through the repository backtesting framework. The notebook uses `tests/backtest_sp500.py` for portfolio simulation so the outputs follow the same open-to-open timing, rank-drop gate, transaction-cost, turnover, and reporting conventions as the rest of the project.
+        Runs the strongest recommended-confirmation candidates through the repository backtesting framework. The notebook uses `scripts/backtest_sp500.py` for portfolio simulation so the outputs follow the same open-to-open timing, rank-drop gate, transaction-cost, turnover, and reporting conventions as the rest of the project.
         """
     ),
     md("## 1. Mount Drive, Clone Repo, Install Dependencies"),
@@ -265,7 +247,7 @@ cells = [
             suffix = '_' + scenario['scenario']
             cmd = [
                 sys.executable,
-                str(REPO_DIR / 'tests' / 'backtest_sp500.py'),
+                __BACKTEST_ENGINE_PATH_EXPR__,
                 '--predictions_dir', str(predictions_dir),
                 '--data_file', str(DATA_FILE),
                 '--test_start', TEST_START,
@@ -391,7 +373,10 @@ cells = [
             'source_backtest_dir',
         ] if c in results_df.columns]
         display(results_df[display_cols])
-        """
+        """.replace(
+            "__BACKTEST_ENGINE_PATH_EXPR__",
+            backtest_engine_path_expr("backtest_sp500"),
+        )
     ),
     md("## 6. Visualize Backtest Comparison"),
     code(
@@ -524,7 +509,7 @@ cells = [
             '## Primary Scenario',
             '',
             f"- `{PRIMARY_SCENARIO['scenario']}` uses top-k={PRIMARY_SCENARIO['top_k']}, daily open-to-open rebalancing, transaction costs enabled with spread={PRIMARY_SCENARIO['spread_bps']} bps and slippage={PRIMARY_SCENARIO['slippage_bps']} bps, and rank-drop gate min_rank_drop={PRIMARY_SCENARIO['min_rank_drop']}.",
-            '- Backtest outputs are produced by `tests/backtest_sp500.py`, including `backtest_metrics.json`, `daily_returns.csv`, `portfolio_holdings.csv`, `trades.csv`, and `equity_curve.png` for each candidate/scenario.',
+            '- Backtest outputs are produced by `scripts/backtest_sp500.py`, including `backtest_metrics.json`, `daily_returns.csv`, `portfolio_holdings.csv`, `trades.csv`, and `equity_curve.png` for each candidate/scenario.',
             '- Treat this as the next filter after IC/top-20 return confirmation: prefer candidates that keep positive excess return and reasonable drawdown after costs and turnover.',
             '',
             '## Artifacts',
@@ -552,21 +537,4 @@ cells = [
 ]
 
 
-nb = {
-    "cells": cells,
-    "metadata": {
-        "kernelspec": {
-            "display_name": "Python 3",
-            "language": "python",
-            "name": "python3",
-        },
-        "language_info": {"name": "python", "version": "3.10.0"},
-    },
-    "nbformat": 4,
-    "nbformat_minor": 5,
-}
-
-
-OUT.parent.mkdir(parents=True, exist_ok=True)
-OUT.write_text(json.dumps(nb, indent=1), encoding="utf-8")
-print(f"Wrote {OUT}")
+write_notebook(cells, OUT, metadata=LOCAL_PY310_METADATA, indent=1)

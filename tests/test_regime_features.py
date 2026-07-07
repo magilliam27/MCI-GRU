@@ -13,6 +13,8 @@ from mci_gru.features.regime import (
     compute_regime_monthly_features,
 )
 
+pytestmark = pytest.mark.requires_fred
+
 
 def _make_regime_daily(start: str = "2000-01-01", periods: int = 3800) -> pd.DataFrame:
     dates = pd.date_range(start=start, periods=periods, freq="D")

@@ -9,7 +9,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from mci_gru.cockpit.runner import run_github_cockpit_refresh, run_local_cockpit_refresh  # noqa: E402,I001
+from cockpit.runner import run_github_cockpit_refresh, run_local_cockpit_refresh  # noqa: E402,I001
 
 
 def parse_args() -> argparse.Namespace:

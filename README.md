@@ -75,7 +75,9 @@ The system trains an ensemble of models that learn temporal patterns (via a modi
 ```
 MCI-GRU/
 ├── run_experiment.py              # Hydra entry point (thin orchestrator)
-├── requirements.txt               # Python dependencies
+├── pyproject.toml                 # Dependency manifest (source of truth)
+├── requirements.lock              # Pinned dev+fred lock (Windows-reference)
+├── requirements.txt               # Colab-facing core dependency ranges
 ├── configs/                       # Hydra YAML configuration
 │   ├── config.yaml                #   Base config
 │   ├── data/                      #   Data source presets
@@ -130,8 +132,13 @@ MCI-GRU/
 ```bash
 git clone https://github.com/magilliam27/MCI-GRU.git
 cd MCI-GRU
-pip install -r requirements.txt
+pip install -e ".[dev,fred]"
 ```
+
+For reproducible local pins (Windows), see `requirements.lock` (generated via
+`pip-compile --extra=dev --extra=fred -o requirements.lock pyproject.toml`). Colab
+notebooks install from `requirements.txt`, which intentionally keeps version ranges
+(not pins) so Colab's preinstalled torch/CUDA stack satisfies them.
 
 **Required dependencies:**
 - PyTorch >= 2.0
@@ -582,7 +589,7 @@ python -m pytest tests/test_regime_features.py -v
 Full backtesting with transaction cost modeling, multiple testing adjustments, and multi-day holding periods:
 
 ```bash
-python tests/backtest_sp500.py \
+python scripts/backtest_sp500.py \
     --predictions_dir path/to/averaged_predictions \
     --auto_save \
     --plot

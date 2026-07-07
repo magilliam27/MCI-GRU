@@ -2,31 +2,13 @@
 
 from __future__ import annotations
 
-import json
-import textwrap
 from pathlib import Path
 
+from nb_lib import COLAB_GPU_METADATA_BARE_KERNEL, backtest_engine_path_expr, write_notebook
+from nb_lib import code_lines as code
+from nb_lib import md_lines as md
+
 OUT = Path("notebooks/sp500_pit_gics_top10_baseline_colab.ipynb")
-
-
-def md(source: str) -> dict:
-    source = textwrap.dedent(source).strip()
-    return {
-        "cell_type": "markdown",
-        "metadata": {},
-        "source": [line + "\n" for line in source.splitlines()],
-    }
-
-
-def code(source: str) -> dict:
-    source = textwrap.dedent(source).strip("\n")
-    return {
-        "cell_type": "code",
-        "execution_count": None,
-        "metadata": {},
-        "outputs": [],
-        "source": [line + "\n" for line in source.splitlines()],
-    }
 
 
 cells = [
@@ -430,7 +412,7 @@ cells = [
                     sys.executable,
                     "-X",
                     "utf8",
-                    str(REPO_DIR / "tests" / "backtest_sp500_daily.py"),
+                    __BACKTEST_ENGINE_PATH_EXPR__,
                     "--predictions_dir",
                     str(pred_dir),
                     "--data_file",
@@ -482,22 +464,11 @@ cells = [
                 shutil.copytree(LOCAL_RUN_ROOT, dest / "local_run_root", dirs_exist_ok=True)
             if IN_COLAB and runtime is not None:
                 runtime.unassign()
-        """
+        """.replace(
+            "__BACKTEST_ENGINE_PATH_EXPR__",
+            backtest_engine_path_expr("backtest_sp500_daily", quote='"'),
+        )
     ),
 ]
 
-notebook = {
-    "cells": cells,
-    "metadata": {
-        "accelerator": "GPU",
-        "colab": {"provenance": []},
-        "kernelspec": {"display_name": "Python 3", "name": "python3"},
-        "language_info": {"name": "python"},
-    },
-    "nbformat": 4,
-    "nbformat_minor": 5,
-}
-
-OUT.parent.mkdir(parents=True, exist_ok=True)
-OUT.write_text(json.dumps(notebook, indent=2), encoding="utf-8")
-print(f"Wrote {OUT}")
+write_notebook(cells, OUT, metadata=COLAB_GPU_METADATA_BARE_KERNEL, indent=2)

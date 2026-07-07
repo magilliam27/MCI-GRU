@@ -4,7 +4,7 @@
 
 **Goal:** Add live `gh`-backed cockpit sync so `scripts/refresh_cockpit.py --github-sync` can create the dated cockpit branch/PR, maintain the cockpit issue, comment with each run, and perform evidence-gated issue actions.
 
-**Architecture:** Keep all GitHub mutation in `mci_gru.cockpit.github` behind explicit `enabled=True`. The CLI delegates to a runner-level orchestration function that switches to the dated cockpit branch, refreshes local artifacts, then asks a command-injected gateway to run `git` and `gh` commands. Tests use fake command runners only; no network or live GitHub calls happen in pytest.
+**Architecture:** Keep all GitHub mutation in `cockpit.github` behind explicit `enabled=True`. The CLI delegates to a runner-level orchestration function that switches to the dated cockpit branch, refreshes local artifacts, then asks a command-injected gateway to run `git` and `gh` commands. Tests use fake command runners only; no network or live GitHub calls happen in pytest.
 
 **Tech Stack:** Python standard library, `git` CLI, `gh` CLI, dataclasses, pytest, ruff.
 
@@ -12,8 +12,8 @@
 
 ## File Structure
 
-- Modify `mci_gru/cockpit/github.py`: replace the disabled stub with command-injected live sync helpers.
-- Modify `mci_gru/cockpit/runner.py`: add `run_github_cockpit_refresh(...)` orchestration and include `CockpitReport` on `CockpitRunResult`.
+- Modify `cockpit/github.py`: replace the disabled stub with command-injected live sync helpers.
+- Modify `cockpit/runner.py`: add `run_github_cockpit_refresh(...)` orchestration and include `CockpitReport` on `CockpitRunResult`.
 - Modify `scripts/refresh_cockpit.py`: wire `--github-sync` to live sync.
 - Modify `tests/test_cockpit_github.py`: add fake-runner tests for branch, PR, issue, comment, label, create-issue, and close-issue command plans.
 - Modify `tests/test_cockpit_runner.py`: test runner-level live orchestration with fake commands.
@@ -37,7 +37,7 @@
 ### Task 1: Gateway Types And Existing Guard Compatibility
 
 **Files:**
-- Modify: `mci_gru/cockpit/github.py`
+- Modify: `cockpit/github.py`
 - Modify: `tests/test_cockpit_github.py`
 
 - [ ] **Step 1: Add failing tests for branch names and disabled guard**
@@ -47,7 +47,7 @@ Add:
 ```python
 from datetime import date
 
-from mci_gru.cockpit.github import cockpit_branch_name
+from cockpit.github import cockpit_branch_name
 
 
 def test_cockpit_branch_name_is_dated() -> None:
@@ -64,7 +64,7 @@ Expected: FAIL with missing `cockpit_branch_name`.
 
 - [ ] **Step 2: Implement branch naming and command result dataclass**
 
-Add to `mci_gru/cockpit/github.py`:
+Add to `cockpit/github.py`:
 
 ```python
 from dataclasses import dataclass, field
@@ -98,7 +98,7 @@ Run the same pytest command. Expected: PASS for the new branch-name test and the
 ### Task 2: Live Sync Command Plan
 
 **Files:**
-- Modify: `mci_gru/cockpit/github.py`
+- Modify: `cockpit/github.py`
 - Modify: `tests/test_cockpit_github.py`
 
 - [ ] **Step 1: Add failing fake-runner test for PR and cockpit issue sync**
@@ -108,7 +108,7 @@ Add:
 ```python
 from pathlib import Path
 
-from mci_gru.cockpit.github import sync_github
+from cockpit.github import sync_github
 
 
 def test_sync_github_creates_branch_pr_issue_and_comment_with_fake_runner(tmp_path: Path) -> None:
@@ -223,7 +223,7 @@ Run the single test. Expected: PASS.
 ### Task 3: Evidence-Gated Issue Autonomy Helpers
 
 **Files:**
-- Modify: `mci_gru/cockpit/github.py`
+- Modify: `cockpit/github.py`
 - Modify: `tests/test_cockpit_github.py`
 
 - [ ] **Step 1: Add failing tests for issue creation and closure evidence**
@@ -231,7 +231,7 @@ Run the single test. Expected: PASS.
 Add:
 
 ```python
-from mci_gru.cockpit.github import close_issue_with_evidence, create_issue
+from cockpit.github import close_issue_with_evidence, create_issue
 
 
 def test_create_issue_applies_only_existing_labels() -> None:
@@ -287,7 +287,7 @@ Expected: PASS.
 ### Task 4: Runner And CLI Live Mode
 
 **Files:**
-- Modify: `mci_gru/cockpit/runner.py`
+- Modify: `cockpit/runner.py`
 - Modify: `scripts/refresh_cockpit.py`
 - Modify: `tests/test_cockpit_runner.py`
 - Modify: `tests/test_cockpit_cli.py`
@@ -372,7 +372,7 @@ Run:
 
 ```bash
 C:\Users\magil\MCI-GRU\.venv\Scripts\python.exe -m pytest tests/test_cockpit_render.py tests/test_cockpit_runner.py tests/test_cockpit_cli.py tests/test_cockpit_github.py -v --basetemp .tmp_pytest\pytest
-C:\Users\magil\MCI-GRU\.venv\Scripts\ruff.exe check mci_gru/cockpit scripts/refresh_cockpit.py tests/test_cockpit_render.py tests/test_cockpit_runner.py tests/test_cockpit_cli.py tests/test_cockpit_github.py
+C:\Users\magil\MCI-GRU\.venv\Scripts\ruff.exe check cockpit scripts/refresh_cockpit.py tests/test_cockpit_render.py tests/test_cockpit_runner.py tests/test_cockpit_cli.py tests/test_cockpit_github.py
 ```
 
 Expected: PASS and `All checks passed!`.

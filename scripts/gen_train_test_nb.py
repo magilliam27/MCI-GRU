@@ -1,29 +1,13 @@
 """Generate notebooks/train_test_backtest_workflow.ipynb."""
 
-import json
 from pathlib import Path
+
+from nb_lib import LOCAL_PY310_METADATA, backtest_engine_path_expr, write_notebook
+from nb_lib import code_lines as code
+from nb_lib import md_lines as md
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "notebooks" / "train_test_backtest_workflow.ipynb"
-
-
-def md(text: str):
-    return {
-        "cell_type": "markdown",
-        "metadata": {},
-        "source": [line + "\n" for line in text.strip().split("\n")],
-    }
-
-
-def code(text: str):
-    lines = text.strip().split("\n")
-    return {
-        "cell_type": "code",
-        "execution_count": None,
-        "metadata": {},
-        "outputs": [],
-        "source": [line + "\n" for line in lines],
-    }
 
 
 cells = []
@@ -39,7 +23,7 @@ Workflow aligned with `Seed_test (1).ipynb`:
 2. **Data** — market panel CSV only (path or Colab upload under `data/raw/market/`); regime inputs come from FRED, not a separate file
 3. **Train** — `run_experiment.py` (Hydra); outputs under `results/<experiment_name>/<timestamp>/`
 4. **Inspect** — `training_summary.json`, `run_metadata.json`, `averaged_predictions/`
-5. **Backtest** — `tests/backtest_sp500.py --auto_save`
+5. **Backtest** — `scripts/backtest_sp500.py --auto_save`
 6. **Package** — zip the run directory (+ backtest folder); Colab `files.download`
 
 **Label horizon:** Training uses `model.label_t` (e.g. 21). Backtest uses `--label_t` for the return / holding window (default **5** in the script). Set `--label_t` to match the horizon you want to simulate (they need not equal `model.label_t`, but you should know what each means).
@@ -325,7 +309,7 @@ rel_market_bt = MARKET_CSV.relative_to(REPO_ROOT).as_posix()
 
 bt_cmd = [
     sys.executable,
-    str(REPO_ROOT / "tests" / "backtest_sp500.py"),
+    __BACKTEST_ENGINE_PATH_EXPR__,
     "--predictions_dir",
     str(PRED_DIR),
     "--data_file",
@@ -365,7 +349,10 @@ metrics_file = BACKTEST_DIR / "backtest_metrics.json"
 if metrics_file.is_file():
     with open(metrics_file, encoding="utf-8") as f:
         print(json.dumps(json.load(f), indent=2)[:4000])
-"""
+""".replace(
+            "__BACKTEST_ENGINE_PATH_EXPR__",
+            backtest_engine_path_expr("backtest_sp500", repo_var="REPO_ROOT", quote='"'),
+        )
     )
 )
 
@@ -389,20 +376,4 @@ else:
     )
 )
 
-nb = {
-    "cells": cells,
-    "metadata": {
-        "kernelspec": {
-            "display_name": "Python 3",
-            "language": "python",
-            "name": "python3",
-        },
-        "language_info": {"name": "python", "version": "3.10.0"},
-    },
-    "nbformat": 4,
-    "nbformat_minor": 5,
-}
-
-OUT.parent.mkdir(parents=True, exist_ok=True)
-OUT.write_text(json.dumps(nb, indent=1), encoding="utf-8")
-print("Wrote", OUT)
+write_notebook(cells, OUT, metadata=LOCAL_PY310_METADATA, indent=1)

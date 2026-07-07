@@ -24,7 +24,6 @@ Usage:
     python run_experiment.py +experiment=with_vix +data=russell1000 model.his_t=20
 """
 
-import hashlib
 import json
 import logging
 import os
@@ -42,103 +41,21 @@ from omegaconf import DictConfig, OmegaConf
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from mci_gru.config import (
-    DataConfig,
-    EvaluationConfig,
-    ExperimentConfig,
-    FeatureConfig,
-    GraphConfig,
-    ModelConfig,
-    TrackingConfig,
-    TrainingConfig,
-)
+from mci_gru.config import create_config_from_dict
 from mci_gru.data.data_manager import create_data_loaders
+from mci_gru.evaluation.experiment_summary import (
+    compute_evaluation_summary,
+    data_file_fingerprint,
+    select_training_objective_value,
+)
 from mci_gru.features import FeatureEngineer
 from mci_gru.graph.utils import edge_feature_dim
 from mci_gru.models import create_model
 from mci_gru.pipeline import prepare_data, prepare_data_index_level
 from mci_gru.tracking import MLflowTrackingManager
-from mci_gru.training import evaluate_predictions, train_multiple_models
+from mci_gru.training import train_multiple_models
 from mci_gru.utils.seeding import set_seed
 from mci_gru.walkforward import generate_walkforward_configs, merge_walkforward_summary
-
-
-def _data_file_fingerprint(relative_path: str, logger: logging.Logger) -> dict[str, Any]:
-    """SHA-256 and stat metadata for the configured CSV path (if present)."""
-    path = Path(relative_path)
-    if not path.is_absolute():
-        path = Path.cwd() / path
-    if not path.is_file():
-        logger.warning("Data file not found at %s — skipping sha256", path)
-        return {
-            "data_file_sha256": None,
-            "data_file_size_bytes": None,
-            "data_file_mtime_iso": None,
-        }
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(chunk)
-    st = path.stat()
-    mtime = datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat()
-    return {
-        "data_file_sha256": digest.hexdigest(),
-        "data_file_size_bytes": st.st_size,
-        "data_file_mtime_iso": mtime,
-    }
-
-
-def _resolved_evaluation_kwargs(config: ExperimentConfig) -> dict[str, Any]:
-    eval_cfg = config.evaluation
-    return {
-        "top_k_values": eval_cfg.top_k_values,
-        "label_t": config.model.label_t,
-        "bootstrap_enabled": eval_cfg.bootstrap_enabled,
-        "bootstrap_resamples": eval_cfg.bootstrap_resamples,
-        "bootstrap_seed": eval_cfg.bootstrap_seed,
-        "ci_level": eval_cfg.ci_level,
-        "block_size": eval_cfg.block_size or max(1, config.model.label_t),
-        "newey_west_lags": eval_cfg.newey_west_lags
-        if eval_cfg.newey_west_lags is not None
-        else max(0, config.model.label_t - 1),
-    }
-
-
-def _compute_evaluation_summary(
-    predictions: np.ndarray,
-    labels: np.ndarray,
-    config: ExperimentConfig,
-) -> dict[str, Any]:
-    metrics = evaluate_predictions(
-        predictions,
-        labels,
-        **_resolved_evaluation_kwargs(config),
-    )
-    return {
-        "label_t": config.model.label_t,
-        "top_k_values": config.evaluation.top_k_values,
-        "metrics": metrics,
-    }
-
-
-def _select_training_objective_value(
-    selection_metric: str,
-    wf_summaries: list[dict[str, Any]],
-    merged_summary: dict[str, Any] | None,
-) -> float | None:
-    """Return the summary objective matching the configured checkpoint metric."""
-    if selection_metric == "val_loss":
-        key = "mean_best_val_loss"
-    elif selection_metric == "val_rank_ic":
-        key = "mean_best_val_rank_ic"
-    else:
-        key = "mean_best_val_ic"
-
-    if merged_summary is not None:
-        return merged_summary.get(f"{key}_across_windows")
-    if wf_summaries:
-        return wf_summaries[-1].get(key)
-    return None
 
 
 def setup_logging(output_dir: str, experiment_name: str) -> logging.Logger:
@@ -158,30 +75,6 @@ def setup_logging(output_dir: str, experiment_name: str) -> logging.Logger:
     return logger
 
 
-def dict_to_config(cfg: DictConfig) -> ExperimentConfig:
-    cfg_dict = OmegaConf.to_container(cfg, resolve=True)
-    data_cfg = DataConfig(**cfg_dict.get("data", {}))
-    feature_cfg = FeatureConfig(**cfg_dict.get("features", {}))
-    graph_cfg = GraphConfig(**cfg_dict.get("graph", {}))
-    model_cfg = ModelConfig(**cfg_dict.get("model", {}))
-    training_cfg = TrainingConfig(**cfg_dict.get("training", {}))
-    evaluation_cfg = EvaluationConfig(**cfg_dict.get("evaluation", {}))
-    tracking_cfg = TrackingConfig(**cfg_dict.get("tracking", {}))
-
-    return ExperimentConfig(
-        data=data_cfg,
-        features=feature_cfg,
-        graph=graph_cfg,
-        model=model_cfg,
-        training=training_cfg,
-        evaluation=evaluation_cfg,
-        tracking=tracking_cfg,
-        experiment_name=cfg_dict.get("experiment_name", "baseline"),
-        output_dir=cfg_dict.get("output_dir", "results"),
-        seed=cfg_dict.get("seed", 42),
-    )
-
-
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def main(cfg: DictConfig):
     from hydra.core.hydra_config import HydraConfig
@@ -199,7 +92,7 @@ def main(cfg: DictConfig):
     logger.info("=" * 80)
     logger.info("\nConfiguration:")
     logger.info("\n" + OmegaConf.to_yaml(cfg))
-    config = dict_to_config(cfg)
+    config = create_config_from_dict(OmegaConf.to_container(cfg, resolve=True))
     set_seed(config.seed)
     logger.info(f"\nBase random seed: {config.seed}")
     logger.info(f"Output directory: {output_path}")
@@ -295,7 +188,7 @@ def main(cfg: DictConfig):
                 "feature_reference_path": "feature_reference.json",
                 "pit_universe_mode": data.get("pit_universe_mode"),
                 "pit_breadth": data.get("pit_breadth"),
-                **_data_file_fingerprint(cfg_w.data.filename, logger),
+                **data_file_fingerprint(cfg_w.data.filename, logger),
             }
             metadata_path = os.path.join(wpath, "run_metadata.json")
             with open(metadata_path, "w") as f:
@@ -421,7 +314,7 @@ def main(cfg: DictConfig):
                 logger.info(f"Training summary saved to: {training_summary_path}")
 
                 phase_started = perf_counter()
-                evaluation_summary = _compute_evaluation_summary(
+                evaluation_summary = compute_evaluation_summary(
                     avg_predictions,
                     data["test_labels"],
                     cfg_w,
@@ -499,13 +392,13 @@ def main(cfg: DictConfig):
             with open(merged_path, "w") as f:
                 json.dump(merged, f, indent=2)
             logger.info("Walk-forward aggregate summary: %s", merged_path)
-            objective_value = _select_training_objective_value(
+            objective_value = select_training_objective_value(
                 config.training.selection_metric,
                 wf_summaries,
                 merged,
             )
         elif wf_summaries:
-            objective_value = _select_training_objective_value(
+            objective_value = select_training_objective_value(
                 config.training.selection_metric,
                 wf_summaries,
                 None,

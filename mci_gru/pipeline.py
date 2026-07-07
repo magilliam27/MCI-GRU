@@ -10,6 +10,8 @@ paper_trade/scripts/infer.py.
 from __future__ import annotations
 
 import gc
+import logging
+from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -32,17 +34,110 @@ from mci_gru.data.preprocessing import (
     generate_graph_features,
     generate_time_series_features,
 )
+from mci_gru.data.transforms import (
+    compute_zscore_norm_stats,
+    impute_feature_nans_by_day,
+    normalize_features_zscore,
+)
 from mci_gru.graph import GraphBuilder
 from mci_gru.graph.sector_edges import build_sector_edges, load_sector_map_csv
 
 if TYPE_CHECKING:
-    from mci_gru.config import ExperimentConfig
+    from mci_gru.config import ExperimentConfig, GraphConfig
     from mci_gru.features import FeatureEngineer
+    from mci_gru.graph.schedule import GraphSchedule
+
+logger = logging.getLogger(__name__)
+
+# ── staged pipeline dataclasses ──────────────────────────────────────────
+
+
+@dataclass
+class PipelineFrames:
+    """Carries the three DataFrame variants through the staged pipeline."""
+
+    raw: pd.DataFrame  # post-engineer, pre-impute (labels, PIT masks, graph)
+    normalized: pd.DataFrame  # pre-universe-filter
+    filtered: pd.DataFrame  # post-universe-filter (windows/tensors)
+
+
+@dataclass(frozen=True)
+class PitContext:
+    intervals: pd.DataFrame | None
+    masked_panel: bool
+    csv_path: str | None
+
+
+@dataclass(frozen=True)
+class NormFit:
+    means: dict[str, float]
+    stds: dict[str, float]
+    rank_gauss_reference: dict[str, np.ndarray] | None
+
+
+@dataclass
+class TensorBundle:
+    train_dates: list[str]
+    val_dates: list[str]
+    test_dates: list[str]
+    stock_features_train: np.ndarray
+    stock_features_val: np.ndarray
+    stock_features_test: np.ndarray
+    x_graph_train: np.ndarray
+    x_graph_val: np.ndarray
+    x_graph_test: np.ndarray
+    train_labels: np.ndarray
+    val_labels: np.ndarray
+    test_labels: np.ndarray
+    train_active_member_mask: np.ndarray | None = None
+    val_active_member_mask: np.ndarray | None = None
+    test_active_member_mask: np.ndarray | None = None
+    train_feature_ready_mask: np.ndarray | None = None
+    val_feature_ready_mask: np.ndarray | None = None
+    test_feature_ready_mask: np.ndarray | None = None
+    train_loss_mask: np.ndarray | None = None
+    val_loss_mask: np.ndarray | None = None
+    test_loss_mask: np.ndarray | None = None
+    train_tradable_mask: np.ndarray | None = None
+    val_tradable_mask: np.ndarray | None = None
+    test_tradable_mask: np.ndarray | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        core = {
+            "train_dates",
+            "val_dates",
+            "test_dates",
+            "stock_features_train",
+            "stock_features_val",
+            "stock_features_test",
+            "x_graph_train",
+            "x_graph_val",
+            "x_graph_test",
+            "train_labels",
+            "val_labels",
+            "test_labels",
+        }
+        out: dict[str, Any] = {}
+        for field in fields(self):
+            value = getattr(self, field.name)
+            if field.name in core or value is not None:
+                out[field.name] = value
+        return out
+
+
+@dataclass(frozen=True)
+class GraphArtifacts:
+    edge_index: torch.Tensor
+    edge_weight: torch.Tensor
+    graph_schedule: GraphSchedule | None
+    edge_index_sector: torch.Tensor | None
+    edge_weight_sector: torch.Tensor | None
+
 
 # ── helpers ──────────────────────────────────────────────────────────────
 
 
-def _load_auxiliary_data(
+def load_auxiliary_data(
     data_manager: DataManager,
     config: ExperimentConfig,
 ) -> tuple[pd.DataFrame | None, pd.DataFrame | None, pd.DataFrame | None]:
@@ -54,16 +149,16 @@ def _load_auxiliary_data(
     if config.features.include_vix:
         try:
             vix_df = data_manager.load_vix()
-            print(f"Loaded VIX data: {len(vix_df)} observations")
+            logger.info(f"Loaded VIX data: {len(vix_df)} observations")
         except Exception as exc:
-            print(f"Warning: Could not load VIX data: {exc}")
+            logger.warning(f"Warning: Could not load VIX data: {exc}")
 
     if config.features.include_credit_spread:
         try:
             credit_df = data_manager.load_credit_spreads()
-            print(f"Loaded credit spread data: {len(credit_df)} observations")
+            logger.info(f"Loaded credit spread data: {len(credit_df)} observations")
         except Exception as exc:
-            print(f"Warning: Could not load credit spread data: {exc}")
+            logger.warning(f"Warning: Could not load credit spread data: {exc}")
 
     if config.features.include_global_regime:
         try:
@@ -77,12 +172,12 @@ def _load_auxiliary_data(
                 regime_inputs_csv=config.features.regime_inputs_csv or None,
                 regime_enforce_lag_days=config.features.regime_enforce_lag_days,
             )
-            print(f"Loaded regime input data: {len(regime_df)} observations")
+            logger.info(f"Loaded regime input data: {len(regime_df)} observations")
         except Exception as exc:
             if config.features.regime_strict:
                 raise
-            print(f"Warning: Could not load regime input data: {exc}")
-            print("Continuing with zero-filled regime features (soft-fail)")
+            logger.warning(f"Warning: Could not load regime input data: {exc}")
+            logger.warning("Continuing with zero-filled regime features (soft-fail)")
 
     return vix_df, credit_df, regime_df
 
@@ -93,16 +188,7 @@ def _compute_norm_stats(
     train_end: str,
 ) -> tuple[dict[str, float], dict[str, float]]:
     """Compute per-feature mean/std from the training period."""
-    train_df = df[df["dt"] <= train_end]
-    means: dict[str, float] = {}
-    stds: dict[str, float] = {}
-    for col in feature_cols:
-        if col in train_df.columns:
-            means[col] = train_df[col].mean()
-            stds[col] = train_df[col].std()
-            if stds[col] == 0:
-                stds[col] = 1.0
-    return means, stds
+    return compute_zscore_norm_stats(df, feature_cols, train_end)
 
 
 def _build_feature_reference(
@@ -181,7 +267,7 @@ def _audit_pit_breadth(
     )
     if policy == "error":
         raise ValueError(message)
-    print(f"Warning: {message}")
+    logger.warning(f"Warning: {message}")
     return summary
 
 
@@ -206,15 +292,7 @@ def _apply_normalisation(
     stds: dict[str, float],
 ) -> pd.DataFrame:
     """3-sigma clipping followed by z-score normalisation."""
-    df = df.copy()
-    for col in feature_cols:
-        if col not in df.columns:
-            continue
-        m = means.get(col, 0.0)
-        s = stds.get(col, 1.0)
-        df[col] = np.clip(df[col], m - 3 * s, m + 3 * s)
-        df[col] = (df[col] - m) / s
-    return df
+    return normalize_features_zscore(df, feature_cols, means, stds)
 
 
 def _stock_feature_row_slice(
@@ -251,7 +329,7 @@ def _build_tensors(
     fill_missing_labels: bool = True,
 ) -> dict[str, Any]:
     """Build time-series tensors, graph features, and labels."""
-    print("Generating time series features...")
+    logger.info("Generating time series features...")
     stock_features = generate_time_series_features(
         df_filtered, kdcode_list, feature_cols, his_t, use_polars=use_polars
     )
@@ -266,14 +344,14 @@ def _build_tensors(
     stock_features_val = stock_features[va0:va1]
     stock_features_test = stock_features[te0:te1]
 
-    print("Generating graph features...")
+    logger.info("Generating graph features...")
     x_graph_train = generate_graph_features(
         train_df, kdcode_list, feature_cols, train_dates[his_t:]
     )
     x_graph_val = generate_graph_features(val_df, kdcode_list, feature_cols, val_dates)
     x_graph_test = generate_graph_features(test_df, kdcode_list, feature_cols, test_dates)
 
-    print("Computing labels...")
+    logger.info("Computing labels...")
     train_labels = compute_labels(
         df_for_labels,
         kdcode_list,
@@ -297,7 +375,7 @@ def _build_tensors(
     )
 
     if label_type == "rank":
-        print("Converting labels to cross-sectional rank percentiles...")
+        logger.info("Converting labels to cross-sectional rank percentiles...")
         train_labels = apply_rank_labels(train_labels)
         val_labels = apply_rank_labels(val_labels)
         test_labels = apply_rank_labels(test_labels)
@@ -318,84 +396,81 @@ def _build_tensors(
     }
 
 
-# ── public API ───────────────────────────────────────────────────────────
+# ── staged pipeline functions ────────────────────────────────────────────
 
 
-def prepare_data(
-    config: ExperimentConfig,
-    feature_engineer: FeatureEngineer,
-) -> dict[str, Any]:
-    """Load and prepare stock-level cross-sectional data for training.
-
-    Returns a dict consumed by the training loop and metric evaluation.
-    """
-    print("=" * 80)
-    print("Preparing Data")
-    print("=" * 80)
-
+def load_raw_data(config: ExperimentConfig) -> tuple[DataManager, pd.DataFrame]:
     data_manager = DataManager(config.data)
     df = data_manager.load()
+    return data_manager, df
 
-    vix_df, credit_df, regime_df = _load_auxiliary_data(data_manager, config)
 
+def engineer_features(
+    df: pd.DataFrame,
+    feature_engineer: FeatureEngineer,
+    vix_df: pd.DataFrame | None,
+    credit_df: pd.DataFrame | None,
+    regime_df: pd.DataFrame | None,
+) -> tuple[pd.DataFrame, list[str]]:
     df = feature_engineer.transform(df, vix_df, credit_df, regime_df)
     feature_cols = feature_engineer.get_feature_columns()
-    print(f"Feature columns ({len(feature_cols)}): {feature_cols}")
+    logger.info(f"Feature columns ({len(feature_cols)}): {feature_cols}")
+    return df, feature_cols
 
-    # Per-day mean imputation
-    print("Filling NaN values...")
-    parts = []
-    for _, df_day in df.groupby("dt"):
-        df_day = df_day.copy()
-        for col in feature_cols:
-            if col in df_day.columns:
-                df_day[col] = df_day[col].fillna(df_day[col].mean())
-        df_day = df_day.fillna(0.0)
-        parts.append(df_day)
-    df_filled = pd.concat(parts)
-    del parts
-    gc.collect()
 
-    pit_intervals = None
-    true_pit_masked = (
-        config.data.use_pit_universe and config.data.pit_universe_mode == "masked_panel"
-    )
+def resolve_pit_context(config: ExperimentConfig) -> PitContext:
+    masked_panel = config.data.use_pit_universe and config.data.pit_universe_mode == "masked_panel"
+    csv_path = config.data.pit_universe_csv if config.data.use_pit_universe else None
+    intervals: pd.DataFrame | None = None
     if config.data.use_pit_universe:
         if not config.data.pit_universe_csv:
             raise ValueError("data.use_pit_universe=true requires data.pit_universe_csv")
-        pit_intervals = load_pit_intervals(config.data.pit_universe_csv)
-        if true_pit_masked:
-            print("Using true PIT masked-panel mode (fixed union axis + daily masks)...")
-        else:
-            print("Applying legacy PIT universe row filter...")
-            df_filled = _apply_pit_universe(df_filled, config.data.pit_universe_csv)
+        intervals = load_pit_intervals(config.data.pit_universe_csv)
+    return PitContext(intervals=intervals, masked_panel=masked_panel, csv_path=csv_path)
 
+
+def fit_normalisation(
+    df_filled: pd.DataFrame,
+    feature_cols: list[str],
+    train_end: str,
+    mode: str,
+    pit: PitContext,
+) -> tuple[NormFit, pd.DataFrame]:
     rank_gauss_reference: dict[str, np.ndarray] | None = None
-    if config.data.normalisation == "zscore":
+    if mode == "zscore":
         norm_source = df_filled
-        if true_pit_masked:
-            norm_source = _apply_pit_universe(df_filled, config.data.pit_universe_csv)
-        means, stds = _compute_norm_stats(norm_source, feature_cols, config.data.train_end)
+        if pit.masked_panel:
+            norm_source = _apply_pit_universe(df_filled, pit.csv_path)
+        means, stds = _compute_norm_stats(norm_source, feature_cols, train_end)
         df_norm = _apply_normalisation(df_filled, feature_cols, means, stds)
-    elif config.data.normalisation == "rank_gauss":
-        print("Applying rank-Gaussian normalisation (train fit)...")
+    elif mode == "rank_gauss":
+        logger.info("Applying rank-Gaussian normalisation (train fit)...")
         rank_source = df_filled
-        if true_pit_masked:
-            rank_source = _apply_pit_universe(df_filled, config.data.pit_universe_csv)
-        train_mask = rank_source["dt"] <= config.data.train_end
+        if pit.masked_panel:
+            rank_source = _apply_pit_universe(df_filled, pit.csv_path)
+        train_mask = rank_source["dt"] <= train_end
         train_slice = rank_source.loc[train_mask]
         rank_gauss_reference = fit_rank_gaussian_reference(train_slice, feature_cols)
         df_norm = apply_rank_gaussian(df_filled, feature_cols, rank_gauss_reference)
         means, stds = {}, {}
     else:
-        raise ValueError(f"Unknown normalisation: {config.data.normalisation!r}")
-    del df_filled
-    gc.collect()
+        raise ValueError(f"Unknown normalisation: {mode!r}")
+    return (
+        NormFit(means=means, stds=stds, rank_gauss_reference=rank_gauss_reference),
+        df_norm,
+    )
 
-    if true_pit_masked:
-        assert pit_intervals is not None
+
+def select_universe(
+    df_norm: pd.DataFrame,
+    data_manager: DataManager,
+    config: ExperimentConfig,
+    pit: PitContext,
+) -> tuple[pd.DataFrame, list[str]]:
+    if pit.masked_panel:
+        assert pit.intervals is not None
         kdcode_list = active_kdcodes_in_period(
-            pit_intervals,
+            pit.intervals,
             config.data.train_start,
             config.data.test_end,
             available_kdcodes=set(df_norm["kdcode"].astype(str).unique()),
@@ -409,7 +484,7 @@ def prepare_data(
             config.data.test_end,
         )
         data_manager.kdcode_list = kdcode_list
-        print(
+        logger.info(
             f"  PIT union axis: {len(kdcode_list)} stocks with any membership interval "
             f"from {config.data.train_start} to {config.data.test_end}"
         )
@@ -417,6 +492,240 @@ def prepare_data(
         df_filtered, kdcode_list = data_manager.filter_complete_stocks_per_split(df_norm)
     else:
         df_filtered, kdcode_list = data_manager.filter_complete_stocks(df_norm)
+    return df_filtered, kdcode_list
+
+
+def build_tensors(
+    frames: PipelineFrames,
+    kdcode_list: list[str],
+    feature_cols: list[str],
+    train_df: pd.DataFrame,
+    val_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+    train_dates: list[str],
+    val_dates: list[str],
+    test_dates: list[str],
+    his_t: int,
+    label_t: int,
+    label_type: str,
+    *,
+    use_polars: bool = False,
+    fill_missing_labels: bool = True,
+) -> TensorBundle:
+    result = _build_tensors(
+        frames.filtered,
+        kdcode_list,
+        feature_cols,
+        train_dates,
+        val_dates,
+        test_dates,
+        his_t,
+        label_t,
+        label_type,
+        frames.raw,
+        train_df,
+        val_df,
+        test_df,
+        use_polars=use_polars,
+        fill_missing_labels=fill_missing_labels,
+    )
+    return TensorBundle(**result)
+
+
+def apply_pit_masks_to_tensors(
+    tensors: TensorBundle,
+    frames: PipelineFrames,
+    kdcode_list: list[str],
+    pit: PitContext,
+    his_t: int,
+    label_t: int,
+    label_type: str,
+    min_scoreable: int,
+    breadth_policy: str,
+) -> tuple[TensorBundle, dict[str, list[dict[str, int | str]]]]:
+    assert pit.intervals is not None
+    train_masks = build_pit_masks(
+        frames.filtered,
+        frames.raw,
+        kdcode_list,
+        tensors.train_dates,
+        his_t,
+        label_t,
+        pit.intervals,
+    )
+    val_masks = build_pit_masks(
+        frames.filtered,
+        frames.raw,
+        kdcode_list,
+        tensors.val_dates,
+        his_t,
+        label_t,
+        pit.intervals,
+    )
+    test_masks = build_pit_masks(
+        frames.filtered,
+        frames.raw,
+        kdcode_list,
+        tensors.test_dates,
+        his_t,
+        label_t,
+        pit.intervals,
+    )
+
+    train_labels = apply_label_mask(tensors.train_labels, train_masks.loss)
+    val_labels = apply_label_mask(tensors.val_labels, val_masks.loss)
+    test_labels = apply_label_mask(tensors.test_labels, test_masks.loss)
+    if label_type == "rank":
+        logger.info("Converting masked labels to PIT cross-sectional rank percentiles...")
+        train_labels = apply_rank_labels(train_labels, train_masks.loss)
+        val_labels = apply_rank_labels(val_labels, val_masks.loss)
+        test_labels = apply_rank_labels(test_labels, test_masks.loss)
+
+    _audit_pit_breadth(
+        "train",
+        tensors.train_dates,
+        train_masks.tradable,
+        min_scoreable,
+        breadth_policy,
+    )
+    _audit_pit_breadth(
+        "val",
+        tensors.val_dates,
+        val_masks.tradable,
+        min_scoreable,
+        breadth_policy,
+    )
+    _audit_pit_breadth(
+        "test",
+        tensors.test_dates,
+        test_masks.tradable,
+        min_scoreable,
+        breadth_policy,
+    )
+    pit_breadth = {
+        "train": _pit_mask_summary(tensors.train_dates, train_masks),
+        "val": _pit_mask_summary(tensors.val_dates, val_masks),
+        "test": _pit_mask_summary(tensors.test_dates, test_masks),
+    }
+
+    masked = TensorBundle(
+        train_dates=tensors.train_dates,
+        val_dates=tensors.val_dates,
+        test_dates=tensors.test_dates,
+        stock_features_train=tensors.stock_features_train,
+        stock_features_val=tensors.stock_features_val,
+        stock_features_test=tensors.stock_features_test,
+        x_graph_train=tensors.x_graph_train,
+        x_graph_val=tensors.x_graph_val,
+        x_graph_test=tensors.x_graph_test,
+        train_labels=train_labels,
+        val_labels=val_labels,
+        test_labels=test_labels,
+        train_active_member_mask=train_masks.active_member,
+        val_active_member_mask=val_masks.active_member,
+        test_active_member_mask=test_masks.active_member,
+        train_feature_ready_mask=train_masks.feature_ready,
+        val_feature_ready_mask=val_masks.feature_ready,
+        test_feature_ready_mask=test_masks.feature_ready,
+        train_loss_mask=train_masks.loss,
+        val_loss_mask=val_masks.loss,
+        test_loss_mask=test_masks.loss,
+        train_tradable_mask=train_masks.tradable,
+        val_tradable_mask=val_masks.tradable,
+        test_tradable_mask=test_masks.tradable,
+    )
+    return masked, pit_breadth
+
+
+def build_correlation_graph(
+    frames: PipelineFrames,
+    kdcode_list: list[str],
+    graph_config: GraphConfig,
+    train_start: str,
+    test_end: str,
+) -> GraphArtifacts:
+    logger.info("Building correlation graph...")
+    graph_builder = GraphBuilder(
+        judge_value=graph_config.judge_value,
+        update_frequency_months=graph_config.update_frequency_months,
+        corr_lookback_days=graph_config.corr_lookback_days,
+        top_k=graph_config.top_k,
+        top_k_metric=graph_config.top_k_metric,
+        use_multi_feature_edges=graph_config.use_multi_feature_edges,
+        use_lead_lag_features=graph_config.use_lead_lag_features,
+        lead_lag_days=graph_config.lead_lag_days,
+    )
+    edge_index, edge_weight = graph_builder.build_graph(frames.raw, kdcode_list, train_start)
+
+    graph_schedule = None
+    if graph_config.update_frequency_months > 0:
+        graph_schedule = graph_builder.precompute_snapshots(
+            frames.raw, kdcode_list, train_start, test_end
+        )
+
+    edge_index_sector = None
+    edge_weight_sector = None
+    if graph_config.use_sector_relation and graph_config.sector_map_csv:
+        sector_map = load_sector_map_csv(graph_config.sector_map_csv)
+        edge_index_sector, edge_weight_sector = build_sector_edges(
+            kdcode_list,
+            sector_map,
+            graph_config.sector_top_k,
+        )
+
+    return GraphArtifacts(
+        edge_index=edge_index,
+        edge_weight=edge_weight,
+        graph_schedule=graph_schedule,
+        edge_index_sector=edge_index_sector,
+        edge_weight_sector=edge_weight_sector,
+    )
+
+
+# ── public API ───────────────────────────────────────────────────────────
+
+
+def prepare_data(
+    config: ExperimentConfig,
+    feature_engineer: FeatureEngineer,
+) -> dict[str, Any]:
+    """Load and prepare stock-level cross-sectional data for training.
+
+    Returns a dict consumed by the training loop and metric evaluation.
+    """
+    logger.info("=" * 80)
+    logger.info("Preparing Data")
+    logger.info("=" * 80)
+
+    data_manager, df = load_raw_data(config)
+    vix_df, credit_df, regime_df = load_auxiliary_data(data_manager, config)
+    df, feature_cols = engineer_features(df, feature_engineer, vix_df, credit_df, regime_df)
+
+    logger.info("Filling NaN values...")
+    df_filled = impute_feature_nans_by_day(df, feature_cols)
+    gc.collect()
+
+    pit = resolve_pit_context(config)
+    if pit.intervals is not None:
+        if pit.masked_panel:
+            logger.info("Using true PIT masked-panel mode (fixed union axis + daily masks)...")
+        else:
+            logger.info("Applying legacy PIT universe row filter...")
+            df_filled = _apply_pit_universe(df_filled, pit.csv_path)
+
+    norm_fit, df_norm = fit_normalisation(
+        df_filled,
+        feature_cols,
+        config.data.train_end,
+        config.data.normalisation,
+        pit,
+    )
+    del df_filled
+    gc.collect()
+
+    df_filtered, kdcode_list = select_universe(df_norm, data_manager, config, pit)
+    frames = PipelineFrames(raw=df, normalized=df_norm, filtered=df_filtered)
+
     train_df, val_df, test_df = data_manager.split_by_period(df_filtered)
     feature_reference = _build_feature_reference(train_df, feature_cols)
 
@@ -424,147 +733,59 @@ def prepare_data(
     val_dates = sorted(val_df["dt"].unique())
     test_dates = sorted(test_df["dt"].unique())
 
-    tensors = _build_tensors(
-        df_filtered,
+    tensor_bundle = build_tensors(
+        frames,
         kdcode_list,
         feature_cols,
+        train_df,
+        val_df,
+        test_df,
         train_dates,
         val_dates,
         test_dates,
         config.model.his_t,
         config.model.label_t,
-        "returns" if true_pit_masked else config.training.label_type,
-        df,  # use un-normalised df for forward-return labels
-        train_df,
-        val_df,
-        test_df,
+        "returns" if pit.masked_panel else config.training.label_type,
         use_polars=config.data.use_polars,
-        fill_missing_labels=not true_pit_masked,
+        fill_missing_labels=not pit.masked_panel,
     )
 
     pit_breadth: dict[str, list[dict[str, int | str]]] | None = None
-    if true_pit_masked:
-        assert pit_intervals is not None
-        train_masks = build_pit_masks(
-            df_filtered,
-            df,
+    if pit.masked_panel:
+        tensor_bundle, pit_breadth = apply_pit_masks_to_tensors(
+            tensor_bundle,
+            frames,
             kdcode_list,
-            tensors["train_dates"],
+            pit,
             config.model.his_t,
             config.model.label_t,
-            pit_intervals,
-        )
-        val_masks = build_pit_masks(
-            df_filtered,
-            df,
-            kdcode_list,
-            tensors["val_dates"],
-            config.model.his_t,
-            config.model.label_t,
-            pit_intervals,
-        )
-        test_masks = build_pit_masks(
-            df_filtered,
-            df,
-            kdcode_list,
-            tensors["test_dates"],
-            config.model.his_t,
-            config.model.label_t,
-            pit_intervals,
-        )
-
-        tensors["train_labels"] = apply_label_mask(tensors["train_labels"], train_masks.loss)
-        tensors["val_labels"] = apply_label_mask(tensors["val_labels"], val_masks.loss)
-        tensors["test_labels"] = apply_label_mask(tensors["test_labels"], test_masks.loss)
-        if config.training.label_type == "rank":
-            print("Converting masked labels to PIT cross-sectional rank percentiles...")
-            tensors["train_labels"] = apply_rank_labels(tensors["train_labels"], train_masks.loss)
-            tensors["val_labels"] = apply_rank_labels(tensors["val_labels"], val_masks.loss)
-            tensors["test_labels"] = apply_rank_labels(tensors["test_labels"], test_masks.loss)
-
-        tensors["train_active_member_mask"] = train_masks.active_member
-        tensors["val_active_member_mask"] = val_masks.active_member
-        tensors["test_active_member_mask"] = test_masks.active_member
-        tensors["train_feature_ready_mask"] = train_masks.feature_ready
-        tensors["val_feature_ready_mask"] = val_masks.feature_ready
-        tensors["test_feature_ready_mask"] = test_masks.feature_ready
-        tensors["train_loss_mask"] = train_masks.loss
-        tensors["val_loss_mask"] = val_masks.loss
-        tensors["test_loss_mask"] = test_masks.loss
-        tensors["train_tradable_mask"] = train_masks.tradable
-        tensors["val_tradable_mask"] = val_masks.tradable
-        tensors["test_tradable_mask"] = test_masks.tradable
-
-        _audit_pit_breadth(
-            "train",
-            tensors["train_dates"],
-            train_masks.tradable,
+            config.training.label_type,
             config.data.pit_min_scoreable_stocks,
             config.data.pit_breadth_policy,
         )
-        _audit_pit_breadth(
-            "val",
-            tensors["val_dates"],
-            val_masks.tradable,
-            config.data.pit_min_scoreable_stocks,
-            config.data.pit_breadth_policy,
-        )
-        _audit_pit_breadth(
-            "test",
-            tensors["test_dates"],
-            test_masks.tradable,
-            config.data.pit_min_scoreable_stocks,
-            config.data.pit_breadth_policy,
-        )
-        pit_breadth = {
-            "train": _pit_mask_summary(tensors["train_dates"], train_masks),
-            "val": _pit_mask_summary(tensors["val_dates"], val_masks),
-            "test": _pit_mask_summary(tensors["test_dates"], test_masks),
-        }
 
-    print("Building correlation graph...")
-    graph_builder = GraphBuilder(
-        judge_value=config.graph.judge_value,
-        update_frequency_months=config.graph.update_frequency_months,
-        corr_lookback_days=config.graph.corr_lookback_days,
-        top_k=config.graph.top_k,
-        top_k_metric=config.graph.top_k_metric,
-        use_multi_feature_edges=config.graph.use_multi_feature_edges,
-        use_lead_lag_features=config.graph.use_lead_lag_features,
-        lead_lag_days=config.graph.lead_lag_days,
+    graphs = build_correlation_graph(
+        frames,
+        kdcode_list,
+        config.graph,
+        config.data.train_start,
+        config.data.test_end,
     )
-    edge_index, edge_weight = graph_builder.build_graph(df, kdcode_list, config.data.train_start)
-
-    graph_schedule = None
-    if config.graph.update_frequency_months > 0:
-        graph_schedule = graph_builder.precompute_snapshots(
-            df, kdcode_list, config.data.train_start, config.data.test_end
-        )
-
-    edge_index_sector = None
-    edge_weight_sector = None
-    if config.graph.use_sector_relation and config.graph.sector_map_csv:
-        sector_map = load_sector_map_csv(config.graph.sector_map_csv)
-        edge_index_sector, edge_weight_sector = build_sector_edges(
-            kdcode_list,
-            sector_map,
-            config.graph.sector_top_k,
-        )
 
     return {
         "kdcode_list": kdcode_list,
-        **tensors,
-        "edge_index": edge_index,
-        "edge_weight": edge_weight,
+        **tensor_bundle.to_dict(),
+        "edge_index": graphs.edge_index,
+        "edge_weight": graphs.edge_weight,
         "feature_cols": feature_cols,
-        "graph_schedule": graph_schedule,
+        "graph_schedule": graphs.graph_schedule,
         "df": df,
-        "norm_means": means,
-        "norm_stds": stds,
+        "norm_means": norm_fit.means,
+        "norm_stds": norm_fit.stds,
         "graph_static_valid_from": config.data.train_start,
-        "edge_index_sector": edge_index_sector,
-        "edge_weight_sector": edge_weight_sector,
-        "rank_gauss_reference": rank_gauss_reference,
+        "edge_index_sector": graphs.edge_index_sector,
+        "edge_weight_sector": graphs.edge_weight_sector,
+        "rank_gauss_reference": norm_fit.rank_gauss_reference,
         "feature_reference": feature_reference,
         "pit_breadth": pit_breadth,
         "pit_universe_mode": config.data.pit_universe_mode
@@ -582,19 +803,19 @@ def prepare_data_index_level(
     Uses a trivial 1-node / 0-edge graph so the rest of the pipeline runs
     unchanged.
     """
-    print("=" * 80)
-    print("Preparing Data (index-level mode; no stock-level survivorship bias)")
-    print("=" * 80)
+    logger.info("=" * 80)
+    logger.info("Preparing Data (index-level mode; no stock-level survivorship bias)")
+    logger.info("=" * 80)
 
     data_manager = DataManager(config.data)
     df = data_manager.load_index_series()
     kdcode_list = ["INDEX"]
 
-    vix_df, credit_df, regime_df = _load_auxiliary_data(data_manager, config)
+    vix_df, credit_df, regime_df = load_auxiliary_data(data_manager, config)
 
     df = feature_engineer.transform(df, vix_df, credit_df, regime_df)
     feature_cols = feature_engineer.get_feature_columns()
-    print(f"Feature columns ({len(feature_cols)}): {feature_cols}")
+    logger.info(f"Feature columns ({len(feature_cols)}): {feature_cols}")
 
     for col in feature_cols:
         if col in df.columns:

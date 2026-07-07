@@ -70,7 +70,13 @@ tests/               ← pytest suite + backtest scripts
 ## Environment
 
 - Python 3.10+
-- See `pyproject.toml` for all dependencies (install: `pip install -e ".[dev]"`)
+- **Dependency manifest:** `pyproject.toml` is source of truth for version ranges.
+  - `requirements.lock` — pinned dev+fred closure (Windows-reference; regenerate with
+    `pip-compile --extra=dev --extra=fred -o requirements.lock pyproject.toml`; do not
+    pip-sync shared venvs).
+  - `requirements.txt` — Colab-facing core ranges (kept as ranges, NOT pins, so Colab's
+    preinstalled torch/CUDA satisfies them; keep manually in sync with `pyproject.toml`).
+- Install for development: `pip install -e ".[dev,fred]"` (CI uses CPU torch index on ubuntu).
 - `FRED_API_KEY` env var required when credit spread or regime features are enabled
 - See `.env.example` for all environment variables
 
@@ -128,6 +134,5 @@ The file `docs/agent_references/cursor/plans/graph_signal_upgrades_c28cf640.plan
 ## Key Gotchas
 
 - `results/`, `outputs/`, `*.pth`, `*.pt` are gitignored — don't reference them as source of truth
-- The `archive/` directory contains legacy code — do not treat as current
-- `seed_results/` and `_uncertain/` are experimental artifacts, not production code
+- `seed_results/` holds committed experiment artifacts — not production code; do not treat as source of truth
 - Handoffs are operational continuity notes, not research evidence; use `docs/research/README.md` for current/archive evidence status.

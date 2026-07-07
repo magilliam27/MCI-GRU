@@ -1,4 +1,5 @@
 *.csv
+!tests/fixtures/backtest_golden/**/*.csv
 lseg_env/
 venv*/
 
@@ -25,7 +26,7 @@ build/
 results/
 outputs/
 drive_outputs/
-models/
+/models/
 mlruns/
 *.pt
 *.pth

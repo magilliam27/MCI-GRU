@@ -23,7 +23,7 @@ def test_build_backtest_command_enables_costs_and_rank_gate() -> None:
     options = BacktestOptions(
         repo_dir=Path("/repo"),
         python_executable="python",
-        backtest_script=Path("/repo/tests/backtest_sp500_daily.py"),
+        backtest_script=Path("/repo/scripts/backtest_sp500_daily.py"),
         data_file=Path("/data/sp500_pit_union.csv"),
         pit_universe_csv=Path("/data/sp500_pit_universe.csv"),
         backtest_suffix="_tc_gate",

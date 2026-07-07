@@ -14,6 +14,8 @@ import tempfile
 import numpy as np
 import pandas as pd
 
+from mci_gru.evaluation import backtest_engine as _backtest_engine
+
 # Set UTF-8 encoding for Windows console
 if sys.platform == "win32":
     import codecs
@@ -293,13 +295,8 @@ def test_prediction_date_mapping():
 
 
 def _import_backtest():
-    """Import backtest module from tests directory (file is backtest_sp500.py)."""
-    _tests_dir = os.path.dirname(os.path.abspath(__file__))
-    if _tests_dir not in sys.path:
-        sys.path.insert(0, _tests_dir)
-    import backtest_sp500 as bp
-
-    return bp
+    """Return the backtest engine module (moved to mci_gru.evaluation in WS-C)."""
+    return _backtest_engine
 
 
 def test_rank_drop_gate_eligible():

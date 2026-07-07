@@ -2,31 +2,13 @@
 
 from __future__ import annotations
 
-import json
-import textwrap
 from pathlib import Path
 
+from nb_lib import LOCAL_PY310_METADATA, backtest_engine_path_expr, write_notebook
+from nb_lib import code_lines as code
+from nb_lib import md_lines as md
+
 OUT = Path("notebooks/rolling_temporal_backtest_colab.ipynb")
-
-
-def md(source: str) -> dict:
-    source = textwrap.dedent(source).strip()
-    return {
-        "cell_type": "markdown",
-        "metadata": {},
-        "source": [line + "\n" for line in source.splitlines()],
-    }
-
-
-def code(source: str) -> dict:
-    source = textwrap.dedent(source).strip("\n")
-    return {
-        "cell_type": "code",
-        "execution_count": None,
-        "metadata": {},
-        "outputs": [],
-        "source": [line + "\n" for line in source.splitlines()],
-    }
 
 
 cells = [
@@ -424,7 +406,7 @@ cells = [
             suffix = '_' + scenario['scenario']
             cmd = [
                 sys.executable,
-                str(REPO_DIR / 'tests' / 'backtest_sp500.py'),
+                __BACKTEST_ENGINE_PATH_EXPR__,
                 '--predictions_dir', str(pred_dir),
                 '--data_file', str(REPO_DIR / 'data' / 'raw' / 'market' / training_row['data_filename']),
                 '--test_start', training_row['test_start'],
@@ -499,7 +481,10 @@ cells = [
                         score += weight * ((vals - vals.mean(skipna=True)) / denom).fillna(0.0)
             out['decision_score'] = score
             return out
-        """
+        """.replace(
+            "__BACKTEST_ENGINE_PATH_EXPR__",
+            backtest_engine_path_expr("backtest_sp500"),
+        )
     ),
     md("## 7. Matrix Execution"),
     code(
@@ -732,7 +717,7 @@ cells = [
             '',
             '- The recipe is fixed across all years; do not re-rank or retune by year when interpreting this as untouched-year evidence.',
             '- Each year uses the older fixed S&P 500 universe CSV from `MCI_GRU_shared/data`, copied into `data/raw/market/` before training.',
-            '- Backtests use `tests/backtest_sp500.py` with open-to-open portfolio and benchmark returns, transaction costs, BHY haircut, and the rank-drop gate.',
+            '- Backtests use `scripts/backtest_sp500.py` with open-to-open portfolio and benchmark returns, transaction costs, BHY haircut, and the rank-drop gate.',
             '- Haircutted Sharpe can be zero even when raw realized return is positive if the multiple-testing adjustment pushes adjusted p-value to 1.0.',
             '',
             '## Artifacts',
@@ -763,21 +748,4 @@ cells = [
 ]
 
 
-nb = {
-    "cells": cells,
-    "metadata": {
-        "kernelspec": {
-            "display_name": "Python 3",
-            "language": "python",
-            "name": "python3",
-        },
-        "language_info": {"name": "python", "version": "3.10.0"},
-    },
-    "nbformat": 4,
-    "nbformat_minor": 5,
-}
-
-
-OUT.parent.mkdir(parents=True, exist_ok=True)
-OUT.write_text(json.dumps(nb, indent=1), encoding="utf-8")
-print(f"Wrote {OUT}")
+write_notebook(cells, OUT, metadata=LOCAL_PY310_METADATA, indent=1)

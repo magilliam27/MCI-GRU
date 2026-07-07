@@ -108,7 +108,7 @@ def test_build_backtest_command_uses_scenario_cost_and_label_settings(tmp_path: 
     options = BacktestSensitivityOptions(
         repo_dir=Path("/repo"),
         python_executable="python",
-        backtest_script=Path("/repo/tests/backtest_sp500_daily.py"),
+        backtest_script=Path("/repo/scripts/backtest_sp500_daily.py"),
         data_file=Path("/data/market.csv"),
         pit_universe_csv=Path("/data/pit.csv"),
         output_dir=tmp_path / "out",
@@ -162,7 +162,7 @@ def test_write_sensitivity_outputs_emits_cross_tabs_and_baseline_deltas(tmp_path
         output_dir=output_dir,
         rows=rows,
         daily_returns_rows=[],
-        command_lines=["python tests/backtest_sp500_daily.py ..."],
+        command_lines=["python scripts/backtest_sp500_daily.py ..."],
         baseline_scenario_id="current_tc10_slip5_label5",
     )
 

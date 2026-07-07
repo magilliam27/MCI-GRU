@@ -2,29 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from textwrap import dedent
+
+from nb_lib import backtest_engine_path_expr, code, md, write_notebook
 
 OUT = Path("notebooks/volatility_targeting_ablation_colab.ipynb")
-
-
-def md(text: str) -> dict:
-    return {
-        "cell_type": "markdown",
-        "metadata": {},
-        "source": dedent(text).strip().splitlines(keepends=True),
-    }
-
-
-def code(text: str) -> dict:
-    return {
-        "cell_type": "code",
-        "execution_count": None,
-        "metadata": {},
-        "outputs": [],
-        "source": dedent(text).strip().splitlines(keepends=True),
-    }
 
 
 cells = [
@@ -569,7 +551,7 @@ cells = [
                     sys.executable,
                     "-X",
                     "utf8",
-                    str(REPO_DIR / "tests/backtest_sp500_daily.py"),
+                    __BACKTEST_ENGINE_PATH_EXPR__,
                     "--predictions_dir",
                     str(predictions_dir),
                     "--data_file",
@@ -724,33 +706,16 @@ cells = [
             summary_lines.append(deltas_df.to_markdown(index=False))
         summary_md_path.write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
         print("Summary:", summary_md_path)
-        """
+        """.replace(
+            "__BACKTEST_ENGINE_PATH_EXPR__",
+            backtest_engine_path_expr("backtest_sp500_daily", quote='"', split_path=False),
+        )
     ),
 ]
 
 
-def build_notebook() -> dict:
-    return {
-        "cells": cells,
-        "metadata": {
-            "accelerator": "GPU",
-            "colab": {"provenance": []},
-            "kernelspec": {
-                "display_name": "Python 3",
-                "language": "python",
-                "name": "python3",
-            },
-            "language_info": {"name": "python"},
-        },
-        "nbformat": 4,
-        "nbformat_minor": 5,
-    }
-
-
 def main() -> None:
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(build_notebook(), indent=1), encoding="utf-8")
-    print(f"Wrote {OUT}")
+    write_notebook(cells, OUT, indent=1)
 
 
 if __name__ == "__main__":

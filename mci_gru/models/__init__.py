@@ -1,7 +1,8 @@
 """
 Model architectures for MCI-GRU experiments.
 
-Components (all in mci_gru.models.mci_gru):
+Components (split across temporal/graph/attention/latent/trunk/factory;
+mci_gru.models.mci_gru remains as a compatibility re-export shim):
 - AttentionResetGRUCell / ImprovedGRU / MultiScaleTemporalEncoder: temporal encoding
 - GATBlock: unified two-layer Graph Attention block (replaces GATLayer, GATLayer_1)
 - SelfAttention: optional cross-stock feature mixing
@@ -9,19 +10,17 @@ Components (all in mci_gru.models.mci_gru):
 - StockPredictionModel: full model combining all components
 """
 
-from mci_gru.models.mci_gru import (
-    StockPredictionModel,
-    ImprovedGRU,
-    GRUWithAttention,
-    MultiScaleTemporalEncoder,
+from mci_gru.models.attention import SelfAttention
+from mci_gru.models.factory import create_model
+from mci_gru.models.graph import GATBlock, GATLayer, GATLayer_1
+from mci_gru.models.latent import MarketLatentStateLearner
+from mci_gru.models.temporal import (
     AttentionResetGRUCell,
-    GATBlock,
-    GATLayer,  # backward-compatible alias for GATBlock
-    GATLayer_1,  # backward-compatible alias for GATBlock
-    SelfAttention,
-    MarketLatentStateLearner,
-    create_model,
+    GRUWithAttention,
+    ImprovedGRU,
+    MultiScaleTemporalEncoder,
 )
+from mci_gru.models.trunk import StockPredictionModel
 
 __all__ = [
     "StockPredictionModel",

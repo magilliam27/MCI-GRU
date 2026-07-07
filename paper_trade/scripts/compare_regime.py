@@ -29,9 +29,10 @@ import torch
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from mci_gru.models import create_model  # noqa: E402
 from paper_trade.scripts.infer import (  # noqa: E402
     load_config,
+    load_frozen_checkpoint,
+    load_frozen_model_and_graph,
     load_metadata,
     prepare_inference_data,
     prepare_inference_regime_df,
@@ -39,7 +40,7 @@ from paper_trade.scripts.infer import (  # noqa: E402
 
 DEFAULT_MODEL_DIR = "paper_trade/Model/seed7_w_regime"
 DEFAULT_CSV = "data/raw/market/sp500_2019_universe_data_through_2026.csv"
-BACKTEST_SCRIPT = PROJECT_ROOT / "tests" / "backtest_sp500.py"
+BACKTEST_SCRIPT = PROJECT_ROOT / "scripts" / "backtest_sp500.py"
 
 
 def get_trading_dates(csv_path: str, num_days: int) -> list[str]:
@@ -57,19 +58,11 @@ def load_models(model_dir: Path, num_features: int, model_cfg: dict):
     if not ckpt_files:
         raise FileNotFoundError(f"No checkpoint files found in {ckpt_dir}")
 
-    graph_data = torch.load(
-        str(model_dir / "graph_data.pt"), map_location=device, weights_only=True
-    )
-    edge_index = graph_data["edge_index"].to(device)
-    edge_weight = graph_data["edge_weight"].to(device)
+    edge_index, edge_weight, _, _ = load_frozen_model_and_graph(model_dir, device)
 
     models = []
     for ckpt_path in ckpt_files:
-        model = create_model(num_features, model_cfg)
-        model.load_state_dict(torch.load(str(ckpt_path), map_location=device, weights_only=True))
-        model.to(device)
-        model.eval()
-        models.append(model)
+        models.append(load_frozen_checkpoint(ckpt_path, num_features, model_cfg, device))
 
     return models, edge_index, edge_weight, device
 

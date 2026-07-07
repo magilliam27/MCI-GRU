@@ -66,8 +66,12 @@ def __getattr__(name):
             "compute_metrics": compute_metrics,
             "evaluate_predictions": evaluate_predictions,
         }[name]
-    if name in {"Trainer", "train_multiple_models"}:
-        from mci_gru.training.trainer import Trainer, train_multiple_models
+    if name == "Trainer":
+        from mci_gru.training.trainer import Trainer
 
-        return {"Trainer": Trainer, "train_multiple_models": train_multiple_models}[name]
+        return Trainer
+    if name == "train_multiple_models":
+        from mci_gru.training.ensemble import train_multiple_models
+
+        return train_multiple_models
     raise AttributeError(name)

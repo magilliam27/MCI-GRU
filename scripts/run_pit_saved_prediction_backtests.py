@@ -2,7 +2,7 @@
 
 This script is intentionally orchestration-only. It never calls training code;
 it locates existing yearly ``averaged_predictions`` folders and invokes
-``tests/backtest_sp500_daily.py`` with transaction costs and the rank-drop gate
+``scripts/backtest_sp500_daily.py`` with transaction costs and the rank-drop gate
 enabled.
 """
 
@@ -339,7 +339,7 @@ def main(argv: list[str] | None = None) -> int:
         python_executable=args.python_executable,
         backtest_script=args.backtest_script.expanduser().resolve()
         if args.backtest_script
-        else repo_dir / "tests" / "backtest_sp500_daily.py",
+        else repo_dir / "scripts" / "backtest_sp500_daily.py",
         data_file=data_file,
         pit_universe_csv=pit_universe_csv,
         backtest_suffix=args.backtest_suffix,
@@ -390,7 +390,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Re-run saved PIT masked-panel yearly averaged_predictions through "
-            "tests/backtest_sp500_daily.py with transaction costs and rank-drop gate."
+            "scripts/backtest_sp500_daily.py with transaction costs and rank-drop gate."
         )
     )
     parser.add_argument(

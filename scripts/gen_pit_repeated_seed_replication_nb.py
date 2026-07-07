@@ -2,31 +2,13 @@
 
 from __future__ import annotations
 
-import json
-import textwrap
 from pathlib import Path
 
+from nb_lib import backtest_engine_path_expr, write_notebook
+from nb_lib import code_lines as code
+from nb_lib import md_lines as md
+
 OUT = Path("notebooks/pit_repeated_seed_replication_colab.ipynb")
-
-
-def md(source: str) -> dict:
-    source = textwrap.dedent(source).strip()
-    return {
-        "cell_type": "markdown",
-        "metadata": {},
-        "source": [line + "\n" for line in source.splitlines()],
-    }
-
-
-def code(source: str) -> dict:
-    source = textwrap.dedent(source).strip("\n")
-    return {
-        "cell_type": "code",
-        "execution_count": None,
-        "metadata": {},
-        "outputs": [],
-        "source": [line + "\n" for line in source.splitlines()],
-    }
 
 
 cells = [
@@ -984,7 +966,7 @@ cells = [
                 sys.executable,
                 '-X',
                 'utf8',
-                str(REPO_DIR / 'tests' / 'backtest_sp500_daily.py'),
+                __BACKTEST_ENGINE_PATH_EXPR__,
                 '--predictions_dir',
                 str(pred_dir),
                 '--data_file',
@@ -1077,7 +1059,10 @@ cells = [
                     'Expected cost/rank-gated backtests did not all complete. '
                     f'Missing={missing}; failed={failed[:5]}. Inspect backtest_results.csv and logs.'
                 )
-        """
+        """.replace(
+            "__BACKTEST_ENGINE_PATH_EXPR__",
+            backtest_engine_path_expr("backtest_sp500_daily"),
+        )
     ),
     md("## 6. Execute Training, Breadth Checks, And Backtests"),
     code(
@@ -2068,23 +2053,18 @@ cells = [
 ]
 
 
+METADATA = {
+    "kernelspec": {
+        "display_name": "Python 3",
+        "language": "python",
+        "name": "python3",
+    },
+    "language_info": {"name": "python", "pygments_lexer": "ipython3"},
+}
+
+
 def main() -> None:
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    notebook = {
-        "cells": cells,
-        "metadata": {
-            "kernelspec": {
-                "display_name": "Python 3",
-                "language": "python",
-                "name": "python3",
-            },
-            "language_info": {"name": "python", "pygments_lexer": "ipython3"},
-        },
-        "nbformat": 4,
-        "nbformat_minor": 5,
-    }
-    OUT.write_text(json.dumps(notebook, indent=2), encoding="utf-8")
-    print(f"Wrote {OUT}")
+    write_notebook(cells, OUT, metadata=METADATA, indent=2)
 
 
 if __name__ == "__main__":

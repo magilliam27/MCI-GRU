@@ -2,29 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from textwrap import dedent
+
+from nb_lib import code, colab_setup_cell, md, write_notebook
 
 OUT = Path("notebooks/lambdarank_ic_pit_colab.ipynb")
-
-
-def md(text: str) -> dict:
-    return {
-        "cell_type": "markdown",
-        "metadata": {},
-        "source": dedent(text).strip().splitlines(keepends=True),
-    }
-
-
-def code(text: str) -> dict:
-    return {
-        "cell_type": "code",
-        "execution_count": None,
-        "metadata": {},
-        "outputs": [],
-        "source": dedent(text).strip().splitlines(keepends=True),
-    }
 
 
 cells = [
@@ -53,107 +35,16 @@ cells = [
         """
     ),
     md("## 1. Setup"),
-    code(
-        r"""
-        import csv
-        import json
-        import os
-        import shutil
-        import subprocess
-        import sys
-        import time
-        from datetime import datetime
-        from pathlib import Path
-
-        import torch
-
-        IN_COLAB = "google.colab" in sys.modules
-        REPO_URL = "https://github.com/magilliam27/MCI-GRU.git"
-        BRANCH = "codex/colab-gpu-utilization-hardening-20260620"
-        REPO_DIR = Path("/content/MCI-GRU") if IN_COLAB else Path.cwd()
-        REQUIRE_G4_L4_GPU = True
-        BLOCKED_GPU_NAMES = ("T4",)
-        ALLOWED_GPU_MARKERS = (
-            "G4",
-            "L4",
-            "A100",
-            "H100",
-            "V100",
-            "RTX PRO",
-            "BLACKWELL",
-        )
-        STRICT_GPU_MARKERS: list[str] = []
-
-        def detect_gpu_name() -> str:
-            proc = subprocess.run(
-                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            if proc.returncode != 0:
-                raise RuntimeError(
-                    "nvidia-smi failed. Expected G4/L4-class Colab runtime, not T4/CPU.\n"
-                    + proc.stderr
-                )
-            gpu_name = proc.stdout.strip().splitlines()[0].strip() if proc.stdout.strip() else ""
-            if not gpu_name:
-                raise RuntimeError("nvidia-smi did not report a GPU name.")
-            upper_gpu = gpu_name.upper()
-            if any(blocked in upper_gpu for blocked in BLOCKED_GPU_NAMES):
-                raise RuntimeError(
-                    f"Expected G4/L4-class Colab runtime, not T4/CPU. Visible GPU: {gpu_name}"
-                )
-            if not any(marker in upper_gpu for marker in ALLOWED_GPU_MARKERS):
-                raise RuntimeError(
-                    f"Refusing runtime GPU {gpu_name}; allowed markers are {ALLOWED_GPU_MARKERS}."
-                )
-            if STRICT_GPU_MARKERS and not any(marker in upper_gpu for marker in STRICT_GPU_MARKERS):
-                raise RuntimeError(
-                    f"GPU {gpu_name} does not match STRICT_GPU_MARKERS={STRICT_GPU_MARKERS}."
-                )
-            return gpu_name
-
-        if IN_COLAB:
-            from google.colab import drive
-
-            drive.mount("/content/drive")
-            if not REPO_DIR.exists():
-                subprocess.run(["git", "clone", "--branch", BRANCH, REPO_URL, str(REPO_DIR)], check=True)
-            else:
-                subprocess.run(["git", "-C", str(REPO_DIR), "fetch", "origin"], check=True)
-                subprocess.run(["git", "-C", str(REPO_DIR), "checkout", "-B", BRANCH, f"origin/{BRANCH}"], check=True)
-                subprocess.run(["git", "-C", str(REPO_DIR), "pull", "--ff-only", "origin", BRANCH], check=True)
-            subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--upgrade", "pip", "setuptools", "wheel"], check=True)
-            subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", str(REPO_DIR / "requirements.txt")], check=True)
-            subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", f"{REPO_DIR}[dev,tracking,fred]"], check=True)
-
-        os.chdir(REPO_DIR)
-        if str(REPO_DIR) not in sys.path:
-            sys.path.insert(0, str(REPO_DIR))
-
-        print("Repo:", REPO_DIR)
-        print("Branch:", BRANCH)
-        subprocess.run(["git", "rev-parse", "HEAD"], check=False)
-        print("Python:", sys.executable)
-        print("Torch:", torch.__version__)
-        print("CUDA available:", torch.cuda.is_available())
-        if torch.cuda.is_available():
-            GPU_NAME = detect_gpu_name()
-            print("GPU:", GPU_NAME)
-        elif REQUIRE_G4_L4_GPU:
-            raise RuntimeError(
-                "Expected G4/L4-class Colab runtime, not T4/CPU. "
-                "Switch Runtime -> Change runtime type -> G4 GPU before training."
-            )
-
+    colab_setup_cell(
+        branch="codex/colab-gpu-utilization-hardening-20260620",
+        extra_setup_source=r"""
         from mci_gru.config import TrainingConfig
         from mci_gru.training.losses import build_training_loss
 
         probe_cfg = TrainingConfig(loss_type="lambdarank_ic", selection_metric="val_rank_ic")
         probe_loss, probe_name = build_training_loss(probe_cfg)
         print("LambdaRankIC branch probe:", probe_name, type(probe_loss).__name__)
-        """
+        """,
     ),
     md("## 2. FRED Key And PIT Data"),
     code(
@@ -645,28 +536,8 @@ cells = [
 ]
 
 
-def build_notebook(notebook_cells: list[dict]) -> dict:
-    return {
-        "cells": notebook_cells,
-        "metadata": {
-            "accelerator": "GPU",
-            "colab": {"provenance": []},
-            "kernelspec": {
-                "display_name": "Python 3",
-                "language": "python",
-                "name": "python3",
-            },
-            "language_info": {"name": "python"},
-        },
-        "nbformat": 4,
-        "nbformat_minor": 5,
-    }
-
-
 def main() -> None:
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(build_notebook(cells), indent=2), encoding="utf-8")
-    print(f"Wrote {OUT}")
+    write_notebook(cells, OUT, indent=2)
 
 
 if __name__ == "__main__":

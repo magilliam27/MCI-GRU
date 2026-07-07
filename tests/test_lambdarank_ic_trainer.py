@@ -5,8 +5,8 @@ import torch
 import torch.nn as nn
 
 from mci_gru.config import ExperimentConfig, TrainingConfig
+from mci_gru.evaluation.experiment_summary import select_training_objective_value
 from mci_gru.training.trainer import Trainer
-from run_experiment import _select_training_objective_value
 
 
 class TinyRankModel(nn.Module):
@@ -129,9 +129,9 @@ def test_select_training_objective_respects_selection_metric() -> None:
         "mean_best_val_rank_ic_across_windows": 0.4,
     }
 
-    assert _select_training_objective_value("val_loss", [final_summary], None) == 0.7
-    assert _select_training_objective_value("val_ic", [final_summary], None) == 0.1
-    assert _select_training_objective_value("val_rank_ic", [final_summary], None) == 0.2
-    assert _select_training_objective_value("val_loss", [final_summary], merged_summary) == 0.6
-    assert _select_training_objective_value("val_ic", [final_summary], merged_summary) == 0.3
-    assert _select_training_objective_value("val_rank_ic", [final_summary], merged_summary) == 0.4
+    assert select_training_objective_value("val_loss", [final_summary], None) == 0.7
+    assert select_training_objective_value("val_ic", [final_summary], None) == 0.1
+    assert select_training_objective_value("val_rank_ic", [final_summary], None) == 0.2
+    assert select_training_objective_value("val_loss", [final_summary], merged_summary) == 0.6
+    assert select_training_objective_value("val_ic", [final_summary], merged_summary) == 0.3
+    assert select_training_objective_value("val_rank_ic", [final_summary], merged_summary) == 0.4

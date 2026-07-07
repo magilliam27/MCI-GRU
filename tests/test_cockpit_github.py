@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from mci_gru.cockpit.github import (
+from cockpit.github import (
     GitHubSyncDisabled,
     _run_command,
     close_issue_with_evidence,
@@ -97,7 +97,7 @@ def test_default_github_runner_applies_safe_directory_to_git_commands(
         seen_commands.append(args)
         return SimpleNamespace(stdout="")
 
-    monkeypatch.setattr("mci_gru.cockpit.github.subprocess.run", fake_run)
+    monkeypatch.setattr("cockpit.github.subprocess.run", fake_run)
 
     _run_command(tmp_path)(["git", "status", "--short"])
     _run_command(tmp_path)(["gh", "auth", "status"])

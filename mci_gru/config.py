@@ -97,6 +97,39 @@ class DataConfig:
             raise ValueError("pit_min_scoreable_stocks must be >= 0")
 
 
+DEFAULT_VOLATILITY_TARGETING_COMPONENTS = [
+    "ewm_vol",
+    "scale",
+    "dynamics",
+    "scaled_return",
+]
+
+
+def resolve_volatility_targeting_components(
+    components: list[str] | tuple[str, ...] | None = None,
+) -> list[str]:
+    """Normalize and validate volatility-targeting component names."""
+    if components is None:
+        return list(DEFAULT_VOLATILITY_TARGETING_COMPONENTS)
+    if not components:
+        raise ValueError("volatility_targeting_components must contain at least one component")
+
+    resolved_components = list(components)
+    if len(set(resolved_components)) != len(resolved_components):
+        raise ValueError("volatility_targeting_components must not contain duplicates")
+
+    valid_components = set(DEFAULT_VOLATILITY_TARGETING_COMPONENTS)
+    unknown_components = [name for name in resolved_components if name not in valid_components]
+    if unknown_components:
+        valid = ", ".join(DEFAULT_VOLATILITY_TARGETING_COMPONENTS)
+        unknown = ", ".join(unknown_components)
+        raise ValueError(
+            f"Unknown volatility-targeting component: {unknown}. Expected one of: {valid}"
+        )
+
+    return resolved_components
+
+
 @dataclass
 class FeatureConfig:
     """
@@ -241,8 +274,6 @@ class FeatureConfig:
             raise ValueError("volatility_target_scale_clip must be positive and increasing")
         if self.volatility_targeting_interaction_return_window <= 0:
             raise ValueError("volatility_targeting_interaction_return_window must be > 0")
-        from mci_gru.features.volatility import resolve_volatility_targeting_components
-
         self.volatility_targeting_components = resolve_volatility_targeting_components(
             self.volatility_targeting_components
         )

@@ -1,6 +1,9 @@
 import pandas as pd
+import pytest
 
 from scripts import audit_pit_lseg_alias_coverage as audit
+
+pytestmark = pytest.mark.requires_lseg
 
 
 def _market_rows(kdcode: str, dates: list[str]) -> list[dict[str, object]]:
