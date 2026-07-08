@@ -17,11 +17,14 @@ which need later archive review.
 
 ## Current Evidence Map
 
-Current branch-local research maps:
+### Active Research Map
 
 | Report | Status |
 | --- | --- |
-| `docs/research/current/MCI_GRU_TOP_UNIVERSITY_RESEARCH_SCAN_2026-06-21.md` | Active June 21 research map and source of truth for evidence-harness wave ordering. |
+| `docs/research/current/MCI_GRU_TOP_UNIVERSITY_RESEARCH_SCAN_2026-06-21.md` | Promoted active research map for implementation planning. Use this June 21 top-university-gated scan before the broader June 19 opportunity scan when prioritizing testing, backtesting, evidence-harness, data, model, loss, or paper-trade work. |
+| `docs/research/current/MCI_GRU_PROGRAM_MAP_2026-06-19.md` | Current structural companion map for MCI-GRU components and safe tweak surfaces. |
+| `docs/research/current/MCI_GRU_RESEARCH_OPPORTUNITY_SCAN_2026-06-19.md` | Superseded as the main prioritization map by the June 21 top-university-gated scan; keep as broader background and source-lead history. |
+| `docs/research/current/PIT_SAVED_PREDICTION_COST_RANK_GATE_REPRODUCIBILITY.md` | Promoted from pytest temp output as a durable saved-prediction cost and rank-gate reproducibility summary. |
 
 Keep these root-level reports easy to find until a follow-up pass moves or
 reclassifies them:
