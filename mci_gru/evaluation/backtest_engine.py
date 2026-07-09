@@ -82,6 +82,7 @@ from datetime import datetime
 from glob import glob
 from pathlib import Path
 
+import matplotlib
 import numpy as np
 import pandas as pd
 
@@ -3003,6 +3004,8 @@ def plot_equity_curve(predictions_dir, stock_data, config, output_path=None):
         config: Configuration dictionary
         output_path: Path to save plot (None = display)
     """
+    if output_path:
+        matplotlib.use("Agg", force=True)
     import matplotlib.pyplot as plt
 
     predictions_df = load_predictions(predictions_dir)
