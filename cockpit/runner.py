@@ -4,6 +4,14 @@ import subprocess
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
+from cockpit.decisions import (
+    DECISION_REGISTRY_PATH,
+    DecisionRegistry,
+    SurfaceDecision,
+    SurfaceDisposition,
+    WorkstreamDecision,
+    load_decision_registry,
+)
 from cockpit.evidence import collect_local_evidence
 from cockpit.git import with_safe_directory
 from cockpit.github import GitHubSyncResult, cockpit_branch_name, sync_github
@@ -121,7 +129,11 @@ def run_local_cockpit_refresh(
     git_snapshot_timing: str = "at cockpit evidence collection",
 ) -> CockpitRunResult:
     evidence = collect_local_evidence(repo_root, run_command=run_command)
-    workstreams = _resolve_workstreams(evidence, run_date)
+    registry = load_decision_registry(
+        repo_root,
+        known_workstreams={seed.name for seed in INITIAL_WORKSTREAMS},
+    )
+    workstreams = _resolve_workstreams(evidence, run_date, registry)
     color = _run_color(evidence, workstreams)
     report = CockpitReport(
         run_date=run_date,
@@ -135,7 +147,8 @@ def run_local_cockpit_refresh(
         stale_or_archive_candidates=[
             row
             for row in workstreams
-            if row.status in {WorkstreamStatus.PARKED, WorkstreamStatus.STALE}
+            if row.status
+            in {WorkstreamStatus.PARKED, WorkstreamStatus.STALE, WorkstreamStatus.ARCHIVE}
         ],
         github_actions_skipped=_github_actions_skipped(github_sync_enabled),
         git_tree_impact=_git_tree_impact(evidence.git_topology, git_snapshot_timing),
@@ -191,7 +204,11 @@ def run_github_cockpit_refresh(
     )
 
 
-def _resolve_workstreams(evidence: LocalEvidence, run_date: date) -> list[Workstream]:
+def _resolve_workstreams(
+    evidence: LocalEvidence,
+    run_date: date,
+    registry: DecisionRegistry,
+) -> list[Workstream]:
     topology = evidence.git_topology
     surfaces = _topology_surfaces(topology)
     live_topology = bool(surfaces) or topology.has_attention_items
@@ -202,17 +219,45 @@ def _resolve_workstreams(evidence: LocalEvidence, run_date: date) -> list[Workst
         if seed.name == "Git and worktree hygiene":
             hygiene_seed = seed
             continue
-        matches = _matching_surface_entries(seed.branch_terms, surfaces)
-        if matches:
-            rows.append(_resolve_workstream(seed, evidence, run_date, matches))
+        matches = _workstream_surfaces(seed, surfaces, registry)
+        decision = registry.workstreams.get(seed.name)
+        if matches or decision is not None:
+            rows.append(
+                _resolve_workstream(
+                    seed,
+                    evidence,
+                    run_date,
+                    matches,
+                    decision=decision,
+                    registry=registry,
+                )
+            )
             claimed.update(surface.branch for surface in matches)
         elif not live_topology:
-            rows.append(_resolve_workstream(seed, evidence, run_date, matches))
-    rows.extend(
-        _topology_surface_workstream(surface, evidence, run_date)
-        for surface in surfaces
-        if surface.branch not in claimed
-    )
+            rows.append(
+                _resolve_workstream(
+                    seed,
+                    evidence,
+                    run_date,
+                    matches,
+                    decision=None,
+                    registry=registry,
+                )
+            )
+    for surface in surfaces:
+        surface_decision = registry.surfaces.get(surface.branch)
+        if surface.branch not in claimed or (
+            surface_decision is not None
+            and surface_decision.disposition != SurfaceDisposition.CANONICAL
+        ):
+            rows.append(
+                _topology_surface_workstream(
+                    surface,
+                    evidence,
+                    run_date,
+                    decision=surface_decision,
+                )
+            )
     if hygiene_seed is not None:
         rows.append(_git_hygiene_workstream(hygiene_seed, topology, run_date))
     return rows
@@ -223,12 +268,34 @@ def _resolve_workstream(
     evidence: LocalEvidence,
     run_date: date,
     surfaces: list[TopologySurface],
+    *,
+    decision: WorkstreamDecision | None,
+    registry: DecisionRegistry,
 ) -> Workstream:
     status = seed.status
     blocked_on = ""
     continuation = "No matching branch/worktree in this snapshot; continue from tracker/docs before starting new work."
     next_action = seed.next_action
-    if len(surfaces) == 1:
+    last_reviewed = run_date
+    source_of_truth = "AGENTS.md; docs/agents/domain.md; docs/research/README.md"
+    if decision is not None:
+        unreviewed = [
+            surface for surface in surfaces if not registry.is_reviewed(seed.name, surface.branch)
+        ]
+        status = decision.status
+        continuation = decision.canonical_surface
+        next_action = decision.next_action
+        last_reviewed = decision.last_reviewed
+        source_of_truth = f"{DECISION_REGISTRY_PATH}; {source_of_truth}"
+        if unreviewed:
+            status = WorkstreamStatus.NEEDS_USER_DECISION
+            blocked_on = (
+                f"New unreviewed surfaces since the {decision.last_reviewed.isoformat()} decision: "
+                + "; ".join(surface.label for surface in unreviewed)
+            )
+            next_action = "Review only the new surface(s) against the recorded canonical decision."
+            last_reviewed = run_date
+    elif len(surfaces) == 1:
         continuation = surfaces[0].label
     elif len(surfaces) > 1:
         status = WorkstreamStatus.NEEDS_USER_DECISION
@@ -240,13 +307,13 @@ def _resolve_workstream(
         status=status,
         tracker=seed.tracker,
         continuation=continuation,
-        source_of_truth="AGENTS.md; docs/agents/domain.md; docs/research/README.md",
+        source_of_truth=source_of_truth,
         latest_artifact=_latest_artifact(evidence),
         last_verification=_git_verification_label(),
         blocked_on=blocked_on,
         next_action=next_action,
         owner="User" if status == WorkstreamStatus.NEEDS_USER_DECISION else "Codex",
-        last_reviewed=run_date,
+        last_reviewed=last_reviewed,
     )
 
 
@@ -254,7 +321,26 @@ def _topology_surface_workstream(
     surface: TopologySurface,
     evidence: LocalEvidence,
     run_date: date,
+    *,
+    decision: SurfaceDecision | None,
 ) -> Workstream:
+    if decision is not None:
+        status = _surface_status(decision.disposition)
+        return Workstream(
+            name=f"Git surface: {surface.branch}",
+            status=status,
+            tracker="",
+            continuation=surface.label,
+            source_of_truth=DECISION_REGISTRY_PATH,
+            latest_artifact=decision.reason,
+            last_verification=_git_verification_label(),
+            blocked_on="",
+            next_action=decision.next_action,
+            owner=(
+                "User" if status in {WorkstreamStatus.ARCHIVE, WorkstreamStatus.STALE} else "Codex"
+            ),
+            last_reviewed=decision.last_reviewed,
+        )
     return Workstream(
         name=f"Git surface: {surface.branch}",
         status=WorkstreamStatus.NEEDS_USER_DECISION,
@@ -268,6 +354,29 @@ def _topology_surface_workstream(
         owner="User",
         last_reviewed=run_date,
     )
+
+
+def _surface_status(disposition: SurfaceDisposition) -> WorkstreamStatus:
+    return {
+        SurfaceDisposition.CANONICAL: WorkstreamStatus.ACTIVE,
+        SurfaceDisposition.PARKED: WorkstreamStatus.PARKED,
+        SurfaceDisposition.ARCHIVE: WorkstreamStatus.ARCHIVE,
+        SurfaceDisposition.STALE: WorkstreamStatus.STALE,
+    }[disposition]
+
+
+def _workstream_surfaces(
+    seed: WorkstreamSeed,
+    surfaces: list[TopologySurface],
+    registry: DecisionRegistry,
+) -> list[TopologySurface]:
+    heuristic_matches = _matching_surface_entries(seed.branch_terms, surfaces)
+    matched = {surface.branch: surface for surface in heuristic_matches}
+    for surface in surfaces:
+        decision = registry.surfaces.get(surface.branch)
+        if decision is not None and seed.name in decision.workstreams:
+            matched[surface.branch] = surface
+    return list(matched.values())
 
 
 def _git_hygiene_workstream(
@@ -494,8 +603,12 @@ def _decisions(
         _workstream_decision(workstream) for workstream in _decision_workstreams(workstreams)
     )
     topology = evidence.git_topology
+    unresolved_surfaces = _classification_surface_count(workstreams)
     if color != RunColor.GREEN and (
-        topology.has_attention_items or _classification_surface_count(workstreams)
+        topology.origin_main_ahead
+        or topology.origin_main_behind
+        or topology.dirty_worktrees
+        or unresolved_surfaces
     ):
         decisions.append(
             Decision(
@@ -533,7 +646,12 @@ def _dirty_state_decision() -> Decision:
 
 
 def _classification_surface_count(workstreams: list[Workstream]) -> int:
-    return sum(1 for workstream in workstreams if workstream.name.startswith("Git surface: "))
+    return sum(
+        1
+        for workstream in workstreams
+        if workstream.name.startswith("Git surface: ")
+        and workstream.status == WorkstreamStatus.NEEDS_USER_DECISION
+    )
 
 
 def _verification_notes(evidence: LocalEvidence, snapshot_timing: str) -> list[str]:

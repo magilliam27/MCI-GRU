@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from datetime import date
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
+from cockpit.decisions import DECISION_REGISTRY_PATH
 from cockpit.evidence import collect_local_evidence
 from cockpit.runner import (
     _run_command,
@@ -23,6 +25,9 @@ def test_collect_local_evidence_records_dirty_paths_and_required_docs(tmp_path: 
     (repo / "docs" / "agents" / "domain.md").write_text("# Domain\n", encoding="utf-8")
     (repo / "docs" / "research").mkdir(parents=True)
     (repo / "docs" / "research" / "README.md").write_text("# Research\n", encoding="utf-8")
+    registry_path = repo / DECISION_REGISTRY_PATH
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_path.write_text(_empty_registry(), encoding="utf-8")
     (repo / "docs" / "handoffs").mkdir(parents=True)
     (repo / "docs" / "handoffs" / "2026-06-01-note.md").write_text(
         "# Handoff\n",
@@ -54,6 +59,7 @@ def test_collect_local_evidence_records_dirty_paths_and_required_docs(tmp_path: 
     assert evidence.required_docs["AGENTS.md"] is True
     assert evidence.required_docs["docs/agents/domain.md"] is True
     assert evidence.required_docs["docs/research/README.md"] is True
+    assert evidence.required_docs[DECISION_REGISTRY_PATH] is True
     assert evidence.recent_handoffs == ["docs/handoffs/2026-06-01-note.md"]
     assert evidence.dirty_paths == ["docs/agents/domain.md", "scratch.txt"]
     assert evidence.branches == ["codex/example", "main"]
@@ -334,6 +340,136 @@ def test_run_local_cockpit_refresh_surfaces_git_topology_without_placeholders(
     )
 
 
+def test_decision_registry_keeps_reviewed_surfaces_resolved(tmp_path: Path) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    _write_decision_registry(
+        repo,
+        workstreams={
+            "LambdaRankIC": {
+                "status": "active",
+                "canonical_surface": "PR #65 / codex/canonical-lambdarank",
+                "reason": "Recovery guardrails are the reviewed continuation.",
+                "next_action": "Fix PR #65 lint before runtime work.",
+                "last_reviewed": "2026-07-09",
+            },
+            "Daily bug scans": {
+                "status": "ready-for-agent",
+                "canonical_surface": "PR #67 / codex/backtest-plot-test",
+                "reason": "The focused regression PR is the active scan result.",
+                "next_action": "Format the test and rerun CI.",
+                "last_reviewed": "2026-07-09",
+            },
+        },
+        surfaces={
+            "codex/canonical-lambdarank": {
+                "workstreams": ["LambdaRankIC"],
+                "disposition": "canonical",
+                "reason": "Reviewed canonical branch.",
+                "next_action": "Continue through PR #65.",
+                "last_reviewed": "2026-07-09",
+            },
+            "codex/old-lambdarank": {
+                "workstreams": ["LambdaRankIC"],
+                "disposition": "archive",
+                "reason": "Superseded by the recovery branch.",
+                "next_action": "Remove only after cleanup approval.",
+                "last_reviewed": "2026-07-09",
+            },
+            "codex/backtest-plot-test": {
+                "workstreams": ["Daily bug scans"],
+                "disposition": "canonical",
+                "reason": "Explicit assignment must beat branch-name heuristics.",
+                "next_action": "Continue through PR #67.",
+                "last_reviewed": "2026-07-09",
+            },
+        },
+    )
+
+    result = run_local_cockpit_refresh(
+        repo_root=repo,
+        run_date=date(2026, 7, 10),
+        run_command=_fake_topology_runner(
+            [
+                "codex/canonical-lambdarank",
+                "codex/old-lambdarank",
+                "codex/backtest-plot-test",
+            ]
+        ),
+    )
+
+    by_name = {row.name: row for row in result.report.active_workstreams}
+    register = result.register_path.read_text(encoding="utf-8")
+    assert by_name["LambdaRankIC"].continuation == "PR #65 / codex/canonical-lambdarank"
+    assert by_name["LambdaRankIC"].last_reviewed == date(2026, 7, 9)
+    assert "workstream-decisions.json" in by_name["LambdaRankIC"].source_of_truth
+    assert (
+        "| Daily bug scans | ready-for-agent |  | PR #67 / codex/backtest-plot-test |" in register
+    )
+    assert not any(row.name == "LambdaRankIC" for row in result.report.decision_workstreams)
+    assert not any(
+        decision.workstream == "Git and worktree hygiene" for decision in result.report.decisions
+    )
+    assert "live git surface(s) needing classification" not in result.report.executive_summary
+    assert any(
+        row.name == "Git surface: codex/old-lambdarank"
+        for row in result.report.stale_or_archive_candidates
+    )
+
+
+def test_decision_registry_reopens_only_for_new_unreviewed_surface(tmp_path: Path) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    _write_decision_registry(
+        repo,
+        workstreams={
+            "LambdaRankIC": {
+                "status": "active",
+                "canonical_surface": "PR #65 / codex/canonical-lambdarank",
+                "reason": "Recovery guardrails are the reviewed continuation.",
+                "next_action": "Fix PR #65 lint before runtime work.",
+                "last_reviewed": "2026-07-09",
+            }
+        },
+        surfaces={
+            "codex/canonical-lambdarank": {
+                "workstreams": ["LambdaRankIC"],
+                "disposition": "canonical",
+                "reason": "Reviewed canonical branch.",
+                "next_action": "Continue through PR #65.",
+                "last_reviewed": "2026-07-09",
+            },
+            "codex/old-lambdarank": {
+                "workstreams": ["LambdaRankIC"],
+                "disposition": "archive",
+                "reason": "Already reviewed and superseded.",
+                "next_action": "Remove only after cleanup approval.",
+                "last_reviewed": "2026-07-09",
+            },
+        },
+    )
+
+    result = run_local_cockpit_refresh(
+        repo_root=repo,
+        run_date=date(2026, 7, 10),
+        run_command=_fake_topology_runner(
+            [
+                "codex/canonical-lambdarank",
+                "codex/old-lambdarank",
+                "codex/lambdarank-new-experiment",
+            ]
+        ),
+    )
+
+    decision = next(row for row in result.report.decision_workstreams if row.name == "LambdaRankIC")
+    assert decision.continuation == "PR #65 / codex/canonical-lambdarank"
+    assert decision.blocked_on == (
+        "New unreviewed surfaces since the 2026-07-09 decision: "
+        "`codex/lambdarank-new-experiment` (local)"
+    )
+    assert decision.next_action == (
+        "Review only the new surface(s) against the recorded canonical decision."
+    )
+
+
 def test_run_local_cockpit_refresh_surfaces_unmatched_real_git_topology(
     tmp_path: Path,
 ) -> None:
@@ -587,6 +723,21 @@ def test_run_local_cockpit_refresh_explains_missing_required_docs(tmp_path: Path
     assert "docs/research/README.md" in packet
 
 
+def test_run_local_cockpit_refresh_reports_missing_decision_registry(tmp_path: Path) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    (repo / DECISION_REGISTRY_PATH).unlink()
+
+    result = run_local_cockpit_refresh(
+        repo_root=repo,
+        run_date=date(2026, 7, 10),
+        run_command=_fake_topology_runner([]),
+    )
+
+    packet = result.packet_path.read_text(encoding="utf-8")
+    assert result.color.value == "red"
+    assert f"Missing required doc: {DECISION_REGISTRY_PATH}" in packet
+
+
 def test_run_github_cockpit_refresh_switches_branch_and_syncs(tmp_path: Path) -> None:
     repo = _repo_with_required_docs(tmp_path)
     commands: list[list[str]] = []
@@ -746,8 +897,57 @@ def _repo_with_required_docs(repo: Path) -> Path:
     (repo / "docs" / "agents" / "triage-labels.md").write_text("# Labels\n", encoding="utf-8")
     (repo / "docs" / "research").mkdir(parents=True)
     (repo / "docs" / "research" / "README.md").write_text("# Research\n", encoding="utf-8")
+    registry_path = repo / DECISION_REGISTRY_PATH
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_path.write_text(_empty_registry(), encoding="utf-8")
     (repo / "docs" / "index.md").write_text("# Index\n", encoding="utf-8")
     return repo
+
+
+def _write_decision_registry(
+    repo: Path,
+    *,
+    workstreams: dict[str, object],
+    surfaces: dict[str, object],
+) -> None:
+    (repo / DECISION_REGISTRY_PATH).write_text(
+        json.dumps(
+            {
+                "format_version": 1,
+                "workstreams": workstreams,
+                "surfaces": surfaces,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _empty_registry() -> str:
+    return json.dumps({"format_version": 1, "workstreams": {}, "surfaces": {}})
+
+
+def _fake_topology_runner(branches: list[str]):
+    branch_lines = "".join(f"  {branch}\n" for branch in branches)
+
+    def fake_run(args: list[str]) -> str:
+        command = " ".join(args)
+        if command == "git status --short --branch":
+            return "## main...origin/main\n"
+        if command == "git branch --format=%(refname:short)":
+            return "main\n" + "\n".join(branches) + "\n"
+        if command == "git branch --all --no-merged origin/main":
+            return branch_lines
+        if command == "git rev-list --left-right --count origin/main...HEAD":
+            return "0\t0\n"
+        if command == "git worktree list --porcelain":
+            return "worktree C:/repo\nHEAD abc1234\nbranch refs/heads/main\n"
+        if command == "git log -5 --oneline":
+            return "abc1234 Current main\n"
+        if args[:2] == ["git", "-c"] and args[3] == "-C":
+            return "## main...origin/main\n"
+        raise AssertionError(command)
+
+    return fake_run
 
 
 def _strip_safe_directory_args(args: list[str]) -> list[str]:
