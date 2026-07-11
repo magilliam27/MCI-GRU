@@ -68,3 +68,24 @@ def test_count_averaged_prediction_csvs_counts_only_ensemble_predictions(tmp_pat
     _touch(run_dir / "predictions_model_0" / "2023-01-09.csv")
 
     assert count_averaged_prediction_csvs(run_dir) == 2
+
+
+def test_recovery_upload_files_are_sorted_by_relative_path(tmp_path: Path) -> None:
+    run_dir = tmp_path / "row"
+    _touch(run_dir / "training_20260702_011015.log")
+    _touch(run_dir / "averaged_predictions" / "2023-01-10.csv")
+    _touch(run_dir / ".hydra" / "overrides.yaml")
+    _touch(run_dir / "averaged_predictions" / "2023-01-09.csv")
+    _touch(run_dir / "config.yaml")
+
+    included = [
+        path.relative_to(run_dir).as_posix() for path in iter_recovery_upload_files(run_dir)
+    ]
+
+    assert included == [
+        ".hydra/overrides.yaml",
+        "averaged_predictions/2023-01-09.csv",
+        "averaged_predictions/2023-01-10.csv",
+        "config.yaml",
+        "training_20260702_011015.log",
+    ]
