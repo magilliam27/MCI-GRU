@@ -6,9 +6,7 @@ import pandas as pd
 from mci_gru.evaluation import backtest_engine
 
 
-def test_plot_equity_curve_uses_agg_backend_when_saving(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_plot_equity_curve_uses_agg_backend_when_saving(monkeypatch, tmp_path: Path) -> None:
     backend_calls: list[tuple[str, bool | None]] = []
     original_use = backtest_engine.matplotlib.use
 
