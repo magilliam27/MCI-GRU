@@ -9,12 +9,10 @@ and skips rows already recovered in Drive.
 from __future__ import annotations
 
 import csv
-import io
 import json
 import mimetypes
 import os
 import re
-import shutil
 import subprocess
 import sys
 import time
@@ -60,10 +58,7 @@ RUN_BACKTESTS = False
 UPLOAD_CHECKPOINTS = False
 UPLOAD_PER_MODEL_PREDICTIONS = False
 
-MARKET_FILENAME = (
-    "sp500_pit_gics_top10_mcap_monthly_20160104_20260622_"
-    "lseg_20150101_20260622.csv"
-)
+MARKET_FILENAME = "sp500_pit_gics_top10_mcap_monthly_20160104_20260622_lseg_20150101_20260622.csv"
 PIT_FILENAME = "sp500_pit_gics_top10_mcap_monthly_20160104_20260622_pit_universe.csv"
 SNAPSHOT_FILENAME = "sp500_pit_gics_top10_mcap_monthly_20160104_20260622_snapshots.csv"
 
@@ -300,27 +295,37 @@ def upload_or_update_file(
         try:
             media = MediaFileUpload(str(local_path), mimetype=mime, resumable=False)
             if file_id:
-                response = drive_service.files().update(
-                    fileId=file_id,
-                    media_body=media,
-                    fields="id",
-                    supportsAllDrives=True,
-                ).execute()
+                response = (
+                    drive_service.files()
+                    .update(
+                        fileId=file_id,
+                        media_body=media,
+                        fields="id",
+                        supportsAllDrives=True,
+                    )
+                    .execute()
+                )
             else:
                 metadata = {"name": file_name, "parents": [parent_id]}
-                response = drive_service.files().create(
-                    body=metadata,
-                    media_body=media,
-                    fields="id",
-                    supportsAllDrives=True,
-                ).execute()
+                response = (
+                    drive_service.files()
+                    .create(
+                        body=metadata,
+                        media_body=media,
+                        fields="id",
+                        supportsAllDrives=True,
+                    )
+                    .execute()
+                )
             file_cache[cache_key] = response["id"]
             return response["id"]
         except Exception as exc:
             if attempt == 4:
                 raise
             delay = min(60, 2**attempt)
-            print(f"upload {file_name} failed on attempt {attempt}/4: {exc!r}; retrying in {delay}s")
+            print(
+                f"upload {file_name} failed on attempt {attempt}/4: {exc!r}; retrying in {delay}s"
+            )
             time.sleep(delay)
     raise RuntimeError(f"Upload failed unexpectedly for {local_path}")
 
@@ -463,7 +468,9 @@ def count_drive_csv_files(folder_id: str) -> int:
             ),
             label=f"count csv files in {folder_id}",
         )
-        count += sum(1 for item in response.get("files", []) if item.get("name", "").endswith(".csv"))
+        count += sum(
+            1 for item in response.get("files", []) if item.get("name", "").endswith(".csv")
+        )
         page_token = response.get("nextPageToken")
         if not page_token:
             return count
@@ -738,7 +745,9 @@ def main() -> None:
 
     import pandas as pd
 
-    repo_market_csv = stage_named_file(MARKET_FILENAME, REPO_DIR / "data/raw/market" / MARKET_FILENAME)
+    repo_market_csv = stage_named_file(
+        MARKET_FILENAME, REPO_DIR / "data/raw/market" / MARKET_FILENAME
+    )
     repo_pit_csv = stage_named_file(PIT_FILENAME, REPO_DIR / "data/raw/constituents" / PIT_FILENAME)
     repo_snapshot_csv = stage_named_file(
         SNAPSHOT_FILENAME,
@@ -847,7 +856,9 @@ def main() -> None:
                 raise FileNotFoundError(f"Missing run dir for {job['name']}")
             pred_dir = run_dir / "averaged_predictions"
             if not pred_dir.exists():
-                raise FileNotFoundError(f"Missing averaged_predictions for {job['name']}: {pred_dir}")
+                raise FileNotFoundError(
+                    f"Missing averaged_predictions for {job['name']}: {pred_dir}"
+                )
 
             row = {
                 "name": job["name"],

@@ -8,8 +8,11 @@ checkpoints are opt-in archival payloads.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 ROOT_METADATA_FILES = frozenset(
     {

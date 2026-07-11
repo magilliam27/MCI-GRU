@@ -26,7 +26,9 @@ def test_default_recovery_upload_excludes_per_model_csvs_and_broad_csvs(tmp_path
     broad_csv = _touch(run_dir / "diagnostics" / "rank_snapshot.csv")
     checkpoint = _touch(run_dir / "checkpoints" / "model_0_best.pth")
 
-    included = {path.relative_to(run_dir).as_posix() for path in iter_recovery_upload_files(run_dir)}
+    included = {
+        path.relative_to(run_dir).as_posix() for path in iter_recovery_upload_files(run_dir)
+    }
 
     assert averaged.relative_to(run_dir).as_posix() in included
     assert root_config.relative_to(run_dir).as_posix() in included
