@@ -3,10 +3,10 @@
   "workstreams": {
     "LambdaRankIC": {
       "status": "active",
-      "canonical_surface": "PR #65 / codex/salvage-lambdarankic-recovery-20260707",
-      "reason": "The recovery-guardrail PR is the reviewed continuation; pure IC remains the default until saved-prediction diagnostics support promotion.",
-      "next_action": "Fix PR #65 lint, merge the recovery guardrails, then request approval for Drive/Colab saved-prediction recovery.",
-      "last_reviewed": "2026-07-09"
+      "canonical_surface": "origin/main after merged PR #65; pure IC remains the default",
+      "reason": "The recovery guardrails are landed; LambdaRankIC remains experimental until saved-prediction diagnostics support promotion.",
+      "next_action": "Request explicit approval before any Drive inspection, Colab recovery, saved-prediction replay, backtest, or training action.",
+      "last_reviewed": "2026-07-10"
     },
     "Portfolio-IC": {
       "status": "parked",
@@ -31,33 +31,33 @@
     },
     "Regime CSV contract": {
       "status": "ready-for-agent",
-      "canonical_surface": "codex/regime-csv-no-backfill-mined-20260709 at commit 98bed4b",
-      "reason": "The narrow current-main regression branch preserves the no-backfill contract without reviving stale implementation branches.",
-      "next_action": "Push the branch, open a focused draft PR, and keep current-only no-lookahead behavior explicit.",
-      "last_reviewed": "2026-07-09"
+      "canonical_surface": "PR #70 / codex/regime-csv-no-backfill-mined-20260709",
+      "reason": "The green draft PR preserves the no-backfill regression without reviving stale implementation branches.",
+      "next_action": "Review and merge green draft PR #70; keep current-only no-lookahead behavior explicit.",
+      "last_reviewed": "2026-07-10"
     },
     "Daily bug scans": {
-      "status": "ready-for-agent",
-      "canonical_surface": "PR #67 / codex/backtest-plot-agg-test-20260709",
-      "reason": "The focused backtest plotting regression is the current durable bug-scan result.",
-      "next_action": "Format the test file, rerun focused verification and CI, then review the draft PR.",
-      "last_reviewed": "2026-07-09"
+      "status": "done",
+      "canonical_surface": "origin/main after merged PR #67",
+      "reason": "The focused backtest plotting regression is merged with green CI.",
+      "next_action": "No follow-up for this finding; let a future scan open only genuinely new regressions.",
+      "last_reviewed": "2026-07-10"
     },
     "Docs and research evidence": {
       "status": "active",
       "canonical_surface": "PR #60 / codex/salvage-pr50-research-docs-20260707",
       "reason": "PR #60 is the reviewed README-routing continuation; PR #62 remains a separate evidence-preservation decision.",
-      "next_action": "Commit and push the verified README routing updates, rerun CI, and review PR #60 separately from PR #62.",
-      "last_reviewed": "2026-07-09"
+      "next_action": "Review and merge green docs-only PR #60; keep PR #62 as a separate evidence-preservation decision.",
+      "last_reviewed": "2026-07-10"
     }
   },
   "surfaces": {
     "codex/salvage-lambdarankic-recovery-20260707": {
       "workstreams": ["LambdaRankIC"],
-      "disposition": "canonical",
-      "reason": "PR #65 is the reviewed recovery-guardrail continuation.",
-      "next_action": "Fix the three lint findings and rerun CI before runtime work.",
-      "last_reviewed": "2026-07-09"
+      "disposition": "archive",
+      "reason": "PR #65 merged the reviewed recovery guardrails into main with green CI.",
+      "next_action": "Retain for audit history or remove only during an explicitly approved cleanup pass.",
+      "last_reviewed": "2026-07-10"
     },
     "codex/lambdarankic-1024-all-years-20260625": {
       "workstreams": ["LambdaRankIC"],
@@ -153,9 +153,16 @@
     "codex/regime-csv-no-backfill-mined-20260709": {
       "workstreams": ["Regime CSV contract"],
       "disposition": "canonical",
-      "reason": "The clean current-main branch contains the focused no-backfill regression.",
-      "next_action": "Push and open a focused draft PR.",
-      "last_reviewed": "2026-07-09"
+      "reason": "PR #70 is the green focused draft for the no-backfill regression.",
+      "next_action": "Review and merge PR #70.",
+      "last_reviewed": "2026-07-10"
+    },
+    "codex/regime-csv-pr-repair-20260710": {
+      "workstreams": ["Regime CSV contract"],
+      "disposition": "archive",
+      "reason": "This local publication helper points at the same commit as PR #70 and contains no unique work.",
+      "next_action": "Remove only during an explicitly approved local-branch cleanup pass.",
+      "last_reviewed": "2026-07-10"
     },
     "codex/regime-csv-no-backfill-coverage": {
       "workstreams": ["Regime CSV contract"],
@@ -174,9 +181,9 @@
     "codex/salvage-pr50-research-docs-20260707": {
       "workstreams": ["Docs and research evidence"],
       "disposition": "canonical",
-      "reason": "PR #60 is the focused research-routing continuation.",
-      "next_action": "Commit and push the verified README routing changes, then rerun CI.",
-      "last_reviewed": "2026-07-09"
+      "reason": "PR #60 is the green docs-only research-routing continuation on current main.",
+      "next_action": "Review and merge PR #60 separately from PR #62.",
+      "last_reviewed": "2026-07-10"
     },
     "codex/salvage-loss-seed-matrix-evidence-20260707": {
       "workstreams": ["Docs and research evidence"],
@@ -208,24 +215,31 @@
     },
     "codex/backtest-plot-agg-test-20260709": {
       "workstreams": ["Daily bug scans"],
-      "disposition": "canonical",
-      "reason": "PR #67 is the current focused regression from the daily bug scan.",
-      "next_action": "Run Ruff formatting, rerun CI, and review the draft PR.",
-      "last_reviewed": "2026-07-09"
+      "disposition": "archive",
+      "reason": "PR #67 merged the focused regression into main with green CI.",
+      "next_action": "Retain for audit history or remove only during an explicitly approved cleanup pass.",
+      "last_reviewed": "2026-07-10"
     },
     "codex/cockpit-decision-registry-20260709": {
       "workstreams": ["Git and worktree hygiene"],
+      "disposition": "archive",
+      "reason": "PR #68 merged the durable decision-registry interface into main.",
+      "next_action": "Retain for audit history or remove only during an explicitly approved cleanup pass.",
+      "last_reviewed": "2026-07-10"
+    },
+    "codex/cockpit-refresh-20260710": {
+      "workstreams": ["Git and worktree hygiene"],
       "disposition": "canonical",
-      "reason": "This branch implements the durable decision-registry interface.",
-      "next_action": "Review and merge the registry change, then rerun the cockpit from main.",
-      "last_reviewed": "2026-07-09"
+      "reason": "PR #69 is today's dated cockpit surface and is being regenerated after the registry merge.",
+      "next_action": "Review and merge PR #69 after the post-registry rerun is green.",
+      "last_reviewed": "2026-07-10"
     },
     "codex/cockpit-refresh-20260709": {
       "workstreams": ["Git and worktree hygiene"],
-      "disposition": "canonical",
-      "reason": "PR #66 is the current dated cockpit snapshot.",
-      "next_action": "Merge PR #66 when the dated snapshot is accepted.",
-      "last_reviewed": "2026-07-09"
+      "disposition": "stale",
+      "reason": "PR #66 is superseded by the current 2026-07-10 cockpit PR #69.",
+      "next_action": "Close PR #66 after PR #69 is accepted; delete the branch only with cleanup approval.",
+      "last_reviewed": "2026-07-10"
     },
     "codex/cockpit-refresh-20260708": {
       "workstreams": ["Git and worktree hygiene"],
