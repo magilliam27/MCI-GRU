@@ -17,7 +17,7 @@ which need later archive review.
 
 ## Current Evidence Map
 
-### Active Research Map
+### Program Maps And Research Queues
 
 | Report | Status |
 | --- | --- |
@@ -25,6 +25,24 @@ which need later archive review.
 | `docs/research/current/MCI_GRU_PROGRAM_MAP_2026-06-19.md` | Current structural companion map for MCI-GRU components and safe tweak surfaces. |
 | `docs/research/current/MCI_GRU_RESEARCH_OPPORTUNITY_SCAN_2026-06-19.md` | Superseded as the main prioritization map by the June 21 top-university-gated scan; keep as broader background and source-lead history. |
 | `docs/research/current/PIT_SAVED_PREDICTION_COST_RANK_GATE_REPRODUCIBILITY.md` | Promoted from pytest temp output as a durable saved-prediction cost and rank-gate reproducibility summary. |
+
+### PIT, Backtest, And Volatility-Targeting Evidence
+
+| Report | Status |
+| --- | --- |
+| `docs/research/current/SP500_PIT_GICS_TOP10_MULTIYEAR_BASELINE_2026-06-23.md` | Current reduced S&P 500 PIT GICS Top-10 multiyear baseline and caveat record. |
+| `docs/research/current/ISSUE8_VOLATILITY_TARGETING_BACKTEST_2026-05-26.md` | Current first-pass Issue #8 volatility-targeting backtest impact read. |
+| `docs/research/current/ISSUE8_VOLATILITY_TARGETING_ALL_YEARS_BACKTEST_2026-05-27.md` | Current all-years Issue #8 volatility-targeting backtest follow-up. |
+| `docs/research/current/ISSUE8_2023_VOL_TARGETING_DROP_DIAGNOSTICS_2026-05-27.md` | Current diagnostic for the 2023 volatility-targeting drop. |
+| `docs/research/current/ISSUE8_VOL_TARGETING_CAUSE_ANALYSIS_2026-05-27.md` | Current cause analysis and next-test routing for Issue #8 volatility targeting. |
+
+### Loss-Path Evidence
+
+| Report | Status |
+| --- | --- |
+| `docs/research/current/LOSS_FUNCTION_LITERATURE_SCAN_2026-06-03.md` | Current background scan for loss-function families and experiment ordering. |
+| `docs/research/current/LOSS_PATH_DECISION_2026-06-04.md` | Current June 4 conservative loss-path decision note; read with later handoffs before making LambdaRankIC readiness claims. |
+| `docs/research/current/LOSS_PATH_EXPERIMENTAL_SEARCH_2026-06-04.md` | Current exploratory companion for uncertainty-adjusted ranking, distributional heads, and deferred optimizer-style losses. |
 
 Keep these root-level reports easy to find until a follow-up pass moves or
 reclassifies them:
