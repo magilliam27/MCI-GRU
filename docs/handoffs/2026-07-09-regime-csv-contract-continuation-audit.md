@@ -1,27 +1,29 @@
 # Regime CSV Contract Continuation Audit Handoff
 
-Last updated: 2026-07-09
+Last updated: 2026-07-11
 
 ## Resume Here
 
-- Canonical continuation surface: `codex/regime-csv-no-backfill-coverage` at `C:/Users/magil/.codex/worktrees/pr34-regime-no-backfill/MCI-GRU`, or a fresh `origin/main` branch that cherry-picks/mines its single test delta.
-- Start by inspecting `git diff origin/main...codex/regime-csv-no-backfill-coverage -- tests/test_regime_features.py`.
-- Park `codex/deprecate-regime-csv` unless the user explicitly asks for archival cleanup. Its deprecation behavior has already been mined into `origin/main`; its current branch content is broad and stale.
+- Canonical continuation surface: PR #70 / `codex/regime-csv-no-backfill-mined-20260709` at `98bed4b`.
+- The focused unlagged no-backfill regression has already been mined from `codex/regime-csv-no-backfill-coverage`; do not repeat that work.
+- After PR #70 merges, current `origin/main` is canonical. Keep the older coverage and deprecation branches parked until a separately approved cleanup pass.
 
 ## Current Objective
 
-- Resolve the cockpit decision queue item for the Regime CSV contract by naming the continuation surface, preserving current-only global regime semantics, and identifying any missing no-backfill/no-lookahead coverage.
+- Merge the reviewed minimal no-backfill regression while preserving current-only global regime semantics.
 - Do not call FRED/LSEG or weaken the explicit `FRED_API_KEY` behavior for production-style regime-enabled runs.
 
 ## What Changed
 
-- Added this handoff only.
-- No source, config, test, branch, merge, reset, delete, prune, or rebase actions were performed.
+- The original 2026-07-09 audit added this handoff and identified the missing unlagged no-backfill coverage.
+- The focused test was mined onto `codex/regime-csv-no-backfill-mined-20260709` and published as PR #70.
+- The 2026-07-11 merge review corrected this handoff so it no longer routes agents back to the already-mined branch.
+- No production source/config behavior, data-vendor call, training, backtest, Colab run, branch deletion, prune, reset, or rebase was performed.
 
 ## Key Decisions
 
-- Continue from `codex/regime-csv-no-backfill-coverage`, not `codex/deprecate-regime-csv`.
-  Reason: the no-backfill branch is narrow, remote-tracked, attached to the named PR34 worktree, and only adds one focused test to `tests/test_regime_features.py`.
+- Continue from PR #70, not `codex/regime-csv-no-backfill-coverage` or `codex/deprecate-regime-csv`.
+  Reason: PR #70 contains only the focused test plus this audit handoff and is cleanly mergeable into current main.
 - Treat `codex/deprecate-regime-csv` as already mined/parkable.
   Evidence: `d55866b [codex] Deprecate regime CSV workflow (#21)` is an ancestor of current `origin/main`; the local `codex/deprecate-regime-csv` ref is `[gone]`, far behind current main, and direct content diff is huge.
 - Keep the current contract: live FRED/LSEG-backed loader is canonical; `features.regime_inputs_csv` is deprecated, seven-variable-only, warns on use, applies optional lag, then forward-fills only.
@@ -35,10 +37,19 @@ Last updated: 2026-07-09
 - `mci_gru/regime_contract.py`: shared seven-variable column list.
 - `mci_gru/features/regime.py`: regime feature construction and current-only/subsequent-return feature switches.
 - `tests/test_regime_features.py`: current main has lagged CSV no-backfill and regime no-lookahead-adjacent tests; PR34 adds the unlagged CSV gap test.
-- `docs/agents/cockpit/2026-07-08.md`: absent in this detached `origin/main` checkout, but present in `C:/Users/magil/.codex/worktrees/89a4/MCI-GRU` on `codex/cockpit-refresh-20260708`.
-- `docs/agents/workstreams.md`: current checkout has the 2026-07-06 queue; 2026-07-08 version was read from the cockpit-refresh worktree.
+- `docs/agents/cockpit/workstream-decisions.json`: durable reviewed disposition for the Regime CSV workstream and its historical branches.
+- `docs/agents/cockpit/2026-07-10.md`: latest merged cockpit snapshot at merge-review time; the 2026-07-08 packet is historical only.
+- `docs/agents/workstreams.md`: generated continuation register; do not edit it instead of the decision registry.
 
-## Verification
+## Merge Review Verification
+
+- PR #70 head: `98bed4b`; current `origin/main`: `1d7866b`.
+- `git merge-tree --write-tree origin/main origin/codex/regime-csv-no-backfill-mined-20260709` completed without conflicts.
+- GitHub CI run 122 passed lint, formatting, docs validation, repository tests, and end-to-end smoke.
+- Focused Regime CSV selection reported `3 passed, 10 deselected`; `FRED_API_KEY=dummy` only bypassed the module skip hook and no live vendor was called.
+- The PR changes only this handoff and `tests/test_regime_features.py`; production code and configuration are unchanged.
+
+## Original Audit Verification (2026-07-09)
 
 - Current audit checkout: `C:/Users/magil/.codex/worktrees/ebbd/MCI-GRU`, detached `HEAD` at `16bcea9`, which is `origin/main` / `origin/HEAD`.
 - Current checkout status: `git status --short --branch` showed `## HEAD (no branch)` with only repeated global-ignore permission warnings.
@@ -61,20 +72,16 @@ Last updated: 2026-07-09
 
 ## Open Risks
 
-- `codex/regime-csv-no-backfill-coverage` is behind current `origin/main` by 42 commits. Rebase/merge or cherry-pick the single test onto a fresh branch before publishing or merging.
-- The unlagged CSV no-backfill test is absent from current `origin/main`; it is a distinct coverage gap from `test_regime_csv_lag_safety`.
 - `tests/test_regime_features.py` is module-marked/skipped by the repo's FRED hook, so synthetic CSV tests skip when `FRED_API_KEY` is absent. Consider splitting no-vendor CSV tests into a file or marker path that always runs locally without secrets.
 - Some legacy docs/generators still mention `REGIME_INPUTS_CSV` or static regime CSV fallback paths. Canonical docs are aligned, but old notebook generators should be classified as legacy or updated to call the CSV path deprecated.
-- No live GitHub/remote refresh was performed because credential propagation failed.
+- The older coverage and deprecation branches remain as cleanup candidates; merging PR #70 does not authorize deleting them.
 
 ## Next Actions
 
-1. Create or switch to the chosen continuation surface, preferably a fresh branch from current `origin/main`, and apply only the PR34 unlagged no-backfill test if the user wants a minimal merge.
-2. Run:
-   `C:\Users\magil\MCI-GRU\.venv\Scripts\python.exe -m pytest tests/test_regime_features.py -k 'regime_csv or lag_safety' -v --basetemp .tmp_pytest\pytest -p no:cacheprovider`
-3. Decide whether to split CSV contract tests away from module-level FRED skipping so no-vendor regime CSV coverage runs in normal local/CI contexts.
-4. Audit and update legacy `REGIME_INPUTS_CSV` mentions in notebook generators/docs, keeping explicit that CSV is deprecated and production-style runs use live FRED/LSEG with `FRED_API_KEY`.
-5. After the focused test is current-main based and green, either merge/PR the minimal coverage branch or explicitly park PR34 and document that its test was mined.
+1. Merge PR #70 after the corrected handoff passes CI.
+2. Record `origin/main` as the landed Regime CSV surface in the cockpit decision registry.
+3. Separately decide whether no-vendor CSV contract tests should move out from under the module-level FRED skip hook.
+4. Audit legacy `REGIME_INPUTS_CSV` mentions as a separate documentation task; keep CSV explicitly deprecated.
 
 ## Commands Run
 
@@ -98,7 +105,7 @@ Last updated: 2026-07-09
 
 ## Do Not Do
 
-- Do not merge, reset, delete, prune, or rebase either regime branch without explicit user approval.
+- Do not reset, delete, prune, or rebase the older regime branches without explicit cleanup approval.
 - Do not resurrect CSV as the production regime workflow.
 - Do not silently disable global regime or current-only semantics to avoid `FRED_API_KEY`.
 - Do not treat handoffs or old notebook static-regime flows as canonical over `docs/REGIME_DATA_CONTRACT.md`, current code, and tests.
