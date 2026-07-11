@@ -5,6 +5,10 @@ The cockpit refresh writes the repo-local operating picture:
 - `docs/agents/workstreams.md`
 - `docs/agents/cockpit/YYYY-MM-DD.md`
 
+It reads durable human decisions from:
+
+- `docs/agents/cockpit/workstream-decisions.json`
+
 Manual local refresh:
 
 ```bash
@@ -89,6 +93,42 @@ The canonical continuation surface should be one of:
 If the cockpit cannot identify one canonical surface, mark the row
 `needs-user-decision` and put the competing surfaces in `Blocked On` or
 `Next Action`.
+
+## Workstream Decision Registry
+
+`workstream-decisions.json` is the canonical, versioned input for reviewed
+workstream and git-surface decisions. Generated files such as
+`docs/agents/workstreams.md` must not be edited to preserve a decision; the next
+refresh overwrites them.
+
+Each `workstreams` entry records the chosen status, canonical continuation
+surface, rationale, next action, and review date. Each `surfaces` entry records
+which workstreams reviewed a normalized branch name and whether that surface is
+`canonical`, `parked`, `archive`, or `stale`.
+
+Resolution rules:
+
+1. A registry decision wins over branch-name heuristics for every reviewed
+   surface.
+2. Reviewed historical surfaces remain visible as parked, stale, or archive
+   candidates, but they do not reopen the workstream decision.
+3. A newly matching branch that is absent from the registry reopens only the
+   affected workstream as `needs-user-decision`.
+4. Explicit `surfaces[*].workstreams` assignments classify branches whose names
+   do not match the seeded branch terms.
+5. Missing registry files make the cockpit red through the required-doc check.
+   Invalid JSON, unknown fields, unknown workstreams, remote-prefixed surface
+   keys, and unsupported format versions fail fast.
+
+Surface keys must use the normalized branch name emitted by the cockpit, for
+example `codex/example`, not `origin/codex/example`,
+`remotes/origin/codex/example`, or `refs/heads/codex/example`.
+
+When a decision changes, update the existing entry and `last_reviewed`. When a
+new branch is reviewed, add it to `surfaces`; do not broaden branch-name terms
+just to suppress a decision. Branch deletion, worktree removal, PR closure, and
+force-pushes remain separately approval-gated even when a surface is marked
+`archive` or `stale`.
 
 ## Stale Cockpit PR Handling
 
