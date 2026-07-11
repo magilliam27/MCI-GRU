@@ -30,11 +30,11 @@
       "last_reviewed": "2026-07-09"
     },
     "Regime CSV contract": {
-      "status": "ready-for-agent",
-      "canonical_surface": "PR #70 / codex/regime-csv-no-backfill-mined-20260709",
-      "reason": "The green draft PR preserves the no-backfill regression without reviving stale implementation branches.",
-      "next_action": "Review and merge green draft PR #70; keep current-only no-lookahead behavior explicit.",
-      "last_reviewed": "2026-07-10"
+      "status": "done",
+      "canonical_surface": "origin/main after merged PR #70",
+      "reason": "The focused no-backfill regression and corrected continuation handoff landed with green CI.",
+      "next_action": "No follow-up for this regression; preserve the current-only no-lookahead contract in future Regime CSV changes.",
+      "last_reviewed": "2026-07-11"
     },
     "Daily bug scans": {
       "status": "done",
@@ -44,11 +44,11 @@
       "last_reviewed": "2026-07-10"
     },
     "Docs and research evidence": {
-      "status": "active",
-      "canonical_surface": "PR #60 / codex/salvage-pr50-research-docs-20260707",
-      "reason": "PR #60 is the reviewed README-routing continuation; PR #62 remains a separate evidence-preservation decision.",
-      "next_action": "Review and merge green docs-only PR #60; keep PR #62 as a separate evidence-preservation decision.",
-      "last_reviewed": "2026-07-10"
+      "status": "done",
+      "canonical_surface": "origin/main after merged PR #60; PR #62 remains separately parked",
+      "reason": "The research maps, complete README routing, and synthetic-evidence exclusion policy landed with green CI.",
+      "next_action": "No follow-up for PR #60; review PR #62 only as a separately approved evidence-preservation decision.",
+      "last_reviewed": "2026-07-11"
     }
   },
   "surfaces": {
@@ -152,10 +152,10 @@
     },
     "codex/regime-csv-no-backfill-mined-20260709": {
       "workstreams": ["Regime CSV contract"],
-      "disposition": "canonical",
-      "reason": "PR #70 is the green focused draft for the no-backfill regression.",
-      "next_action": "Review and merge PR #70.",
-      "last_reviewed": "2026-07-10"
+      "disposition": "archive",
+      "reason": "PR #70 merged the focused no-backfill regression and handoff correction into main.",
+      "next_action": "Retain for audit history or remove only during an explicitly approved cleanup pass.",
+      "last_reviewed": "2026-07-11"
     },
     "codex/regime-csv-pr-repair-20260710": {
       "workstreams": ["Regime CSV contract"],
@@ -166,10 +166,10 @@
     },
     "codex/regime-csv-no-backfill-coverage": {
       "workstreams": ["Regime CSV contract"],
-      "disposition": "parked",
-      "reason": "The useful regression was mined onto a current-main branch.",
-      "next_action": "Keep parked until the mined PR lands, then archive with approval.",
-      "last_reviewed": "2026-07-09"
+      "disposition": "archive",
+      "reason": "The useful regression was mined and merged through PR #70.",
+      "next_action": "Retain for audit history or remove only during an explicitly approved cleanup pass.",
+      "last_reviewed": "2026-07-11"
     },
     "codex/deprecate-regime-csv": {
       "workstreams": ["Regime CSV contract"],
@@ -180,17 +180,17 @@
     },
     "codex/salvage-pr50-research-docs-20260707": {
       "workstreams": ["Docs and research evidence"],
-      "disposition": "canonical",
-      "reason": "PR #60 is the green docs-only research-routing continuation on current main.",
-      "next_action": "Review and merge PR #60 separately from PR #62.",
-      "last_reviewed": "2026-07-10"
+      "disposition": "archive",
+      "reason": "PR #60 merged the reviewed research maps, routing repair, and evidence-eligibility policy into main.",
+      "next_action": "Retain for audit history or remove only during an explicitly approved cleanup pass.",
+      "last_reviewed": "2026-07-11"
     },
     "codex/salvage-loss-seed-matrix-evidence-20260707": {
       "workstreams": ["Docs and research evidence"],
       "disposition": "parked",
-      "reason": "PR #62 is a separate evidence-preservation decision with an incomplete backtest caveat.",
-      "next_action": "Review the artifact payload separately from PR #60.",
-      "last_reviewed": "2026-07-09"
+      "reason": "PR #62 is a separate evidence-preservation decision with an incomplete backtest caveat and is not a blocker for the merged routing repair.",
+      "next_action": "Review only as a separately approved artifact-provenance decision; do not reopen PR #60.",
+      "last_reviewed": "2026-07-11"
     },
     "codex/evidence-harness-20260627": {
       "workstreams": ["Docs and research evidence"],
