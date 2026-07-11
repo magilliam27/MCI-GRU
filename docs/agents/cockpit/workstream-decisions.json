@@ -230,23 +230,23 @@
     "codex/cockpit-refresh-20260710": {
       "workstreams": ["Git and worktree hygiene"],
       "disposition": "canonical",
-      "reason": "PR #69 is today's dated cockpit surface and is being regenerated after the registry merge.",
-      "next_action": "Review and merge PR #69 after the post-registry rerun is green.",
+      "reason": "PR #69 merged today's post-registry cockpit refresh into main with green CI.",
+      "next_action": "No immediate action; let the next dated cockpit refresh supersede this audit snapshot.",
       "last_reviewed": "2026-07-10"
     },
     "codex/cockpit-refresh-20260709": {
       "workstreams": ["Git and worktree hygiene"],
       "disposition": "stale",
-      "reason": "PR #66 is superseded by the current 2026-07-10 cockpit PR #69.",
-      "next_action": "Close PR #66 after PR #69 is accepted; delete the branch only with cleanup approval.",
+      "reason": "PR #66 was closed as superseded after PR #69 merged the current 2026-07-10 cockpit.",
+      "next_action": "Retain the branch for audit history or delete it only with cleanup approval.",
       "last_reviewed": "2026-07-10"
     },
     "codex/cockpit-refresh-20260708": {
       "workstreams": ["Git and worktree hygiene"],
       "disposition": "stale",
-      "reason": "PR #64 is superseded by the current and green PR #66.",
-      "next_action": "Close PR #64 as superseded; delete the branch only with cleanup approval.",
-      "last_reviewed": "2026-07-09"
+      "reason": "PR #64 was closed as superseded by the merged 2026-07-10 cockpit PR #69.",
+      "next_action": "Retain the branch for audit history or delete it only with cleanup approval.",
+      "last_reviewed": "2026-07-10"
     },
     "codex/cockpit-refresh-20260620": {
       "workstreams": ["Git and worktree hygiene"],
