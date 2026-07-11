@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from cockpit.decisions import DECISION_REGISTRY_PATH
 from cockpit.git import with_safe_directory
 from cockpit.models import BranchEvidence, GitTopologySnapshot, WorktreeEvidence
 
@@ -28,6 +29,7 @@ REQUIRED_DOCS = [
     "docs/agents/domain.md",
     "docs/agents/issue-tracker.md",
     "docs/agents/triage-labels.md",
+    DECISION_REGISTRY_PATH,
     "docs/index.md",
     "docs/research/README.md",
 ]

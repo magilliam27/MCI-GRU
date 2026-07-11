@@ -1,0 +1,329 @@
+{
+  "format_version": 1,
+  "workstreams": {
+    "LambdaRankIC": {
+      "status": "active",
+      "canonical_surface": "PR #65 / codex/salvage-lambdarankic-recovery-20260707",
+      "reason": "The recovery-guardrail PR is the reviewed continuation; pure IC remains the default until saved-prediction diagnostics support promotion.",
+      "next_action": "Fix PR #65 lint, merge the recovery guardrails, then request approval for Drive/Colab saved-prediction recovery.",
+      "last_reviewed": "2026-07-09"
+    },
+    "Portfolio-IC": {
+      "status": "parked",
+      "canonical_surface": "origin/main with pure IC as baseline; Portfolio-IC retained as non-default evidence",
+      "reason": "Current evidence does not support promotion, and the historical implementation branch is stale and conflict-prone.",
+      "next_action": "Keep parked; use saved-prediction-only replay if the promotion decision is revisited.",
+      "last_reviewed": "2026-07-09"
+    },
+    "Issue #8 volatility targeting": {
+      "status": "ready-for-agent",
+      "canonical_surface": "GitHub issue #8 plus current origin/main",
+      "reason": "The current-main notebook contracts pass; existing Drive outputs must be inspected before another repeated-seed run.",
+      "next_action": "Inspect existing Drive outputs first and request a new Colab run only if they are missing or incomplete.",
+      "last_reviewed": "2026-07-09"
+    },
+    "Colab operations": {
+      "status": "ready-for-agent",
+      "canonical_surface": "origin/main plus docs/workflows/COLAB_CHROME_CONTROL_GUIDE.md",
+      "reason": "The Chrome-control runbook is the canonical operational surface; experiment branches are not competing runbooks.",
+      "next_action": "Use the canonical runbook for the next explicitly approved live Colab operation.",
+      "last_reviewed": "2026-07-09"
+    },
+    "Regime CSV contract": {
+      "status": "ready-for-agent",
+      "canonical_surface": "codex/regime-csv-no-backfill-mined-20260709 at commit 98bed4b",
+      "reason": "The narrow current-main regression branch preserves the no-backfill contract without reviving stale implementation branches.",
+      "next_action": "Push the branch, open a focused draft PR, and keep current-only no-lookahead behavior explicit.",
+      "last_reviewed": "2026-07-09"
+    },
+    "Daily bug scans": {
+      "status": "ready-for-agent",
+      "canonical_surface": "PR #67 / codex/backtest-plot-agg-test-20260709",
+      "reason": "The focused backtest plotting regression is the current durable bug-scan result.",
+      "next_action": "Format the test file, rerun focused verification and CI, then review the draft PR.",
+      "last_reviewed": "2026-07-09"
+    },
+    "Docs and research evidence": {
+      "status": "active",
+      "canonical_surface": "PR #60 / codex/salvage-pr50-research-docs-20260707",
+      "reason": "PR #60 is the reviewed README-routing continuation; PR #62 remains a separate evidence-preservation decision.",
+      "next_action": "Commit and push the verified README routing updates, rerun CI, and review PR #60 separately from PR #62.",
+      "last_reviewed": "2026-07-09"
+    }
+  },
+  "surfaces": {
+    "codex/salvage-lambdarankic-recovery-20260707": {
+      "workstreams": ["LambdaRankIC"],
+      "disposition": "canonical",
+      "reason": "PR #65 is the reviewed recovery-guardrail continuation.",
+      "next_action": "Fix the three lint findings and rerun CI before runtime work.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/lambdarankic-1024-all-years-20260625": {
+      "workstreams": ["LambdaRankIC"],
+      "disposition": "parked",
+      "reason": "The broader pair-cap evidence is not the 110-name recovery continuation.",
+      "next_action": "Keep as archive-value evidence unless explicitly reprioritized.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/top10-lambdarank-screen-20260625": {
+      "workstreams": ["LambdaRankIC"],
+      "disposition": "parked",
+      "reason": "PR #60 already mined the useful research-doc content from this stale branch.",
+      "next_action": "Preserve dirty user files; mine only a specifically identified missing artifact.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/lambdarank-ic-colab": {
+      "workstreams": ["LambdaRankIC", "Colab operations"],
+      "disposition": "archive",
+      "reason": "Current main and the recovery PR supersede this historical Colab branch.",
+      "next_action": "Remove the branch/worktree only after explicit cleanup approval.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/lambdarankic-lower-pair-screen": {
+      "workstreams": ["LambdaRankIC"],
+      "disposition": "archive",
+      "reason": "Current notebook and recovery surfaces supersede the lower-pair screen branch.",
+      "next_action": "Remove only during an approved branch-cleanup pass.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/lambdarankic-loss-optimization": {
+      "workstreams": ["LambdaRankIC"],
+      "disposition": "archive",
+      "reason": "The branch is already an ancestor of current main and needs no mining.",
+      "next_action": "Delete only during an approved branch-cleanup pass.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/Top10nLambda": {
+      "workstreams": ["LambdaRankIC"],
+      "disposition": "archive",
+      "reason": "The historical full-tranche pointer is superseded by the focused recovery path.",
+      "next_action": "Delete only during an approved branch-cleanup pass.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/portfolio-ic-hybrid-testing": {
+      "workstreams": ["Portfolio-IC"],
+      "disposition": "parked",
+      "reason": "The old branch is preserved as non-default evidence and should not be merged wholesale.",
+      "next_action": "Keep parked; port only a specifically approved current-main change.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/issue8-vol-repeated-seed-current-main-20260709": {
+      "workstreams": ["Issue #8 volatility targeting"],
+      "disposition": "canonical",
+      "reason": "This current-main worktree prepared the verified Drive-first continuation.",
+      "next_action": "Inspect existing Drive outputs before requesting another Colab run.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/issue8-vol-repeated-seed": {
+      "workstreams": ["Issue #8 volatility targeting"],
+      "disposition": "parked",
+      "reason": "The historical repeated-seed surface is superseded by the current-main continuation.",
+      "next_action": "Keep parked unless missing Drive artifacts require targeted mining.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/issue8-vol-ablation-sweep": {
+      "workstreams": ["Issue #8 volatility targeting"],
+      "disposition": "parked",
+      "reason": "The ablation branch preserves earlier evidence but is not the next continuation.",
+      "next_action": "Keep parked while Drive outputs are inspected.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/issue8-colab-efficiency-experiment": {
+      "workstreams": ["Issue #8 volatility targeting", "Colab operations"],
+      "disposition": "parked",
+      "reason": "This experiment branch is neither the current Issue #8 continuation nor the canonical Colab runbook.",
+      "next_action": "Keep parked; mine only a specifically identified missing artifact.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/colab-gpu-preflight": {
+      "workstreams": ["Colab operations"],
+      "disposition": "archive",
+      "reason": "The preflight behavior is incorporated into the canonical runbook and current launchers.",
+      "next_action": "Delete only during an approved branch-cleanup pass.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/colab-gpu-utilization-hardening-20260620": {
+      "workstreams": ["Colab operations"],
+      "disposition": "archive",
+      "reason": "Current main and the Chrome-control runbook supersede this operational branch.",
+      "next_action": "Remove only during an approved branch/worktree cleanup pass.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/regime-csv-no-backfill-mined-20260709": {
+      "workstreams": ["Regime CSV contract"],
+      "disposition": "canonical",
+      "reason": "The clean current-main branch contains the focused no-backfill regression.",
+      "next_action": "Push and open a focused draft PR.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/regime-csv-no-backfill-coverage": {
+      "workstreams": ["Regime CSV contract"],
+      "disposition": "parked",
+      "reason": "The useful regression was mined onto a current-main branch.",
+      "next_action": "Keep parked until the mined PR lands, then archive with approval.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/deprecate-regime-csv": {
+      "workstreams": ["Regime CSV contract"],
+      "disposition": "archive",
+      "reason": "Current code and contract tests already supersede this branch.",
+      "next_action": "Delete only during an approved branch-cleanup pass.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/salvage-pr50-research-docs-20260707": {
+      "workstreams": ["Docs and research evidence"],
+      "disposition": "canonical",
+      "reason": "PR #60 is the focused research-routing continuation.",
+      "next_action": "Commit and push the verified README routing changes, then rerun CI.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/salvage-loss-seed-matrix-evidence-20260707": {
+      "workstreams": ["Docs and research evidence"],
+      "disposition": "parked",
+      "reason": "PR #62 is a separate evidence-preservation decision with an incomplete backtest caveat.",
+      "next_action": "Review the artifact payload separately from PR #60.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/evidence-harness-20260627": {
+      "workstreams": ["Docs and research evidence"],
+      "disposition": "archive",
+      "reason": "The evidence-harness work is already integrated into current main.",
+      "next_action": "Remove the branch/worktree only after explicit cleanup approval.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/research-paper-skill-main": {
+      "workstreams": ["Docs and research evidence"],
+      "disposition": "archive",
+      "reason": "The versioned research skill is already integrated into current main.",
+      "next_action": "Delete only during an approved branch-cleanup pass.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/salvage-loss-function-research-map-20260707": {
+      "workstreams": ["Docs and research evidence"],
+      "disposition": "archive",
+      "reason": "PR #61 merged this handoff into current main.",
+      "next_action": "Remove the branch/worktree only after explicit cleanup approval.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/backtest-plot-agg-test-20260709": {
+      "workstreams": ["Daily bug scans"],
+      "disposition": "canonical",
+      "reason": "PR #67 is the current focused regression from the daily bug scan.",
+      "next_action": "Run Ruff formatting, rerun CI, and review the draft PR.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/cockpit-decision-registry-20260709": {
+      "workstreams": ["Git and worktree hygiene"],
+      "disposition": "canonical",
+      "reason": "This branch implements the durable decision-registry interface.",
+      "next_action": "Review and merge the registry change, then rerun the cockpit from main.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/cockpit-refresh-20260709": {
+      "workstreams": ["Git and worktree hygiene"],
+      "disposition": "canonical",
+      "reason": "PR #66 is the current dated cockpit snapshot.",
+      "next_action": "Merge PR #66 when the dated snapshot is accepted.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/cockpit-refresh-20260708": {
+      "workstreams": ["Git and worktree hygiene"],
+      "disposition": "stale",
+      "reason": "PR #64 is superseded by the current and green PR #66.",
+      "next_action": "Close PR #64 as superseded; delete the branch only with cleanup approval.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/cockpit-refresh-20260620": {
+      "workstreams": ["Git and worktree hygiene"],
+      "disposition": "archive",
+      "reason": "A newer dated cockpit snapshot supersedes this audit branch.",
+      "next_action": "Retain as audit history or delete only during approved cleanup.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/cockpit-refresh-20260621": {
+      "workstreams": ["Git and worktree hygiene"],
+      "disposition": "archive",
+      "reason": "A newer dated cockpit snapshot supersedes this audit branch.",
+      "next_action": "Retain as audit history or delete only during approved cleanup.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/cockpit-refresh-20260622": {
+      "workstreams": ["Git and worktree hygiene"],
+      "disposition": "archive",
+      "reason": "A newer dated cockpit snapshot supersedes this audit branch.",
+      "next_action": "Retain as audit history or delete only during approved cleanup.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/cockpit-refresh-20260623": {
+      "workstreams": ["Git and worktree hygiene"],
+      "disposition": "archive",
+      "reason": "A newer dated cockpit snapshot supersedes this audit branch.",
+      "next_action": "Retain as audit history or delete only during approved cleanup.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/cockpit-refresh-20260624": {
+      "workstreams": ["Git and worktree hygiene"],
+      "disposition": "archive",
+      "reason": "A newer dated cockpit snapshot supersedes this audit branch.",
+      "next_action": "Retain as audit history or delete only during approved cleanup.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/cockpit-refresh-20260626": {
+      "workstreams": ["Git and worktree hygiene"],
+      "disposition": "archive",
+      "reason": "A newer dated cockpit snapshot supersedes this audit branch.",
+      "next_action": "Retain as audit history or delete only during approved cleanup.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/cockpit-refresh-20260628": {
+      "workstreams": ["Git and worktree hygiene"],
+      "disposition": "archive",
+      "reason": "A newer dated cockpit snapshot supersedes this audit branch.",
+      "next_action": "Retain as audit history or delete only during approved cleanup.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/cockpit-refresh-20260629": {
+      "workstreams": ["Git and worktree hygiene"],
+      "disposition": "archive",
+      "reason": "A newer dated cockpit snapshot supersedes this audit branch.",
+      "next_action": "Retain as audit history or delete only during approved cleanup.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/cockpit-refresh-20260630": {
+      "workstreams": ["Git and worktree hygiene"],
+      "disposition": "archive",
+      "reason": "A newer dated cockpit snapshot supersedes this audit branch.",
+      "next_action": "Retain as audit history or delete only during approved cleanup.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/cockpit-refresh-20260701": {
+      "workstreams": ["Git and worktree hygiene"],
+      "disposition": "archive",
+      "reason": "A newer dated cockpit snapshot supersedes this audit branch.",
+      "next_action": "Retain as audit history or delete only during approved cleanup.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/cockpit-refresh-20260706": {
+      "workstreams": ["Git and worktree hygiene"],
+      "disposition": "archive",
+      "reason": "A newer dated cockpit snapshot supersedes this audit branch.",
+      "next_action": "Retain as audit history or delete only during approved cleanup.",
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/cockpit-refresh-20260707": {
+      "workstreams": ["Git and worktree hygiene"],
+      "disposition": "archive",
+      "reason": "A newer dated cockpit snapshot supersedes this audit branch.",
+      "next_action": "Retain as audit history or delete only during approved cleanup.",
+      "last_reviewed": "2026-07-09"
+    },
+    "detached@955189f": {
+      "workstreams": ["Git and worktree hygiene"],
+      "disposition": "parked",
+      "reason": "These clean detached worktrees belong to completed salvage or automation threads at the prior main snapshot.",
+      "next_action": "Remove only after the associated open PR preservation decisions are complete.",
+      "last_reviewed": "2026-07-09"
+    }
+  }
+}
