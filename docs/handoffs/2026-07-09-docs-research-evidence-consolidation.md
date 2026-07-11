@@ -114,7 +114,7 @@ must remain test evidence, not empirical research evidence.
 
 - `AGENTS.md`
 - `docs/agents/domain.md`
-- `docs/agents/cockpit-decisions.yaml`
+- `docs/agents/cockpit/workstream-decisions.json`
 - `docs/research/README.md`
 - `docs/research/current/README.md`
 - `tests/test_pit_saved_prediction_backtests.py`
