@@ -105,7 +105,7 @@ def _normalise_metadata(raw: pd.DataFrame, sector_column: str, sector_field: str
 
     out = pd.DataFrame(
         {
-            "kdcode": raw[ric_col].astype(str).str.strip(),
+            "kdcode": raw[ric_col].astype("string").str.strip(),
             "company_name": raw[name_col].astype(str).str.strip(),
             "company_market_cap": _normalise_market_cap(raw[mcap_col]),
             "gics_sector": raw[sector_column].astype(str).str.strip(),

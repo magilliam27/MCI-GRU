@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 
 from scripts.data.export_sp500_gics_top10_mcap import (
@@ -89,21 +90,14 @@ def test_normalise_metadata_accepts_current_constituent_columns() -> None:
 
 
 def test_normalise_metadata_rejects_missing_constituent_ric_values() -> None:
+    ric_values = ["AAA.N", None, np.nan, pd.NaT, pd.NA, "", "   ", "NaN", "NONE", "nAt"]
     raw = pd.DataFrame(
-        [
-            {
-                "Instrument": "AAA.N",
-                "Company Common Name": "AAA Corp",
-                "Company Market Cap": "1,250.5",
-                "GICS Sector": "Industrials",
-            },
-            {
-                "Instrument": None,
-                "Company Common Name": "Missing RIC Corp",
-                "Company Market Cap": "2,000.0",
-                "GICS Sector": "Industrials",
-            },
-        ]
+        {
+            "Instrument": ric_values,
+            "Company Common Name": [f"Company {index}" for index in range(len(ric_values))],
+            "Company Market Cap": ["1,250.5"] * len(ric_values),
+            "GICS Sector": ["Industrials"] * len(ric_values),
+        }
     )
 
     metadata = _normalise_metadata(raw, "GICS Sector", "TR.GICSSector")
