@@ -10,14 +10,28 @@ import pytest
 
 from cockpit.decisions import DECISION_REGISTRY_PATH
 from cockpit.evidence import collect_local_evidence
+from cockpit.models import WorkstreamStatus
 from cockpit.runner import (
+    StaticWorkstreamSource,
+    WorkstreamSeed,
     _run_command,
+    merge_workstream_sources,
     run_github_cockpit_refresh,
     run_local_cockpit_refresh,
 )
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+class _FixedSource:
+    """Test double that proposes a fixed seed list regardless of evidence."""
+
+    def __init__(self, seeds: list[WorkstreamSeed]) -> None:
+        self._seeds = list(seeds)
+
+    def provide(self, evidence: object, run_date: date) -> list[WorkstreamSeed]:
+        return list(self._seeds)
 
 
 def test_collect_local_evidence_records_dirty_paths_and_required_docs(tmp_path: Path) -> None:
@@ -976,6 +990,167 @@ def test_run_local_cockpit_refresh_rejects_unknown_workstream_reference(tmp_path
             run_date=date(2026, 7, 10),
             run_command=_fake_topology_runner(["codex/mystery"]),
         )
+
+
+def test_merge_workstream_sources_dedupes_with_earlier_source_winning() -> None:
+    first = _FixedSource(
+        [
+            WorkstreamSeed(
+                name="Shared",
+                status=WorkstreamStatus.ACTIVE,
+                next_action="First source wins.",
+                tracker="first-tracker",
+                branch_terms=("first",),
+            )
+        ]
+    )
+    second = _FixedSource(
+        [
+            WorkstreamSeed(
+                name="Shared",
+                status=WorkstreamStatus.PARKED,
+                next_action="Second source loses.",
+            ),
+            WorkstreamSeed(
+                name="Second only",
+                status=WorkstreamStatus.ACTIVE,
+                next_action="Unique to the second source.",
+            ),
+        ]
+    )
+
+    merged = merge_workstream_sources((first, second), evidence=None, run_date=date(2026, 7, 11))
+
+    assert [seed.name for seed in merged] == ["Shared", "Second only"]
+    shared = next(seed for seed in merged if seed.name == "Shared")
+    assert shared.status == WorkstreamStatus.ACTIVE
+    assert shared.next_action == "First source wins."
+    assert shared.tracker == "first-tracker"
+    assert shared.branch_terms == ("first",)
+
+
+def test_merge_workstream_sources_is_deterministic_across_calls() -> None:
+    sources = (
+        StaticWorkstreamSource(),
+        _FixedSource(
+            [
+                WorkstreamSeed(name="Zeta", status=WorkstreamStatus.ACTIVE, next_action="z"),
+                WorkstreamSeed(name="Alpha", status=WorkstreamStatus.ACTIVE, next_action="a"),
+            ]
+        ),
+    )
+
+    first = merge_workstream_sources(sources, evidence=None, run_date=date(2026, 7, 11))
+    second = merge_workstream_sources(sources, evidence=None, run_date=date(2026, 7, 11))
+
+    assert first == second
+    assert [seed.name for seed in first] == [seed.name for seed in second]
+
+
+def test_merge_workstream_sources_drops_reserved_surface_prefix() -> None:
+    source = _FixedSource(
+        [
+            WorkstreamSeed(
+                name="Git surface: codex/should-drop",
+                status=WorkstreamStatus.ACTIVE,
+                next_action="Reserved prefix; must be dropped.",
+            ),
+            WorkstreamSeed(
+                name="Kept workstream",
+                status=WorkstreamStatus.ACTIVE,
+                next_action="Survives the merge.",
+            ),
+        ]
+    )
+
+    merged = merge_workstream_sources((source,), evidence=None, run_date=date(2026, 7, 11))
+
+    assert [seed.name for seed in merged] == ["Kept workstream"]
+
+
+def test_run_local_cockpit_refresh_drops_reserved_prefix_seed_without_crashing(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    reserved_source = _FixedSource(
+        [
+            WorkstreamSeed(
+                name="Git surface: codex/should-drop",
+                status=WorkstreamStatus.ACTIVE,
+                next_action="A buggy source must not crash the daily refresh.",
+            )
+        ]
+    )
+
+    result = run_local_cockpit_refresh(
+        repo_root=repo,
+        run_date=date(2026, 7, 10),
+        run_command=_fake_topology_runner([]),
+        sources=(reserved_source,),
+    )
+
+    register = result.register_path.read_text(encoding="utf-8")
+    assert result.register_path.exists()
+    assert "Git surface: codex/should-drop" not in register
+    assert "Git and worktree hygiene" in register
+
+
+def test_run_local_cockpit_refresh_drops_source_hygiene_but_keeps_static_row(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    hygiene_source = _FixedSource(
+        [
+            WorkstreamSeed(
+                name="Git and worktree hygiene",
+                status=WorkstreamStatus.PARKED,
+                next_action="Bogus hygiene emitted by a source; must be dropped.",
+            )
+        ]
+    )
+
+    result = run_local_cockpit_refresh(
+        repo_root=repo,
+        run_date=date(2026, 7, 10),
+        run_command=_fake_topology_runner([]),
+        sources=(hygiene_source,),
+    )
+
+    register = result.register_path.read_text(encoding="utf-8")
+    hygiene_rows = [
+        line for line in register.splitlines() if line.startswith("| Git and worktree hygiene |")
+    ]
+    assert len(hygiene_rows) == 1
+    assert "Bogus hygiene emitted by a source; must be dropped." not in register
+
+
+def test_registry_workstream_without_surface_renders_under_live_topology(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    _write_decision_registry(
+        repo,
+        workstreams={
+            "Harness rollout": {
+                "status": "parked",
+                "canonical_surface": "origin/main",
+                "reason": "Registry declares a workstream with no matching live surface.",
+                "next_action": "Continue the harness rollout when reprioritized.",
+                "last_reviewed": "2026-07-09",
+            }
+        },
+        surfaces={},
+    )
+
+    result = run_local_cockpit_refresh(
+        repo_root=repo,
+        run_date=date(2026, 7, 10),
+        run_command=_fake_topology_runner(["codex/unrelated-live-branch"]),
+    )
+
+    register = result.register_path.read_text(encoding="utf-8")
+    assert "Git surface: codex/unrelated-live-branch" in register
+    assert "| Harness rollout | parked |" in register
 
 
 def _repo_with_required_docs(repo: Path) -> Path:
