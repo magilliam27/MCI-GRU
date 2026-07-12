@@ -1272,6 +1272,20 @@ def test_git_activity_source_applies_committer_date_lookback() -> None:
     assert [seed.name for seed in seeds] == ["Recent Topic"]
 
 
+def test_git_activity_source_excludes_integration_branches() -> None:
+    evidence = _git_activity_evidence(
+        recent_branches=[
+            ("main", _GIT_ACTIVITY_RUN_DATE),
+            ("master", _GIT_ACTIVITY_RUN_DATE),
+            ("codex/real-topic", _GIT_ACTIVITY_RUN_DATE),
+        ]
+    )
+
+    seeds = GitActivitySource(aliases={}).provide(evidence, _GIT_ACTIVITY_RUN_DATE)
+
+    assert [seed.name for seed in seeds] == ["Real Topic"]
+
+
 def test_git_activity_source_collapses_and_is_deterministic() -> None:
     evidence = _git_activity_evidence(
         recent_branches=[

@@ -100,6 +100,10 @@ GIT_ACTIVITY_STOPWORDS = frozenset(
     token for phrase in GIT_ACTIVITY_STOPWORD_PHRASES for token in phrase.split("-")
 )
 
+# Integration branches are not topic branches: deriving a workstream from them
+# would create a permanent bogus row (e.g. "Main") that can never be retired.
+GIT_ACTIVITY_EXCLUDED_BRANCHES = frozenset({"main", "master", "head", "(no branch)"})
+
 # Trailing ``-YYYYMMDD`` or ``-YYYY-MM-DD`` date segment on a branch name.
 _BRANCH_DATE_SUFFIX = re.compile(r"-(?:\d{8}|\d{4}-\d{2}-\d{2})$")
 # Trailing short-hex-hash segment (4+ hex chars containing at least one digit,
@@ -240,6 +244,8 @@ class GitActivitySource:
             aliases = read_registry_aliases(evidence.repo_root)
         token_lists: list[list[str]] = []
         for name, committer_date in evidence.recent_branches:
+            if name.strip().lower() in GIT_ACTIVITY_EXCLUDED_BRANCHES:
+                continue
             if self._within_lookback(committer_date, run_date):
                 token_lists.append(_branch_topic_tokens(name))
         for handoff in evidence.recent_handoffs:
