@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 
 from scripts.data.export_sp500_gics_top10_mcap import (
@@ -86,3 +87,19 @@ def test_normalise_metadata_accepts_current_constituent_columns() -> None:
             "gics_sector_field": "TR.GICSSector",
         }
     ]
+
+
+def test_normalise_metadata_rejects_missing_constituent_ric_values() -> None:
+    ric_values = ["AAA.N", None, np.nan, pd.NaT, pd.NA, "", "   ", "NaN", "NONE", "nAt"]
+    raw = pd.DataFrame(
+        {
+            "Instrument": ric_values,
+            "Company Common Name": [f"Company {index}" for index in range(len(ric_values))],
+            "Company Market Cap": ["1,250.5"] * len(ric_values),
+            "GICS Sector": ["Industrials"] * len(ric_values),
+        }
+    )
+
+    metadata = _normalise_metadata(raw, "GICS Sector", "TR.GICSSector")
+
+    assert metadata["kdcode"].tolist() == ["AAA.N"]
