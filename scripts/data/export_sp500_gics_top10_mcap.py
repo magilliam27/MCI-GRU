@@ -114,6 +114,7 @@ def _normalise_metadata(raw: pd.DataFrame, sector_column: str, sector_field: str
     out["gics_sector_field"] = sector_field
     out = out.dropna(subset=["kdcode", "company_market_cap"])
     out = out[(out["kdcode"] != "") & (out["gics_sector"] != "")]
+    out = out[~out["kdcode"].str.lower().isin({"nan", "none", "nat"})]
     out = out[out["gics_sector"].str.lower() != "nan"]
     out = out.drop_duplicates(subset=["kdcode"], keep="first")
     return out.sort_values(["gics_sector", "company_market_cap"], ascending=[True, False])
