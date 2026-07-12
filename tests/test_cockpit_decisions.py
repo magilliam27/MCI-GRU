@@ -9,6 +9,7 @@ from cockpit.decisions import (
     DECISION_REGISTRY_PATH,
     SurfaceDisposition,
     load_decision_registry,
+    read_registry_aliases,
     read_registry_workstream_names,
 )
 from cockpit.models import WorkstreamStatus
@@ -57,12 +58,109 @@ def test_load_decision_registry_parses_versioned_contract(tmp_path) -> None:
     assert registry.surfaces["codex/old-lambdarank"].disposition == SurfaceDisposition.ARCHIVE
 
 
+def test_load_decision_registry_parses_v2_with_aliases(tmp_path) -> None:
+    _write_registry(
+        tmp_path,
+        {
+            "format_version": 2,
+            "workstream_aliases": {
+                "lambdarank": "LambdaRankIC",
+                "top10": "LambdaRankIC",
+                "portfolio-ic": "Portfolio-IC",
+            },
+            "workstreams": {},
+            "surfaces": {},
+        },
+    )
+
+    registry = load_decision_registry(tmp_path, known_workstreams={"LambdaRankIC"})
+
+    assert registry.aliases == {
+        "lambdarank": "LambdaRankIC",
+        "top10": "LambdaRankIC",
+        "portfolio-ic": "Portfolio-IC",
+    }
+
+
+def test_load_decision_registry_parses_v2_without_aliases(tmp_path) -> None:
+    _write_registry(tmp_path, {"format_version": 2, "workstreams": {}, "surfaces": {}})
+
+    registry = load_decision_registry(tmp_path, known_workstreams={"LambdaRankIC"})
+
+    assert registry.aliases == {}
+
+
+def test_load_decision_registry_still_parses_v1(tmp_path) -> None:
+    _write_registry(tmp_path, {"format_version": 1, "workstreams": {}, "surfaces": {}})
+
+    registry = load_decision_registry(tmp_path, known_workstreams={"LambdaRankIC"})
+
+    assert registry.aliases == {}
+
+
+def test_read_registry_aliases_returns_map_for_valid_file(tmp_path) -> None:
+    _write_registry(
+        tmp_path,
+        {
+            "format_version": 2,
+            "workstream_aliases": {"lambdarank": "LambdaRankIC", "vol": "Issue #8"},
+            "workstreams": {},
+            "surfaces": {},
+        },
+    )
+
+    assert read_registry_aliases(tmp_path) == {"lambdarank": "LambdaRankIC", "vol": "Issue #8"}
+
+
+def test_read_registry_aliases_returns_empty_when_absent_or_broken(tmp_path) -> None:
+    _write_registry(tmp_path, {"format_version": 2, "workstreams": {}, "surfaces": {}})
+    assert read_registry_aliases(tmp_path) == {}
+
+    _write_registry(
+        tmp_path,
+        {
+            "format_version": 2,
+            "workstream_aliases": ["lambdarank"],
+            "workstreams": {},
+            "surfaces": {},
+        },
+    )
+    assert read_registry_aliases(tmp_path) == {}
+
+
 @pytest.mark.parametrize(
     ("payload", "message"),
     [
         (
-            {"format_version": 2, "workstreams": {}, "surfaces": {}},
-            "Unsupported cockpit decision registry format_version: 2",
+            {"format_version": 3, "workstreams": {}, "surfaces": {}},
+            "Unsupported cockpit decision registry format_version: 3",
+        ),
+        (
+            {
+                "format_version": 2,
+                "workstreams": {},
+                "surfaces": {},
+                "workstream_aliases": ["lambdarank"],
+            },
+            "workstream_aliases must be a JSON object",
+        ),
+        (
+            {
+                "format_version": 2,
+                "workstreams": {},
+                "surfaces": {},
+                "workstream_aliases": {"lambdarank": ""},
+            },
+            "workstream_aliases.lambdarank must be a non-empty string",
+        ),
+        (
+            {
+                "format_version": 2,
+                "workstreams": {},
+                "surfaces": {},
+                "workstream_aliases": {"lambdarank": 5},
+            },
+            "workstream_aliases.lambdarank must be a non-empty string",
         ),
         (
             {
