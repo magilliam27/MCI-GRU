@@ -172,8 +172,7 @@ def run_local_cockpit_refresh(
     seeds = _merge_seeds(RegistryWorkstreamSource().provide(evidence, run_date))
     registry = load_decision_registry(
         repo_root,
-        known_workstreams={seed.name for seed in seeds}
-        | read_registry_workstream_names(repo_root),
+        known_workstreams={seed.name for seed in seeds} | read_registry_workstream_names(repo_root),
     )
     workstreams = _resolve_workstreams(evidence, run_date, registry, seeds)
     color = _run_color(evidence, workstreams)
