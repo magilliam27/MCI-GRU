@@ -158,7 +158,14 @@ def run_local_cockpit_refresh(
     register_path = repo_root / "docs" / "agents" / "workstreams.md"
     packet_path = repo_root / "docs" / "agents" / "cockpit" / f"{run_date.isoformat()}.md"
     packet_path.parent.mkdir(parents=True, exist_ok=True)
-    register_path.write_text(render_workstream_register(workstreams, run_date), encoding="utf-8")
+    register_path.write_text(
+        render_workstream_register(
+            workstreams,
+            run_date,
+            git_tree_impact=report.git_tree_impact,
+        ),
+        encoding="utf-8",
+    )
     packet_path.write_text(render_cockpit_packet(report), encoding="utf-8")
     return CockpitRunResult(
         register_path=register_path,

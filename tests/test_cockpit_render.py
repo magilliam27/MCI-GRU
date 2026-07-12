@@ -30,9 +30,25 @@ def test_render_workstream_register_uses_controlled_columns() -> None:
         )
     ]
 
-    markdown = render_workstream_register(workstreams, generated_on=date(2026, 6, 20))
+    markdown = render_workstream_register(
+        workstreams,
+        generated_on=date(2026, 6, 20),
+        git_tree_impact=[
+            "Current branch: `codex/cockpit-refresh-20260620`",
+            "origin/main divergence: 0 ahead / 0 behind",
+            "Unmerged branches: 4",
+            "Worktrees: 5 total, 2 detached, 1 dirty",
+            "Dirty worktrees: `feature` at `C:/repo`",
+            "Detached worktrees: `detached@abc123` at `C:/repo-detached`",
+        ],
+    )
 
     assert "# MCI-GRU Workstream Register" in markdown
+    assert "## Git Tree Impact" in markdown
+    assert "origin/main divergence: 0 ahead / 0 behind" in markdown
+    assert "Worktrees: 5 total, 2 detached, 1 dirty" in markdown
+    assert "Dirty worktrees: `feature` at `C:/repo`" in markdown
+    assert "Detached worktrees: `detached@abc123` at `C:/repo-detached`" in markdown
     assert "| Workstream | Status | GitHub Issue / PR | Branch / Worktree |" in markdown
     assert (
         "| LambdaRankIC | active | GitHub issue #42 | codex/lambdarankic-loss-optimization |"
