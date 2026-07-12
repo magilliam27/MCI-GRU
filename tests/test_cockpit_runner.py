@@ -6,6 +6,8 @@ from datetime import date
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
+import pytest
+
 from cockpit.decisions import DECISION_REGISTRY_PATH
 from cockpit.evidence import collect_local_evidence
 from cockpit.runner import (
@@ -887,6 +889,93 @@ def test_run_github_cockpit_refresh_rewrites_packet_with_actions_taken(tmp_path:
     ]
     assert final_commit_index > comment_index
     assert final_push_indices[-1] > final_commit_index
+
+
+def test_run_local_cockpit_refresh_admits_registry_only_workstream(tmp_path: Path) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    _write_decision_registry(
+        repo,
+        workstreams={
+            "Harness rollout": {
+                "status": "ready-for-agent",
+                "canonical_surface": "origin/main",
+                "reason": "Registry declares a workstream that exists nowhere in code.",
+                "next_action": "Continue the harness rollout.",
+                "last_reviewed": "2026-07-09",
+            }
+        },
+        surfaces={},
+    )
+
+    result = run_local_cockpit_refresh(
+        repo_root=repo,
+        run_date=date(2026, 7, 10),
+        run_command=_fake_topology_runner([]),
+    )
+
+    register = result.register_path.read_text(encoding="utf-8")
+    assert "Harness rollout" in register
+    assert "| Harness rollout | ready-for-agent |" in register
+
+
+def test_run_local_cockpit_refresh_admits_surface_for_registry_only_workstream(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    _write_decision_registry(
+        repo,
+        workstreams={
+            "Harness rollout": {
+                "status": "ready-for-agent",
+                "canonical_surface": "codex/harness-rollout",
+                "reason": "Registry declares a workstream that exists nowhere in code.",
+                "next_action": "Continue the harness rollout.",
+                "last_reviewed": "2026-07-09",
+            }
+        },
+        surfaces={
+            "codex/harness-rollout": {
+                "workstreams": ["Harness rollout"],
+                "disposition": "canonical",
+                "reason": "Reviewed canonical branch for the registry-only workstream.",
+                "next_action": "Continue through the harness rollout branch.",
+                "last_reviewed": "2026-07-09",
+            }
+        },
+    )
+
+    result = run_local_cockpit_refresh(
+        repo_root=repo,
+        run_date=date(2026, 7, 10),
+        run_command=_fake_topology_runner(["codex/harness-rollout"]),
+    )
+
+    register = result.register_path.read_text(encoding="utf-8")
+    assert "Harness rollout" in register
+
+
+def test_run_local_cockpit_refresh_rejects_unknown_workstream_reference(tmp_path: Path) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    _write_decision_registry(
+        repo,
+        workstreams={},
+        surfaces={
+            "codex/mystery": {
+                "workstreams": ["Totally unknown workstream"],
+                "disposition": "canonical",
+                "reason": "References a name in neither seeds nor registry keys.",
+                "next_action": "Fix the registry.",
+                "last_reviewed": "2026-07-09",
+            }
+        },
+    )
+
+    with pytest.raises(ValueError, match="Totally unknown workstream"):
+        run_local_cockpit_refresh(
+            repo_root=repo,
+            run_date=date(2026, 7, 10),
+            run_command=_fake_topology_runner(["codex/mystery"]),
+        )
 
 
 def _repo_with_required_docs(repo: Path) -> Path:

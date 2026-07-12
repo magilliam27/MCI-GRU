@@ -9,6 +9,7 @@ from cockpit.decisions import (
     DECISION_REGISTRY_PATH,
     SurfaceDisposition,
     load_decision_registry,
+    read_registry_workstream_names,
 )
 from cockpit.models import WorkstreamStatus
 
@@ -109,6 +110,61 @@ def test_load_decision_registry_returns_empty_when_required_file_is_missing(tmp_
 
     assert registry.workstreams == {}
     assert registry.surfaces == {}
+
+
+def test_read_registry_workstream_names_returns_keys_for_valid_file(tmp_path) -> None:
+    _write_registry(
+        tmp_path,
+        {
+            "format_version": 1,
+            "workstreams": {
+                "LambdaRankIC": {
+                    "status": "active",
+                    "canonical_surface": "origin/main",
+                    "reason": "Reviewed continuation.",
+                    "next_action": "Continue.",
+                    "last_reviewed": "2026-07-09",
+                },
+                "Harness rollout": {
+                    "status": "active",
+                    "canonical_surface": "origin/main",
+                    "reason": "New workstream.",
+                    "next_action": "Continue.",
+                    "last_reviewed": "2026-07-09",
+                },
+            },
+            "surfaces": {},
+        },
+    )
+
+    assert read_registry_workstream_names(tmp_path) == {"LambdaRankIC", "Harness rollout"}
+
+
+def test_read_registry_workstream_names_returns_empty_for_missing_file(tmp_path) -> None:
+    assert read_registry_workstream_names(tmp_path) == set()
+
+
+def test_read_registry_workstream_names_returns_empty_for_invalid_json(tmp_path) -> None:
+    path = tmp_path / DECISION_REGISTRY_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{not valid json", encoding="utf-8")
+
+    assert read_registry_workstream_names(tmp_path) == set()
+
+
+def test_read_registry_workstream_names_returns_empty_when_workstreams_absent(tmp_path) -> None:
+    _write_registry(tmp_path, {"format_version": 1, "surfaces": {}})
+
+    assert read_registry_workstream_names(tmp_path) == set()
+
+
+def test_read_registry_workstream_names_returns_empty_when_workstreams_not_object(tmp_path) -> None:
+    _write_registry(
+        tmp_path,
+        {"format_version": 1, "workstreams": ["LambdaRankIC"], "surfaces": {}},
+    )
+
+    assert read_registry_workstream_names(tmp_path) == set()
 
 
 def _write_registry(repo, payload: dict[str, object]) -> None:
