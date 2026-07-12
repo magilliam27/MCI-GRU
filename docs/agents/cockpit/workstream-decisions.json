@@ -1,5 +1,15 @@
 {
-  "format_version": 1,
+  "format_version": 2,
+  "workstream_aliases": {
+    "lambdarank": "LambdaRankIC",
+    "top10": "LambdaRankIC",
+    "portfolio-ic": "Portfolio-IC",
+    "issue8": "Issue #8 volatility targeting",
+    "vol": "Issue #8 volatility targeting",
+    "colab": "Colab operations",
+    "regime": "Regime CSV contract",
+    "regime-csv": "Regime CSV contract"
+  },
   "workstreams": {
     "LambdaRankIC": {
       "status": "active",

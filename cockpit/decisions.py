@@ -13,7 +13,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 DECISION_REGISTRY_PATH = "docs/agents/cockpit/workstream-decisions.json"
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
+# Backward-compatible parsing: version 1 files (which have no ``workstream_aliases``
+# section) remain valid, version 2 adds the optional alias section, and any other
+# version is rejected. The rejection contract test targets version 3.
+SUPPORTED_FORMAT_VERSIONS = frozenset({1, 2})
 
 
 class SurfaceDisposition(StrEnum):
@@ -45,6 +49,7 @@ class SurfaceDecision:
 class DecisionRegistry:
     workstreams: dict[str, WorkstreamDecision] = field(default_factory=dict)
     surfaces: dict[str, SurfaceDecision] = field(default_factory=dict)
+    aliases: dict[str, str] = field(default_factory=dict)
 
     def is_reviewed(self, workstream: str, branch: str) -> bool:
         surface = self.surfaces.get(branch)
@@ -77,6 +82,39 @@ def read_registry_workstream_names(repo_root: Path) -> set[str]:
     return {name for name in workstreams if isinstance(name, str)}
 
 
+def read_registry_aliases(repo_root: Path) -> dict[str, str]:
+    """Peek at the registry's ``workstream_aliases`` map without validating.
+
+    This mirrors :func:`read_registry_workstream_names`: it lets a source read the
+    token-to-canonical-name alias map without triggering the full validated load.
+    It returns an empty mapping whenever the file is missing, the JSON is invalid,
+    the root or ``workstream_aliases`` section is absent or not an object, or an
+    individual entry has a non-string or empty token/canonical name. Whitespace is
+    stripped from both sides so callers see the same normalized keys the validated
+    parser would produce.
+    """
+    path = repo_root / DECISION_REGISTRY_PATH
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    aliases = raw.get("workstream_aliases")
+    if not isinstance(aliases, dict):
+        return {}
+    parsed: dict[str, str] = {}
+    for token, canonical in aliases.items():
+        if not isinstance(token, str) or not token.strip():
+            continue
+        if not isinstance(canonical, str) or not canonical.strip():
+            continue
+        parsed[token.strip()] = canonical.strip()
+    return parsed
+
+
 def load_decision_registry(
     repo_root: Path,
     *,
@@ -92,15 +130,44 @@ def load_decision_registry(
         raise ValueError(f"Invalid JSON in {DECISION_REGISTRY_PATH}: {exc.msg}") from exc
 
     root = _object(raw, "decision registry")
-    _keys(root, {"format_version", "workstreams", "surfaces"}, "decision registry")
+    _keys(
+        root,
+        {"format_version", "workstreams", "surfaces"},
+        "decision registry",
+        optional={"workstream_aliases"},
+    )
     version = root.get("format_version")
-    if version != FORMAT_VERSION:
+    if version not in SUPPORTED_FORMAT_VERSIONS:
         raise ValueError(f"Unsupported cockpit decision registry format_version: {version}")
 
     known = set(known_workstreams)
     workstreams = _parse_workstreams(root.get("workstreams"), known)
     surfaces = _parse_surfaces(root.get("surfaces"), known)
-    return DecisionRegistry(workstreams=workstreams, surfaces=surfaces)
+    aliases = _parse_aliases(root.get("workstream_aliases"))
+    return DecisionRegistry(workstreams=workstreams, surfaces=surfaces, aliases=aliases)
+
+
+def _parse_aliases(raw: object) -> dict[str, str]:
+    """Validate the optional ``workstream_aliases`` section.
+
+    The section is a mapping of a non-empty token (or full slug) to a non-empty
+    canonical workstream name. It is optional: an absent section (``None``) is
+    valid and yields an empty map, which keeps version 1 files backward
+    compatible. A present-but-malformed section (non-object, non-string or empty
+    value, or duplicate normalized tokens) raises ``ValueError``.
+    """
+    if raw is None:
+        return {}
+    entries = _object(raw, "workstream_aliases")
+    parsed: dict[str, str] = {}
+    for token, value in entries.items():
+        normalized = token.strip()
+        if not normalized:
+            raise ValueError("workstream_aliases token must be a non-empty string")
+        if normalized in parsed:
+            raise ValueError(f"workstream_aliases has a duplicate token: {normalized}")
+        parsed[normalized] = _text(value, f"workstream_aliases.{normalized}")
+    return parsed
 
 
 def _parse_workstreams(
@@ -179,9 +246,16 @@ def _object(value: object, label: str) -> dict[str, object]:
     return value
 
 
-def _keys(value: dict[str, object], allowed: set[str], label: str) -> None:
+def _keys(
+    value: dict[str, object],
+    allowed: set[str],
+    label: str,
+    *,
+    optional: Collection[str] = (),
+) -> None:
+    optional_set = set(optional)
     missing = sorted(allowed - set(value))
-    unknown = sorted(set(value) - allowed)
+    unknown = sorted(set(value) - allowed - optional_set)
     if missing:
         raise ValueError(f"{label} is missing required keys: {', '.join(missing)}")
     if unknown:

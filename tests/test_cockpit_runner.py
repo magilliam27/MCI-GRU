@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from datetime import date
+from datetime import date, timedelta
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
@@ -12,8 +12,10 @@ from cockpit.decisions import DECISION_REGISTRY_PATH
 from cockpit.evidence import collect_local_evidence
 from cockpit.models import WorkstreamStatus
 from cockpit.runner import (
+    GitActivitySource,
     StaticWorkstreamSource,
     WorkstreamSeed,
+    _branch_topic_tokens,
     _run_command,
     merge_workstream_sources,
     run_github_cockpit_refresh,
@@ -52,6 +54,8 @@ def test_collect_local_evidence_records_dirty_paths_and_required_docs(tmp_path: 
 
     def fake_run(args: list[str]) -> str:
         command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return ""
         if command == "git status --short":
             return " M docs/agents/domain.md\n?? scratch.txt\n"
         if command == "git status --short --branch":
@@ -87,6 +91,8 @@ def test_collect_local_evidence_builds_git_topology_snapshot(tmp_path: Path) -> 
 
     def fake_run(args: list[str]) -> str:
         command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return ""
         if command == "git status --short":
             return "?? scratch.txt\n"
         if command == "git status --short --branch":
@@ -172,6 +178,8 @@ def test_default_cockpit_runners_apply_safe_directory_to_git_commands(
     ) -> SimpleNamespace:
         seen_evidence_commands.append(args)
         command = " ".join(_strip_safe_directory_args(args))
+        if command.startswith("git for-each-ref"):
+            return SimpleNamespace(stdout="")
         if command == "git status --short --branch":
             return SimpleNamespace(stdout="## main\n")
         if command == "git branch --format=%(refname:short)":
@@ -225,6 +233,8 @@ def test_run_local_cockpit_refresh_writes_register_and_packet(tmp_path: Path) ->
 
     def fake_run(args: list[str]) -> str:
         command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return ""
         if command == "git status --short":
             return ""
         if command == "git status --short --branch":
@@ -270,6 +280,8 @@ def test_run_local_cockpit_refresh_surfaces_git_topology_without_placeholders(
 
     def fake_run(args: list[str]) -> str:
         command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return ""
         if command == "git status --short":
             return ""
         if command == "git status --short --branch":
@@ -540,6 +552,8 @@ def test_run_local_cockpit_refresh_labels_detached_current_checkout(
 
     def fake_run(args: list[str]) -> str:
         command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return ""
         if command == "git status --short":
             return ""
         if command == "git status --short --branch":
@@ -585,6 +599,8 @@ def test_run_local_cockpit_refresh_uses_repo_path_for_detached_current_checkout(
 
     def fake_run(args: list[str]) -> str:
         command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return ""
         if command == "git status --short":
             return ""
         if command == "git status --short --branch":
@@ -632,6 +648,8 @@ def test_run_local_cockpit_refresh_suppresses_seeds_for_main_divergence(
 
     def fake_run(args: list[str]) -> str:
         command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return ""
         if command == "git status --short":
             return ""
         if command == "git status --short --branch":
@@ -671,6 +689,8 @@ def test_run_local_cockpit_refresh_reports_dirty_paths(tmp_path: Path) -> None:
 
     def fake_run(args: list[str]) -> str:
         command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return ""
         if command == "git status --short":
             return " M docs/agents/domain.md\n?? scratch.txt\n"
         if command == "git status --short --branch":
@@ -709,6 +729,8 @@ def test_run_local_cockpit_refresh_explains_missing_required_docs(tmp_path: Path
 
     def fake_run(args: list[str]) -> str:
         command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return ""
         if command == "git status --short":
             return ""
         if command == "git status --short --branch":
@@ -761,6 +783,8 @@ def test_run_github_cockpit_refresh_switches_branch_and_syncs(tmp_path: Path) ->
     def fake_run(args: list[str]) -> str:
         commands.append(args)
         command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return ""
         if command == "git switch -C codex/cockpit-refresh-20260620":
             return ""
         if command == "git status --short":
@@ -823,6 +847,8 @@ def test_run_github_cockpit_refresh_rewrites_packet_with_actions_taken(tmp_path:
     def fake_run(args: list[str]) -> str:
         commands.append(args)
         command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return ""
         if command == "git switch -C codex/cockpit-refresh-20260620":
             return ""
         if command == "git status --short":
@@ -1153,6 +1179,175 @@ def test_registry_workstream_without_surface_renders_under_live_topology(
     assert "| Harness rollout | parked |" in register
 
 
+_GIT_ACTIVITY_RUN_DATE = date(2026, 7, 11)
+
+
+def _git_activity_evidence(
+    *,
+    recent_branches: list[tuple[str, date]] | None = None,
+    recent_handoffs: list[str] | None = None,
+) -> SimpleNamespace:
+    """Duck-typed evidence exposing only what GitActivitySource reads."""
+    return SimpleNamespace(
+        recent_branches=recent_branches or [],
+        recent_handoffs=recent_handoffs or [],
+        repo_root=None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("branch", "expected"),
+    [
+        ("codex/top10-lambdarank-screen-20260625", ["top10", "lambdarank", "screen"]),
+        ("codex/portfolio-ic-hybrid-testing", ["portfolio", "ic", "hybrid", "testing"]),
+        (
+            "cursor/intermediate-speed-dynamic-momentum-8937",
+            ["intermediate", "speed", "dynamic", "momentum"],
+        ),
+        ("codex/regime-csv-no-backfill-2026-07-09", ["regime", "csv", "no", "backfill"]),
+        ("codex/cockpit-refresh-20260710", ["cockpit", "refresh"]),
+    ],
+)
+def test_branch_topic_tokens_strips_prefix_date_and_hash(branch: str, expected: list[str]) -> None:
+    assert _branch_topic_tokens(branch) == expected
+
+
+def test_git_activity_source_emits_active_titlecased_seed() -> None:
+    evidence = _git_activity_evidence(
+        recent_branches=[("codex/paper-trade-frozen-graph-20260709", date(2026, 7, 9))]
+    )
+
+    seeds = GitActivitySource(aliases={}).provide(evidence, _GIT_ACTIVITY_RUN_DATE)
+
+    assert len(seeds) == 1
+    seed = seeds[0]
+    assert seed.name == "Paper Trade Frozen Graph"
+    assert seed.status == WorkstreamStatus.ACTIVE
+    assert seed.tracker == ""
+    assert seed.branch_terms == ("frozen", "graph", "paper", "trade")
+
+
+def test_git_activity_source_skips_stopword_only_branch() -> None:
+    evidence = _git_activity_evidence(
+        recent_branches=[("codex/cockpit-refresh-20260710", date(2026, 7, 10))]
+    )
+
+    assert GitActivitySource(aliases={}).provide(evidence, _GIT_ACTIVITY_RUN_DATE) == []
+
+
+def test_git_activity_source_drops_stopword_token_but_keeps_topic() -> None:
+    evidence = _git_activity_evidence(
+        recent_branches=[("codex/salvage-pr50-research-docs-20260707", date(2026, 7, 10))]
+    )
+
+    seeds = GitActivitySource(aliases={}).provide(evidence, _GIT_ACTIVITY_RUN_DATE)
+
+    assert [seed.name for seed in seeds] == ["Pr50 Research Docs"]
+    assert "salvage" not in seeds[0].branch_terms
+
+
+def test_git_activity_source_resolves_alias_to_canonical_name() -> None:
+    evidence = _git_activity_evidence(
+        recent_branches=[("codex/top10-lambdarank-screen-20260625", date(2026, 7, 10))]
+    )
+
+    seeds = GitActivitySource(aliases={"lambdarank": "LambdaRankIC"}).provide(
+        evidence, _GIT_ACTIVITY_RUN_DATE
+    )
+
+    assert [seed.name for seed in seeds] == ["LambdaRankIC"]
+    assert seeds[0].branch_terms == ("lambdarank", "screen", "top10")
+
+
+def test_git_activity_source_applies_committer_date_lookback() -> None:
+    evidence = _git_activity_evidence(
+        recent_branches=[
+            ("codex/recent-topic", _GIT_ACTIVITY_RUN_DATE - timedelta(days=5)),
+            ("codex/stale-topic", _GIT_ACTIVITY_RUN_DATE - timedelta(days=20)),
+        ]
+    )
+
+    seeds = GitActivitySource(aliases={}).provide(evidence, _GIT_ACTIVITY_RUN_DATE)
+
+    assert [seed.name for seed in seeds] == ["Recent Topic"]
+
+
+def test_git_activity_source_excludes_integration_branches() -> None:
+    evidence = _git_activity_evidence(
+        recent_branches=[
+            ("main", _GIT_ACTIVITY_RUN_DATE),
+            ("master", _GIT_ACTIVITY_RUN_DATE),
+            ("codex/real-topic", _GIT_ACTIVITY_RUN_DATE),
+        ]
+    )
+
+    seeds = GitActivitySource(aliases={}).provide(evidence, _GIT_ACTIVITY_RUN_DATE)
+
+    assert [seed.name for seed in seeds] == ["Real Topic"]
+
+
+def test_git_activity_source_collapses_and_is_deterministic() -> None:
+    evidence = _git_activity_evidence(
+        recent_branches=[
+            ("codex/lambdarank-recovery-20260709", date(2026, 7, 9)),
+            ("codex/top10-screen-20260710", date(2026, 7, 10)),
+            ("codex/zephyr-experiment", date(2026, 7, 11)),
+        ]
+    )
+    source = GitActivitySource(aliases={"lambdarank": "LambdaRankIC", "top10": "LambdaRankIC"})
+
+    first = source.provide(evidence, _GIT_ACTIVITY_RUN_DATE)
+    second = source.provide(evidence, _GIT_ACTIVITY_RUN_DATE)
+
+    assert first == second
+    assert [seed.name for seed in first] == ["LambdaRankIC", "Zephyr Experiment"]
+    collapsed = first[0]
+    assert collapsed.branch_terms == ("lambdarank", "recovery", "screen", "top10")
+
+
+def test_git_activity_source_derives_seed_from_recent_handoff() -> None:
+    evidence = _git_activity_evidence(
+        recent_handoffs=["docs/handoffs/2026-07-09-portfolio-rebuild-audit.md"]
+    )
+
+    seeds = GitActivitySource(aliases={}).provide(evidence, _GIT_ACTIVITY_RUN_DATE)
+
+    assert [seed.name for seed in seeds] == ["Portfolio Rebuild Audit"]
+
+
+def test_run_local_cockpit_refresh_adds_git_derived_workstream(tmp_path: Path) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+
+    def fake_run(args: list[str]) -> str:
+        command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return "2026-07-10 codex/paper-trade-frozen-graph-20260709\n"
+        if command == "git status --short --branch":
+            return "## main...origin/main\n"
+        if command == "git branch --format=%(refname:short)":
+            return "main\n"
+        if command == "git branch --all --no-merged origin/main":
+            return ""
+        if command == "git rev-list --left-right --count origin/main...HEAD":
+            return "0\t0\n"
+        if command == "git worktree list --porcelain":
+            return "worktree C:/repo\nHEAD abc1234\nbranch refs/heads/main\n"
+        if command == "git log -5 --oneline":
+            return "abc1234 Current main\n"
+        if args[:2] == ["git", "-c"] and args[3] == "-C":
+            return "## main...origin/main\n"
+        raise AssertionError(command)
+
+    result = run_local_cockpit_refresh(
+        repo_root=repo,
+        run_date=date(2026, 7, 11),
+        run_command=fake_run,
+    )
+
+    register = result.register_path.read_text(encoding="utf-8")
+    assert "Paper Trade Frozen Graph" in register
+
+
 def _repo_with_required_docs(repo: Path) -> Path:
     (repo / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
     (repo / "docs" / "agents").mkdir(parents=True)
@@ -1195,6 +1390,8 @@ def _fake_topology_runner(branches: list[str]):
 
     def fake_run(args: list[str]) -> str:
         command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return ""
         if command == "git status --short --branch":
             return "## main...origin/main\n"
         if command == "git branch --format=%(refname:short)":

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 from cockpit.decisions import DECISION_REGISTRY_PATH
@@ -22,6 +23,7 @@ class LocalEvidence:
     worktrees: str
     recent_commits: str
     git_topology: GitTopologySnapshot
+    recent_branches: list[tuple[str, date]] = field(default_factory=list)
 
 
 REQUIRED_DOCS = [
@@ -54,6 +56,17 @@ def collect_local_evidence(repo_root: Path, run_command: RunCommand | None = Non
         worktrees=worktrees,
         run_command=runner,
     )
+    recent_branches = _parse_recent_branches(
+        runner(
+            [
+                "git",
+                "for-each-ref",
+                "--sort=-committerdate",
+                "--format=%(committerdate:short) %(refname:short)",
+                "refs/heads",
+            ]
+        )
+    )
     return LocalEvidence(
         repo_root=repo_root,
         required_docs=required_docs,
@@ -63,7 +76,34 @@ def collect_local_evidence(repo_root: Path, run_command: RunCommand | None = Non
         worktrees=worktrees,
         recent_commits=runner(["git", "log", "-5", "--oneline"]).strip(),
         git_topology=topology,
+        recent_branches=recent_branches,
     )
+
+
+def _parse_recent_branches(output: str) -> list[tuple[str, date]]:
+    """Parse ``git for-each-ref`` committer-date/refname lines defensively.
+
+    Each line is ``YYYY-MM-DD <branch>``. Lines that are blank, missing the
+    branch name, or carrying an unparseable date are skipped so a malformed ref
+    never aborts the daily refresh.
+    """
+    branches: list[tuple[str, date]] = []
+    for line in output.splitlines():
+        cleaned = line.strip()
+        if not cleaned:
+            continue
+        parts = cleaned.split(maxsplit=1)
+        if len(parts) != 2:
+            continue
+        raw_date, name = parts[0], parts[1].strip()
+        if not name:
+            continue
+        try:
+            committer_date = date.fromisoformat(raw_date)
+        except ValueError:
+            continue
+        branches.append((name, committer_date))
+    return branches
 
 
 def _recent_handoffs(repo_root: Path) -> list[str]:

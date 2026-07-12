@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import re
 import subprocess
 from dataclasses import dataclass, replace
+from datetime import date
 from typing import TYPE_CHECKING, Protocol
 
 from cockpit.decisions import (
@@ -11,6 +13,7 @@ from cockpit.decisions import (
     SurfaceDisposition,
     WorkstreamDecision,
     load_decision_registry,
+    read_registry_aliases,
     read_registry_workstream_names,
 )
 from cockpit.evidence import collect_local_evidence
@@ -31,7 +34,6 @@ from cockpit.render import render_cockpit_packet, render_workstream_register
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from datetime import date
     from pathlib import Path
 
     from cockpit.evidence import LocalEvidence, RunCommand
@@ -75,6 +77,41 @@ class WorkstreamSource(Protocol):
 
 
 RESERVED_SURFACE_PREFIX = "Git surface: "
+
+# How many days of recent git activity (branch committer date / handoff filename
+# date) GitActivitySource considers when deriving workstream seeds.
+GIT_ACTIVITY_LOOKBACK_DAYS = 14
+
+# Process-meta phrases that must never become fake workstreams. They are split
+# into individual tokens; any token appearing here is dropped before naming, and
+# a topic whose surviving tokens are empty contributes no seed. This stays a code
+# constant (not part of the JSON contract) because it is mechanical extraction
+# noise, not user-facing curation.
+GIT_ACTIVITY_STOPWORD_PHRASES = (
+    "cockpit-refresh",
+    "salvage",
+    "pr-repair",
+    "worktree-snapshot",
+    "registry-closeout",
+    "decision-closeout",
+    "ci-repair",
+)
+GIT_ACTIVITY_STOPWORDS = frozenset(
+    token for phrase in GIT_ACTIVITY_STOPWORD_PHRASES for token in phrase.split("-")
+)
+
+# Integration branches are not topic branches: deriving a workstream from them
+# would create a permanent bogus row (e.g. "Main") that can never be retired.
+GIT_ACTIVITY_EXCLUDED_BRANCHES = frozenset({"main", "master", "head", "(no branch)"})
+
+# Trailing ``-YYYYMMDD`` or ``-YYYY-MM-DD`` date segment on a branch name.
+_BRANCH_DATE_SUFFIX = re.compile(r"-(?:\d{8}|\d{4}-\d{2}-\d{2})$")
+# Trailing short-hex-hash segment (4+ hex chars containing at least one digit,
+# e.g. ``-040a`` or ``-8937``). Requiring a digit avoids stripping real words that
+# happen to be all-hex letters (``beef``, ``cafe``).
+_BRANCH_HASH_SUFFIX = re.compile(r"-(?=[0-9a-f]*[0-9])[0-9a-f]{4,}$")
+# ``YYYY-MM-DD-<slug>.md`` handoff filename shape.
+_HANDOFF_FILENAME = re.compile(r"^(\d{4}-\d{2}-\d{2})-(.+)\.md$")
 
 INITIAL_WORKSTREAMS = [
     WorkstreamSeed(
@@ -180,6 +217,131 @@ class RegistryWorkstreamSource:
         ]
 
 
+@dataclass(frozen=True)
+class GitActivitySource:
+    """Derive workstream seeds from recent branch names and handoff filenames.
+
+    Branch committer dates come from ``evidence.recent_branches`` and handoff dates
+    from the ``YYYY-MM-DD`` filename prefix in ``evidence.recent_handoffs``. Only
+    activity within ``lookback_days`` of ``run_date`` is considered. Topic tokens
+    are extracted from each name, stopword tokens are dropped, and the surviving
+    tokens are resolved through the registry alias map (token or full-slug -> the
+    canonical workstream name). Unaliased topics become a title-cased seed so
+    genuinely new work auto-appears. Every emitted seed is ``ACTIVE`` (never
+    ``NEEDS_USER_DECISION``) and carries its surviving tokens as ``branch_terms``
+    so live-topology suppression does not hide the row.
+
+    ``aliases`` lets callers inject the alias map for testing; when ``None`` the
+    source reads it defensively from the registry via ``read_registry_aliases``.
+    """
+
+    aliases: dict[str, str] | None = None
+    lookback_days: int = GIT_ACTIVITY_LOOKBACK_DAYS
+
+    def provide(self, evidence: LocalEvidence, run_date: date) -> list[WorkstreamSeed]:
+        aliases = self.aliases
+        if aliases is None:
+            aliases = read_registry_aliases(evidence.repo_root)
+        token_lists: list[list[str]] = []
+        for name, committer_date in evidence.recent_branches:
+            if name.strip().lower() in GIT_ACTIVITY_EXCLUDED_BRANCHES:
+                continue
+            if self._within_lookback(committer_date, run_date):
+                token_lists.append(_branch_topic_tokens(name))
+        for handoff in evidence.recent_handoffs:
+            handoff_date, tokens = _handoff_topic_tokens(handoff)
+            if handoff_date is not None and self._within_lookback(handoff_date, run_date):
+                token_lists.append(tokens)
+        return _seeds_from_token_lists(token_lists, aliases)
+
+    def _within_lookback(self, activity_date: date, run_date: date) -> bool:
+        delta = (run_date - activity_date).days
+        return 0 <= delta <= self.lookback_days
+
+
+def _branch_topic_tokens(branch: str) -> list[str]:
+    """Extract topic tokens from a branch name.
+
+    Strips a leading ``codex/`` or ``cursor/`` prefix and any trailing date or
+    short-hash segment, then splits the remainder on hyphens into lowercase
+    tokens.
+    """
+    slug = branch.strip()
+    for prefix in ("codex/", "cursor/"):
+        if slug.startswith(prefix):
+            slug = slug[len(prefix) :]
+            break
+    slug = slug.lower()
+    slug = _BRANCH_DATE_SUFFIX.sub("", slug)
+    slug = _BRANCH_HASH_SUFFIX.sub("", slug)
+    return [token for token in slug.split("-") if token]
+
+
+def _handoff_topic_tokens(handoff: str) -> tuple[date | None, list[str]]:
+    """Extract the date and topic tokens from a handoff path or filename.
+
+    Returns ``(None, [])`` when the filename does not match the
+    ``YYYY-MM-DD-<slug>.md`` shape or the date prefix is unparseable.
+    """
+    filename = handoff.rsplit("/", 1)[-1]
+    match = _HANDOFF_FILENAME.match(filename)
+    if match is None:
+        return None, []
+    try:
+        handoff_date = date.fromisoformat(match.group(1))
+    except ValueError:
+        return None, []
+    tokens = [token for token in match.group(2).lower().split("-") if token]
+    return handoff_date, tokens
+
+
+def _seeds_from_token_lists(
+    token_lists: list[list[str]],
+    aliases: dict[str, str],
+) -> list[WorkstreamSeed]:
+    """Turn extracted token lists into deterministic, collapsed ACTIVE seeds.
+
+    Stopword tokens are removed; a topic whose surviving tokens are empty is
+    skipped. Surviving tokens resolve through ``aliases`` to a canonical name, or
+    become a title-cased join otherwise. Topics that map to the same name collapse
+    into one seed whose ``branch_terms`` is the sorted union of their tokens.
+    """
+    terms_by_name: dict[str, set[str]] = {}
+    for tokens in token_lists:
+        survivors = [token for token in tokens if token not in GIT_ACTIVITY_STOPWORDS]
+        if not survivors:
+            continue
+        name = _resolve_seed_name(survivors, aliases)
+        terms_by_name.setdefault(name, set()).update(survivors)
+    seeds: list[WorkstreamSeed] = []
+    for name in sorted(terms_by_name):
+        seeds.append(
+            WorkstreamSeed(
+                name=name,
+                status=WorkstreamStatus.ACTIVE,
+                next_action="Confirm this git-derived topic is a real workstream or retire it.",
+                branch_terms=tuple(sorted(terms_by_name[name])),
+            )
+        )
+    return seeds
+
+
+def _resolve_seed_name(survivors: list[str], aliases: dict[str, str]) -> str:
+    """Resolve surviving tokens to a canonical alias name or a title-cased join.
+
+    A full-slug alias match (the hyphen-joined surviving tokens) is preferred,
+    then the first surviving token that is an alias key, then a title-cased,
+    space-joined fallback that lets new topics auto-appear.
+    """
+    joined = "-".join(survivors)
+    if joined in aliases:
+        return aliases[joined]
+    for token in survivors:
+        if token in aliases:
+            return aliases[token]
+    return " ".join(token.title() for token in survivors)
+
+
 def merge_workstream_sources(
     sources: Sequence[WorkstreamSource],
     evidence: LocalEvidence,
@@ -230,6 +392,7 @@ def run_local_cockpit_refresh(
         sources = (
             StaticWorkstreamSource(),
             RegistryWorkstreamSource(names=tuple(sorted(registry_names))),
+            GitActivitySource(),
         )
     seeds = [*merge_workstream_sources(sources, evidence, run_date), GIT_HYGIENE_SEED]
     registry = load_decision_registry(
