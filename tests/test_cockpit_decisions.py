@@ -84,6 +84,22 @@ def test_load_decision_registry_parses_versioned_contract(tmp_path) -> None:
                 "format_version": 1,
                 "workstreams": {},
                 "surfaces": {
+                    "codex/unknown-stream": {
+                        "workstreams": ["Unknown stream"],
+                        "disposition": "archive",
+                        "reason": "A surface cannot declare a new workstream.",
+                        "next_action": "Declare the workstream first.",
+                        "last_reviewed": "2026-07-09",
+                    }
+                },
+            },
+            "Unknown workstream in surfaces.codex/unknown-stream.workstreams: Unknown stream",
+        ),
+        (
+            {
+                "format_version": 1,
+                "workstreams": {},
+                "surfaces": {
                     "origin/codex/not-normalized": {
                         "workstreams": ["LambdaRankIC"],
                         "disposition": "archive",

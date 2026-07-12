@@ -470,6 +470,41 @@ def test_decision_registry_reopens_only_for_new_unreviewed_surface(tmp_path: Pat
     )
 
 
+def test_registry_declared_workstream_is_known_during_refresh(tmp_path: Path) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    _write_decision_registry(
+        repo,
+        workstreams={
+            "Registry-only stream": {
+                "status": "ready-for-agent",
+                "canonical_surface": "codex/registry-only-stream",
+                "reason": "The registry declares this workstream without a hardcoded seed.",
+                "next_action": "Continue from the registry-declared surface.",
+                "last_reviewed": "2026-07-11",
+            }
+        },
+        surfaces={
+            "codex/registry-only-stream": {
+                "workstreams": ["Registry-only stream"],
+                "disposition": "canonical",
+                "reason": "The registry records the canonical continuation.",
+                "next_action": "Continue from this branch.",
+                "last_reviewed": "2026-07-11",
+            }
+        },
+    )
+
+    result = run_local_cockpit_refresh(
+        repo_root=repo,
+        run_date=date(2026, 7, 11),
+        run_command=_fake_topology_runner(["codex/registry-only-stream"]),
+    )
+
+    register = result.register_path.read_text(encoding="utf-8")
+    assert "| Registry-only stream | ready-for-agent |  | codex/registry-only-stream |" in register
+    assert "Continue from the registry-declared surface." in register
+
+
 def test_run_local_cockpit_refresh_surfaces_unmatched_real_git_topology(
     tmp_path: Path,
 ) -> None:

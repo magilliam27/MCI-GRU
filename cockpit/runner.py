@@ -11,6 +11,7 @@ from cockpit.decisions import (
     SurfaceDisposition,
     WorkstreamDecision,
     load_decision_registry,
+    read_registry_workstream_names,
 )
 from cockpit.evidence import collect_local_evidence
 from cockpit.git import with_safe_directory
@@ -52,6 +53,21 @@ class WorkstreamSeed:
     next_action: str
     tracker: str = ""
     branch_terms: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RegistryWorkstreamSource:
+    repo_root: Path
+
+    def provide(self) -> list[WorkstreamSeed]:
+        return [
+            WorkstreamSeed(
+                name=name,
+                status=WorkstreamStatus.ACTIVE,
+                next_action="Continue from the registry-declared workstream.",
+            )
+            for name in sorted(read_registry_workstream_names(self.repo_root))
+        ]
 
 
 @dataclass(frozen=True)
@@ -129,11 +145,15 @@ def run_local_cockpit_refresh(
     git_snapshot_timing: str = "at cockpit evidence collection",
 ) -> CockpitRunResult:
     evidence = collect_local_evidence(repo_root, run_command=run_command)
+    registry_seeds = RegistryWorkstreamSource(repo_root).provide()
+    known_workstreams = {seed.name for seed in INITIAL_WORKSTREAMS} | set(
+        read_registry_workstream_names(repo_root)
+    )
     registry = load_decision_registry(
         repo_root,
-        known_workstreams={seed.name for seed in INITIAL_WORKSTREAMS},
+        known_workstreams=known_workstreams,
     )
-    workstreams = _resolve_workstreams(evidence, run_date, registry)
+    workstreams = _resolve_workstreams(evidence, run_date, registry, registry_seeds)
     color = _run_color(evidence, workstreams)
     report = CockpitReport(
         run_date=run_date,
@@ -208,6 +228,7 @@ def _resolve_workstreams(
     evidence: LocalEvidence,
     run_date: date,
     registry: DecisionRegistry,
+    registry_seeds: list[WorkstreamSeed],
 ) -> list[Workstream]:
     topology = evidence.git_topology
     surfaces = _topology_surfaces(topology)
@@ -215,7 +236,12 @@ def _resolve_workstreams(
     rows: list[Workstream] = []
     claimed: set[str] = set()
     hygiene_seed: WorkstreamSeed | None = None
-    for seed in INITIAL_WORKSTREAMS:
+    seed_names = {seed.name for seed in INITIAL_WORKSTREAMS}
+    seeds = [
+        *INITIAL_WORKSTREAMS,
+        *(seed for seed in registry_seeds if seed.name not in seed_names),
+    ]
+    for seed in seeds:
         if seed.name == "Git and worktree hygiene":
             hygiene_seed = seed
             continue

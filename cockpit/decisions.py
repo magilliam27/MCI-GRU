@@ -51,6 +51,23 @@ class DecisionRegistry:
         return surface is not None and workstream in surface.workstreams
 
 
+def read_registry_workstream_names(repo_root: Path) -> set[str]:
+    path = repo_root / DECISION_REGISTRY_PATH
+    if not path.exists():
+        return set()
+
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return set()
+    if not isinstance(raw, dict):
+        return set()
+    workstreams = raw.get("workstreams")
+    if not isinstance(workstreams, dict):
+        return set()
+    return set(workstreams)
+
+
 def load_decision_registry(
     repo_root: Path,
     *,
