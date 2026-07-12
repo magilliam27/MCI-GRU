@@ -11,6 +11,7 @@ from cockpit.decisions import (
     SurfaceDisposition,
     WorkstreamDecision,
     load_decision_registry,
+    read_registry_workstream_names,
 )
 from cockpit.evidence import collect_local_evidence
 from cockpit.git import with_safe_directory
@@ -120,6 +121,45 @@ INITIAL_WORKSTREAMS = [
 ]
 
 
+@dataclass(frozen=True)
+class RegistryWorkstreamSource:
+    """Propose one seed per workstream declared in the decision registry.
+
+    The seed fields are neutral placeholders: the registry's recorded status and
+    next action override them during ``_resolve_workstream``, so these defaults
+    only matter for a registry-declared workstream that never resolves against a
+    live surface or recorded decision.
+    """
+
+    def provide(self, evidence: LocalEvidence, run_date: date) -> list[WorkstreamSeed]:
+        names = read_registry_workstream_names(evidence.repo_root)
+        return [
+            WorkstreamSeed(
+                name=name,
+                status=WorkstreamStatus.ACTIVE,
+                next_action="Continue per the recorded registry decision.",
+                branch_terms=(),
+            )
+            for name in sorted(names)
+        ]
+
+
+def _merge_seeds(registry_seeds: list[WorkstreamSeed]) -> list[WorkstreamSeed]:
+    """Merge registry-proposed seeds with the hardcoded seeds, deduped by name.
+
+    Hardcoded seeds win on name collisions and keep their existing order and
+    position, so behavior is unchanged for existing names. Registry-only names
+    become newly known and are appended sorted by name, keeping the register row
+    order deterministic for the parity gate.
+    """
+    hardcoded_names = {seed.name for seed in INITIAL_WORKSTREAMS}
+    registry_only = sorted(
+        (seed for seed in registry_seeds if seed.name not in hardcoded_names),
+        key=lambda seed: seed.name,
+    )
+    return [*INITIAL_WORKSTREAMS, *registry_only]
+
+
 def run_local_cockpit_refresh(
     repo_root: Path,
     run_date: date,
@@ -129,11 +169,13 @@ def run_local_cockpit_refresh(
     git_snapshot_timing: str = "at cockpit evidence collection",
 ) -> CockpitRunResult:
     evidence = collect_local_evidence(repo_root, run_command=run_command)
+    seeds = _merge_seeds(RegistryWorkstreamSource().provide(evidence, run_date))
     registry = load_decision_registry(
         repo_root,
-        known_workstreams={seed.name for seed in INITIAL_WORKSTREAMS},
+        known_workstreams={seed.name for seed in seeds}
+        | read_registry_workstream_names(repo_root),
     )
-    workstreams = _resolve_workstreams(evidence, run_date, registry)
+    workstreams = _resolve_workstreams(evidence, run_date, registry, seeds)
     color = _run_color(evidence, workstreams)
     report = CockpitReport(
         run_date=run_date,
@@ -208,6 +250,7 @@ def _resolve_workstreams(
     evidence: LocalEvidence,
     run_date: date,
     registry: DecisionRegistry,
+    seeds: list[WorkstreamSeed],
 ) -> list[Workstream]:
     topology = evidence.git_topology
     surfaces = _topology_surfaces(topology)
@@ -215,7 +258,7 @@ def _resolve_workstreams(
     rows: list[Workstream] = []
     claimed: set[str] = set()
     hygiene_seed: WorkstreamSeed | None = None
-    for seed in INITIAL_WORKSTREAMS:
+    for seed in seeds:
         if seed.name == "Git and worktree hygiene":
             hygiene_seed = seed
             continue

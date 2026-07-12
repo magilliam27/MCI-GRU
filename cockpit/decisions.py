@@ -51,6 +51,32 @@ class DecisionRegistry:
         return surface is not None and workstream in surface.workstreams
 
 
+def read_registry_workstream_names(repo_root: Path) -> set[str]:
+    """Peek at the registry's ``workstreams`` keys without validating the file.
+
+    This breaks the chicken-and-egg between building the known-workstream set and
+    loading the registry: the caller needs the registry's declared names to seed
+    the known set, but ``load_decision_registry`` needs a known set to validate
+    against. This helper performs no validation; it only reads the keys so that
+    ``load_decision_registry`` can still fully validate afterward. It returns an
+    empty set whenever the file is missing, the JSON is invalid, or the root or
+    ``workstreams`` section is absent or not an object.
+    """
+    path = repo_root / DECISION_REGISTRY_PATH
+    if not path.exists():
+        return set()
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    if not isinstance(raw, dict):
+        return set()
+    workstreams = raw.get("workstreams")
+    if not isinstance(workstreams, dict):
+        return set()
+    return {name for name in workstreams if isinstance(name, str)}
+
+
 def load_decision_registry(
     repo_root: Path,
     *,
