@@ -86,6 +86,43 @@ def test_collect_local_evidence_records_dirty_paths_and_required_docs(tmp_path: 
     assert "abc123 Add cockpit design" in evidence.recent_commits
 
 
+def test_collect_local_evidence_skips_malformed_recent_branch_rows(tmp_path: Path) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+
+    def fake_run(args: list[str]) -> str:
+        command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return (
+                "2026-07-10 codex/recent-topic\n"
+                "bad-date codex/bad-date\n"
+                "2026-07-08\n"
+                "2026-07-09 codex/other-topic\n"
+                "\n"
+            )
+        if command == "git status --short --branch":
+            return "## main...origin/main\n"
+        if command == "git branch --format=%(refname:short)":
+            return "main\n"
+        if command == "git branch --all --no-merged origin/main":
+            return ""
+        if command == "git rev-list --left-right --count origin/main...HEAD":
+            return "0\t0\n"
+        if command == "git worktree list --porcelain":
+            return "worktree C:/repo\nHEAD abc1234\nbranch refs/heads/main\n"
+        if command == "git log -5 --oneline":
+            return "abc1234 Current main\n"
+        if args[:2] == ["git", "-c"] and args[3] == "-C":
+            return "## main...origin/main\n"
+        raise AssertionError(command)
+
+    evidence = collect_local_evidence(repo, run_command=fake_run)
+
+    assert evidence.recent_branches == [
+        ("codex/recent-topic", date(2026, 7, 10)),
+        ("codex/other-topic", date(2026, 7, 9)),
+    ]
+
+
 def test_collect_local_evidence_builds_git_topology_snapshot(tmp_path: Path) -> None:
     repo = _repo_with_required_docs(tmp_path)
 
