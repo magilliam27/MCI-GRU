@@ -3,14 +3,15 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import date
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
-from cockpit._compat import StrEnum
-from cockpit.models import WorkstreamStatus
+from cockpit.models import Confidence, SurfaceDisposition, WorkstreamStatus
 
 if TYPE_CHECKING:
     from collections.abc import Collection
     from pathlib import Path
+
+    from cockpit.models import AutoDecisionSet
 
 DECISION_REGISTRY_PATH = "docs/agents/cockpit/workstream-decisions.json"
 FORMAT_VERSION = 2
@@ -20,13 +21,6 @@ FORMAT_VERSION = 2
 SUPPORTED_FORMAT_VERSIONS = frozenset({1, 2})
 
 
-class SurfaceDisposition(StrEnum):
-    CANONICAL = "canonical"
-    PARKED = "parked"
-    ARCHIVE = "archive"
-    STALE = "stale"
-
-
 @dataclass(frozen=True)
 class WorkstreamDecision:
     status: WorkstreamStatus
@@ -34,6 +28,7 @@ class WorkstreamDecision:
     reason: str
     next_action: str
     last_reviewed: date
+    provenance: Literal["override", "auto"] = "override"
 
 
 @dataclass(frozen=True)
@@ -43,6 +38,9 @@ class SurfaceDecision:
     reason: str
     next_action: str
     last_reviewed: date
+    provenance: Literal["override", "auto"] = "override"
+    confidence: Confidence | None = None
+    association_basis: str = "explicit-surface"
 
 
 @dataclass(frozen=True)
@@ -54,6 +52,61 @@ class DecisionRegistry:
     def is_reviewed(self, workstream: str, branch: str) -> bool:
         surface = self.surfaces.get(branch)
         return surface is not None and workstream in surface.workstreams
+
+
+def overlay_auto_decisions(
+    registry: DecisionRegistry,
+    auto: AutoDecisionSet,
+) -> DecisionRegistry:
+    auto_surfaces = {
+        branch: SurfaceDecision(
+            workstreams=decision.workstreams,
+            disposition=decision.disposition,
+            reason=f"Auto rule {decision.rule}: {decision.evidence}",
+            next_action=_auto_surface_next_action(decision.disposition),
+            last_reviewed=decision.last_reviewed,
+            provenance="auto",
+            confidence=decision.confidence,
+            association_basis=decision.association_basis,
+        )
+        for branch, decision in auto.surfaces.items()
+    }
+    auto_workstreams = {
+        name: WorkstreamDecision(
+            status=decision.status,
+            canonical_surface=decision.canonical_surface,
+            reason=f"Auto rule {decision.rule}: {decision.evidence}",
+            next_action=_auto_workstream_next_action(decision.status),
+            last_reviewed=decision.last_reviewed,
+            provenance="auto",
+        )
+        for name, decision in auto.workstreams.items()
+    }
+    return DecisionRegistry(
+        workstreams={**auto_workstreams, **registry.workstreams},
+        surfaces={**auto_surfaces, **registry.surfaces},
+        aliases=dict(registry.aliases),
+    )
+
+
+def _auto_surface_next_action(disposition: SurfaceDisposition) -> str:
+    if disposition == SurfaceDisposition.CANONICAL:
+        return "Continue from this generated canonical surface."
+    if disposition == SurfaceDisposition.ARCHIVE:
+        return "Retain as archive-labelled evidence; remove only with separate approval."
+    if disposition == SurfaceDisposition.STALE:
+        return "Review before resuming; remove only with separate approval."
+    return "Keep parked until an explicit override resumes it."
+
+
+def _auto_workstream_next_action(status: WorkstreamStatus) -> str:
+    if status == WorkstreamStatus.ACTIVE:
+        return "Continue from the generated canonical surface."
+    if status == WorkstreamStatus.DONE:
+        return "Keep completion evidence; reopen only when new live evidence appears."
+    if status == WorkstreamStatus.STALE:
+        return "Review stale evidence before resuming."
+    return "Follow the generated workstream status."
 
 
 def read_registry_workstream_names(repo_root: Path) -> set[str]:

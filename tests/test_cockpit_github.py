@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import subprocess
 from datetime import date
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -11,12 +13,335 @@ from cockpit.github import (
     _run_command,
     close_issue_with_evidence,
     cockpit_branch_name,
+    collect_github_evidence,
     create_issue,
     sync_github,
 )
+from cockpit.models import GitHubEvidence, IssueEvidence, PullRequestEvidence
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+PR_COMMAND = [
+    "gh",
+    "pr",
+    "list",
+    "--state",
+    "all",
+    "--limit",
+    "1000",
+    "--json",
+    "number,headRefName,url,isDraft,state,mergedAt,updatedAt",
+]
+ISSUE_COMMAND = [
+    "gh",
+    "issue",
+    "list",
+    "--state",
+    "all",
+    "--limit",
+    "1000",
+    "--json",
+    "number,title,url,state,labels,updatedAt",
+]
+
+
+def test_collect_github_evidence_uses_exact_read_only_commands_and_normalizes() -> None:
+    commands: list[list[str]] = []
+
+    def fake_run(args: list[str]) -> str:
+        commands.append(args)
+        if args == PR_COMMAND:
+            return json.dumps(
+                [
+                    {
+                        "number": 12,
+                        "headRefName": "origin/CODEX/Feature ",
+                        "url": " https://github.example/pull/12 ",
+                        "isDraft": False,
+                        "state": "OPEN",
+                        "mergedAt": None,
+                        "updatedAt": "2026-07-12T03:04:05Z",
+                    }
+                ]
+            )
+        if args == ISSUE_COMMAND:
+            return json.dumps(
+                [
+                    {
+                        "number": 34,
+                        "title": "  Feature Work  ",
+                        "url": " https://github.example/issues/34 ",
+                        "state": "OPEN",
+                        "labels": [{"name": "Needs-Info"}, {"name": " blocked "}],
+                        "updatedAt": "2026-07-11T01:02:03Z",
+                    }
+                ]
+            )
+        raise AssertionError(args)
+
+    evidence = collect_github_evidence(run_command=fake_run)
+
+    assert commands == [PR_COMMAND, ISSUE_COMMAND]
+    assert evidence == GitHubEvidence(
+        pull_requests=(
+            PullRequestEvidence(
+                number=12,
+                head_ref="CODEX/Feature",
+                url="https://github.example/pull/12",
+                state="open",
+                is_draft=False,
+                merged_at=None,
+                updated_at=date(2026, 7, 12),
+            ),
+        ),
+        issues=(
+            IssueEvidence(
+                number=34,
+                title="Feature Work",
+                url="https://github.example/issues/34",
+                state="open",
+                labels=("blocked", "needs-info"),
+                updated_at=date(2026, 7, 11),
+            ),
+        ),
+    )
+
+
+def test_collect_github_evidence_requests_and_keeps_more_than_default_page() -> None:
+    commands: list[list[str]] = []
+    pull_requests = [
+        {
+            "number": number,
+            "headRefName": f"codex/feature-{number}",
+            "url": f"https://github.example/pull/{number}",
+            "isDraft": False,
+            "state": "OPEN",
+            "mergedAt": None,
+            "updatedAt": "2026-07-12T03:04:05Z",
+        }
+        for number in range(1, 36)
+    ]
+    issues = [
+        {
+            "number": number,
+            "title": f"Issue {number}",
+            "url": f"https://github.example/issues/{number}",
+            "state": "OPEN",
+            "labels": [],
+            "updatedAt": "2026-07-11T01:02:03+00:00",
+        }
+        for number in range(1, 36)
+    ]
+
+    def fake_run(args: list[str]) -> str:
+        commands.append(args)
+        if args == PR_COMMAND:
+            return json.dumps(pull_requests)
+        if args == ISSUE_COMMAND:
+            return json.dumps(issues)
+        raise AssertionError(args)
+
+    evidence = collect_github_evidence(run_command=fake_run)
+
+    assert evidence is not None
+    assert commands == [PR_COMMAND, ISSUE_COMMAND]
+    assert len(evidence.pull_requests) == 35
+    assert len(evidence.issues) == 35
+
+
+def test_collect_github_evidence_preserves_head_branch_case() -> None:
+    outputs = iter(
+        [
+            json.dumps(
+                [
+                    {
+                        "number": 1,
+                        "headRefName": " origin/CODEX/Feature ",
+                        "url": "https://github.example/pull/1",
+                        "isDraft": False,
+                        "state": "OPEN",
+                        "mergedAt": None,
+                        "updatedAt": "2026-07-12T03:04:05Z",
+                    }
+                ]
+            ),
+            "[]",
+        ]
+    )
+
+    evidence = collect_github_evidence(run_command=lambda args: next(outputs))
+
+    assert evidence is not None
+    assert evidence.pull_requests[0].head_ref == "CODEX/Feature"
+
+
+def test_collect_github_evidence_distinguishes_confirmed_empty_from_unavailable() -> None:
+    assert collect_github_evidence(run_command=lambda args: "[]") == GitHubEvidence()
+
+    def failing_run(args: list[str]) -> str:
+        raise subprocess.CalledProcessError(1, args)
+
+    assert collect_github_evidence(run_command=failing_run) is None
+
+
+def test_collect_github_evidence_returns_none_on_oserror() -> None:
+    def unavailable_run(args: list[str]) -> str:
+        raise OSError("gh executable unavailable")
+
+    assert collect_github_evidence(run_command=unavailable_run) is None
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        subprocess.TimeoutExpired(["gh"], 30),
+        RuntimeError("collector runtime failure"),
+    ],
+)
+def test_collect_github_evidence_returns_none_on_ordinary_exception(
+    error: Exception,
+) -> None:
+    def failing_run(args: list[str]) -> str:
+        raise error
+
+    assert collect_github_evidence(run_command=failing_run) is None
+
+
+def test_collect_github_evidence_rejects_malformed_issue_schema() -> None:
+    calls = 0
+
+    def malformed_issue_run(args: list[str]) -> str:
+        nonlocal calls
+        calls += 1
+        return "[]" if calls == 1 else '[{"number": 1}]'
+
+    assert collect_github_evidence(run_command=malformed_issue_run) is None
+
+
+@pytest.mark.parametrize(
+    "bad_output",
+    [
+        "{not-json",
+        "{}",
+        '[{"number": true}]',
+        '[{"number": 1, "headRefName": "x"}]',
+    ],
+)
+def test_collect_github_evidence_rejects_malformed_json_or_schema(bad_output: str) -> None:
+    assert collect_github_evidence(run_command=lambda args: bad_output) is None
+
+
+@pytest.mark.parametrize("state", ["DRAFT", "UNKNOWN"])
+def test_collect_github_evidence_rejects_unknown_pr_state(state: str) -> None:
+    pull_request = json.dumps(
+        [
+            {
+                "number": 1,
+                "headRefName": "codex/feature",
+                "url": "https://github.example/pull/1",
+                "isDraft": False,
+                "state": state,
+                "mergedAt": None,
+                "updatedAt": "2026-07-12T03:04:05Z",
+            }
+        ]
+    )
+    outputs = iter([pull_request, "[]"])
+
+    assert collect_github_evidence(run_command=lambda args: next(outputs)) is None
+
+
+def test_collect_github_evidence_rejects_unknown_issue_state() -> None:
+    outputs = iter(
+        [
+            "[]",
+            json.dumps(
+                [
+                    {
+                        "number": 1,
+                        "title": "Feature",
+                        "url": "https://github.example/issues/1",
+                        "state": "MERGED",
+                        "labels": [],
+                        "updatedAt": "2026-07-12T03:04:05Z",
+                    }
+                ]
+            ),
+        ]
+    )
+
+    assert collect_github_evidence(run_command=lambda args: next(outputs)) is None
+
+
+@pytest.mark.parametrize(
+    "timestamp",
+    [
+        "2026-07-12",
+        "2026-07-12garbage",
+        "2026-07-12T03:04:05Zgarbage",
+        "not-a-timestamp",
+    ],
+)
+def test_collect_github_evidence_rejects_malformed_full_timestamp(
+    timestamp: str,
+) -> None:
+    pull_request = json.dumps(
+        [
+            {
+                "number": 1,
+                "headRefName": "codex/feature",
+                "url": "https://github.example/pull/1",
+                "isDraft": False,
+                "state": "OPEN",
+                "mergedAt": None,
+                "updatedAt": timestamp,
+            }
+        ]
+    )
+    outputs = iter([pull_request, "[]"])
+
+    assert collect_github_evidence(run_command=lambda args: next(outputs)) is None
+
+
+def test_collect_github_evidence_accepts_z_and_offset_timestamps() -> None:
+    outputs = iter(
+        [
+            json.dumps(
+                [
+                    {
+                        "number": 1,
+                        "headRefName": "codex/feature",
+                        "url": "https://github.example/pull/1",
+                        "isDraft": False,
+                        "state": "MERGED",
+                        "mergedAt": "2026-07-10T23:59:59-04:00",
+                        "updatedAt": "2026-07-12T03:04:05Z",
+                    }
+                ]
+            ),
+            json.dumps(
+                [
+                    {
+                        "number": 2,
+                        "title": "Feature",
+                        "url": "https://github.example/issues/2",
+                        "state": "CLOSED",
+                        "labels": [],
+                        "updatedAt": "2026-07-11T01:02:03+05:30",
+                    }
+                ]
+            ),
+        ]
+    )
+
+    evidence = collect_github_evidence(run_command=lambda args: next(outputs))
+
+    assert evidence is not None
+    assert evidence.pull_requests[0].merged_at == date(2026, 7, 10)
+    assert evidence.pull_requests[0].updated_at == date(2026, 7, 12)
+    assert evidence.issues[0].updated_at == date(2026, 7, 11)
 
 
 def test_cockpit_branch_name_is_dated() -> None:

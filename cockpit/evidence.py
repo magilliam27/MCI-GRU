@@ -24,6 +24,7 @@ class LocalEvidence:
     recent_commits: str
     git_topology: GitTopologySnapshot
     recent_branches: list[tuple[str, date]] = field(default_factory=list)
+    branch_commit_dates: dict[str, date] = field(default_factory=dict)
 
 
 REQUIRED_DOCS = [
@@ -56,17 +57,17 @@ def collect_local_evidence(repo_root: Path, run_command: RunCommand | None = Non
         worktrees=worktrees,
         run_command=runner,
     )
-    recent_branches = _parse_recent_branches(
-        runner(
-            [
-                "git",
-                "for-each-ref",
-                "--sort=-committerdate",
-                "--format=%(committerdate:short) %(refname:short)",
-                "refs/heads",
-            ]
-        )
+    branch_date_output = runner(
+        [
+            "git",
+            "for-each-ref",
+            "--sort=-committerdate",
+            "--format=%(committerdate:short)%09%(refname)",
+            "refs/heads",
+            "refs/remotes/origin",
+        ]
     )
+    recent_branches, branch_commit_dates = _parse_branch_commit_dates(branch_date_output)
     return LocalEvidence(
         repo_root=repo_root,
         required_docs=required_docs,
@@ -77,17 +78,21 @@ def collect_local_evidence(repo_root: Path, run_command: RunCommand | None = Non
         recent_commits=runner(["git", "log", "-5", "--oneline"]).strip(),
         git_topology=topology,
         recent_branches=recent_branches,
+        branch_commit_dates=branch_commit_dates,
     )
 
 
-def _parse_recent_branches(output: str) -> list[tuple[str, date]]:
-    """Parse ``git for-each-ref`` committer-date/refname lines defensively.
+def _parse_branch_commit_dates(
+    output: str,
+) -> tuple[list[tuple[str, date]], dict[str, date]]:
+    """Parse local and origin committer dates with local duplicate precedence.
 
-    Each line is ``YYYY-MM-DD <branch>``. Lines that are blank, missing the
-    branch name, or carrying an unparseable date are skipped so a malformed ref
-    never aborts the daily refresh.
+    Full refnames are preferred, but historical short-ref fixtures remain valid.
+    Malformed lines and origin/HEAD are skipped.
     """
-    branches: list[tuple[str, date]] = []
+    local_dates: dict[str, date] = {}
+    remote_dates: dict[str, date] = {}
+    local_order: list[str] = []
     for line in output.splitlines():
         cleaned = line.strip()
         if not cleaned:
@@ -102,8 +107,25 @@ def _parse_recent_branches(output: str) -> list[tuple[str, date]]:
             committer_date = date.fromisoformat(raw_date)
         except ValueError:
             continue
-        branches.append((name, committer_date))
-    return branches
+        is_remote = name.startswith(("refs/remotes/origin/", "remotes/origin/", "origin/"))
+        normalized = (
+            name.removeprefix("refs/heads/")
+            .removeprefix("refs/remotes/origin/")
+            .removeprefix("remotes/origin/")
+            .removeprefix("origin/")
+            .strip()
+        )
+        if not normalized or normalized == "HEAD":
+            continue
+        if is_remote:
+            remote_dates.setdefault(normalized, committer_date)
+            continue
+        if normalized not in local_dates:
+            local_order.append(normalized)
+        local_dates.setdefault(normalized, committer_date)
+    combined = {**remote_dates, **local_dates}
+    recent_branches = [(name, local_dates[name]) for name in local_order]
+    return recent_branches, dict(sorted(combined.items()))
 
 
 def _recent_handoffs(repo_root: Path) -> list[str]:

@@ -5,7 +5,15 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from datetime import date
 
-    from cockpit.models import CockpitReport, GitHubAction, Workstream
+    from cockpit.models import (
+        AutoDisposition,
+        AutoOverride,
+        AutoWorkstreamDecision,
+        CockpitReport,
+        GitHubAction,
+        LowConfidenceDecision,
+        Workstream,
+    )
 
 
 REGISTER_COLUMNS = [
@@ -60,6 +68,11 @@ def render_cockpit_packet(report: CockpitReport) -> str:
     _extend_actions(lines, "GitHub Actions Proposed Or Skipped", report.github_actions_skipped)
     _extend_bullets(lines, "Verification Notes", report.verification_notes)
     _extend_bullets(lines, "Evidence Gaps And Contradictions", report.evidence_gaps)
+    if report.auto_decisions_enabled:
+        _extend_auto_dispositions(lines, report.auto_dispositions)
+        _extend_auto_statuses(lines, report.auto_workstream_decisions)
+        _extend_low_confidence(lines, report.low_confidence_decisions)
+        _extend_overrides(lines, report.overrides_applied)
     return "\n".join(lines)
 
 
@@ -124,6 +137,78 @@ def _extend_bullets(lines: list[str], title: str, values: list[str]) -> None:
     for value in values:
         lines.append(f"- {value}")
     lines.append("")
+
+
+def _extend_auto_dispositions(
+    lines: list[str],
+    decisions: dict[str, AutoDisposition],
+) -> None:
+    lines.extend(["## Auto-Dispositions Applied", ""])
+    if not decisions:
+        lines.extend(["None.", ""])
+        return
+    for branch, decision in sorted(decisions.items()):
+        lines.append(
+            f"- **{branch}** → {decision.disposition.value}; rule `{decision.rule}`; "
+            f"confidence {decision.confidence.value}; evidence: {decision.evidence}"
+        )
+        lines.append(f"  Alternatives: {_alternatives(decision.alternatives)}")
+    lines.append("")
+
+
+def _extend_auto_statuses(
+    lines: list[str],
+    decisions: dict[str, AutoWorkstreamDecision],
+) -> None:
+    lines.extend(["## Auto-Statuses Applied", ""])
+    if not decisions:
+        lines.extend(["None.", ""])
+        return
+    for name, decision in sorted(decisions.items()):
+        canonical = decision.canonical_surface or "none"
+        lines.append(
+            f"- **{name}** → {decision.status.value}; canonical `{canonical}`; "
+            f"rule `{decision.rule}`; confidence {decision.confidence.value}; "
+            f"evidence: {decision.evidence}"
+        )
+        lines.append(f"  Alternatives: {_alternatives(decision.alternatives)}")
+    lines.append("")
+
+
+def _extend_low_confidence(
+    lines: list[str],
+    decisions: list[LowConfidenceDecision],
+) -> None:
+    lines.extend(["## Low-Confidence Decisions", ""])
+    if not decisions:
+        lines.extend(["None.", ""])
+        return
+    for decision in sorted(decisions, key=lambda item: (item.kind, item.target)):
+        lines.append(
+            f"- **{decision.kind} {decision.target}** → {decision.choice}; "
+            f"rule `{decision.rule}`; confidence low; evidence: {decision.evidence}"
+        )
+        lines.append(f"  Alternatives: {_alternatives(decision.alternatives)}")
+    lines.append("")
+
+
+def _extend_overrides(lines: list[str], overrides: list[AutoOverride]) -> None:
+    lines.extend(["## Overrides Applied", ""])
+    if not overrides:
+        lines.extend(["None.", ""])
+        return
+    for override in sorted(overrides, key=lambda item: (item.kind, item.target)):
+        lines.append(
+            f"- **{override.kind} {override.target}**: generated {override.generated_choice}, "
+            f"override {override.override_choice}; rule `{override.rule}`; "
+            f"confidence {override.confidence.value}; evidence: {override.evidence}"
+        )
+        lines.append(f"  Alternatives: {_alternatives(override.alternatives)}")
+    lines.append("")
+
+
+def _alternatives(values: tuple[str, ...]) -> str:
+    return "; ".join(values) if values else "none"
 
 
 def _escape_cell(value: str) -> str:

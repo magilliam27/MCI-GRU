@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from datetime import date, timedelta
@@ -8,15 +9,17 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from cockpit.decisions import DECISION_REGISTRY_PATH
+from cockpit.decisions import DECISION_REGISTRY_PATH, SurfaceDecision, SurfaceDisposition
 from cockpit.evidence import collect_local_evidence
-from cockpit.models import WorkstreamStatus
+from cockpit.models import Confidence, GitHubEvidence, PullRequestEvidence, WorkstreamStatus
+from cockpit.policy import AUTO_DECISIONS_PATH
 from cockpit.runner import (
     GitActivitySource,
     StaticWorkstreamSource,
     WorkstreamSeed,
     _branch_topic_tokens,
     _run_command,
+    implied_aliases,
     merge_workstream_sources,
     run_github_cockpit_refresh,
     run_local_cockpit_refresh,
@@ -84,6 +87,57 @@ def test_collect_local_evidence_records_dirty_paths_and_required_docs(tmp_path: 
     assert evidence.dirty_paths == ["docs/agents/domain.md", "scratch.txt"]
     assert evidence.branches == ["codex/example", "main"]
     assert "abc123 Add cockpit design" in evidence.recent_commits
+
+
+def test_collect_local_evidence_normalizes_branch_dates_with_local_precedence(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    ref_commands: list[list[str]] = []
+
+    def fake_run(args: list[str]) -> str:
+        command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            ref_commands.append(args)
+            return (
+                "2026-07-01\trefs/remotes/origin/codex/shared\n"
+                "2026-07-03\trefs/heads/codex/shared\n"
+                "2026-06-20\trefs/heads/codex/shared\n"
+                "2026-06-01\trefs/remotes/origin/codex/remote-only\n"
+                "2026-07-04\trefs/remotes/origin/HEAD\n"
+                "bad-date\trefs/heads/codex/bad\n"
+            )
+        if command == "git status --short --branch":
+            return "## main\n"
+        if command == "git branch --format=%(refname:short)":
+            return "main\ncodex/shared\n"
+        if command == "git branch --all --no-merged origin/main":
+            return ""
+        if command == "git rev-list --left-right --count origin/main...HEAD":
+            return "0\t0\n"
+        if command == "git worktree list --porcelain":
+            return ""
+        if command == "git log -5 --oneline":
+            return ""
+        raise AssertionError(command)
+
+    evidence = collect_local_evidence(repo, run_command=fake_run)
+
+    assert ref_commands == [
+        [
+            "git",
+            "for-each-ref",
+            "--sort=-committerdate",
+            "--format=%(committerdate:short)%09%(refname)",
+            "refs/heads",
+            "refs/remotes/origin",
+        ]
+    ]
+    assert evidence.branch_commit_dates == {
+        "codex/remote-only": date(2026, 6, 1),
+        "codex/shared": date(2026, 7, 3),
+    }
+    assert evidence.recent_branches == [("codex/shared", date(2026, 7, 3))]
 
 
 def test_collect_local_evidence_builds_git_topology_snapshot(tmp_path: Path) -> None:
@@ -271,6 +325,311 @@ def test_run_local_cockpit_refresh_writes_register_and_packet(tmp_path: Path) ->
     assert result.color.value == "yellow"
     assert "**Run color:** yellow" in packet
     assert "Cockpit generated with git topology attention items:" in packet
+
+
+def test_run_local_cockpit_refresh_flag_off_preserves_output_parity(tmp_path: Path) -> None:
+    (tmp_path / "default").mkdir()
+    (tmp_path / "explicit").mkdir()
+    default_repo = _repo_with_required_docs(tmp_path / "default")
+    explicit_repo = _repo_with_required_docs(tmp_path / "explicit")
+    run_date = date(2026, 7, 12)
+
+    default = run_local_cockpit_refresh(
+        default_repo,
+        run_date,
+        run_command=_fake_topology_runner(["codex/lambdarank-live"]),
+    )
+    explicit = run_local_cockpit_refresh(
+        explicit_repo,
+        run_date,
+        run_command=_fake_topology_runner(["codex/lambdarank-live"]),
+        auto_decisions_enabled=False,
+    )
+
+    assert default.register_path.read_bytes() == explicit.register_path.read_bytes()
+    assert default.packet_path.read_bytes() == explicit.packet_path.read_bytes()
+    assert (
+        hashlib.sha256(default.register_path.read_bytes()).hexdigest()
+        == "8b9b352fc9c4816671a660c42af810684dd25a87659cffb1b4aad08802e0f59a"
+    )
+    assert (
+        hashlib.sha256(default.packet_path.read_bytes()).hexdigest()
+        == "ba65fc280b9a57f1c17cebba5987b27e1289e9ede16b87de1388199734f94824"
+    )
+    assert not (default_repo / AUTO_DECISIONS_PATH).exists()
+    assert not (explicit_repo / AUTO_DECISIONS_PATH).exists()
+
+
+def test_flag_off_preserves_registry_plus_heuristic_surface_association(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    branch = "codex/lambdarank-bug-scan"
+    _write_decision_registry(
+        repo,
+        workstreams={},
+        surfaces={
+            branch: {
+                "workstreams": ["Daily bug scans"],
+                "disposition": "canonical",
+                "reason": "Explicit mapping coexists with legacy heuristic matching.",
+                "next_action": "Continue the bug scan.",
+                "last_reviewed": "2026-07-11",
+            }
+        },
+    )
+
+    result = run_local_cockpit_refresh(
+        repo,
+        date(2026, 7, 12),
+        run_command=_fake_topology_runner([branch]),
+        auto_decisions_enabled=False,
+    )
+
+    rows = [
+        tuple(cell.strip() for cell in line.split("|")[1:-1])
+        for line in result.register_path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("| ")
+        and not line.startswith("| Workstream ")
+        and not line.startswith("| --- ")
+    ]
+    assert [(row[0], row[1]) for row in rows] == [
+        ("LambdaRankIC", "active"),
+        ("Daily bug scans", "ready-for-agent"),
+        ("Git and worktree hygiene", "active"),
+    ]
+    assert rows[0][3] == f"`{branch}` (local)"
+    assert rows[1][3] == f"`{branch}` (local)"
+    assert not (repo / AUTO_DECISIONS_PATH).exists()
+
+
+def test_run_local_cockpit_refresh_applies_generated_decisions_when_enabled(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    branch = "codex/merged-lambdarank"
+
+    def fake_run(args: list[str]) -> str:
+        command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return f"2026-07-08 {branch}\n"
+        if command == "git status --short --branch":
+            return "## main...origin/main\n"
+        if command == "git branch --format=%(refname:short)":
+            return f"main\n{branch}\n"
+        if command == "git branch --all --no-merged origin/main":
+            return ""
+        if command == "git rev-list --left-right --count origin/main...HEAD":
+            return "0\t0\n"
+        if command == "git worktree list --porcelain":
+            return "worktree C:/repo\nHEAD abc1234\nbranch refs/heads/main\n"
+        if command == "git log -5 --oneline":
+            return "abc1234 Current main\n"
+        if args[:2] == ["git", "-c"] and args[3] == "-C":
+            return "## main...origin/main\n"
+        raise AssertionError(command)
+
+    result = run_local_cockpit_refresh(
+        repo,
+        date(2026, 7, 12),
+        run_command=fake_run,
+        auto_decisions_enabled=True,
+        github_evidence=GitHubEvidence(),
+    )
+
+    register = result.register_path.read_text(encoding="utf-8")
+    packet = result.packet_path.read_text(encoding="utf-8")
+    assert (repo / AUTO_DECISIONS_PATH).exists()
+    assert f"| Git surface: {branch} | archive |" in register
+    assert f"| Git surface: {branch} | needs-user-decision |" not in register
+    assert result.report.auto_dispositions[branch].rule == "merged-into-main"
+    assert "## Auto-Dispositions Applied" in packet
+    assert f"**{branch}** → archive" in packet
+
+
+def test_auto_decisions_disabled_never_calls_github_collector(tmp_path: Path) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    calls = 0
+
+    def forbidden_collector() -> GitHubEvidence | None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("GitHub collector must stay disabled")
+
+    run_local_cockpit_refresh(
+        repo,
+        date(2026, 7, 12),
+        run_command=_fake_topology_runner(["codex/lambdarank-live"]),
+        auto_decisions_enabled=False,
+        github_evidence_collector=forbidden_collector,
+    )
+
+    assert calls == 0
+
+
+def test_auto_decisions_enabled_offline_records_degraded_github_gap(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    branch = "codex/lambdarank-old"
+
+    result = run_local_cockpit_refresh(
+        repo,
+        date(2026, 7, 12),
+        run_command=_dated_topology_runner(branch, date(2026, 5, 1)),
+        auto_decisions_enabled=True,
+        github_evidence_collector=lambda: None,
+    )
+
+    surface = result.report.auto_dispositions[branch]
+    packet = result.packet_path.read_text(encoding="utf-8")
+    assert surface.disposition == "stale"
+    assert surface.confidence == "medium"
+    assert any("GitHub" in gap and "unavailable" in gap for gap in result.report.evidence_gaps)
+    assert "GitHub PR and issue evidence unavailable" in packet
+    assert "open-pr-canonical" in packet
+    assert "stale" in packet
+
+
+def test_auto_decisions_enabled_survives_collector_oserror(tmp_path: Path) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    branch = "codex/lambdarank-old"
+
+    def unavailable_collector() -> GitHubEvidence | None:
+        raise OSError("gh unavailable")
+
+    result = run_local_cockpit_refresh(
+        repo,
+        date(2026, 7, 12),
+        run_command=_dated_topology_runner(branch, date(2026, 5, 1)),
+        auto_decisions_enabled=True,
+        github_evidence_collector=unavailable_collector,
+    )
+
+    surface = result.report.auto_dispositions[branch]
+    assert surface.disposition == "stale"
+    assert surface.confidence == "medium"
+    assert any(
+        "GitHub PR and issue evidence unavailable" in gap for gap in result.report.evidence_gaps
+    )
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        subprocess.TimeoutExpired(["gh"], 30),
+        RuntimeError("collector runtime failure"),
+    ],
+)
+def test_auto_decisions_enabled_survives_any_ordinary_collector_exception(
+    tmp_path: Path,
+    error: Exception,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    branch = "codex/lambdarank-old"
+
+    def unavailable_collector() -> GitHubEvidence | None:
+        raise error
+
+    result = run_local_cockpit_refresh(
+        repo,
+        date(2026, 7, 12),
+        run_command=_dated_topology_runner(branch, date(2026, 5, 1)),
+        auto_decisions_enabled=True,
+        github_evidence_collector=unavailable_collector,
+    )
+
+    assert result.report.auto_dispositions[branch].confidence == "medium"
+    assert any(
+        "GitHub PR and issue evidence unavailable" in gap for gap in result.report.evidence_gaps
+    )
+
+
+def test_omitted_github_evidence_calls_injected_collector(tmp_path: Path) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    branch = "codex/lambdarank-old"
+    calls = 0
+
+    def confirmed_empty_collector() -> GitHubEvidence | None:
+        nonlocal calls
+        calls += 1
+        return GitHubEvidence()
+
+    result = run_local_cockpit_refresh(
+        repo,
+        date(2026, 7, 12),
+        run_command=_dated_topology_runner(branch, date(2026, 5, 1)),
+        auto_decisions_enabled=True,
+        github_evidence_collector=confirmed_empty_collector,
+    )
+
+    assert calls == 1
+    assert result.report.auto_dispositions[branch].confidence == "high"
+    assert not any(
+        "GitHub PR and issue evidence unavailable" in gap for gap in result.report.evidence_gaps
+    )
+    assert "No live GitHub issue or PR scan in local-only mode." not in result.report.evidence_gaps
+
+
+def test_explicit_none_github_evidence_skips_collector_and_stays_offline(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    branch = "codex/lambdarank-old"
+    calls = 0
+
+    def forbidden_collector() -> GitHubEvidence | None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("explicit None must prevent collection")
+
+    result = run_local_cockpit_refresh(
+        repo,
+        date(2026, 7, 12),
+        run_command=_dated_topology_runner(branch, date(2026, 5, 1)),
+        auto_decisions_enabled=True,
+        github_evidence=None,
+        github_evidence_collector=forbidden_collector,
+    )
+
+    assert calls == 0
+    assert result.report.auto_dispositions[branch].confidence == "medium"
+    assert any(
+        "GitHub PR and issue evidence unavailable" in gap for gap in result.report.evidence_gaps
+    )
+
+
+def test_injected_online_github_evidence_changes_generated_output(tmp_path: Path) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    branch = "codex/lambdarank-old"
+    github = GitHubEvidence(
+        pull_requests=(
+            PullRequestEvidence(
+                number=81,
+                head_ref=branch,
+                url="https://github.example/pull/81",
+                state="open",
+                is_draft=False,
+                merged_at=None,
+                updated_at=date(2026, 7, 11),
+            ),
+        )
+    )
+
+    result = run_local_cockpit_refresh(
+        repo,
+        date(2026, 7, 12),
+        run_command=_dated_topology_runner(branch, date(2026, 5, 1)),
+        auto_decisions_enabled=True,
+        github_evidence=github,
+    )
+
+    assert result.report.auto_dispositions[branch].rule == "open-pr-canonical"
+    assert result.report.auto_workstream_decisions["LambdaRankIC"].status == "active"
+    assert "PR #81" in result.packet_path.read_text(encoding="utf-8")
+    assert not any(
+        "GitHub PR and issue evidence unavailable" in gap for gap in result.report.evidence_gaps
+    )
 
 
 def test_run_local_cockpit_refresh_surfaces_git_topology_without_placeholders(
@@ -1212,6 +1571,83 @@ def test_branch_topic_tokens_strips_prefix_date_and_hash(branch: str, expected: 
     assert _branch_topic_tokens(branch) == expected
 
 
+def test_implied_aliases_derives_slug_and_tokens_from_reviewed_surface() -> None:
+    aliases = implied_aliases(
+        {
+            "codex/portfolio-ic-hybrid-testing-20260712": SurfaceDecision(
+                workstreams=("Portfolio-IC",),
+                disposition=SurfaceDisposition.CANONICAL,
+                reason="Reviewed classification.",
+                next_action="Continue.",
+                last_reviewed=date(2026, 7, 12),
+            )
+        }
+    )
+
+    assert aliases == {
+        "hybrid": "Portfolio-IC",
+        "ic": "Portfolio-IC",
+        "portfolio": "Portfolio-IC",
+        "portfolio-ic-hybrid-testing": "Portfolio-IC",
+        "testing": "Portfolio-IC",
+    }
+
+
+def test_implied_aliases_drops_collisions_without_losing_unique_aliases() -> None:
+    surfaces = {
+        branch: SurfaceDecision(
+            workstreams=(workstream,),
+            disposition=SurfaceDisposition.CANONICAL,
+            reason="Reviewed classification.",
+            next_action="Continue.",
+            last_reviewed=date(2026, 7, 12),
+        )
+        for branch, workstream in {
+            "codex/alpha-shared-20260712": "Alpha",
+            "codex/beta-shared-20260712": "Beta",
+        }.items()
+    }
+
+    aliases = implied_aliases(surfaces)
+
+    assert "shared" not in aliases
+    assert aliases == {
+        "alpha": "Alpha",
+        "alpha-shared": "Alpha",
+        "beta": "Beta",
+        "beta-shared": "Beta",
+    }
+
+
+def test_implied_aliases_accepts_only_independently_grounded_high_confidence_auto() -> None:
+    surfaces = {
+        f"codex/{slug}": SurfaceDecision(
+            workstreams=(workstream,),
+            disposition=SurfaceDisposition.CANONICAL,
+            reason="Generated classification.",
+            next_action="Continue.",
+            last_reviewed=date(2026, 7, 12),
+            provenance="auto",
+            confidence=confidence,
+            association_basis=basis,
+        )
+        for slug, workstream, confidence, basis in (
+            ("direct-learning", "Direct", Confidence.HIGH, "branch-term"),
+            ("low-learning", "Low", Confidence.LOW, "branch-term"),
+            ("alias-loop", "Loop", Confidence.HIGH, "implied-alias"),
+            ("fallback-learning", "Fallback", Confidence.HIGH, "title-case-fallback"),
+        )
+    }
+
+    aliases = implied_aliases(surfaces)
+
+    assert aliases == {
+        "direct": "Direct",
+        "direct-learning": "Direct",
+        "learning": "Direct",
+    }
+
+
 def test_git_activity_source_emits_active_titlecased_seed() -> None:
     evidence = _git_activity_evidence(
         recent_branches=[("codex/paper-trade-frozen-graph-20260709", date(2026, 7, 9))]
@@ -1225,6 +1661,7 @@ def test_git_activity_source_emits_active_titlecased_seed() -> None:
     assert seed.status == WorkstreamStatus.ACTIVE
     assert seed.tracker == ""
     assert seed.branch_terms == ("frozen", "graph", "paper", "trade")
+    assert seed.association_basis == "title-case-fallback"
 
 
 def test_git_activity_source_skips_stopword_only_branch() -> None:
@@ -1348,6 +1785,212 @@ def test_run_local_cockpit_refresh_adds_git_derived_workstream(tmp_path: Path) -
     assert "Paper Trade Frozen Graph" in register
 
 
+def test_run_local_cockpit_refresh_uses_reviewed_surface_alias_for_new_branch(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    reviewed = "codex/portfolio-ic-hybrid-testing-20260712"
+    discovered = "codex/hybrid-testing-v2-20260713"
+    _write_decision_registry(
+        repo,
+        workstreams={
+            "Portfolio-IC": {
+                "status": "active",
+                "canonical_surface": reviewed,
+                "reason": "Reviewed workstream.",
+                "next_action": "Continue.",
+                "last_reviewed": "2026-07-12",
+            }
+        },
+        surfaces={
+            reviewed: {
+                "workstreams": ["Portfolio-IC"],
+                "disposition": "canonical",
+                "reason": "Reviewed classification.",
+                "next_action": "Continue.",
+                "last_reviewed": "2026-07-12",
+            }
+        },
+    )
+
+    def fake_run(args: list[str]) -> str:
+        command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return f"2026-07-12\trefs/heads/{reviewed}\n2026-07-13\trefs/heads/{discovered}\n"
+        if command == "git status --short --branch":
+            return "## main...origin/main\n"
+        if command == "git branch --format=%(refname:short)":
+            return f"main\n{reviewed}\n{discovered}\n"
+        if command == "git branch --all --no-merged origin/main":
+            return f"  {reviewed}\n  {discovered}\n"
+        if command == "git rev-list --left-right --count origin/main...HEAD":
+            return "0\t0\n"
+        if command == "git worktree list --porcelain":
+            return "worktree C:/repo\nHEAD abc1234\nbranch refs/heads/main\n"
+        if command == "git log -5 --oneline":
+            return "abc1234 Current main\n"
+        if args[:2] == ["git", "-c"] and args[3] == "-C":
+            return "## main...origin/main\n"
+        raise AssertionError(command)
+
+    result = run_local_cockpit_refresh(
+        repo_root=repo,
+        run_date=date(2026, 7, 13),
+        run_command=fake_run,
+        auto_decisions_enabled=True,
+        github_evidence=None,
+    )
+
+    register = result.register_path.read_text(encoding="utf-8")
+    auto_path = repo / AUTO_DECISIONS_PATH
+    first_bytes = auto_path.read_bytes()
+    payload = json.loads(first_bytes)
+    assert "Portfolio-IC" in register
+    assert "Hybrid Testing V2" not in register
+    assert payload["surfaces"][discovered]["workstreams"] == ["Portfolio-IC"]
+    assert payload["surfaces"][discovered]["association_basis"] == "implied-alias"
+
+    run_local_cockpit_refresh(
+        repo_root=repo,
+        run_date=date(2026, 7, 13),
+        run_command=fake_run,
+        auto_decisions_enabled=True,
+        github_evidence=None,
+    )
+    assert auto_path.read_bytes() == first_bytes
+
+
+def test_run_local_cockpit_refresh_auto_alias_learning_reaches_fixed_point_in_one_run(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    teacher = "codex/lambdarank-recovery-20260712"
+    learned = "codex/recovery-followup-20260713"
+
+    def fake_run(args: list[str]) -> str:
+        command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return f"2026-07-12\trefs/heads/{teacher}\n2026-07-13\trefs/heads/{learned}\n"
+        if command == "git status --short --branch":
+            return "## main...origin/main\n"
+        if command == "git branch --format=%(refname:short)":
+            return f"main\n{teacher}\n{learned}\n"
+        if command == "git branch --all --no-merged origin/main":
+            return f"  {teacher}\n  {learned}\n"
+        if command == "git rev-list --left-right --count origin/main...HEAD":
+            return "0\t0\n"
+        if command == "git worktree list --porcelain":
+            return "worktree C:/repo\nHEAD abc1234\nbranch refs/heads/main\n"
+        if command == "git log -5 --oneline":
+            return "abc1234 Current main\n"
+        if args[:2] == ["git", "-c"] and args[3] == "-C":
+            return "## main...origin/main\n"
+        raise AssertionError(command)
+
+    kwargs = {
+        "repo_root": repo,
+        "run_date": date(2026, 7, 13),
+        "run_command": fake_run,
+        "auto_decisions_enabled": True,
+        "github_evidence": GitHubEvidence(),
+    }
+    run_local_cockpit_refresh(**kwargs)
+    auto_path = repo / AUTO_DECISIONS_PATH
+    first_bytes = auto_path.read_bytes()
+
+    run_local_cockpit_refresh(**kwargs)
+
+    assert auto_path.read_bytes() == first_bytes
+
+
+def test_run_local_cockpit_refresh_explicit_alias_beats_implied_alias(tmp_path: Path) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    reviewed = "codex/portfolio-ic-hybrid-testing-20260712"
+    discovered = "codex/hybrid-testing-v2-20260713"
+    _write_decision_registry(
+        repo,
+        workstreams={
+            "Portfolio-IC": {
+                "status": "active",
+                "canonical_surface": reviewed,
+                "reason": "Reviewed workstream.",
+                "next_action": "Continue.",
+                "last_reviewed": "2026-07-12",
+            },
+            "Other stream": {
+                "status": "active",
+                "canonical_surface": discovered,
+                "reason": "Explicit alias target.",
+                "next_action": "Continue.",
+                "last_reviewed": "2026-07-12",
+            },
+        },
+        surfaces={
+            reviewed: {
+                "workstreams": ["Portfolio-IC"],
+                "disposition": "canonical",
+                "reason": "Reviewed classification.",
+                "next_action": "Continue.",
+                "last_reviewed": "2026-07-12",
+            }
+        },
+        aliases={"hybrid": "Other stream"},
+    )
+
+    result = run_local_cockpit_refresh(
+        repo_root=repo,
+        run_date=date(2026, 7, 13),
+        run_command=_dated_topology_runner(discovered, date(2026, 7, 13)),
+        auto_decisions_enabled=True,
+        github_evidence=None,
+    )
+
+    register = result.register_path.read_text(encoding="utf-8")
+    payload = json.loads((repo / AUTO_DECISIONS_PATH).read_text(encoding="utf-8"))
+    assert "Other stream" in register
+    assert "Hybrid Testing V2" not in register
+    assert payload["surfaces"][discovered]["workstreams"] == ["Other stream"]
+    assert payload["surfaces"][discovered]["association_basis"] == "explicit-alias"
+
+
+def test_run_local_cockpit_refresh_flag_off_ignores_implied_aliases(tmp_path: Path) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    reviewed = "codex/portfolio-ic-hybrid-testing-20260712"
+    discovered = "codex/hybrid-testing-v2-20260713"
+    _write_decision_registry(
+        repo,
+        workstreams={
+            "Portfolio-IC": {
+                "status": "active",
+                "canonical_surface": reviewed,
+                "reason": "Reviewed workstream.",
+                "next_action": "Continue.",
+                "last_reviewed": "2026-07-12",
+            }
+        },
+        surfaces={
+            reviewed: {
+                "workstreams": ["Portfolio-IC"],
+                "disposition": "canonical",
+                "reason": "Reviewed classification.",
+                "next_action": "Continue.",
+                "last_reviewed": "2026-07-12",
+            }
+        },
+    )
+
+    result = run_local_cockpit_refresh(
+        repo_root=repo,
+        run_date=date(2026, 7, 13),
+        run_command=_dated_topology_runner(discovered, date(2026, 7, 13)),
+        auto_decisions_enabled=False,
+    )
+
+    register = result.register_path.read_text(encoding="utf-8")
+    assert "Hybrid Testing V2" in register
+    assert not (repo / AUTO_DECISIONS_PATH).exists()
+
+
 def _repo_with_required_docs(repo: Path) -> Path:
     (repo / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
     (repo / "docs" / "agents").mkdir(parents=True)
@@ -1368,15 +2011,17 @@ def _write_decision_registry(
     *,
     workstreams: dict[str, object],
     surfaces: dict[str, object],
+    aliases: dict[str, str] | None = None,
 ) -> None:
+    payload = {
+        "format_version": 2 if aliases is not None else 1,
+        "workstreams": workstreams,
+        "surfaces": surfaces,
+    }
+    if aliases is not None:
+        payload["workstream_aliases"] = aliases
     (repo / DECISION_REGISTRY_PATH).write_text(
-        json.dumps(
-            {
-                "format_version": 1,
-                "workstreams": workstreams,
-                "surfaces": surfaces,
-            }
-        ),
+        json.dumps(payload),
         encoding="utf-8",
     )
 
@@ -1398,6 +2043,30 @@ def _fake_topology_runner(branches: list[str]):
             return "main\n" + "\n".join(branches) + "\n"
         if command == "git branch --all --no-merged origin/main":
             return branch_lines
+        if command == "git rev-list --left-right --count origin/main...HEAD":
+            return "0\t0\n"
+        if command == "git worktree list --porcelain":
+            return "worktree C:/repo\nHEAD abc1234\nbranch refs/heads/main\n"
+        if command == "git log -5 --oneline":
+            return "abc1234 Current main\n"
+        if args[:2] == ["git", "-c"] and args[3] == "-C":
+            return "## main...origin/main\n"
+        raise AssertionError(command)
+
+    return fake_run
+
+
+def _dated_topology_runner(branch: str, branch_date: date):
+    def fake_run(args: list[str]) -> str:
+        command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return f"{branch_date.isoformat()}\trefs/heads/{branch}\n"
+        if command == "git status --short --branch":
+            return "## main...origin/main\n"
+        if command == "git branch --format=%(refname:short)":
+            return f"main\n{branch}\n"
+        if command == "git branch --all --no-merged origin/main":
+            return f"  {branch}\n"
         if command == "git rev-list --left-right --count origin/main...HEAD":
             return "0\t0\n"
         if command == "git worktree list --porcelain":

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from cockpit._compat import StrEnum
 
@@ -19,6 +19,19 @@ class WorkstreamStatus(StrEnum):
     DONE = "done"
     ARCHIVE = "archive"
     STALE = "stale"
+
+
+class SurfaceDisposition(StrEnum):
+    CANONICAL = "canonical"
+    PARKED = "parked"
+    ARCHIVE = "archive"
+    STALE = "stale"
+
+
+class Confidence(StrEnum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
 
 
 class RunColor(StrEnum):
@@ -54,6 +67,33 @@ class GitHubAction:
     action: str
     target: str
     reason: str
+
+
+@dataclass(frozen=True)
+class PullRequestEvidence:
+    number: int
+    head_ref: str
+    url: str
+    state: str
+    is_draft: bool
+    merged_at: date | None
+    updated_at: date
+
+
+@dataclass(frozen=True)
+class IssueEvidence:
+    number: int
+    title: str
+    url: str
+    state: str
+    labels: tuple[str, ...]
+    updated_at: date
+
+
+@dataclass(frozen=True)
+class GitHubEvidence:
+    pull_requests: tuple[PullRequestEvidence, ...] = ()
+    issues: tuple[IssueEvidence, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -123,6 +163,99 @@ class GitTopologySnapshot:
 
 
 @dataclass(frozen=True)
+class LowConfidenceDecision:
+    kind: Literal["surface", "workstream"]
+    target: str
+    choice: str
+    rule: str
+    evidence: str
+    alternatives: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class AutoDisposition:
+    workstreams: tuple[str, ...]
+    disposition: SurfaceDisposition
+    rule: str
+    evidence: str
+    confidence: Confidence
+    alternatives: tuple[str, ...]
+    last_reviewed: date
+    association_basis: str = "branch-term"
+
+    def low_confidence(
+        self,
+        kind: Literal["surface", "workstream"],
+        target: str,
+    ) -> LowConfidenceDecision:
+        return LowConfidenceDecision(
+            kind=kind,
+            target=target,
+            choice=self.disposition.value,
+            rule=self.rule,
+            evidence=self.evidence,
+            alternatives=self.alternatives,
+        )
+
+
+@dataclass(frozen=True)
+class AutoWorkstreamDecision:
+    status: WorkstreamStatus
+    canonical_surface: str
+    rule: str
+    evidence: str
+    confidence: Confidence
+    alternatives: tuple[str, ...]
+    last_reviewed: date
+
+    def low_confidence(
+        self,
+        kind: Literal["surface", "workstream"],
+        target: str,
+    ) -> LowConfidenceDecision:
+        return LowConfidenceDecision(
+            kind=kind,
+            target=target,
+            choice=self.status.value,
+            rule=self.rule,
+            evidence=self.evidence,
+            alternatives=self.alternatives,
+        )
+
+
+@dataclass(frozen=True)
+class AutoOverride:
+    kind: Literal["surface", "workstream"]
+    target: str
+    generated_choice: str
+    override_choice: str
+    rule: str
+    confidence: Confidence
+    evidence: str
+    alternatives: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class AutoDecisionSet:
+    surfaces: dict[str, AutoDisposition] = field(default_factory=dict)
+    workstreams: dict[str, AutoWorkstreamDecision] = field(default_factory=dict)
+
+    @property
+    def low_confidence_decisions(self) -> list[LowConfidenceDecision]:
+        decisions = [
+            decision.low_confidence("surface", branch)
+            for branch, decision in sorted(self.surfaces.items())
+            if decision.confidence == Confidence.LOW
+        ]
+        decisions.extend(
+            decision.low_confidence("workstream", name)
+            for name, decision in sorted(self.workstreams.items())
+            if decision.confidence == Confidence.LOW
+        )
+        return decisions
+
+
+@dataclass(frozen=True)
 class CockpitReport:
     run_date: date
     color: RunColor
@@ -138,3 +271,8 @@ class CockpitReport:
     git_tree_impact: list[str] = field(default_factory=list)
     verification_notes: list[str] = field(default_factory=list)
     evidence_gaps: list[str] = field(default_factory=list)
+    auto_decisions_enabled: bool = False
+    auto_dispositions: dict[str, AutoDisposition] = field(default_factory=dict)
+    auto_workstream_decisions: dict[str, AutoWorkstreamDecision] = field(default_factory=dict)
+    low_confidence_decisions: list[LowConfidenceDecision] = field(default_factory=list)
+    overrides_applied: list[AutoOverride] = field(default_factory=list)

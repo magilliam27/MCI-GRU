@@ -2,8 +2,13 @@ from __future__ import annotations
 
 from datetime import date
 
+from cockpit.decisions import SurfaceDisposition
 from cockpit.models import (
+    AutoDisposition,
+    AutoOverride,
+    AutoWorkstreamDecision,
     CockpitReport,
+    Confidence,
     Decision,
     GitHubAction,
     RunColor,
@@ -90,3 +95,61 @@ def test_render_cockpit_packet_surfaces_decision_queue_and_skipped_actions() -> 
     assert "Choose whether to promote the weight sweep evidence." in markdown
     assert "## GitHub Actions Proposed Or Skipped" in markdown
     assert "GitHub sync disabled" in markdown
+
+
+def test_render_cockpit_packet_adds_deterministic_auto_decision_audit_sections() -> None:
+    disposition = AutoDisposition(
+        workstreams=("LambdaRankIC",),
+        disposition=SurfaceDisposition.CANONICAL,
+        rule="newest-live-surface",
+        evidence="Newest branch activity is 2026-07-11.",
+        confidence=Confidence.LOW,
+        alternatives=("codex/lambdarank-old",),
+        last_reviewed=date(2026, 7, 11),
+    )
+    status = AutoWorkstreamDecision(
+        status=WorkstreamStatus.ACTIVE,
+        canonical_surface="codex/lambdarank-new",
+        rule="recent-activity-active",
+        evidence="Canonical surface activity is within 30 days.",
+        confidence=Confidence.LOW,
+        alternatives=("stale: competing live surface remains",),
+        last_reviewed=date(2026, 7, 11),
+    )
+    report = CockpitReport(
+        run_date=date(2026, 7, 12),
+        color=RunColor.YELLOW,
+        executive_summary="Policy applied.",
+        auto_decisions_enabled=True,
+        auto_dispositions={"codex/lambdarank-new": disposition},
+        auto_workstream_decisions={"LambdaRankIC": status},
+        low_confidence_decisions=[
+            disposition.low_confidence("surface", "codex/lambdarank-new"),
+            status.low_confidence("workstream", "LambdaRankIC"),
+        ],
+        overrides_applied=[
+            AutoOverride(
+                kind="workstream",
+                target="LambdaRankIC",
+                generated_choice="active",
+                override_choice="parked",
+                rule="recent-activity-active",
+                confidence=Confidence.LOW,
+                evidence="Canonical surface activity is within 30 days.",
+                alternatives=("stale: competing live surface remains",),
+            )
+        ],
+    )
+
+    markdown = render_cockpit_packet(report)
+
+    assert "## Auto-Dispositions Applied" in markdown
+    assert "**codex/lambdarank-new** → canonical" in markdown
+    assert "rule `newest-live-surface`; confidence low" in markdown
+    assert "Alternatives: codex/lambdarank-old" in markdown
+    assert "## Auto-Statuses Applied" in markdown
+    assert "**LambdaRankIC** → active" in markdown
+    assert "canonical `codex/lambdarank-new`" in markdown
+    assert "## Low-Confidence Decisions" in markdown
+    assert "## Overrides Applied" in markdown
+    assert "generated active, override parked" in markdown

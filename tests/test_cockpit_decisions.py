@@ -7,12 +7,22 @@ import pytest
 
 from cockpit.decisions import (
     DECISION_REGISTRY_PATH,
+    DecisionRegistry,
+    SurfaceDecision,
     SurfaceDisposition,
+    WorkstreamDecision,
     load_decision_registry,
+    overlay_auto_decisions,
     read_registry_aliases,
     read_registry_workstream_names,
 )
-from cockpit.models import WorkstreamStatus
+from cockpit.models import (
+    AutoDecisionSet,
+    AutoDisposition,
+    AutoWorkstreamDecision,
+    Confidence,
+    WorkstreamStatus,
+)
 
 
 def test_load_decision_registry_parses_versioned_contract(tmp_path) -> None:
@@ -56,6 +66,85 @@ def test_load_decision_registry_parses_versioned_contract(tmp_path) -> None:
     assert workstream.last_reviewed == date(2026, 7, 9)
     assert registry.is_reviewed("LambdaRankIC", "codex/canonical-lambdarank")
     assert registry.surfaces["codex/old-lambdarank"].disposition == SurfaceDisposition.ARCHIVE
+    assert workstream.provenance == "override"
+    assert registry.surfaces["codex/old-lambdarank"].provenance == "override"
+
+
+def test_overlay_auto_decisions_applies_explicit_overrides_last() -> None:
+    auto = AutoDecisionSet(
+        surfaces={
+            "codex/lambdarank": AutoDisposition(
+                workstreams=("LambdaRankIC",),
+                disposition=SurfaceDisposition.CANONICAL,
+                rule="unique-live-surface",
+                evidence="Only live surface.",
+                confidence=Confidence.HIGH,
+                alternatives=(),
+                last_reviewed=date(2026, 7, 10),
+            )
+        },
+        workstreams={
+            "LambdaRankIC": AutoWorkstreamDecision(
+                status=WorkstreamStatus.ACTIVE,
+                canonical_surface="codex/lambdarank",
+                rule="recent-activity-active",
+                evidence="Recent activity.",
+                confidence=Confidence.HIGH,
+                alternatives=(),
+                last_reviewed=date(2026, 7, 10),
+            )
+        },
+    )
+    overrides = DecisionRegistry(
+        surfaces={
+            "codex/lambdarank": SurfaceDecision(
+                workstreams=("LambdaRankIC",),
+                disposition=SurfaceDisposition.PARKED,
+                reason="Pause explicitly.",
+                next_action="Wait.",
+                last_reviewed=date(2026, 7, 11),
+            )
+        },
+        workstreams={
+            "LambdaRankIC": WorkstreamDecision(
+                status=WorkstreamStatus.PARKED,
+                canonical_surface="codex/lambdarank",
+                reason="Pause explicitly.",
+                next_action="Wait.",
+                last_reviewed=date(2026, 7, 11),
+            )
+        },
+        aliases={"lambda": "LambdaRankIC"},
+    )
+
+    effective = overlay_auto_decisions(overrides, auto)
+
+    assert effective.surfaces["codex/lambdarank"].disposition == SurfaceDisposition.PARKED
+    assert effective.surfaces["codex/lambdarank"].provenance == "override"
+    assert effective.workstreams["LambdaRankIC"].status == WorkstreamStatus.PARKED
+    assert effective.workstreams["LambdaRankIC"].provenance == "override"
+    assert effective.aliases == overrides.aliases
+
+
+def test_overlay_auto_decisions_marks_generated_entries_reviewed() -> None:
+    auto = AutoDecisionSet(
+        surfaces={
+            "codex/lambdarank": AutoDisposition(
+                workstreams=("LambdaRankIC",),
+                disposition=SurfaceDisposition.CANONICAL,
+                rule="unique-live-surface",
+                evidence="Only live surface.",
+                confidence=Confidence.HIGH,
+                alternatives=(),
+                last_reviewed=date(2026, 7, 10),
+            )
+        }
+    )
+
+    effective = overlay_auto_decisions(DecisionRegistry(), auto)
+
+    assert effective.is_reviewed("LambdaRankIC", "codex/lambdarank")
+    assert effective.surfaces["codex/lambdarank"].provenance == "auto"
 
 
 def test_load_decision_registry_parses_v2_with_aliases(tmp_path) -> None:
