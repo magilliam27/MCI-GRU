@@ -1,0 +1,581 @@
+{
+  "format_version": 2,
+  "surfaces": {
+    "agent/cockpit-recent-branch-parse-test": {
+      "workstreams": [
+        "Daily bug scans"
+      ],
+      "disposition": "canonical",
+      "rule": "open-pr-canonical",
+      "evidence": "Open PR #85 (https://github.com/magilliam27/MCI-GRU/pull/85) heads branch; canonical continuation is that PR. Competing live surfaces require deterministic selection.",
+      "confidence": "low",
+      "association_basis": "implied-alias",
+      "alternatives": [
+        "codex/cockpit-worktree-status-error-test-20260701"
+      ],
+      "last_reviewed": "2026-07-13"
+    },
+    "chore/file-cleanup": {
+      "workstreams": [
+        "Chore/File Cleanup"
+      ],
+      "disposition": "canonical",
+      "rule": "unique-live-surface",
+      "evidence": "Only live surface for Chore/File Cleanup; branch remains unmerged; tip committer date 2026-07-11.",
+      "confidence": "high",
+      "association_basis": "title-case-fallback",
+      "alternatives": [],
+      "last_reviewed": "2026-07-11"
+    },
+    "codex/Top10nLambda": {
+      "workstreams": [
+        "LambdaRankIC"
+      ],
+      "disposition": "archive",
+      "rule": "explicit-noncanonical-override",
+      "evidence": "Explicit archive surface override excludes branch from canonical competition.",
+      "confidence": "high",
+      "association_basis": "explicit-surface",
+      "alternatives": [
+        "canonical: rejected by explicit override"
+      ],
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/archive-local-main-c1d86bf": {
+      "workstreams": [
+        "Git and worktree hygiene"
+      ],
+      "disposition": "stale",
+      "rule": "stale-no-recent-commits",
+      "evidence": "Tip committer date 2026-05-05 is older than 30 days; GitHub evidence confirmed no open PR heads this branch.",
+      "confidence": "high",
+      "association_basis": "unclassified",
+      "alternatives": [],
+      "last_reviewed": "2026-05-05"
+    },
+    "codex/archive-pit-universe-validation-pre-main-20260526": {
+      "workstreams": [
+        "Git and worktree hygiene"
+      ],
+      "disposition": "archive",
+      "rule": "merged-into-main",
+      "evidence": "Branch absent from unmerged topology; merged into origin/main; tip committer date 2026-05-26.",
+      "confidence": "high",
+      "association_basis": "unclassified",
+      "alternatives": [],
+      "last_reviewed": "2026-05-26"
+    },
+    "codex/automated-disposition-phase1-20260712": {
+      "workstreams": [
+        "Automated Disposition Phase1"
+      ],
+      "disposition": "canonical",
+      "rule": "worktree-state-uncertain",
+      "evidence": "Attached worktree is dirty; merged state cannot be trusted.",
+      "confidence": "low",
+      "association_basis": "title-case-fallback",
+      "alternatives": [
+        "archive: resolve uncertain worktree state for codex/automated-disposition-phase1-20260712"
+      ],
+      "last_reviewed": "2026-07-12"
+    },
+    "codex/cockpit-hygiene-20260626": {
+      "workstreams": [
+        "Git and worktree hygiene"
+      ],
+      "disposition": "stale",
+      "rule": "open-pr-canonical",
+      "evidence": "Competing surface rejected because PR #84 (https://github.com/magilliam27/MCI-GRU/pull/84) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-06-26. Uncertain worktree evidence: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
+      "confidence": "low",
+      "association_basis": "unclassified",
+      "alternatives": [
+        "codex/cockpit-refresh-20260713"
+      ],
+      "last_reviewed": "2026-06-26"
+    },
+    "codex/cockpit-refresh-20260711": {
+      "workstreams": [
+        "Git and worktree hygiene"
+      ],
+      "disposition": "stale",
+      "rule": "open-pr-canonical",
+      "evidence": "Competing surface rejected because PR #84 (https://github.com/magilliam27/MCI-GRU/pull/84) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-07-11. Uncertain worktree evidence: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
+      "confidence": "low",
+      "association_basis": "unclassified",
+      "alternatives": [
+        "codex/cockpit-refresh-20260713"
+      ],
+      "last_reviewed": "2026-07-11"
+    },
+    "codex/cockpit-refresh-20260712": {
+      "workstreams": [
+        "Git and worktree hygiene"
+      ],
+      "disposition": "stale",
+      "rule": "open-pr-canonical",
+      "evidence": "Competing surface rejected because PR #84 (https://github.com/magilliam27/MCI-GRU/pull/84) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-07-12. Uncertain worktree evidence: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
+      "confidence": "low",
+      "association_basis": "unclassified",
+      "alternatives": [
+        "codex/cockpit-refresh-20260713"
+      ],
+      "last_reviewed": "2026-07-12"
+    },
+    "codex/cockpit-refresh-20260713": {
+      "workstreams": [
+        "Git and worktree hygiene"
+      ],
+      "disposition": "canonical",
+      "rule": "open-pr-canonical",
+      "evidence": "Open PR #84 (https://github.com/magilliam27/MCI-GRU/pull/84) heads branch; canonical continuation is that PR. Competing live surfaces require deterministic selection. Uncertain worktree evidence: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
+      "confidence": "low",
+      "association_basis": "unclassified",
+      "alternatives": [
+        "codex/cockpit-hygiene-20260626",
+        "codex/cockpit-refresh-20260711",
+        "codex/cockpit-refresh-20260712",
+        "codex/main_2",
+        "main"
+      ],
+      "last_reviewed": "2026-07-13"
+    },
+    "codex/cockpit-worktree-status-error-test-20260701": {
+      "workstreams": [
+        "Daily bug scans"
+      ],
+      "disposition": "stale",
+      "rule": "open-pr-canonical",
+      "evidence": "Competing surface rejected because PR #85 (https://github.com/magilliam27/MCI-GRU/pull/85) is the deterministic open-PR continuation for Daily bug scans; tip committer date 2026-07-01.",
+      "confidence": "low",
+      "association_basis": "implied-alias",
+      "alternatives": [
+        "agent/cockpit-recent-branch-parse-test"
+      ],
+      "last_reviewed": "2026-07-01"
+    },
+    "codex/colab-gpu-utilization-hardening-20260620": {
+      "workstreams": [
+        "Colab operations"
+      ],
+      "disposition": "archive",
+      "rule": "explicit-noncanonical-override",
+      "evidence": "Explicit archive surface override excludes branch from canonical competition.",
+      "confidence": "high",
+      "association_basis": "explicit-surface",
+      "alternatives": [
+        "canonical: rejected by explicit override"
+      ],
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/deprecate-regime-csv": {
+      "workstreams": [
+        "Regime CSV contract"
+      ],
+      "disposition": "archive",
+      "rule": "explicit-noncanonical-override",
+      "evidence": "Explicit archive surface override excludes branch from canonical competition.",
+      "confidence": "high",
+      "association_basis": "explicit-surface",
+      "alternatives": [
+        "canonical: rejected by explicit override"
+      ],
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/filter-missing-sp500-rics-20260624": {
+      "workstreams": [
+        "Filter Missing Sp500 Rics"
+      ],
+      "disposition": "canonical",
+      "rule": "unique-live-surface",
+      "evidence": "Only live surface for Filter Missing Sp500 Rics; branch remains unmerged; tip committer date 2026-06-24.",
+      "confidence": "high",
+      "association_basis": "implied-alias",
+      "alternatives": [],
+      "last_reviewed": "2026-06-24"
+    },
+    "codex/filter-missing-sp500-rics-20260711": {
+      "workstreams": [
+        "Filter Missing Sp500 Rics"
+      ],
+      "disposition": "archive",
+      "rule": "merged-into-main",
+      "evidence": "Branch absent from unmerged topology; merged into origin/main; tip committer date 2026-07-12.",
+      "confidence": "high",
+      "association_basis": "implied-alias",
+      "alternatives": [],
+      "last_reviewed": "2026-07-12"
+    },
+    "codex/issue-76-registry-self-declaration-20260711": {
+      "workstreams": [
+        "Issue 76 Self Declaration"
+      ],
+      "disposition": "canonical",
+      "rule": "open-pr-canonical",
+      "evidence": "Open PR #79 (https://github.com/magilliam27/MCI-GRU/pull/79) heads branch; canonical continuation is that PR.",
+      "confidence": "high",
+      "association_basis": "implied-alias",
+      "alternatives": [],
+      "last_reviewed": "2026-07-11"
+    },
+    "codex/issue8-colab-efficiency-experiment": {
+      "workstreams": [
+        "Colab operations",
+        "Issue #8 volatility targeting"
+      ],
+      "disposition": "parked",
+      "rule": "explicit-noncanonical-override",
+      "evidence": "Explicit parked surface override excludes branch from canonical competition.",
+      "confidence": "high",
+      "association_basis": "explicit-surface",
+      "alternatives": [
+        "canonical: rejected by explicit override"
+      ],
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/issue8-vol-ablation-sweep": {
+      "workstreams": [
+        "Issue #8 volatility targeting"
+      ],
+      "disposition": "parked",
+      "rule": "explicit-noncanonical-override",
+      "evidence": "Explicit parked surface override excludes branch from canonical competition.",
+      "confidence": "high",
+      "association_basis": "explicit-surface",
+      "alternatives": [
+        "canonical: rejected by explicit override"
+      ],
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/issue8-vol-repeated-seed": {
+      "workstreams": [
+        "Issue #8 volatility targeting"
+      ],
+      "disposition": "parked",
+      "rule": "explicit-noncanonical-override",
+      "evidence": "Explicit parked surface override excludes branch from canonical competition.",
+      "confidence": "high",
+      "association_basis": "explicit-surface",
+      "alternatives": [
+        "canonical: rejected by explicit override"
+      ],
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/lambdarank-ic-colab": {
+      "workstreams": [
+        "Colab operations",
+        "LambdaRankIC"
+      ],
+      "disposition": "archive",
+      "rule": "explicit-noncanonical-override",
+      "evidence": "Explicit archive surface override excludes branch from canonical competition.",
+      "confidence": "high",
+      "association_basis": "explicit-surface",
+      "alternatives": [
+        "canonical: rejected by explicit override"
+      ],
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/lambdarankic-1024-all-years-20260625": {
+      "workstreams": [
+        "LambdaRankIC"
+      ],
+      "disposition": "parked",
+      "rule": "explicit-noncanonical-override",
+      "evidence": "Explicit parked surface override excludes branch from canonical competition.",
+      "confidence": "high",
+      "association_basis": "explicit-surface",
+      "alternatives": [
+        "canonical: rejected by explicit override"
+      ],
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/lambdarankic-lower-pair-screen": {
+      "workstreams": [
+        "LambdaRankIC"
+      ],
+      "disposition": "archive",
+      "rule": "explicit-noncanonical-override",
+      "evidence": "Explicit archive surface override excludes branch from canonical competition.",
+      "confidence": "high",
+      "association_basis": "explicit-surface",
+      "alternatives": [
+        "canonical: rejected by explicit override"
+      ],
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/main_2": {
+      "workstreams": [
+        "Git and worktree hygiene"
+      ],
+      "disposition": "stale",
+      "rule": "open-pr-canonical",
+      "evidence": "Competing surface rejected because PR #84 (https://github.com/magilliam27/MCI-GRU/pull/84) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-06-21. Uncertain worktree evidence: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
+      "confidence": "low",
+      "association_basis": "unclassified",
+      "alternatives": [
+        "codex/cockpit-refresh-20260713"
+      ],
+      "last_reviewed": "2026-06-21"
+    },
+    "codex/portfolio-ic-hybrid-testing": {
+      "workstreams": [
+        "Portfolio-IC"
+      ],
+      "disposition": "parked",
+      "rule": "explicit-noncanonical-override",
+      "evidence": "Explicit parked surface override excludes branch from canonical competition.",
+      "confidence": "high",
+      "association_basis": "explicit-surface",
+      "alternatives": [
+        "canonical: rejected by explicit override"
+      ],
+      "last_reviewed": "2026-07-09"
+    },
+    "codex/preserve-agentic-engineering-spec-20260711": {
+      "workstreams": [
+        "Preserve Agentic Engineering Spec"
+      ],
+      "disposition": "canonical",
+      "rule": "unique-live-surface",
+      "evidence": "Only live surface for Preserve Agentic Engineering Spec; branch remains unmerged; tip committer date 2026-07-11.",
+      "confidence": "high",
+      "association_basis": "implied-alias",
+      "alternatives": [],
+      "last_reviewed": "2026-07-11"
+    },
+    "codex/regime-csv-no-backfill-coverage": {
+      "workstreams": [
+        "Regime CSV contract"
+      ],
+      "disposition": "archive",
+      "rule": "explicit-noncanonical-override",
+      "evidence": "Explicit archive surface override excludes branch from canonical competition.",
+      "confidence": "high",
+      "association_basis": "explicit-surface",
+      "alternatives": [
+        "canonical: rejected by explicit override"
+      ],
+      "last_reviewed": "2026-07-11"
+    },
+    "codex/salvage-loss-seed-matrix-evidence-20260707": {
+      "workstreams": [
+        "Docs and research evidence"
+      ],
+      "disposition": "parked",
+      "rule": "explicit-noncanonical-override",
+      "evidence": "Explicit parked surface override excludes branch from canonical competition.",
+      "confidence": "high",
+      "association_basis": "explicit-surface",
+      "alternatives": [
+        "canonical: rejected by explicit override"
+      ],
+      "last_reviewed": "2026-07-11"
+    },
+    "codex/top10-lambdarank-screen-20260625": {
+      "workstreams": [
+        "LambdaRankIC"
+      ],
+      "disposition": "parked",
+      "rule": "explicit-noncanonical-override",
+      "evidence": "Explicit parked surface override excludes branch from canonical competition.",
+      "confidence": "high",
+      "association_basis": "explicit-surface",
+      "alternatives": [
+        "canonical: rejected by explicit override"
+      ],
+      "last_reviewed": "2026-07-09"
+    },
+    "detached@6a79db1": {
+      "workstreams": [
+        "Git and worktree hygiene"
+      ],
+      "disposition": "canonical",
+      "rule": "non-branch-surface",
+      "evidence": "Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
+      "confidence": "low",
+      "association_basis": "unclassified",
+      "alternatives": [],
+      "last_reviewed": "1970-01-01"
+    },
+    "main": {
+      "workstreams": [
+        "Git and worktree hygiene"
+      ],
+      "disposition": "stale",
+      "rule": "open-pr-canonical",
+      "evidence": "Competing surface rejected because PR #84 (https://github.com/magilliam27/MCI-GRU/pull/84) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-07-12. Uncertain worktree evidence: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
+      "confidence": "low",
+      "association_basis": "unclassified",
+      "alternatives": [
+        "codex/cockpit-refresh-20260713"
+      ],
+      "last_reviewed": "2026-07-12"
+    }
+  },
+  "workstreams": {
+    "Automated Disposition Phase1": {
+      "status": "active",
+      "canonical_surface": "codex/automated-disposition-phase1-20260712",
+      "rule": "recent-activity-active",
+      "evidence": "canonical surface codex/automated-disposition-phase1-20260712 activity 2026-07-12. Canonical surface uncertainty (worktree-state-uncertain): Attached worktree is dirty; merged state cannot be trusted.",
+      "confidence": "low",
+      "alternatives": [
+        "archive: resolve uncertain worktree state for codex/automated-disposition-phase1-20260712"
+      ],
+      "last_reviewed": "2026-07-12"
+    },
+    "Chore/File Cleanup": {
+      "status": "active",
+      "canonical_surface": "chore/file-cleanup",
+      "rule": "recent-activity-active",
+      "evidence": "canonical surface chore/file-cleanup activity 2026-07-11.",
+      "confidence": "high",
+      "alternatives": [],
+      "last_reviewed": "2026-07-11"
+    },
+    "Colab operations": {
+      "status": "ready-for-agent",
+      "canonical_surface": "",
+      "rule": "ready-issue",
+      "evidence": "Matching open ready-for-agent issue #36 (https://github.com/magilliam27/MCI-GRU/issues/36). Issue title association is ambiguous across exact workstream terms.",
+      "confidence": "low",
+      "alternatives": [
+        "association ambiguity: issue #14 (https://github.com/magilliam27/MCI-GRU/issues/14) matches workstreams Colab operations, LambdaRankIC, Regime CSV contract",
+        "association ambiguity: issue #36 (https://github.com/magilliam27/MCI-GRU/issues/36) matches workstreams Colab operations, Issue #8 volatility targeting, Portfolio-IC"
+      ],
+      "last_reviewed": "2026-07-09"
+    },
+    "Daily bug scans": {
+      "status": "active",
+      "canonical_surface": "agent/cockpit-recent-branch-parse-test",
+      "rule": "open-pr-active",
+      "evidence": "linked open PR #85 (https://github.com/magilliam27/MCI-GRU/pull/85); canonical surface agent/cockpit-recent-branch-parse-test activity 2026-07-13; matching open issue #6 (https://github.com/magilliam27/MCI-GRU/issues/6). Canonical surface uncertainty (open-pr-canonical): Open PR #85 (https://github.com/magilliam27/MCI-GRU/pull/85) heads branch; canonical continuation is that PR. Competing live surfaces require deterministic selection. Issue title association is ambiguous across exact workstream terms.",
+      "confidence": "low",
+      "alternatives": [
+        "association ambiguity: issue #6 (https://github.com/magilliam27/MCI-GRU/issues/6) matches workstreams Daily bug scans, Docs and research evidence, Filter Missing Sp500 Rics",
+        "codex/cockpit-worktree-status-error-test-20260701"
+      ],
+      "last_reviewed": "2026-07-13"
+    },
+    "Docs and research evidence": {
+      "status": "active",
+      "canonical_surface": "",
+      "rule": "open-issue-active",
+      "evidence": "matching open issue #6 (https://github.com/magilliam27/MCI-GRU/issues/6), issue #7 (https://github.com/magilliam27/MCI-GRU/issues/7), issue #11 (https://github.com/magilliam27/MCI-GRU/issues/11). Issue title association is ambiguous across exact workstream terms.",
+      "confidence": "low",
+      "alternatives": [
+        "done: closed matching issue #10 (https://github.com/magilliam27/MCI-GRU/issues/10), issue #20 (https://github.com/magilliam27/MCI-GRU/issues/20), but matching open issue #6, #7, #11 prevents completion",
+        "association ambiguity: issue #11 (https://github.com/magilliam27/MCI-GRU/issues/11) matches workstreams Docs and research evidence, Portfolio-IC",
+        "association ambiguity: issue #20 (https://github.com/magilliam27/MCI-GRU/issues/20) matches workstreams Docs and research evidence, Regime CSV contract",
+        "association ambiguity: issue #6 (https://github.com/magilliam27/MCI-GRU/issues/6) matches workstreams Daily bug scans, Docs and research evidence, Filter Missing Sp500 Rics"
+      ],
+      "last_reviewed": "2026-07-11"
+    },
+    "Filter Missing Sp500 Rics": {
+      "status": "active",
+      "canonical_surface": "codex/filter-missing-sp500-rics-20260624",
+      "rule": "recent-activity-active",
+      "evidence": "canonical surface codex/filter-missing-sp500-rics-20260624 activity 2026-06-24; matching open issue #5 (https://github.com/magilliam27/MCI-GRU/issues/5), issue #6 (https://github.com/magilliam27/MCI-GRU/issues/6). Issue title association is ambiguous across exact workstream terms.",
+      "confidence": "low",
+      "alternatives": [
+        "done: merged PR #78 (https://github.com/magilliam27/MCI-GRU/pull/78), but matching open issue #5, #6 prevents completion",
+        "association ambiguity: issue #5 (https://github.com/magilliam27/MCI-GRU/issues/5) matches workstreams Filter Missing Sp500 Rics, Regime CSV contract",
+        "association ambiguity: issue #6 (https://github.com/magilliam27/MCI-GRU/issues/6) matches workstreams Daily bug scans, Docs and research evidence, Filter Missing Sp500 Rics"
+      ],
+      "last_reviewed": "2026-07-12"
+    },
+    "Issue #8 volatility targeting": {
+      "status": "ready-for-agent",
+      "canonical_surface": "",
+      "rule": "ready-issue",
+      "evidence": "Matching open ready-for-agent issue #36 (https://github.com/magilliam27/MCI-GRU/issues/36). Issue title association is ambiguous across exact workstream terms.",
+      "confidence": "low",
+      "alternatives": [
+        "association ambiguity: issue #36 (https://github.com/magilliam27/MCI-GRU/issues/36) matches workstreams Colab operations, Issue #8 volatility targeting, Portfolio-IC"
+      ],
+      "last_reviewed": "2026-07-09"
+    },
+    "Issue 76 Self Declaration": {
+      "status": "active",
+      "canonical_surface": "codex/issue-76-registry-self-declaration-20260711",
+      "rule": "open-pr-active",
+      "evidence": "linked open PR #79 (https://github.com/magilliam27/MCI-GRU/pull/79); canonical surface codex/issue-76-registry-self-declaration-20260711 activity 2026-07-11.",
+      "confidence": "high",
+      "alternatives": [],
+      "last_reviewed": "2026-07-12"
+    },
+    "LSEG access": {
+      "status": "done",
+      "canonical_surface": "",
+      "rule": "github-complete",
+      "evidence": "closed matching issue #32 (https://github.com/magilliam27/MCI-GRU/issues/32); no live surface remains. Issue title association is ambiguous across exact workstream terms.",
+      "confidence": "low",
+      "alternatives": [
+        "association ambiguity: issue #32 (https://github.com/magilliam27/MCI-GRU/issues/32) matches workstreams LSEG access, Regime CSV contract"
+      ],
+      "last_reviewed": "2026-05-17"
+    },
+    "LambdaRankIC": {
+      "status": "active",
+      "canonical_surface": "",
+      "rule": "open-issue-active",
+      "evidence": "matching open issue #15 (https://github.com/magilliam27/MCI-GRU/issues/15). Issue title association is ambiguous across exact workstream terms.",
+      "confidence": "low",
+      "alternatives": [
+        "done: closed matching issue #14 (https://github.com/magilliam27/MCI-GRU/issues/14), but matching open issue #15 prevents completion",
+        "association ambiguity: issue #14 (https://github.com/magilliam27/MCI-GRU/issues/14) matches workstreams Colab operations, LambdaRankIC, Regime CSV contract",
+        "association ambiguity: issue #15 (https://github.com/magilliam27/MCI-GRU/issues/15) matches workstreams LambdaRankIC, Regime CSV contract"
+      ],
+      "last_reviewed": "2026-07-12"
+    },
+    "Open Workstreams Review": {
+      "status": "ready-for-agent",
+      "canonical_surface": "",
+      "rule": "ready-issue",
+      "evidence": "Matching open ready-for-agent issue #76 (https://github.com/magilliam27/MCI-GRU/issues/76).",
+      "confidence": "high",
+      "alternatives": [],
+      "last_reviewed": "2026-07-11"
+    },
+    "Portfolio-IC": {
+      "status": "ready-for-agent",
+      "canonical_surface": "",
+      "rule": "ready-issue",
+      "evidence": "Matching open ready-for-agent issue #36 (https://github.com/magilliam27/MCI-GRU/issues/36). Issue title association is ambiguous across exact workstream terms.",
+      "confidence": "low",
+      "alternatives": [
+        "association ambiguity: issue #11 (https://github.com/magilliam27/MCI-GRU/issues/11) matches workstreams Docs and research evidence, Portfolio-IC",
+        "association ambiguity: issue #36 (https://github.com/magilliam27/MCI-GRU/issues/36) matches workstreams Colab operations, Issue #8 volatility targeting, Portfolio-IC"
+      ],
+      "last_reviewed": "2026-07-09"
+    },
+    "Preserve Agentic Engineering Spec": {
+      "status": "active",
+      "canonical_surface": "codex/preserve-agentic-engineering-spec-20260711",
+      "rule": "recent-activity-active",
+      "evidence": "canonical surface codex/preserve-agentic-engineering-spec-20260711 activity 2026-07-11. Issue title association is ambiguous across exact workstream terms.",
+      "confidence": "low",
+      "alternatives": [
+        "association ambiguity: issue #13 (https://github.com/magilliam27/MCI-GRU/issues/13) matches workstreams Preserve Agentic Engineering Spec, Regime CSV contract"
+      ],
+      "last_reviewed": "2026-07-12"
+    },
+    "Regime CSV contract": {
+      "status": "active",
+      "canonical_surface": "",
+      "rule": "open-issue-active",
+      "evidence": "matching open issue #5 (https://github.com/magilliam27/MCI-GRU/issues/5), issue #15 (https://github.com/magilliam27/MCI-GRU/issues/15). Issue title association is ambiguous across exact workstream terms.",
+      "confidence": "low",
+      "alternatives": [
+        "done: all known surfaces are merged or archived, but matching open issue #5, #15 prevents completion",
+        "association ambiguity: issue #13 (https://github.com/magilliam27/MCI-GRU/issues/13) matches workstreams Preserve Agentic Engineering Spec, Regime CSV contract",
+        "association ambiguity: issue #14 (https://github.com/magilliam27/MCI-GRU/issues/14) matches workstreams Colab operations, LambdaRankIC, Regime CSV contract",
+        "association ambiguity: issue #15 (https://github.com/magilliam27/MCI-GRU/issues/15) matches workstreams LambdaRankIC, Regime CSV contract",
+        "association ambiguity: issue #20 (https://github.com/magilliam27/MCI-GRU/issues/20) matches workstreams Docs and research evidence, Regime CSV contract",
+        "association ambiguity: issue #32 (https://github.com/magilliam27/MCI-GRU/issues/32) matches workstreams LSEG access, Regime CSV contract",
+        "association ambiguity: issue #5 (https://github.com/magilliam27/MCI-GRU/issues/5) matches workstreams Filter Missing Sp500 Rics, Regime CSV contract"
+      ],
+      "last_reviewed": "2026-07-11"
+    }
+  }
+}
