@@ -1,5 +1,7 @@
 import ast
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 NOTEBOOK_PATH = Path("notebooks/lambdarankic_110_name_replay_colab.ipynb")
@@ -175,11 +177,131 @@ def test_replay_notebook_declares_expected_artifacts() -> None:
         "trade_journal.csv",
         "daily_holdings.csv",
         "MediaIoBaseDownload",
+        "MediaFileUpload",
+        "drive_publication_verification.json",
     ]
 
     for token in required_tokens:
         assert token in combined
         assert token in generator
+
+
+def test_replay_notebook_uses_authenticated_drive_api_without_mount() -> None:
+    combined = "\n".join(_code_cell_sources())
+    generator = GENERATOR_PATH.read_text(encoding="utf-8")
+
+    required_tokens = [
+        "auth.authenticate_user()",
+        'DRIVE_SERVICE = build("drive", "v3")',
+        'DRIVE_PROJECT_FOLDER_ID = "1KUIj06ekfNpZa1IkkcAdhHXbVZt-PYT5"',
+        'RUN_ROOT = Path("/content/mci_gru_runs")',
+        'BRANCH = "codex/lambdarankic-saved-prediction-replay-20260713"',
+        '"accelerator": "CPU"',
+    ]
+    for token in required_tokens:
+        assert token in combined or token in generator
+
+    assert combined.index("auth.authenticate_user()") < combined.index(
+        'DRIVE_SERVICE = build("drive", "v3")'
+    )
+    assert "drive.mount(" not in combined
+    assert "drive.mount(" not in generator
+    assert "/content/drive" not in combined
+    assert "/content/drive" not in generator
+
+
+def test_replay_notebook_downloads_exact_pit_inputs_atomically() -> None:
+    combined = "\n".join(_code_cell_sources())
+    generator = GENERATOR_PATH.read_text(encoding="utf-8")
+
+    required_tokens = [
+        'MARKET_FILE_ID = "1e6aXtSkQGgsAjmytRsUt-xoJTYssWkPq"',
+        "MARKET_FILE_SIZE = 39459457",
+        'PIT_FILE_ID = "11WAppghYylyyBWLeisIhJ-505y2ptTr1"',
+        "PIT_FILE_SIZE = 15940",
+        'LOCAL_DATA_ROOT = Path("/content/mci_gru_inputs")',
+        "def download_drive_file",
+        'Path(f"{target_path}.part")',
+        "actual_size != expected_size",
+        "partial_path.replace(target_path)",
+        "get_media(fileId=file_id, supportsAllDrives=True)",
+    ]
+    for token in required_tokens:
+        assert token in combined
+        assert token in generator
+
+
+def test_replay_notebook_publishes_and_verifies_drive_artifacts() -> None:
+    combined = "\n".join(_code_cell_sources())
+    generator = GENERATOR_PATH.read_text(encoding="utf-8")
+
+    required_tokens = [
+        "def ensure_drive_folder",
+        "def upload_or_update_drive_file",
+        "def publish_run_artifacts",
+        "def verify_published_artifacts",
+        "supportsAllDrives=True",
+        '"parents": [parent_id]',
+        "PUBLISHED_FILE_STATS",
+        "failure_publication = publish_run_artifacts()",
+        'verify_published_artifacts(["heartbeat.json"])',
+        "completion_publication = publish_run_artifacts()",
+        "required_remote_artifacts",
+        "verify_published_csv_directory",
+        "executed_backtest_artifacts",
+        '"backtest_metrics.json", "trade_journal.csv", "daily_holdings.csv"',
+        "final_publication = publish_run_artifacts()",
+        'remote_heartbeat = read_published_json("heartbeat.json")',
+        "drive_publication_verification.json",
+    ]
+    for token in required_tokens:
+        assert token in combined
+        assert token in generator
+
+    failure_cell = next(source for source in _code_cell_sources() if "failure_publication" in source)
+    assert failure_cell.index('status="FAILED"') < failure_cell.index(
+        "failure_publication = publish_run_artifacts()"
+    )
+    assert failure_cell.index("failure_publication = publish_run_artifacts()") < failure_cell.index(
+        'verify_published_artifacts(["heartbeat.json"])'
+    )
+    assert failure_cell.index('verify_published_artifacts(["heartbeat.json"])') < failure_cell.index(
+        "runtime.unassign()"
+    )
+
+    completion_cell = next(source for source in _code_cell_sources() if "completion_publication" in source)
+    assert completion_cell.index('status="RUNNING"') < completion_cell.index(
+        "completion_publication = publish_run_artifacts()"
+    )
+    assert completion_cell.index("completion_publication = publish_run_artifacts()") < completion_cell.index(
+        "publication_verification = verify_published_artifacts"
+    )
+    assert completion_cell.index("publication_verification = verify_published_artifacts") < completion_cell.index(
+        'status="COMPLETE"'
+    )
+    assert completion_cell.index("final_publication = publish_run_artifacts()") < completion_cell.index(
+        'remote_heartbeat = read_published_json("heartbeat.json")'
+    )
+    assert completion_cell.index('remote_heartbeat = read_published_json("heartbeat.json")') < completion_cell.index(
+        "runtime.unassign()"
+    )
+
+
+def test_generator_reproduces_committed_notebook(tmp_path: Path) -> None:
+    result = subprocess.run(
+        [sys.executable, str(GENERATOR_PATH.resolve())],
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    generated = json.loads(
+        (tmp_path / "notebooks" / NOTEBOOK_PATH.name).read_text(encoding="utf-8")
+    )
+    committed = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
+    assert generated == committed
 
 
 def test_replay_notebook_code_cells_parse() -> None:

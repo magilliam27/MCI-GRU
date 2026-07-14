@@ -53,6 +53,7 @@ cells = [
         import io
         import json
         import math
+        import mimetypes
         import os
         import re
         import shutil
@@ -67,28 +68,41 @@ cells = [
         import pandas as pd
 
         try:
-            from google.colab import auth, drive, runtime
+            from google.colab import auth, runtime
+            from googleapiclient.discovery import build
+            from googleapiclient.http import MediaFileUpload
 
             IN_COLAB = True
         except Exception:
             auth = None
-            drive = None
             runtime = None
+            build = None
+            MediaFileUpload = None
             IN_COLAB = False
 
         REPO_URL = "https://github.com/magilliam27/MCI-GRU.git"
-        BRANCH = "main"
+        BRANCH = "codex/lambdarankic-saved-prediction-replay-20260713"
         REPO_DIR = Path("/content/MCI-GRU") if IN_COLAB else Path.cwd()
         RUN_FAMILY = "lambdarankic_110_name_replay_diagnostics"
         RUN_TAG = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        DRIVE_PROJECT_ROOT = Path("/content/drive/MyDrive/MCI-GRU-Ablations")
-        RUN_ROOT = DRIVE_PROJECT_ROOT / RUN_FAMILY / RUN_TAG if IN_COLAB else REPO_DIR / "outputs" / RUN_FAMILY / RUN_TAG
+        DRIVE_PROJECT_FOLDER_ID = "1KUIj06ekfNpZa1IkkcAdhHXbVZt-PYT5"
+        MARKET_FILE_ID = "1e6aXtSkQGgsAjmytRsUt-xoJTYssWkPq"
+        MARKET_FILE_SIZE = 39459457
+        PIT_FILE_ID = "11WAppghYylyyBWLeisIhJ-505y2ptTr1"
+        PIT_FILE_SIZE = 15940
+        RUN_ROOT = Path("/content/mci_gru_runs") / RUN_FAMILY / RUN_TAG if IN_COLAB else REPO_DIR / "outputs" / RUN_FAMILY / RUN_TAG
+        LOCAL_DATA_ROOT = Path("/content/mci_gru_inputs") if IN_COLAB else REPO_DIR / "outputs" / "lambdarankic_replay_inputs"
         SUMMARY_DIR = RUN_ROOT / "summaries"
         PREDICTIONS_ROOT = RUN_ROOT / "predictions"
         BACKTEST_ROOT = RUN_ROOT / "backtests"
         LOG_DIR = RUN_ROOT / "logs"
         HEARTBEAT_PATH = RUN_ROOT / "heartbeat.json"
         MANIFEST_PATH = RUN_ROOT / "lambdarankic_110_name_replay_manifest.json"
+        DRIVE_SERVICE = None
+        DRIVE_RUN_FOLDER_ID = None
+        DRIVE_FOLDER_CACHE = {}
+        DRIVE_FILE_CACHE = {}
+        PUBLISHED_FILE_STATS = {}
 
         # Safety defaults. Flip DRY_RUN only after the manifest/inventory cells look right.
         DRY_RUN = True
@@ -191,9 +205,196 @@ cells = [
                 return ""
             return proc.stdout.strip().splitlines()[0].strip() if proc.stdout.strip() else ""
 
+        def drive_folder_url(folder_id: str | None) -> str:
+            return f"https://drive.google.com/drive/folders/{folder_id}" if folder_id else ""
+
+        def escape_drive_value(value: str) -> str:
+            return value.replace("'", "\\'")
+
+        def execute_with_retries(request, *, label: str, attempts: int = 4):
+            for attempt in range(1, attempts + 1):
+                try:
+                    return request.execute()
+                except Exception as exc:
+                    if attempt == attempts:
+                        raise
+                    delay = min(60, 2**attempt)
+                    print(f"{label} failed on attempt {attempt}/{attempts}: {exc!r}; retrying in {delay}s")
+                    time.sleep(delay)
+
+        def find_drive_child(parent_id: str, name: str, *, mime_type: str | None = None):
+            clauses = [
+                f"'{parent_id}' in parents",
+                f"name = '{escape_drive_value(name)}'",
+                "trashed = false",
+            ]
+            if mime_type:
+                clauses.append(f"mimeType = '{mime_type}'")
+            response = execute_with_retries(
+                DRIVE_SERVICE.files().list(
+                    q=" and ".join(clauses),
+                    fields="files(id,name,mimeType,size)",
+                    pageSize=10,
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                ),
+                label=f"find Drive child {name}",
+            )
+            files = response.get("files", [])
+            return files[0] if files else None
+
+        def ensure_drive_folder(parent_id: str, name: str) -> str:
+            key = (parent_id, name)
+            if key in DRIVE_FOLDER_CACHE:
+                return DRIVE_FOLDER_CACHE[key]
+            existing = find_drive_child(parent_id, name, mime_type="application/vnd.google-apps.folder")
+            if existing:
+                DRIVE_FOLDER_CACHE[key] = existing["id"]
+                return existing["id"]
+            metadata = {
+                "name": name,
+                "mimeType": "application/vnd.google-apps.folder",
+                "parents": [parent_id],
+            }
+            created = execute_with_retries(
+                DRIVE_SERVICE.files().create(body=metadata, fields="id", supportsAllDrives=True),
+                label=f"create Drive folder {name}",
+            )
+            DRIVE_FOLDER_CACHE[key] = created["id"]
+            return created["id"]
+
+        def ensure_drive_folder_path(parent_id: str, parts: tuple[str, ...]) -> str:
+            current_id = parent_id
+            for part in parts:
+                current_id = ensure_drive_folder(current_id, part)
+            return current_id
+
+        def upload_or_update_drive_file(local_path: Path, parent_id: str) -> str:
+            file_name = local_path.name
+            cache_key = (parent_id, file_name)
+            file_id = DRIVE_FILE_CACHE.get(cache_key)
+            if file_id is None:
+                existing = find_drive_child(parent_id, file_name)
+                file_id = existing["id"] if existing else None
+            mime_type = mimetypes.guess_type(str(local_path))[0] or "application/octet-stream"
+            media = MediaFileUpload(str(local_path), mimetype=mime_type, resumable=False)
+            if file_id:
+                response = execute_with_retries(
+                    DRIVE_SERVICE.files().update(
+                        fileId=file_id,
+                        media_body=media,
+                        fields="id",
+                        supportsAllDrives=True,
+                    ),
+                    label=f"update Drive file {file_name}",
+                )
+            else:
+                response = execute_with_retries(
+                    DRIVE_SERVICE.files().create(
+                        body={"name": file_name, "parents": [parent_id]},
+                        media_body=media,
+                        fields="id",
+                        supportsAllDrives=True,
+                    ),
+                    label=f"create Drive file {file_name}",
+                )
+            DRIVE_FILE_CACHE[cache_key] = response["id"]
+            return response["id"]
+
+        def publish_run_artifacts() -> dict:
+            if DRIVE_SERVICE is None or DRIVE_RUN_FOLDER_ID is None:
+                return {"uploaded": 0, "skipped": 0, "total": 0}
+            uploaded = 0
+            skipped = 0
+            local_files = sorted(path for path in RUN_ROOT.rglob("*") if path.is_file())
+            for local_path in local_files:
+                relative_path = local_path.relative_to(RUN_ROOT)
+                stat = local_path.stat()
+                fingerprint = (stat.st_size, stat.st_mtime_ns)
+                if PUBLISHED_FILE_STATS.get(str(relative_path)) == fingerprint:
+                    skipped += 1
+                    continue
+                parent_id = ensure_drive_folder_path(DRIVE_RUN_FOLDER_ID, tuple(relative_path.parts[:-1]))
+                upload_or_update_drive_file(local_path, parent_id)
+                PUBLISHED_FILE_STATS[str(relative_path)] = fingerprint
+                uploaded += 1
+            return {"uploaded": uploaded, "skipped": skipped, "total": len(local_files)}
+
+        def verify_published_artifacts(relative_paths: list[str]) -> list[dict]:
+            verified = []
+            for relative_value in relative_paths:
+                relative_path = Path(relative_value)
+                local_path = RUN_ROOT / relative_path
+                if not local_path.exists():
+                    raise FileNotFoundError(f"Missing local publication artifact: {local_path}")
+                parent_id = DRIVE_RUN_FOLDER_ID
+                for part in relative_path.parts[:-1]:
+                    folder = find_drive_child(parent_id, part, mime_type="application/vnd.google-apps.folder")
+                    if not folder:
+                        raise FileNotFoundError(f"Missing remote publication folder: {relative_path.parent}")
+                    parent_id = folder["id"]
+                remote_file = find_drive_child(parent_id, relative_path.name)
+                if not remote_file:
+                    raise FileNotFoundError(f"Missing remote publication artifact: {relative_value}")
+                remote_size = int(remote_file.get("size", -1))
+                if remote_size != local_path.stat().st_size:
+                    raise RuntimeError(
+                        f"Remote size mismatch for {relative_value}: local={local_path.stat().st_size} remote={remote_size}"
+                    )
+                verified.append({"path": relative_value, "file_id": remote_file["id"], "size": remote_size})
+            return verified
+
+        def resolve_remote_folder(relative_parts: tuple[str, ...]) -> str:
+            parent_id = DRIVE_RUN_FOLDER_ID
+            for part in relative_parts:
+                folder = find_drive_child(parent_id, part, mime_type="application/vnd.google-apps.folder")
+                if not folder:
+                    raise FileNotFoundError(f"Missing remote publication folder: {'/'.join(relative_parts)}")
+                parent_id = folder["id"]
+            return parent_id
+
+        def verify_published_csv_directory(relative_directory: str, expected_count: int) -> dict:
+            relative_path = Path(relative_directory)
+            local_directory = RUN_ROOT / relative_path
+            remote_folder_id = resolve_remote_folder(tuple(relative_path.parts))
+            remote_csvs = {
+                child["name"]: int(child.get("size", -1))
+                for child in list_drive_children(remote_folder_id)
+                if child["name"].lower().endswith(".csv")
+            }
+            local_csvs = {path.name: path.stat().st_size for path in local_directory.glob("*.csv")}
+            if len(local_csvs) != expected_count or len(remote_csvs) != expected_count:
+                raise RuntimeError(
+                    f"Published CSV count mismatch for {relative_directory}: "
+                    f"expected={expected_count} local={len(local_csvs)} remote={len(remote_csvs)}"
+                )
+            if local_csvs != remote_csvs:
+                raise RuntimeError(f"Published CSV names or sizes differ for {relative_directory}")
+            return {
+                "path": relative_directory,
+                "remote_folder_id": remote_folder_id,
+                "csv_count": len(remote_csvs),
+            }
+
+        def read_published_json(relative_value: str) -> dict:
+            relative_path = Path(relative_value)
+            parent_id = resolve_remote_folder(tuple(relative_path.parts[:-1]))
+            remote_file = find_drive_child(parent_id, relative_path.name)
+            if not remote_file:
+                raise FileNotFoundError(f"Missing remote JSON artifact: {relative_value}")
+            request = DRIVE_SERVICE.files().get_media(fileId=remote_file["id"], supportsAllDrives=True)
+            buffer = io.BytesIO()
+            downloader = MediaIoBaseDownload(buffer, request)
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
+            return json.loads(buffer.getvalue().decode("utf-8"))
+
         if IN_COLAB:
-            drive.mount("/content/drive")
             auth.authenticate_user()
+            DRIVE_SERVICE = build("drive", "v3")
+            family_folder_id = ensure_drive_folder(DRIVE_PROJECT_FOLDER_ID, RUN_FAMILY)
+            DRIVE_RUN_FOLDER_ID = ensure_drive_folder(family_folder_id, RUN_TAG)
 
         RUN_ROOT.mkdir(parents=True, exist_ok=False)
         SUMMARY_DIR.mkdir(parents=True, exist_ok=True)
@@ -213,6 +414,7 @@ cells = [
             subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", f"{REPO_DIR}[dev,tracking,fred]"], check=True)
 
         write_heartbeat("setup")
+        setup_publication = publish_run_artifacts()
 
         os.chdir(REPO_DIR)
         if str(REPO_DIR) not in sys.path:
@@ -232,6 +434,8 @@ cells = [
         print("Branch:", git_branch)
         print("Commit:", git_head)
         print("Run root:", RUN_ROOT)
+        print("Drive run root:", drive_folder_url(DRIVE_RUN_FOLDER_ID))
+        print("Setup publication:", setup_publication)
         print("GPU:", GPU_NAME or "not required")
         print("DRY_RUN:", DRY_RUN)
         """
@@ -239,10 +443,7 @@ cells = [
     md("## 2. Prediction Manifest And Drive Inventory"),
     code(
         r"""
-        from googleapiclient.discovery import build
         from googleapiclient.http import MediaIoBaseDownload
-
-        DRIVE_SERVICE = build("drive", "v3") if IN_COLAB else None
 
         # Explicit verified LambdaRankIC 110-name averaged_prediction folders.
         PREDICTION_ROWS = [
@@ -476,6 +677,12 @@ cells = [
 
         missing_required = inventory_df[(inventory_df["required"]) & (inventory_df["status"] != "OK")]
         if REQUIRE_COMPLETE_MATRIX and not missing_required.empty:
+            write_heartbeat(
+                "inventory_failed",
+                status="FAILED",
+                missing_required_rows=missing_required["row_id"].tolist(),
+            )
+            publish_run_artifacts()
             raise RuntimeError(f"Required prediction rows are missing or incomplete:\n{missing_required.to_string(index=False)}")
 
         manifest = {
@@ -485,6 +692,9 @@ cells = [
             "branch": BRANCH,
             "git_head": git_head,
             "git_branch": git_branch,
+            "drive_project_folder_id": DRIVE_PROJECT_FOLDER_ID,
+            "drive_run_folder_id": DRIVE_RUN_FOLDER_ID,
+            "drive_run_root_url": drive_folder_url(DRIVE_RUN_FOLDER_ID),
             "dry_run": DRY_RUN,
             "run_training": RUN_TRAINING,
             "years": YEARS,
@@ -496,12 +706,16 @@ cells = [
             "adjustment_method": ADJUSTMENT_METHOD,
             "pit_recipe_overrides": PIT_RECIPE_OVERRIDES,
             "market_filename": MARKET_FILENAME,
+            "market_file_id": MARKET_FILE_ID,
             "pit_filename": PIT_FILENAME,
+            "pit_file_id": PIT_FILE_ID,
             "prediction_rows": inventory_rows,
             "drive_reference_folders": DRIVE_REFERENCE_FOLDERS,
         }
         write_json(MANIFEST_PATH, manifest)
         write_heartbeat("inventory", inventory_path=str(inventory_path), drive_inventory_path=str(drive_inventory_path))
+        inventory_publication = publish_run_artifacts()
+        print("Inventory publication:", inventory_publication)
         display(inventory_df)
         """
     ),
@@ -520,6 +734,27 @@ cells = [
                 / "averaged_predictions"
             )
 
+        def download_drive_file(file_id: str, target_path: Path, expected_size: int) -> str:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            if target_path.exists() and target_path.stat().st_size == expected_size:
+                return "EXISTS"
+            partial_path = Path(f"{target_path}.part")
+            partial_path.unlink(missing_ok=True)
+            request = DRIVE_SERVICE.files().get_media(fileId=file_id, supportsAllDrives=True)
+            with partial_path.open("wb") as handle:
+                downloader = MediaIoBaseDownload(handle, request)
+                done = False
+                while not done:
+                    _, done = downloader.next_chunk()
+            actual_size = partial_path.stat().st_size
+            if actual_size != expected_size:
+                partial_path.unlink(missing_ok=True)
+                raise RuntimeError(
+                    f"Drive download size mismatch for {target_path.name}: expected={expected_size} actual={actual_size}"
+                )
+            partial_path.replace(target_path)
+            return "DOWNLOADED"
+
         def download_drive_folder_csvs(folder_id: str, target_dir: Path) -> list[dict]:
             target_dir.mkdir(parents=True, exist_ok=True)
             downloaded = []
@@ -528,40 +763,45 @@ cells = [
                 if not child["name"].lower().endswith(".csv"):
                     continue
                 target_path = target_dir / child["name"]
-                if target_path.exists() and target_path.stat().st_size > 0:
-                    downloaded.append({"name": child["name"], "path": str(target_path), "status": "EXISTS"})
-                    continue
-                request = DRIVE_SERVICE.files().get_media(fileId=child["id"], supportsAllDrives=True)
-                with target_path.open("wb") as handle:
-                    downloader = MediaIoBaseDownload(handle, request)
-                    done = False
-                    while not done:
-                        _, done = downloader.next_chunk()
-                downloaded.append({"name": child["name"], "path": str(target_path), "status": "DOWNLOADED"})
+                expected_size = int(child["size"])
+                status = download_drive_file(child["id"], target_path, expected_size)
+                downloaded.append({"name": child["name"], "path": str(target_path), "status": status})
             return downloaded
 
-        def resolve_existing_path(candidates: list[Path], label: str) -> Path:
+        def resolve_or_download_input(
+            candidates: list[Path],
+            *,
+            file_id: str,
+            expected_size: int,
+            filename: str,
+            label: str,
+        ) -> Path:
             for candidate in candidates:
-                if candidate.exists():
+                if candidate.exists() and candidate.stat().st_size == expected_size:
                     return candidate
-            joined = "\n".join(str(path) for path in candidates)
-            raise FileNotFoundError(f"Missing {label}. Checked:\n{joined}")
+            target_path = LOCAL_DATA_ROOT / filename
+            download_drive_file(file_id, target_path, expected_size)
+            if not target_path.exists() or target_path.stat().st_size != expected_size:
+                raise FileNotFoundError(f"Could not materialize exact {label} from Drive file {file_id}")
+            return target_path
 
-        MARKET_CSV = resolve_existing_path(
+        MARKET_CSV = resolve_or_download_input(
             [
                 REPO_DIR / "data" / "raw" / "market" / MARKET_FILENAME,
-                Path("/content/drive/MyDrive/MCI_GRU_shared/data") / MARKET_FILENAME,
-                Path("/content/drive/MyDrive/MCI-GRU-Ablations/data") / MARKET_FILENAME,
             ],
-            "110-name PIT market CSV",
+            file_id=MARKET_FILE_ID,
+            expected_size=MARKET_FILE_SIZE,
+            filename=MARKET_FILENAME,
+            label="110-name PIT market CSV",
         )
-        PIT_CSV = resolve_existing_path(
+        PIT_CSV = resolve_or_download_input(
             [
                 REPO_DIR / "data" / "raw" / "constituents" / PIT_FILENAME,
-                Path("/content/drive/MyDrive/MCI_GRU_shared/data") / PIT_FILENAME,
-                Path("/content/drive/MyDrive/MCI-GRU-Ablations/data") / PIT_FILENAME,
             ],
-            "110-name PIT universe CSV",
+            file_id=PIT_FILE_ID,
+            expected_size=PIT_FILE_SIZE,
+            filename=PIT_FILENAME,
+            label="110-name PIT universe CSV",
         )
 
         staged_rows = []
@@ -590,6 +830,8 @@ cells = [
         staged_path = SUMMARY_DIR / "staged_prediction_inventory.csv"
         staged_df.to_csv(staged_path, index=False)
         write_heartbeat("stage_predictions", staged_path=str(staged_path), market_csv=str(MARKET_CSV), pit_csv=str(PIT_CSV))
+        stage_publication = publish_run_artifacts()
+        print("Stage publication:", stage_publication)
         display(staged_df)
         """
     ),
@@ -742,6 +984,8 @@ cells = [
 
         planned_path = SUMMARY_DIR / "planned_backtest_commands.csv"
         pd.DataFrame(planned_commands).to_csv(planned_path, index=False)
+        planning_publication = publish_run_artifacts()
+        print("Planning publication:", planning_publication)
         display(pd.DataFrame(planned_commands))
 
         def execute_backtests() -> list[dict]:
@@ -812,6 +1056,9 @@ cells = [
                 error_type=type(exc).__name__,
                 error_message=str(exc),
             )
+            failure_publication = publish_run_artifacts()
+            verify_published_artifacts(["heartbeat.json"])
+            print("Failure publication:", failure_publication)
             if IN_COLAB and DISCONNECT_RUNTIME_WHEN_DONE:
                 runtime.unassign()
             raise
@@ -822,6 +1069,8 @@ cells = [
         backtest_df.to_csv(backtest_csv, index=False)
         write_json(backtest_json, {"rows": backtest_rows})
         write_heartbeat("backtests_done", backtest_csv=str(backtest_csv), row_count=len(backtest_rows))
+        backtest_publication = publish_run_artifacts()
+        print("Backtest publication:", backtest_publication)
         display(backtest_df)
         """
     ),
@@ -1003,6 +1252,8 @@ cells = [
             churn_path=str(churn_path),
             rank_summary_path=str(rank_summary_path),
         )
+        diagnostics_publication = publish_run_artifacts()
+        print("Diagnostics publication:", diagnostics_publication)
         display(rank_summary_df)
         """
     ),
@@ -1053,8 +1304,77 @@ cells = [
             return report_path
 
         report_path = write_decision_gate_report()
-        write_heartbeat("complete", status="COMPLETE", decision_gate_report=str(report_path))
+        write_heartbeat(
+            "publication_verification",
+            status="RUNNING",
+            decision_gate_report=str(report_path),
+        )
+        completion_publication = publish_run_artifacts()
+        required_remote_artifacts = [
+            "heartbeat.json",
+            "lambdarankic_110_name_replay_manifest.json",
+            "summaries/saved_prediction_inventory.csv",
+            "summaries/drive_artifact_inventory.csv",
+            "summaries/staged_prediction_inventory.csv",
+            "summaries/planned_backtest_commands.csv",
+            "summaries/backtest_results.csv",
+            "summaries/backtest_results.json",
+            "summaries/rank_stability_summary.csv",
+            "summaries/cross_seed_rank_correlation.csv",
+            "summaries/cross_seed_jaccard.csv",
+            "summaries/top10_boundary_churn.csv",
+            "summaries/rank_drop_cost_sensitivity.csv",
+            "summaries/decision_gate_report.md",
+        ]
+        publication_verification = verify_published_artifacts(required_remote_artifacts)
+        prediction_directory_verification = []
+        executed_backtest_artifacts = []
+        if not DRY_RUN:
+            for row in staged_rows:
+                if row.get("stage_status") != "OK":
+                    continue
+                relative_prediction_dir = str(Path(row["staged_predictions_dir"]).relative_to(RUN_ROOT))
+                prediction_directory_verification.append(
+                    verify_published_csv_directory(relative_prediction_dir, int(row["expected_csv_count"]))
+                )
+            for row in backtest_rows:
+                if row.get("status") != "OK":
+                    continue
+                relative_backtest_dir = Path(row["backtest_dir"]).relative_to(RUN_ROOT)
+                for filename in ["backtest_metrics.json", "trade_journal.csv", "daily_holdings.csv"]:
+                    executed_backtest_artifacts.append(str(relative_backtest_dir / filename))
+            publication_verification.extend(verify_published_artifacts(executed_backtest_artifacts))
+        publication_verification_path = SUMMARY_DIR / "drive_publication_verification.json"
+        write_json(
+            publication_verification_path,
+            {
+                "drive_run_folder_id": DRIVE_RUN_FOLDER_ID,
+                "drive_run_root_url": drive_folder_url(DRIVE_RUN_FOLDER_ID),
+                "artifacts": publication_verification,
+                "prediction_directories": prediction_directory_verification,
+                "executed_backtest_artifacts": executed_backtest_artifacts,
+            },
+        )
+        write_heartbeat(
+            "complete",
+            status="COMPLETE",
+            decision_gate_report=str(report_path),
+            drive_run_root_url=drive_folder_url(DRIVE_RUN_FOLDER_ID),
+            verified_remote_artifact_count=len(publication_verification),
+        )
+        final_publication = publish_run_artifacts()
+        verify_published_artifacts(
+            required_remote_artifacts
+            + executed_backtest_artifacts
+            + ["summaries/drive_publication_verification.json"]
+        )
+        remote_heartbeat = read_published_json("heartbeat.json")
+        if remote_heartbeat.get("status") != "COMPLETE" or remote_heartbeat.get("phase") != "complete":
+            raise RuntimeError(f"Remote heartbeat did not read back COMPLETE: {remote_heartbeat}")
         print("Report:", report_path)
+        print("Drive run root:", drive_folder_url(DRIVE_RUN_FOLDER_ID))
+        print("Completion publication:", completion_publication)
+        print("Final publication:", final_publication)
 
         if IN_COLAB and DISCONNECT_RUNTIME_WHEN_DONE:
             runtime.unassign()
@@ -1065,7 +1385,7 @@ cells = [
 notebook = {
     "cells": cells,
     "metadata": {
-        "accelerator": "GPU",
+        "accelerator": "CPU",
         "colab": {"name": OUT.name, "provenance": []},
         "kernelspec": {"display_name": "Python 3", "name": "python3"},
         "language_info": {"name": "python"},
