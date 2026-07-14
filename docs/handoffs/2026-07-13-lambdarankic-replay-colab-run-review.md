@@ -46,3 +46,18 @@ Date: 2026-07-13
 3. Confirm all 12 manifest rows are `OK`, both frozen inputs resolve, and `planned_backtest_commands.csv` contains 21 unique commands.
 4. Start a fresh run with `DRY_RUN=False` only after the dry-run artifacts are verified.
 
+## Continuation Update: Drive API Fallback
+
+- The user completed the original OAuth prompt, but `drive.mount("/content/drive")` then failed twice with `ValueError: mount failed`, including after `Disconnect and delete runtime`.
+- The team replaced the DriveFS dependency with authenticated Drive v3 API calls. The notebook now uses local Colab paths, downloads the frozen market and PIT files by exact Drive file ID and byte size, writes downloads through `.part` files before atomic replacement, and publishes the run tree back to Drive by folder/file ID.
+- Remote safety now publishes a `RUNNING/publication_verification` heartbeat, verifies required summary artifacts, verifies all full-run prediction CSV counts and backtest artifacts, then publishes and reads back the final `COMPLETE` heartbeat before disconnecting.
+- Exact implementation commit: `8019e4b` (`Use Drive API for LambdaRank replay artifacts`).
+- Exact live notebook URL: `https://colab.research.google.com/github/magilliam27/MCI-GRU/blob/8019e4b/notebooks/lambdarankic_110_name_replay_colab.ipynb`.
+- Fresh verification: 14 focused tests passed; Ruff and `git diff --check` passed.
+- Current live state: the exact-commit CPU notebook is waiting in `auth.authenticate_user()` on a fresh Google OAuth tab. The prior credential belonged to the deleted runtime, so the new runtime requires one additional user-controlled authorization.
+- No API-only run folder or replay output has been created yet because authentication pauses before remote folder creation.
+
+### Current Next Action
+
+1. Complete the newest Google authorization tab preserved beside the exact-commit Colab notebook.
+2. Reply `ready` so the waiting dry-run can be monitored through the 12-row inventory, 21-command plan, Drive publication, and final remote heartbeat readback.
