@@ -105,6 +105,10 @@ tests/               ← pytest suite + backtest scripts
 Tests verify: no-lookahead invariants, dynamic graph wiring, momentum blend modes,
 regime data contracts, backtest fairness, output management, MLflow tracking.
 
+`docs/TEST_REGISTRY.md` is the auto-generated registry of all tests (with
+last-run status when `test_reports/junit.xml` exists). Regenerate after adding
+or renaming tests: `.\.venv\Scripts\python.exe scripts/generate_test_registry.py`.
+
 ## Correlation graph: plan vs implementation
 
 The file `docs/agent_references/cursor/plans/graph_signal_upgrades_c28cf640.plan.md` has two layers: (1) an **audit** that the dynamic graph is wired end-to-end (no lookahead; `GraphSchedule.get_graph_for_date` in `combined_collate_fn` when `graph.update_frequency_months > 0`; `run_experiment.py` sets `dynamic_graph` from that flag), and (2) a **roadmap** of levers 1–4. The YAML frontmatter todos there are still largely *pending* relative to that roadmap.

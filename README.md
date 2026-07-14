@@ -576,13 +576,16 @@ python -m pytest tests/test_regime_features.py -v
 
 ### Test Coverage
 
-| Module | Tests |
-|--------|-------|
-| `test_backtest_fairness.py` | Return calculation, simulation timing, rank-drop gate |
-| `test_index_level_mode.py` | Index-level config validation, data loading |
-| `test_momentum_blend_modes.py` | Static/dynamic blend, Proposition 9, no-lookahead |
-| `test_output_management.py` | Output directory structure, logging, Hydra config |
-| `test_regime_features.py` | Regime computation, no-lookahead, data contract |
+The full, auto-generated registry of every test (with last-run status when a
+junit report exists) lives in [`docs/TEST_REGISTRY.md`](docs/TEST_REGISTRY.md).
+Regenerate it after adding or renaming tests:
+
+```bash
+python scripts/generate_test_registry.py
+```
+
+See [`docs/TESTING_GUIDE.md`](docs/TESTING_GUIDE.md) for the verification
+ladder, markers, and reporting workflow.
 
 ### Backtesting
 

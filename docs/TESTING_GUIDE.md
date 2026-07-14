@@ -31,6 +31,25 @@ append `-p no:cacheprovider` to disable cache writes for that run.
 Use the smallest command that proves the changed behavior first. Run broader
 checks before pushing shared pipeline, graph, model, or paper-trade changes.
 
+## Test Registry And Run Reports
+
+`docs/TEST_REGISTRY.md` lists every test file, its test functions, markers, the
+first-party modules each file exercises, and (when available) the last-run
+status and duration per test. It is auto-generated — do not edit by hand.
+
+To capture a viewable report of a run, add `--junitxml=test_reports/junit.xml`
+to any pytest command, then regenerate the registry to merge the results:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/ -v --basetemp .tmp_pytest\pytest --junitxml=test_reports\junit.xml
+.\.venv\Scripts\python.exe scripts/generate_test_registry.py
+```
+
+`test_reports/` is gitignored (per-run artifact); `docs/TEST_REGISTRY.md` is
+committed so the registry stays browsable. Regenerate it whenever tests are
+added, renamed, or removed. `tests/test_generate_test_registry.py` guards the
+generator's contract.
+
 ## Verification Ladder
 
 1. **Targeted proof**: run the specific test file or keyword for the changed

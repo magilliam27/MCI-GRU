@@ -10,6 +10,7 @@ This script creates synthetic data to test that:
 import os
 import sys
 import tempfile
+import traceback
 
 import numpy as np
 import pandas as pd
@@ -145,7 +146,6 @@ def test_return_calculation():
     print(f"  ✓ Overnight gap calculation correct: {actual_gap:.6f}")
 
     print("  ✓ TEST 1 PASSED\n")
-    return stock_data_df, predictions_df, expected
 
 
 def test_simulation_timing():
@@ -161,50 +161,41 @@ def test_simulation_timing():
     stock_data_df = bp.calculate_forward_returns(stock_data_df, label_t=5)
 
     # Run simulation
-    try:
-        sim_results = bp.simulate_trading_strategy(
-            predictions_df=predictions_df,
-            stock_data_df=stock_data_df,
-            top_k=2,
-            label_t=5,
-            transaction_costs=None,
-            rank_drop_gate=None,
-        )
+    sim_results = bp.simulate_trading_strategy(
+        predictions_df=predictions_df,
+        stock_data_df=stock_data_df,
+        top_k=2,
+        label_t=5,
+        transaction_costs=None,
+        rank_drop_gate=None,
+    )
 
-        # Check results
-        portfolio_returns = sim_results["portfolio_returns"]
+    # Check results
+    portfolio_returns = sim_results["portfolio_returns"]
 
-        print(f"  Number of trading days: {len(portfolio_returns)}")
-        print(f"  Expected: {expected['num_days']}")
+    print(f"  Number of trading days: {len(portfolio_returns)}")
+    print(f"  Expected: {expected['num_days']}")
 
-        # Calculate average return
-        avg_return = np.mean(portfolio_returns)
-        print(f"  Average daily return: {avg_return:.6f}")
-        print(f"  Expected: {expected['avg_daily_return']:.6f}")
+    # Calculate average return
+    avg_return = np.mean(portfolio_returns)
+    print(f"  Average daily return: {avg_return:.6f}")
+    print(f"  Expected: {expected['avg_daily_return']:.6f}")
 
-        # Verify open-to-open expectation
-        tolerance = 0.001  # 0.1% tolerance
-        assert abs(avg_return - expected["avg_daily_return"]) < tolerance, (
-            f"Average return mismatch! Got {avg_return}, expected {expected['avg_daily_return']}"
-        )
+    # Verify open-to-open expectation
+    tolerance = 0.001  # 0.1% tolerance
+    assert abs(avg_return - expected["avg_daily_return"]) < tolerance, (
+        f"Average return mismatch! Got {avg_return}, expected {expected['avg_daily_return']}"
+    )
 
-        print(f"  ✓ Returns match open-to-open expectation (within {tolerance * 100}%)")
+    print(f"  ✓ Returns match open-to-open expectation (within {tolerance * 100}%)")
 
-        # Verify we're not mistakenly using intraday-only returns
-        assert abs(avg_return - expected["intraday_only_return"]) > tolerance, (
-            "Unexpected intraday-only behavior detected"
-        )
-        print("  ✓ Not using intraday-only returns")
+    # Verify we're not mistakenly using intraday-only returns
+    assert abs(avg_return - expected["intraday_only_return"]) > tolerance, (
+        "Unexpected intraday-only behavior detected"
+    )
+    print("  ✓ Not using intraday-only returns")
 
-        print("  ✓ TEST 2 PASSED\n")
-        return True
-
-    except Exception as e:
-        print(f"  ✗ TEST 2 FAILED: {e}\n")
-        import traceback
-
-        traceback.print_exc()
-        return False
+    print("  ✓ TEST 2 PASSED\n")
 
 
 def test_prediction_date_mapping():
@@ -254,44 +245,34 @@ def test_prediction_date_mapping():
     stock_data_df = bp.calculate_forward_returns(stock_data_df, label_t=5)
 
     # Run simulation
-    try:
-        sim_results = bp.simulate_trading_strategy(
-            predictions_df=predictions_df,
-            stock_data_df=stock_data_df,
-            top_k=2,
-            label_t=5,
-            transaction_costs=None,
-            rank_drop_gate=None,
-        )
+    sim_results = bp.simulate_trading_strategy(
+        predictions_df=predictions_df,
+        stock_data_df=stock_data_df,
+        top_k=2,
+        label_t=5,
+        transaction_costs=None,
+        rank_drop_gate=None,
+    )
 
-        portfolio_returns = sim_results["portfolio_returns"]
-        sim_dates = sim_results["dates"]
+    portfolio_returns = sim_results["portfolio_returns"]
+    sim_dates = sim_results["dates"]
 
-        print(f"  Prediction dates: {predictions_df['dt'].unique().tolist()}")
-        print(f"  Simulation dates (actual trading): {sim_dates}")
+    print(f"  Prediction dates: {predictions_df['dt'].unique().tolist()}")
+    print(f"  Simulation dates (actual trading): {sim_dates}")
 
-        # With open-to-open holding windows and only 3 dates:
-        # - Prediction on Jan 1 maps to entry Jan 2 and realizes Jan2->Jan3 open-to-open return
-        # - Prediction on Jan 2 has no Jan4 open, so no second realizable return
-        if len(portfolio_returns) == 1:
-            expected_ret = opens[2] / opens[1] - 1.0
-            print(f"  Return for Jan 2 entry (from Jan 1 prediction): {portfolio_returns[0]:.6f}")
-            print(f"    Expected open-to-open: {expected_ret:.6f}")
-            assert abs(portfolio_returns[0] - expected_ret) < 0.0001, "Date mapping error!"
-            print("  ✓ Date mapping correct: predictions use next-day entry open-to-open window")
-        else:
-            print(f"  ✗ ERROR: Expected 1 return, got {len(portfolio_returns)}")
-            return False
+    # With open-to-open holding windows and only 3 dates:
+    # - Prediction on Jan 1 maps to entry Jan 2 and realizes Jan2->Jan3 open-to-open return
+    # - Prediction on Jan 2 has no Jan4 open, so no second realizable return
+    assert len(portfolio_returns) == 1, (
+        f"Expected 1 realizable return, got {len(portfolio_returns)}"
+    )
+    expected_ret = opens[2] / opens[1] - 1.0
+    print(f"  Return for Jan 2 entry (from Jan 1 prediction): {portfolio_returns[0]:.6f}")
+    print(f"    Expected open-to-open: {expected_ret:.6f}")
+    assert abs(portfolio_returns[0] - expected_ret) < 0.0001, "Date mapping error!"
+    print("  ✓ Date mapping correct: predictions use next-day entry open-to-open window")
 
-        print("  ✓ TEST 3 PASSED\n")
-        return True
-
-    except Exception as e:
-        print(f"  ✗ TEST 3 FAILED: {e}\n")
-        import traceback
-
-        traceback.print_exc()
-        return False
+    print("  ✓ TEST 3 PASSED\n")
 
 
 def _import_backtest():
@@ -353,7 +334,6 @@ def test_rank_drop_gate_eligible():
         "  ✓ Rank-drop gate enabled; simulation produced trading days when stock had rank drop >= 10"
     )
     print("  ✓ TEST 4 PASSED\n")
-    return True
 
 
 def test_rank_drop_gate_excluded():
@@ -396,7 +376,6 @@ def test_rank_drop_gate_excluded():
     assert len(sim["portfolio_returns"]) >= 1, "Simulation should continue with persisted holdings"
     print("  ✓ No day skipped when no stock had rank drop >= 10; holdings persisted")
     print("  ✓ TEST 5 PASSED\n")
-    return True
 
 
 def test_rank_drop_gate_disabled_regression():
@@ -435,7 +414,6 @@ def test_rank_drop_gate_disabled_regression():
     )
     print("  ✓ Disabled gate matches no-gate (same returns and days)")
     print("  ✓ TEST 6 PASSED\n")
-    return True
 
 
 def test_portfolio_tracking_outputs_nonregression():
@@ -523,93 +501,33 @@ def test_portfolio_tracking_outputs_nonregression():
         print("  ✓ First trade day contains BUY actions only")
 
     print("  ✓ TEST 7 PASSED\n")
-    return True
 
 
 def main():
-    """Run all tests."""
+    """Run all tests as a standalone script (pytest is the primary runner)."""
     print("\n" + "=" * 70)
     print("BACKTEST FAIRNESS VERIFICATION TESTS")
     print("=" * 70 + "\n")
 
+    tests = [
+        ("Return Calculation", test_return_calculation),
+        ("Simulation Timing", test_simulation_timing),
+        ("Date Mapping", test_prediction_date_mapping),
+        ("Rank-Drop Gate Eligible", test_rank_drop_gate_eligible),
+        ("Rank-Drop Gate Excluded", test_rank_drop_gate_excluded),
+        ("Rank-Drop Gate Disabled Regression", test_rank_drop_gate_disabled_regression),
+        ("Portfolio Tracking Outputs", test_portfolio_tracking_outputs_nonregression),
+    ]
+
     results = []
-
-    # Test 1: Return calculation
-    try:
-        test_return_calculation()
-        results.append(("Return Calculation", True))
-    except Exception as e:
-        print(f"✗ TEST 1 FAILED: {e}\n")
-        import traceback
-
-        traceback.print_exc()
-        results.append(("Return Calculation", False))
-
-    # Test 2: Simulation timing
-    try:
-        passed = test_simulation_timing()
-        results.append(("Simulation Timing", passed))
-    except Exception as e:
-        print(f"✗ TEST 2 FAILED: {e}\n")
-        import traceback
-
-        traceback.print_exc()
-        results.append(("Simulation Timing", False))
-
-    # Test 3: Date mapping
-    try:
-        passed = test_prediction_date_mapping()
-        results.append(("Date Mapping", passed))
-    except Exception as e:
-        print(f"✗ TEST 3 FAILED: {e}\n")
-        import traceback
-
-        traceback.print_exc()
-        results.append(("Date Mapping", False))
-
-    # Test 4: Rank-drop gate eligible
-    try:
-        passed = test_rank_drop_gate_eligible()
-        results.append(("Rank-Drop Gate Eligible", passed))
-    except Exception as e:
-        print(f"✗ TEST 4 FAILED: {e}\n")
-        import traceback
-
-        traceback.print_exc()
-        results.append(("Rank-Drop Gate Eligible", False))
-
-    # Test 5: Rank-drop gate excluded / skip day
-    try:
-        passed = test_rank_drop_gate_excluded()
-        results.append(("Rank-Drop Gate Excluded", passed))
-    except Exception as e:
-        print(f"✗ TEST 5 FAILED: {e}\n")
-        import traceback
-
-        traceback.print_exc()
-        results.append(("Rank-Drop Gate Excluded", False))
-
-    # Test 6: Rank-drop gate disabled regression
-    try:
-        passed = test_rank_drop_gate_disabled_regression()
-        results.append(("Rank-Drop Gate Disabled Regression", passed))
-    except Exception as e:
-        print(f"✗ TEST 6 FAILED: {e}\n")
-        import traceback
-
-        traceback.print_exc()
-        results.append(("Rank-Drop Gate Disabled Regression", False))
-
-    # Test 7: Portfolio tracking outputs + non-regression
-    try:
-        passed = test_portfolio_tracking_outputs_nonregression()
-        results.append(("Portfolio Tracking Outputs", passed))
-    except Exception as e:
-        print(f"✗ TEST 7 FAILED: {e}\n")
-        import traceback
-
-        traceback.print_exc()
-        results.append(("Portfolio Tracking Outputs", False))
+    for test_name, test_func in tests:
+        try:
+            test_func()
+            results.append((test_name, True))
+        except Exception as e:
+            print(f"✗ {test_name} FAILED: {e}\n")
+            traceback.print_exc()
+            results.append((test_name, False))
 
     # Summary
     print("=" * 70)
@@ -631,7 +549,5 @@ def main():
 
 
 if __name__ == "__main__":
-    import sys
-
     success = main()
     sys.exit(0 if success else 1)
