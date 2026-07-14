@@ -185,10 +185,11 @@ def load_auxiliary_data(
 def _compute_norm_stats(
     df: pd.DataFrame,
     feature_cols: list[str],
+    train_start: str,
     train_end: str,
 ) -> tuple[dict[str, float], dict[str, float]]:
     """Compute per-feature mean/std from the training period."""
-    return compute_zscore_norm_stats(df, feature_cols, train_end)
+    return compute_zscore_norm_stats(df, feature_cols, train_start, train_end)
 
 
 def _build_feature_reference(
@@ -432,6 +433,7 @@ def resolve_pit_context(config: ExperimentConfig) -> PitContext:
 def fit_normalisation(
     df_filled: pd.DataFrame,
     feature_cols: list[str],
+    train_start: str,
     train_end: str,
     mode: str,
     pit: PitContext,
@@ -441,14 +443,19 @@ def fit_normalisation(
         norm_source = df_filled
         if pit.masked_panel:
             norm_source = _apply_pit_universe(df_filled, pit.csv_path)
-        means, stds = _compute_norm_stats(norm_source, feature_cols, train_end)
+        means, stds = _compute_norm_stats(
+            norm_source,
+            feature_cols,
+            train_start,
+            train_end,
+        )
         df_norm = _apply_normalisation(df_filled, feature_cols, means, stds)
     elif mode == "rank_gauss":
         logger.info("Applying rank-Gaussian normalisation (train fit)...")
         rank_source = df_filled
         if pit.masked_panel:
             rank_source = _apply_pit_universe(df_filled, pit.csv_path)
-        train_mask = rank_source["dt"] <= train_end
+        train_mask = (rank_source["dt"] >= train_start) & (rank_source["dt"] <= train_end)
         train_slice = rank_source.loc[train_mask]
         rank_gauss_reference = fit_rank_gaussian_reference(train_slice, feature_cols)
         df_norm = apply_rank_gaussian(df_filled, feature_cols, rank_gauss_reference)
@@ -716,6 +723,7 @@ def prepare_data(
     norm_fit, df_norm = fit_normalisation(
         df_filled,
         feature_cols,
+        config.data.train_start,
         config.data.train_end,
         config.data.normalisation,
         pit,
@@ -834,7 +842,12 @@ def prepare_data_index_level(
     test_df = df_norm[
         (df_norm["dt"] >= config.data.test_start) & (df_norm["dt"] <= config.data.test_end)
     ]
-    means, stds = _compute_norm_stats(df_norm, feature_cols, config.data.train_end)
+    means, stds = _compute_norm_stats(
+        df_norm,
+        feature_cols,
+        config.data.train_start,
+        config.data.train_end,
+    )
     df_norm = _apply_normalisation(df_norm, feature_cols, means, stds)
 
     df_filtered = df_norm.copy()

@@ -30,10 +30,11 @@ def impute_feature_nans_by_day(
 def compute_zscore_norm_stats(
     df: pd.DataFrame,
     feature_cols: Sequence[str],
+    train_start: str,
     train_end: str,
 ) -> tuple[dict[str, float], dict[str, float]]:
-    """Train-period-only mean/std. Moved verbatim from pipeline._compute_norm_stats."""
-    train_df = df[df["dt"] <= train_end]
+    """Return mean/std fitted only on the inclusive training date range."""
+    train_df = df[(df["dt"] >= train_start) & (df["dt"] <= train_end)]
     means: dict[str, float] = {}
     stds: dict[str, float] = {}
     for col in feature_cols:

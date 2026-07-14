@@ -1,0 +1,140 @@
+# @package _global_
+# Approval-gated LambdaRankIC confirmation run for the 2026 YTD holdout.
+# The notebook binds this resolved recipe to a SHA-256 digest before launch.
+
+experiment_name: lambdarankic_2026_ytd_110_name
+
+data:
+  universe: sp500
+  source: csv
+  filename: data/raw/market/sp500_pit_gics_top10_mcap_monthly_20210104_20260713_lseg_20190101_20260713.csv
+  experiment_mode: stock_level
+  train_start: "2021-01-01"
+  train_end: "2024-12-31"
+  val_start: "2025-01-10"
+  val_end: "2025-12-23"
+  test_start: "2026-01-01"
+  test_end: "2026-07-13"
+  skip_embargo_check: false
+  normalisation: zscore
+  use_polars: false
+  filter_stocks_per_split: false
+  use_pit_universe: true
+  pit_universe_csv: data/raw/constituents/sp500_pit_gics_top10_mcap_monthly_20210104_20260713_pit_universe.csv
+  pit_universe_mode: masked_panel
+  pit_min_scoreable_stocks: 100
+  pit_breadth_policy: error
+
+features:
+  include_momentum: true
+  include_weekly_momentum: true
+  momentum_encoding: binary
+  momentum_blend_mode: static
+  momentum_blend_fast_weight: 0.5
+  include_volatility: false
+  include_volatility_targeting: false
+  include_vix: false
+  include_credit_spread: false
+  include_global_regime: true
+  regime_change_months: 12
+  regime_norm_months: 120
+  regime_exclusion_months: 1
+  regime_similarity_quantile: 0.2
+  regime_min_history_months: 24
+  regime_strict: true
+  regime_enforce_lag_days: 0
+  regime_include_subsequent_returns: false
+  include_rsi: false
+  include_ma_features: false
+  include_price_features: false
+  include_volume_features: false
+
+graph:
+  judge_value: 0.8
+  update_frequency_months: 0
+  corr_lookback_days: 252
+  top_k: 0
+  top_k_metric: corr
+  use_multi_feature_edges: true
+  drop_edge_p: 0.1
+  append_snapshot_age_days: false
+  use_lead_lag_features: false
+  lead_lag_days: [1, 2, 3, 5]
+  use_sector_relation: false
+  sector_map_csv: null
+  sector_top_k: 10
+
+model:
+  his_t: 10
+  label_t: 5
+  gru_hidden_sizes: [32, 10]
+  hidden_size_gat1: 32
+  output_gat1: 4
+  gat_heads: 4
+  hidden_size_gat2: 32
+  num_hidden_states: 32
+  cross_attn_heads: 4
+  slow_kernel: 5
+  slow_stride: 2
+  use_multi_scale: true
+  use_self_attention: true
+  activation: elu
+  output_activation: "none"
+  latent_init_scale: 0.02
+  use_group_type_embed: true
+  use_trunk_regularisation: true
+  trunk_dropout: 0.1
+  use_nn_multihead_attention: true
+  temporal_encoder: gru_attn
+  use_a1_a2_cross_attention: false
+  cross_a2_num_heads: 4
+
+training:
+  batch_size: 32
+  learning_rate: 5e-5
+  num_epochs: 100
+  num_models: 20
+  early_stopping_patience: 15
+  weight_decay: 1e-3
+  gradient_clip: 1.0
+  loss_type: lambdarank_ic
+  lambdarank_ic_max_pairs_per_day: 8192
+  lambdarank_ic_temperature: 1.0
+  label_type: returns
+  warmup_steps: 1000
+  lr_scheduler: cosine
+  use_amp: true
+  selection_metric: val_rank_ic
+  shuffle_train: true
+  dataloader_num_workers: 0
+  dataloader_pin_memory: false
+  dataloader_persistent_workers: false
+  dataloader_prefetch_factor: null
+  profile_batches: 0
+  walkforward:
+    enabled: false
+    window_train_years: 4
+    window_val_months: 6
+    test_span_months: 3
+    step_months: 6
+    expanding: false
+    max_windows: null
+
+evaluation:
+  top_k_values: [10, 20, 50, 100]
+  bootstrap_enabled: true
+  bootstrap_resamples: 1000
+  bootstrap_seed: 1729
+  ci_level: 0.95
+  block_size: null
+  sharpe_method: newey_west
+  newey_west_lags: null
+
+tracking:
+  enabled: false
+  tracking_uri: mlruns
+  experiment_name: null
+  run_name: null
+  log_artifacts: false
+  log_checkpoints: false
+  log_predictions: false

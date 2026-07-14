@@ -51,16 +51,26 @@ def test_impute_feature_nans_by_day_mean_then_zero_fill() -> None:
 def test_compute_zscore_norm_stats_train_period_only() -> None:
     df = pd.DataFrame(
         {
-            "dt": ["2020-01-01", "2020-01-02", "2020-01-03", "2020-01-04"],
-            "feat": [0.0, 2.0, 100.0, 200.0],
+            "dt": ["2019-12-31", "2020-01-01", "2020-01-02", "2020-01-03"],
+            "feat": [-1_000.0, 0.0, 2.0, 1_000.0],
         }
     )
-    means, stds = compute_zscore_norm_stats(df, ["feat"], train_end="2020-01-02")
+    means, stds = compute_zscore_norm_stats(
+        df,
+        ["feat"],
+        train_start="2020-01-01",
+        train_end="2020-01-02",
+    )
 
     assert means["feat"] == pytest.approx(1.0)
     assert stds["feat"] == pytest.approx(np.std([0.0, 2.0], ddof=1))
     assert "feat" in means
-    assert compute_zscore_norm_stats(df, ["missing"], "2020-01-02") == ({}, {})
+    assert compute_zscore_norm_stats(
+        df,
+        ["missing"],
+        "2020-01-01",
+        "2020-01-02",
+    ) == ({}, {})
 
 
 def test_normalize_features_zscore_clip_and_scale() -> None:
