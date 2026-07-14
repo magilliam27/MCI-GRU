@@ -29,7 +29,8 @@ def test_replay_notebook_pins_diagnostics_only_contract() -> None:
         "LambdaRankIC 110-Name Replay Diagnostics",
         "DRY_RUN = True",
         "RUN_TRAINING = False",
-        "REQUIRE_COMPLETE_MATRIX = False",
+        "REQUIRE_COMPLETE_MATRIX = True",
+        "DISCONNECT_RUNTIME_WHEN_DONE = True",
         "BASE_SEEDS = [161803, 271828, 314159]",
         "CURRENT_PAIR_CAP = 8192",
         'LEGACY_PAIR_CAP = "legacy_unknown"',
@@ -41,6 +42,9 @@ def test_replay_notebook_pins_diagnostics_only_contract() -> None:
     for token in required_tokens:
         assert token in combined
         assert token in generator
+
+    assert "baseline_cost_gate30_2024" not in combined
+    assert "baseline_cost_gate30_2024" not in generator
 
     assert "run_experiment.py" not in code_cells
     assert "run_pit_saved_prediction_backtests.py" not in code_cells
@@ -81,6 +85,8 @@ def test_replay_notebook_contains_known_drive_prediction_rows() -> None:
         "1mO5dqZ6QMIRMDQHmrbd30so2ui7HeT5V",
         "1Co5Vd2dOSMrHUN5x_OzbJpkjJFocSHMo",
         "1lhL-tnUoShh8ImNdTED_sRBOf_dqcOim",
+        "1MW8uCWjlarfJYnsOUzG2vBmZUaXjaDin",
+        "1w_lFPx_JKginWf6-TsQoFY-Mlhs2XHuc",
         "1jCcZu-ENQKfbit2cdRjBucmCVklULERO",
         "1i2eiUSi0CGpatkzZ64hqAz04v71ob6FV",
         "1Gvtz8C3U6da1YtjA_bJ6SFyrcBNgfMeI",
@@ -91,8 +97,7 @@ def test_replay_notebook_contains_known_drive_prediction_rows() -> None:
         "1tp-BEvU2yPMxnE_c6ul3o1gVi-ZyeF3n",
         "1KHK3TSjtjz4Ft-XTU5DkmVtgcklgKTwt",
         "1PIV6uuwKDBKAGYMIRsvepCD7cgo9CgO3",
-        "recovery_20260701_manifest_complete_folder_id_to_confirm",
-        "OPTIONAL_FOLDER_ID_MISSING",
+        "recovery_20260701_verified",
     ]
 
     for token in required_tokens:
@@ -105,7 +110,7 @@ def test_replay_notebook_calls_daily_backtest_with_cost_and_gate_scenarios() -> 
     generator = GENERATOR_PATH.read_text(encoding="utf-8")
 
     required_tokens = [
-        'str(REPO_DIR / "tests" / "backtest_sp500_daily.py")',
+        'str(REPO_DIR / "scripts" / "backtest_sp500_daily.py")',
         '"--predictions_dir"',
         '"--data_file"',
         '"--pit_universe_csv"',
@@ -132,6 +137,10 @@ def test_replay_notebook_calls_daily_backtest_with_cost_and_gate_scenarios() -> 
         "GATE_SWEEP_VALUES = [10, 20, 30, 40, 60]",
         "COST_SWEEP_PAIRS = [(0.0, 0.0), (5.0, 2.0), (10.0, 5.0), (20.0, 10.0)]",
         "RUN_ALL_YEAR_CONFIRMATION = True",
+        "def execute_backtests() -> list[dict]",
+        'error_type=type(exc).__name__',
+        'status="FAILED"',
+        "runtime.unassign()",
     ]
 
     for token in required_tokens:

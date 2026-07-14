@@ -95,13 +95,13 @@ cells = [
         RUN_TRAINING = False
         REQUIRE_COLAB = True
         REQUIRE_GPU = False
-        REQUIRE_COMPLETE_MATRIX = False
+        REQUIRE_COMPLETE_MATRIX = True
         RUN_BASELINE_REPLAY = True
         RUN_2024_DECOMPOSITION = True
         RUN_2024_GATE_SWEEP = False
         RUN_2024_COST_SWEEP = False
         RUN_ALL_YEAR_CONFIRMATION = True
-        DISCONNECT_RUNTIME_WHEN_DONE = False
+        DISCONNECT_RUNTIME_WHEN_DONE = True
 
         # Runtime guardrails. Replay is CPU/file I/O heavy, so a GPU is optional.
         # If REQUIRE_GPU is enabled for operator policy, T4 and L4 are blocked.
@@ -244,9 +244,7 @@ cells = [
 
         DRIVE_SERVICE = build("drive", "v3") if IN_COLAB else None
 
-        # Explicit known LambdaRankIC 110-name averaged_prediction folders.
-        # The two 2022 current-seed rows can be filled from the recovery run root if Drive discovery
-        # does not find them automatically.
+        # Explicit verified LambdaRankIC 110-name averaged_prediction folders.
         PREDICTION_ROWS = [
             {
                 "row_id": "lambdarank_ic_2022_seed161803_pair8192",
@@ -256,10 +254,10 @@ cells = [
                 "loss_type": "lambdarank_ic",
                 "selection_metric": "val_rank_ic",
                 "expected_csv_count": PIT_WINDOWS[2022]["expected_csv_count"],
-                "folder_id": "",
-                "folder_url": "",
-                "source": "recovery_20260701_manifest_complete_folder_id_to_confirm",
-                "required": False,
+                "folder_id": "1MW8uCWjlarfJYnsOUzG2vBmZUaXjaDin",
+                "folder_url": "https://drive.google.com/drive/folders/1MW8uCWjlarfJYnsOUzG2vBmZUaXjaDin",
+                "source": "recovery_20260701_verified",
+                "required": True,
             },
             {
                 "row_id": "lambdarank_ic_2022_seed271828_pair8192",
@@ -269,10 +267,10 @@ cells = [
                 "loss_type": "lambdarank_ic",
                 "selection_metric": "val_rank_ic",
                 "expected_csv_count": PIT_WINDOWS[2022]["expected_csv_count"],
-                "folder_id": "",
-                "folder_url": "",
-                "source": "recovery_20260701_manifest_complete_folder_id_to_confirm",
-                "required": False,
+                "folder_id": "1w_lFPx_JKginWf6-TsQoFY-Mlhs2XHuc",
+                "folder_url": "https://drive.google.com/drive/folders/1w_lFPx_JKginWf6-TsQoFY-Mlhs2XHuc",
+                "source": "recovery_20260701_verified",
+                "required": True,
             },
             {
                 "row_id": "lambdarank_ic_2023_seed161803_pair8192",
@@ -630,17 +628,6 @@ cells = [
             add_scenario(scenario("gross_no_cost_no_gate", "stress_2024", False, False, 0.0, 0.0, None))
             add_scenario(scenario("cost_no_gate", "stress_2024", True, False, BASELINE_SPREAD_BPS, BASELINE_SLIPPAGE_BPS, None))
             add_scenario(scenario("gate30_no_cost", "stress_2024", False, True, 0.0, 0.0, BASELINE_MIN_RANK_DROP))
-            add_scenario(
-                scenario(
-                    "baseline_cost_gate30_2024",
-                    "stress_2024",
-                    True,
-                    True,
-                    BASELINE_SPREAD_BPS,
-                    BASELINE_SLIPPAGE_BPS,
-                    BASELINE_MIN_RANK_DROP,
-                )
-            )
         if RUN_2024_GATE_SWEEP:
             add_scenario(scenario("gate_none_cost_baseline", "stress_2024", True, False, BASELINE_SPREAD_BPS, BASELINE_SLIPPAGE_BPS, None))
             for gate_value in GATE_SWEEP_VALUES:
@@ -695,7 +682,7 @@ cells = [
                 sys.executable,
                 "-X",
                 "utf8",
-                str(REPO_DIR / "tests" / "backtest_sp500_daily.py"),
+                str(REPO_DIR / "scripts" / "backtest_sp500_daily.py"),
                 "--predictions_dir",
                 row["staged_predictions_dir"],
                 "--data_file",
@@ -757,55 +744,77 @@ cells = [
         pd.DataFrame(planned_commands).to_csv(planned_path, index=False)
         display(pd.DataFrame(planned_commands))
 
-        backtest_rows = []
-        for scenario_row in SCENARIOS:
-            for row in rows_for_scenario(scenario_row):
-                cmd = build_backtest_command(row, scenario_row)
-                bt_dir = expected_backtest_dir(row, scenario_row)
-                canonical_dir = canonical_backtest_dir(row, scenario_row)
-                log_path = LOG_DIR / f"backtest_{row['row_id']}_{scenario_row['name']}.log"
-                write_heartbeat("backtest", current_row=row["row_id"], current_scenario=scenario_row["name"], command=" ".join(cmd))
+        def execute_backtests() -> list[dict]:
+            result_rows = []
+            for scenario_row in SCENARIOS:
+                for row in rows_for_scenario(scenario_row):
+                    cmd = build_backtest_command(row, scenario_row)
+                    bt_dir = expected_backtest_dir(row, scenario_row)
+                    canonical_dir = canonical_backtest_dir(row, scenario_row)
+                    log_path = LOG_DIR / f"backtest_{row['row_id']}_{scenario_row['name']}.log"
+                    write_heartbeat(
+                        "backtest",
+                        current_row=row["row_id"],
+                        current_scenario=scenario_row["name"],
+                        command=" ".join(cmd),
+                    )
 
-                if DRY_RUN:
-                    backtest_rows.append(
+                    if DRY_RUN:
+                        result_rows.append(
+                            {
+                                **row,
+                                **{f"scenario.{key}": value for key, value in scenario_row.items()},
+                                "script_backtest_dir": str(bt_dir),
+                                "backtest_dir": str(canonical_dir),
+                                "returncode": None,
+                                "status": "DRY_RUN",
+                            }
+                        )
+                        continue
+
+                    started = time.perf_counter()
+                    proc = subprocess.run(cmd, cwd=REPO_DIR, text=True, capture_output=True, check=False)
+                    elapsed_seconds = time.perf_counter() - started
+                    log_path.write_text(proc.stdout + "\n\nSTDERR:\n" + proc.stderr, encoding="utf-8")
+                    metrics_path = bt_dir / "backtest_metrics.json"
+                    metrics = {}
+                    if metrics_path.exists():
+                        metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+                    if bt_dir.exists():
+                        shutil.copytree(bt_dir, canonical_dir, dirs_exist_ok=True)
+                    status = "OK" if proc.returncode == 0 else "FAILED"
+                    result_rows.append(
                         {
                             **row,
                             **{f"scenario.{key}": value for key, value in scenario_row.items()},
                             "script_backtest_dir": str(bt_dir),
                             "backtest_dir": str(canonical_dir),
-                            "returncode": None,
-                            "status": "DRY_RUN",
+                            "metrics_path": str(canonical_dir / "backtest_metrics.json"),
+                            "log_path": str(log_path),
+                            "returncode": proc.returncode,
+                            "elapsed_seconds": round(elapsed_seconds, 3),
+                            "status": status,
+                            **{f"backtest.{key}": value for key, value in metrics.items()},
                         }
                     )
-                    continue
+                    if proc.returncode != 0:
+                        raise RuntimeError(
+                            f"Backtest failed for {row['row_id']} {scenario_row['name']}; see {log_path}"
+                        )
+            return result_rows
 
-                started = time.perf_counter()
-                proc = subprocess.run(cmd, cwd=REPO_DIR, text=True, capture_output=True, check=False)
-                elapsed_seconds = time.perf_counter() - started
-                log_path.write_text(proc.stdout + "\n\nSTDERR:\n" + proc.stderr, encoding="utf-8")
-                metrics_path = bt_dir / "backtest_metrics.json"
-                metrics = {}
-                if metrics_path.exists():
-                    metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
-                if bt_dir.exists():
-                    shutil.copytree(bt_dir, canonical_dir, dirs_exist_ok=True)
-                status = "OK" if proc.returncode == 0 else "FAILED"
-                backtest_rows.append(
-                    {
-                        **row,
-                        **{f"scenario.{key}": value for key, value in scenario_row.items()},
-                        "script_backtest_dir": str(bt_dir),
-                        "backtest_dir": str(canonical_dir),
-                        "metrics_path": str(canonical_dir / "backtest_metrics.json"),
-                        "log_path": str(log_path),
-                        "returncode": proc.returncode,
-                        "elapsed_seconds": round(elapsed_seconds, 3),
-                        "status": status,
-                        **{f"backtest.{key}": value for key, value in metrics.items()},
-                    }
-                )
-                if proc.returncode != 0:
-                    raise RuntimeError(f"Backtest failed for {row['row_id']} {scenario_row['name']}; see {log_path}")
+        try:
+            backtest_rows = execute_backtests()
+        except Exception as exc:
+            write_heartbeat(
+                "failed",
+                status="FAILED",
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
+            if IN_COLAB and DISCONNECT_RUNTIME_WHEN_DONE:
+                runtime.unassign()
+            raise
 
         backtest_df = pd.DataFrame(backtest_rows)
         backtest_csv = SUMMARY_DIR / "backtest_results.csv"
