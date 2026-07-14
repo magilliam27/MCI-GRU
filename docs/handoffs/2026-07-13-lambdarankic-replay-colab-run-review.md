@@ -70,3 +70,5 @@ Date: 2026-07-13
 - The preserved exact-commit Colab and authorization tabs were not altered.
 - Direct Drive readback found no new LambdaRankIC replay folder, artifacts, or `COMPLETE` heartbeat, so the dry-run has not published evidence and the full replay has not started.
 - Required recovery: reload or restart Codex so the Chrome plugin and browser-control runtime load the same version, then reclaim the preserved tabs and continue with `DRY_RUN=True`.
+- Retry after the Codex reload reproduced the same failure at bundle line 33 (`globalThis.process = processShim`), so reload alone is insufficient. Reinstall the Chrome plugin from the Codex plugin UI, fully quit and reopen Codex, then reclaim the preserved tabs.
+- Post-retry Drive readback again found no `lambdarankic_110_name_replay_diagnostics` folder and no new heartbeat modified after `2026-07-13T00:00:00Z`; no dry-run evidence or full replay exists yet.
