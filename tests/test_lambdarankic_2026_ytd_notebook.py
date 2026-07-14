@@ -6,6 +6,7 @@ import ast
 import hashlib
 import json
 import re
+import zipfile
 from pathlib import Path
 
 import pandas as pd
@@ -50,6 +51,7 @@ def test_campaign_digest_binds_exact_resolved_config() -> None:
     combined = "\n".join(_cell_sources())
     approval_artifact = json.loads(APPROVAL_PATH.read_text(encoding="utf-8"))
 
+    assert digest == "a34ae4b778b03a12c464f794f79a72caa2024a75d376f45b275175f5507768a8"
     assert f'EXPECTED_CONFIG_SHA256 = "{digest}"' in combined
     assert approval_artifact == {"config_sha256": digest, **bundle}
     for relative, expected in bundle["campaign"]["source_files_sha256"].items():
@@ -129,7 +131,7 @@ def test_notebook_gate_precedes_drive_mutation_and_training() -> None:
     gate_index = launch.index("if not RUN_TRAINING:")
     digest_index = launch.index("if APPROVED_CONFIG_SHA256 != launch_config_sha256:")
     source_index = launch.index("assert_approved_sources()")
-    drive_create_index = launch.index("DRIVE_RUN_ROOT.mkdir")
+    drive_create_index = launch.index("create_drive_folder(")
     training_index = launch.index('str(REPO_DIR / "run_experiment.py")')
     recompose_index = launch.index("launch_job_cfg = compose(")
     subprocess_index = launch.index("process = subprocess.Popen(")
@@ -182,26 +184,143 @@ def test_per_stock_embargo_checks_latest_label_with_a_finite_target() -> None:
 def test_notebook_is_visible_g4_only_and_persists_durable_artifacts() -> None:
     combined = "\n".join(_cell_sources())
     required_tokens = [
-        'BRANCH = "codex/lambdarankic-2026-ytd-20260713"',
+        'BRANCH = "codex/lambdarankic-ytd-drive-durability-20260714"',
+        '"code_branch": "codex/lambdarankic-2026-ytd-20260713"',
         'BLOCKED_GPU_NAMES = ("T4", "L4")',
         'STRICT_GPU_MARKERS: list[str] = ["G4", "RTX PRO", "BLACKWELL"]',
         "visible Colab **G4 GPU** only",
-        'DRIVE_RUN_ROOT / "config_approval.json"',
-        'DRIVE_RUN_ROOT / "data_audit.json"',
-        'DRIVE_RUN_ROOT / "runtime_gpu.txt"',
-        'DRIVE_RUN_ROOT / "heartbeat.json"',
-        'DRIVE_RUN_ROOT / "training_results.csv"',
-        'DRIVE_RUN_ROOT / "training_results.json"',
-        'DRIVE_RUN_ROOT / "cross_seed_evaluation_summary.json"',
-        'DRIVE_RUN_ROOT / "run_summary.json"',
+        'CAMPAIGN_DRIVE_FOLDER_ID = "1iXHVKRwHBF3Jv_ruIMNWYIXFEyeYy4Po"',
+        'DRIVE_SERVICE = build("drive", "v3")',
+        "MediaFileUpload",
+        "MediaIoBaseDownload",
+        "resumable=True",
+        '"md5Checksum"',
+        'upload_json_verified("config_approval.json"',
+        'upload_json_verified("data_audit.json"',
+        '"runtime_gpu.txt"',
+        'upload_json_verified("training_results.json"',
+        'upload_json_verified("cross_seed_evaluation_summary.json"',
+        'upload_json_verified("run_summary.json"',
+        'upload_json_verified("heartbeat.json"',
         'run_dir / "graph_data.pt"',
         'run_dir / "averaged_predictions"',
         'run_dir.glob("predictions_model_*")',
+        "per_model_predictions.zip",
+        "model_artifacts",
+        "upload_per_model_predictions=False",
+        'read_remote_json("run_summary.json")',
+        'read_remote_json("heartbeat.json")',
+        "def verify_remote_run",
+        "REMOTE_DURABILITY_VERIFIED = verify_remote_run",
         "runtime.unassign()",
-        "Manual Runtime > Disconnect and delete runtime",
+        "Runtime intentionally left assigned because remote durability was not proved",
     ]
     for token in required_tokens:
         assert token in combined
+
+
+def test_remote_durability_is_proved_before_success_and_runtime_release() -> None:
+    launch = next(source for source in _cell_sources(code_only=True) if "RUN_TRAINING =" in source)
+
+    assert "def sync_tree" not in launch
+    assert "DRIVE_RUN_ROOT.mkdir" not in launch
+    verify_index = launch.index("REMOTE_DURABILITY_VERIFIED = verify_remote_run")
+    complete_index = launch.index('print("Complete. Durable run root:"')
+    guarded_release_index = launch.index("if REMOTE_DURABILITY_VERIFIED:")
+    unassign_index = launch.index("runtime.unassign()")
+    assert verify_index < complete_index < guarded_release_index < unassign_index
+
+
+def test_per_model_predictions_are_archived_without_raw_drive_fanout(tmp_path: Path) -> None:
+    launch = next(source for source in _cell_sources(code_only=True) if "RUN_TRAINING =" in source)
+    tree = ast.parse(launch)
+    publish_node = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "publish_completed_seed"
+    )
+    publish_source = ast.get_source_segment(launch, publish_node)
+    assert publish_source is not None
+    assert "log_path" not in publish_source
+    wanted = {"sha256_file", "build_per_model_predictions_archive"}
+    nodes = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name in wanted
+    ]
+    namespace = {"Path": Path, "hashlib": hashlib, "json": json, "zipfile": zipfile}
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), "<archive>", "exec"), namespace)
+
+    run_dir = tmp_path / "run"
+    for model_index in range(2):
+        prediction_dir = run_dir / f"predictions_model_{model_index}"
+        prediction_dir.mkdir(parents=True)
+        for day in ("2026-01-02", "2026-01-05"):
+            (prediction_dir / f"{day}.csv").write_text("kdcode,prediction\nA,0.1\n", encoding="utf-8")
+
+    archive_path, summary = namespace["build_per_model_predictions_archive"](
+        run_dir,
+        2,
+        2,
+    )
+    assert archive_path == run_dir / "model_artifacts" / "per_model_predictions.zip"
+    assert summary["model_count"] == 2
+    assert summary["member_count"] == 4
+    with zipfile.ZipFile(archive_path) as archive:
+        names = set(archive.namelist())
+        assert "per_model_predictions_manifest.json" in names
+        assert "predictions_model_0/2026-01-02.csv" in names
+        assert "predictions_model_1/2026-01-05.csv" in names
+
+    assert "upload_per_model_predictions=False" in launch
+    assert "Raw per-model predictions entered the Drive upload set" in launch
+
+
+def test_drive_verifier_rejects_remote_size_and_md5_mismatch(tmp_path: Path) -> None:
+    launch = next(source for source in _cell_sources(code_only=True) if "RUN_TRAINING =" in source)
+    tree = ast.parse(launch)
+    wanted = {"sha256_file", "md5_file", "verify_remote_file_metadata"}
+    nodes = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name in wanted
+    ]
+    namespace = {"Path": Path, "hashlib": hashlib}
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), "<verify>", "exec"), namespace)
+
+    local_path = tmp_path / "artifact.bin"
+    local_path.write_bytes(b"durable")
+    local_md5 = hashlib.md5(b"durable").hexdigest()
+    verified = namespace["verify_remote_file_metadata"](
+        local_path,
+        {"id": "remote-id", "size": str(local_path.stat().st_size), "md5Checksum": local_md5},
+        "artifact.bin",
+    )
+    assert verified["file_id"] == "remote-id"
+
+    with pytest.raises(RuntimeError, match="Remote size mismatch"):
+        namespace["verify_remote_file_metadata"](
+            local_path,
+            {"id": "remote-id", "size": "999", "md5Checksum": local_md5},
+            "artifact.bin",
+        )
+    with pytest.raises(RuntimeError, match="Remote MD5 mismatch"):
+        namespace["verify_remote_file_metadata"](
+            local_path,
+            {"id": "remote-id", "size": str(local_path.stat().st_size), "md5Checksum": "bad"},
+            "artifact.bin",
+        )
+
+
+def test_seed_remote_verification_precedes_completion_accounting() -> None:
+    launch = next(source for source in _cell_sources(code_only=True) if "RUN_TRAINING =" in source)
+
+    publish_index = launch.index("seed_remote = publish_completed_seed(")
+    append_index = launch.index("rows.append(row)")
+    summary_readback_index = launch.index('remote_summary = read_remote_json("run_summary.json")')
+    terminal_verify_index = launch.index("REMOTE_DURABILITY_VERIFIED = verify_remote_run(rows)")
+    assert publish_index < append_index
+    assert summary_readback_index < terminal_verify_index
 
 
 def test_experiment_yaml_pins_no_lookahead_and_frozen_recipe() -> None:

@@ -14,7 +14,10 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "notebooks/lambdarankic_2026_ytd_colab.ipynb"
 APPROVAL_OUT = ROOT / "configs/launch_manifests/lambdarankic_2026_ytd_110_name.json"
 EXPERIMENT_PRESET = "lambdarankic_2026_ytd_110_name"
-BRANCH = "codex/lambdarankic-2026-ytd-20260713"
+BRANCH = "codex/lambdarankic-ytd-drive-durability-20260714"
+APPROVED_CODE_BRANCH = "codex/lambdarankic-2026-ytd-20260713"
+APPROVED_CAMPAIGN_COMMIT = "9bd17d5b7ff14594681c7bdbee3bb17a9882b264"
+CAMPAIGN_DRIVE_FOLDER_ID = "1iXHVKRwHBF3Jv_ruIMNWYIXFEyeYy4Po"
 
 MARKET_FILENAME = "sp500_pit_gics_top10_mcap_monthly_20210104_20260713_lseg_20190101_20260713.csv"
 PIT_FILENAME = "sp500_pit_gics_top10_mcap_monthly_20210104_20260713_pit_universe.csv"
@@ -28,7 +31,7 @@ RESOLVED_CONFIG = OmegaConf.to_container(cfg, resolve=True)
 
 CAMPAIGN = {
     "campaign_id": "lambdarankic_2026_ytd_110_name",
-    "code_branch": BRANCH,
+    "code_branch": APPROVED_CODE_BRANCH,
     "hydra_experiment": EXPERIMENT_PRESET,
     "objective_matrix": ["lambdarank_ic"],
     "base_seeds": [314159, 271828, 161803, 141421, 173205],
@@ -546,47 +549,330 @@ def assert_approved_sources() -> None:
 
 assert_approved_sources()
 
+import io
+import mimetypes
+import zipfile
 from datetime import timezone
 
+from google.colab import auth
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
+from mci_gru.evaluation.run_bundle import write_run_manifest
+from scripts.colab_recovery_upload_filter import iter_recovery_upload_files
+
+CAMPAIGN_DRIVE_FOLDER_ID = "__CAMPAIGN_DRIVE_FOLDER_ID__"
+APPROVED_CAMPAIGN_COMMIT = "__APPROVED_CAMPAIGN_COMMIT__"
+DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder"
+DRIVE_UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024
 RUN_TAG = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 LOCAL_RUN_ROOT = Path("/content/lambdarankic_2026_ytd") / RUN_TAG
 LOCAL_TRAINING_ROOT = LOCAL_RUN_ROOT / "training"
-DRIVE_RUN_ROOT = Path(CAMPAIGN["artifact_contract"]["drive_root"]) / RUN_TAG
-if DRIVE_RUN_ROOT.exists():
-    raise RuntimeError(f"Refusing to reuse Drive run root: {DRIVE_RUN_ROOT}")
 LOCAL_TRAINING_ROOT.mkdir(parents=True, exist_ok=False)
-DRIVE_RUN_ROOT.mkdir(parents=True, exist_ok=False)
+
+def json_default(value):
+    if isinstance(value, np.integer):
+        return int(value)
+    if isinstance(value, np.floating):
+        return float(value)
+    if isinstance(value, np.bool_):
+        return bool(value)
+    if isinstance(value, Path):
+        return str(value)
+    raise TypeError(f"Cannot serialize {type(value).__name__}")
+
+def json_safe(value):
+    if isinstance(value, dict):
+        return {str(key): json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_safe(item) for item in value]
+    if isinstance(value, np.generic):
+        return json_safe(value.item())
+    if isinstance(value, float) and not np.isfinite(value):
+        return None
+    if isinstance(value, Path):
+        return str(value)
+    return value
 
 def write_json(path: Path, payload) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_name(path.name + ".tmp")
-    temp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    temp.write_text(
+        json.dumps(
+            json_safe(payload),
+            indent=2,
+            sort_keys=True,
+            default=json_default,
+            allow_nan=False,
+        ),
+        encoding="utf-8",
+    )
     temp.replace(path)
 
-def sync_tree(source: Path, destination: Path, *, force: bool = False) -> int:
-    if not source.exists():
-        return 0
-    copied = 0
-    now = time.time()
-    for source_path in source.rglob("*"):
-        if not source_path.is_file() or source_path.name.endswith(".tmp"):
-            continue
-        if not force and now - source_path.stat().st_mtime < 15:
-            continue
-        relative = source_path.relative_to(source)
-        destination_path = destination / relative
-        destination_path.parent.mkdir(parents=True, exist_ok=True)
-        if (
-            force
-            or not destination_path.exists()
-            or destination_path.stat().st_size != source_path.stat().st_size
-            or destination_path.stat().st_mtime < source_path.stat().st_mtime
-        ):
-            shutil.copy2(source_path, destination_path)
-            copied += 1
-    return copied
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
-def heartbeat(status: str, phase: str, **extra) -> None:
+def md5_file(path: Path) -> str:
+    digest = hashlib.md5()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+def escape_drive_value(value: str) -> str:
+    return value.replace("'", "\\'")
+
+def execute_with_retries(request, *, label: str, attempts: int = 5):
+    for attempt in range(1, attempts + 1):
+        try:
+            return request.execute()
+        except Exception as exc:
+            if attempt == attempts:
+                raise
+            delay = min(60, 2**attempt)
+            print(f"{label} failed on attempt {attempt}/{attempts}: {exc!r}; retrying in {delay}s")
+            time.sleep(delay)
+
+auth.authenticate_user()
+DRIVE_SERVICE = build("drive", "v3")
+DRIVE_FOLDER_CACHE = {}
+DRIVE_FILE_IDS = {}
+PUBLISHED_FINGERPRINTS = {}
+PUBLISHED_METADATA = {}
+
+def find_drive_child(parent_id: str, name: str, *, mime_type: str | None = None):
+    clauses = [
+        f"'{parent_id}' in parents",
+        f"name = '{escape_drive_value(name)}'",
+        "trashed = false",
+    ]
+    if mime_type:
+        clauses.append(f"mimeType = '{mime_type}'")
+    response = execute_with_retries(
+        DRIVE_SERVICE.files().list(
+            q=" and ".join(clauses),
+            fields="files(id,name,mimeType,size,md5Checksum)",
+            pageSize=10,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        ),
+        label=f"find Drive child {name}",
+    )
+    files = response.get("files", [])
+    if len(files) > 1:
+        raise RuntimeError(f"Ambiguous Drive children named {name!r} under {parent_id}")
+    return files[0] if files else None
+
+def create_drive_folder(parent_id: str, name: str) -> str:
+    existing = find_drive_child(parent_id, name, mime_type=DRIVE_FOLDER_MIME)
+    if existing:
+        raise FileExistsError(f"Refusing to reuse Drive run folder {name!r}: {existing['id']}")
+    created = execute_with_retries(
+        DRIVE_SERVICE.files().create(
+            body={"name": name, "mimeType": DRIVE_FOLDER_MIME, "parents": [parent_id]},
+            fields="id",
+            supportsAllDrives=True,
+        ),
+        label=f"create Drive run folder {name}",
+    )
+    return created["id"]
+
+def ensure_drive_folder(parent_id: str, name: str) -> str:
+    key = (parent_id, name)
+    if key in DRIVE_FOLDER_CACHE:
+        return DRIVE_FOLDER_CACHE[key]
+    existing = find_drive_child(parent_id, name, mime_type=DRIVE_FOLDER_MIME)
+    if existing:
+        folder_id = existing["id"]
+    else:
+        created = execute_with_retries(
+            DRIVE_SERVICE.files().create(
+                body={"name": name, "mimeType": DRIVE_FOLDER_MIME, "parents": [parent_id]},
+                fields="id",
+                supportsAllDrives=True,
+            ),
+            label=f"create Drive folder {name}",
+        )
+        folder_id = created["id"]
+    DRIVE_FOLDER_CACHE[key] = folder_id
+    return folder_id
+
+DRIVE_RUN_FOLDER_ID = create_drive_folder(CAMPAIGN_DRIVE_FOLDER_ID, RUN_TAG)
+DRIVE_RUN_URL = f"https://drive.google.com/drive/folders/{DRIVE_RUN_FOLDER_ID}"
+
+def ensure_remote_parent(relative_path: Path) -> str:
+    parent_id = DRIVE_RUN_FOLDER_ID
+    for part in relative_path.parts[:-1]:
+        parent_id = ensure_drive_folder(parent_id, part)
+    return parent_id
+
+def resolve_remote_folder(parts: tuple[str, ...]) -> str:
+    parent_id = DRIVE_RUN_FOLDER_ID
+    for part in parts:
+        child = find_drive_child(parent_id, part, mime_type=DRIVE_FOLDER_MIME)
+        if not child:
+            raise FileNotFoundError(f"Missing remote Drive folder: {'/'.join(parts)}")
+        parent_id = child["id"]
+    return parent_id
+
+def verify_remote_file_metadata(local_path: Path, remote: dict, relative_value: str) -> dict:
+    local_size = local_path.stat().st_size
+    remote_size = int(remote.get("size", -1))
+    if remote_size != local_size:
+        raise RuntimeError(
+            f"Remote size mismatch for {relative_value}: local={local_size} remote={remote_size}"
+        )
+    local_md5 = md5_file(local_path)
+    remote_md5 = remote.get("md5Checksum")
+    if not remote_md5 or remote_md5 != local_md5:
+        raise RuntimeError(
+            f"Remote MD5 mismatch for {relative_value}: local={local_md5} remote={remote_md5}"
+        )
+    return {
+        "path": relative_value,
+        "file_id": remote["id"],
+        "size_bytes": local_size,
+        "md5": local_md5,
+        "sha256": sha256_file(local_path),
+    }
+
+def upload_relative_file(local_path: Path, *, force: bool = False) -> dict:
+    relative_path = local_path.relative_to(LOCAL_RUN_ROOT)
+    relative_value = relative_path.as_posix()
+    stat = local_path.stat()
+    fingerprint = (stat.st_size, stat.st_mtime_ns)
+    if not force and PUBLISHED_FINGERPRINTS.get(relative_value) == fingerprint:
+        return PUBLISHED_METADATA[relative_value]
+    parent_id = ensure_remote_parent(relative_path)
+    cache_key = (parent_id, relative_path.name)
+    file_id = DRIVE_FILE_IDS.get(cache_key)
+    if file_id is None:
+        existing = find_drive_child(parent_id, relative_path.name)
+        file_id = existing["id"] if existing else None
+    mime_type = mimetypes.guess_type(str(local_path))[0] or "application/octet-stream"
+    media = MediaFileUpload(
+        str(local_path),
+        mimetype=mime_type,
+        chunksize=DRIVE_UPLOAD_CHUNK_BYTES,
+        resumable=True,
+    )
+    if file_id:
+        request = DRIVE_SERVICE.files().update(
+            fileId=file_id,
+            media_body=media,
+            fields="id,name,size,md5Checksum",
+            supportsAllDrives=True,
+        )
+    else:
+        request = DRIVE_SERVICE.files().create(
+            body={"name": relative_path.name, "parents": [parent_id]},
+            media_body=media,
+            fields="id,name,size,md5Checksum",
+            supportsAllDrives=True,
+        )
+    response = None
+    while response is None:
+        _, response = request.next_chunk(num_retries=5)
+    file_id = response["id"]
+    DRIVE_FILE_IDS[cache_key] = file_id
+    remote = execute_with_retries(
+        DRIVE_SERVICE.files().get(
+            fileId=file_id,
+            fields="id,name,size,md5Checksum",
+            supportsAllDrives=True,
+        ),
+        label=f"read back Drive metadata for {relative_value}",
+    )
+    verified = verify_remote_file_metadata(local_path, remote, relative_value)
+    PUBLISHED_FINGERPRINTS[relative_value] = fingerprint
+    PUBLISHED_METADATA[relative_value] = verified
+    return verified
+
+def upload_json_verified(relative_value: str, payload) -> dict:
+    local_path = LOCAL_RUN_ROOT / relative_value
+    write_json(local_path, payload)
+    return upload_relative_file(local_path, force=True)
+
+def upload_text_verified(relative_value: str, text_value: str) -> dict:
+    local_path = LOCAL_RUN_ROOT / relative_value
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    temp = local_path.with_name(local_path.name + ".tmp")
+    temp.write_text(text_value, encoding="utf-8")
+    temp.replace(local_path)
+    return upload_relative_file(local_path, force=True)
+
+def read_remote_json(relative_value: str) -> dict:
+    relative_path = Path(relative_value)
+    parent_id = resolve_remote_folder(tuple(relative_path.parts[:-1]))
+    remote_file = find_drive_child(parent_id, relative_path.name)
+    if not remote_file:
+        raise FileNotFoundError(f"Missing remote JSON artifact: {relative_value}")
+    request = DRIVE_SERVICE.files().get_media(
+        fileId=remote_file["id"],
+        supportsAllDrives=True,
+    )
+    buffer = io.BytesIO()
+    downloader = MediaIoBaseDownload(buffer, request)
+    done = False
+    while not done:
+        _, done = downloader.next_chunk(num_retries=5)
+    return json.loads(buffer.getvalue().decode("utf-8"))
+
+def list_drive_children(parent_id: str) -> list[dict]:
+    children = []
+    page_token = None
+    while True:
+        response = execute_with_retries(
+            DRIVE_SERVICE.files().list(
+                q=f"'{parent_id}' in parents and trashed = false",
+                fields="nextPageToken,files(id,name,mimeType,size,md5Checksum)",
+                pageSize=1000,
+                pageToken=page_token,
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+            ),
+            label=f"list Drive folder {parent_id}",
+        )
+        children.extend(response.get("files", []))
+        page_token = response.get("nextPageToken")
+        if not page_token:
+            return children
+
+def verify_remote_csv_directory(relative_directory: str, expected_count: int) -> dict:
+    relative_path = Path(relative_directory)
+    local_directory = LOCAL_RUN_ROOT / relative_path
+    remote_folder_id = resolve_remote_folder(tuple(relative_path.parts))
+    remote_csvs = {
+        child["name"]: {
+            "size": int(child.get("size", -1)),
+            "md5": child.get("md5Checksum"),
+        }
+        for child in list_drive_children(remote_folder_id)
+        if child["name"].lower().endswith(".csv")
+    }
+    local_csvs = {
+        path.name: {"size": path.stat().st_size, "md5": md5_file(path)}
+        for path in local_directory.glob("*.csv")
+    }
+    if len(local_csvs) != expected_count or len(remote_csvs) != expected_count:
+        raise RuntimeError(
+            f"Published CSV count mismatch for {relative_directory}: "
+            f"expected={expected_count} local={len(local_csvs)} remote={len(remote_csvs)}"
+        )
+    if local_csvs != remote_csvs:
+        raise RuntimeError(f"Published CSV names, sizes, or MD5 hashes differ for {relative_directory}")
+    canonical = json.dumps(local_csvs, sort_keys=True, separators=(",", ":"))
+    return {
+        "path": relative_directory,
+        "remote_folder_id": remote_folder_id,
+        "csv_count": len(remote_csvs),
+        "manifest_sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+    }
+
+def heartbeat(status: str, phase: str, **extra) -> dict:
     payload = {
         "status": status,
         "phase": phase,
@@ -594,41 +880,13 @@ def heartbeat(status: str, phase: str, **extra) -> None:
         "config_sha256": CONFIG_SHA256,
         "gpu_name": GPU_NAME,
         "run_tag": RUN_TAG,
+        "drive_run_folder_id": DRIVE_RUN_FOLDER_ID,
+        "drive_run_url": DRIVE_RUN_URL,
         "updated_at_utc": datetime.now(timezone.utc).isoformat(),
         **extra,
     }
-    write_json(DRIVE_RUN_ROOT / "heartbeat.json", payload)
-
-git_commit = subprocess.check_output(
-    ["git", "-C", str(REPO_DIR), "rev-parse", "HEAD"],
-    text=True,
-).strip()
-approval_record = {
-    "status": "APPROVED_FOR_LAUNCH",
-    "config_sha256": CONFIG_SHA256,
-    "approved_config_sha256": APPROVED_CONFIG_SHA256,
-    "code_branch": BRANCH,
-    "git_commit": git_commit,
-    "gpu_name": GPU_NAME,
-    "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
-    "approval_bundle": APPROVAL_BUNDLE,
-}
-write_json(DRIVE_RUN_ROOT / "config_approval.json", approval_record)
-write_json(DRIVE_RUN_ROOT / "data_audit.json", DATA_AUDIT)
-gpu_evidence = subprocess.run(
-    ["nvidia-smi"],
-    text=True,
-    capture_output=True,
-    check=False,
-)
-(DRIVE_RUN_ROOT / "runtime_gpu.txt").write_text(
-    gpu_evidence.stdout + "\n" + gpu_evidence.stderr,
-    encoding="utf-8",
-)
-for base_seed, resolved_yaml in RESOLVED_CONFIGS.items():
-    resolved_path = DRIVE_RUN_ROOT / "resolved_configs" / f"prelaunch_seed{base_seed}.yaml"
-    resolved_path.parent.mkdir(parents=True, exist_ok=True)
-    resolved_path.write_text(resolved_yaml, encoding="utf-8")
+    upload_json_verified("heartbeat.json", payload)
+    return payload
 
 def latest_run_dir(job_name: str) -> Path:
     candidates = sorted(
@@ -639,8 +897,181 @@ def latest_run_dir(job_name: str) -> Path:
         raise FileNotFoundError(f"No completed run directory found for {job_name}")
     return candidates[-1]
 
+def build_per_model_predictions_archive(
+    run_dir: Path,
+    expected_models: int,
+    expected_csvs_per_model: int,
+) -> tuple[Path, dict]:
+    expected_names = {f"predictions_model_{index}" for index in range(expected_models)}
+    observed_dirs = {path.name for path in run_dir.glob("predictions_model_*") if path.is_dir()}
+    if observed_dirs != expected_names:
+        raise RuntimeError(
+            f"Per-model prediction directory mismatch: expected={sorted(expected_names)} "
+            f"observed={sorted(observed_dirs)}"
+        )
+    archive_dir = run_dir / "model_artifacts"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    archive_path = archive_dir / "per_model_predictions.zip"
+    temp_path = archive_path.with_name(archive_path.name + ".tmp")
+    entries = []
+    with zipfile.ZipFile(
+        temp_path,
+        mode="w",
+        compression=zipfile.ZIP_DEFLATED,
+        compresslevel=6,
+        allowZip64=True,
+    ) as archive:
+        for model_index in range(expected_models):
+            prediction_dir = run_dir / f"predictions_model_{model_index}"
+            csv_paths = sorted(prediction_dir.glob("*.csv"))
+            if len(csv_paths) != expected_csvs_per_model:
+                raise RuntimeError(
+                    f"Expected {expected_csvs_per_model} CSVs in {prediction_dir.name}; "
+                    f"found {len(csv_paths)}"
+                )
+            for csv_path in csv_paths:
+                member_name = f"{prediction_dir.name}/{csv_path.name}"
+                archive.write(csv_path, arcname=member_name)
+                entries.append(
+                    {
+                        "path": member_name,
+                        "size_bytes": csv_path.stat().st_size,
+                        "sha256": sha256_file(csv_path),
+                    }
+                )
+        manifest_payload = {
+            "schema_version": 1,
+            "model_count": expected_models,
+            "csvs_per_model": expected_csvs_per_model,
+            "member_count": len(entries),
+            "members": entries,
+        }
+        manifest_json = json.dumps(
+            manifest_payload,
+            indent=2,
+            sort_keys=True,
+            separators=(",", ": "),
+        )
+        archive.writestr("per_model_predictions_manifest.json", manifest_json)
+    temp_path.replace(archive_path)
+    return archive_path, {
+        "model_count": expected_models,
+        "csvs_per_model": expected_csvs_per_model,
+        "member_count": len(entries),
+        "manifest_sha256": hashlib.sha256(manifest_json.encode("utf-8")).hexdigest(),
+    }
+
+def publish_in_progress(job_name: str, log_path: Path) -> dict:
+    published = []
+    for checkpoint in sorted(
+        (LOCAL_TRAINING_ROOT / job_name).glob("*/checkpoints/model_*_best.pth")
+    ):
+        published.append(upload_relative_file(checkpoint))
+    if log_path.is_file():
+        published.append(upload_relative_file(log_path))
+    return {"published_or_verified": len(published)}
+
+def publish_completed_seed(
+    run_dir: Path,
+    job_name: str,
+    base_seed: int,
+    command: list[str],
+) -> dict:
+    expected_models = CAMPAIGN["ensemble_models_per_seed"]
+    expected_csvs = DATA_AUDIT["test_prediction_session_count"]
+    bundle_paths = write_run_manifest(
+        run_dir,
+        selection_rule="mean of 20 members selected independently by val_rank_ic",
+        command=" ".join(command),
+        feature_lag_policy="strict PIT current-only features with actual-session label embargo",
+        normalization_reference="train-period-only zscore recorded in run_metadata.json",
+        graph_policy="static train-window graph frozen in graph_data.pt",
+        seed_policy=f"base_seed={base_seed}; 20 deterministic ensemble-member seeds",
+        paper_trade_eligible=False,
+        repo_dir=REPO_DIR,
+    )
+    artifact_validation = json.loads(
+        bundle_paths["validation"].read_text(encoding="utf-8")
+    )
+    if artifact_validation.get("status") != "OK":
+        raise RuntimeError(
+            f"Local run-bundle validation failed for {job_name}: {artifact_validation}"
+        )
+    archive_path, archive_summary = build_per_model_predictions_archive(
+        run_dir,
+        expected_models,
+        expected_csvs,
+    )
+    selected = set(
+        iter_recovery_upload_files(
+            run_dir,
+            upload_checkpoints=True,
+            upload_per_model_predictions=False,
+        )
+    )
+    for extra_path in (
+        run_dir / "graph_data.pt",
+        run_dir / "run_manifest.json",
+        run_dir / "artifact_validation.json",
+        archive_path,
+    ):
+        if extra_path.is_file():
+            selected.add(extra_path)
+    raw_prediction_files = [
+        path
+        for path in selected
+        if any(part.startswith("predictions_model_") for part in path.relative_to(run_dir).parts)
+    ]
+    if raw_prediction_files:
+        raise RuntimeError(f"Raw per-model predictions entered the Drive upload set: {raw_prediction_files[:3]}")
+    uploaded = [upload_relative_file(path) for path in sorted(selected)]
+    run_relative = run_dir.relative_to(LOCAL_RUN_ROOT).as_posix()
+    averaged_verification = verify_remote_csv_directory(
+        f"{run_relative}/averaged_predictions",
+        expected_csvs,
+    )
+    checkpoint_names = {
+        path.name for path in (run_dir / "checkpoints").glob("model_*_best.pth")
+    }
+    expected_checkpoint_names = {
+        f"model_{index}_best.pth" for index in range(expected_models)
+    }
+    if checkpoint_names != expected_checkpoint_names:
+        raise RuntimeError(
+            f"Checkpoint IDs differ for {job_name}: "
+            f"missing={sorted(expected_checkpoint_names - checkpoint_names)} "
+            f"extra={sorted(checkpoint_names - expected_checkpoint_names)}"
+        )
+    seed_payload = {
+        "schema_version": 1,
+        "status": "VERIFIED",
+        "job_name": job_name,
+        "base_seed": base_seed,
+        "config_sha256": CONFIG_SHA256,
+        "run_relative_path": run_relative,
+        "verified_at_utc": datetime.now(timezone.utc).isoformat(),
+        "checkpoint_count": len(checkpoint_names),
+        "checkpoint_names": sorted(checkpoint_names),
+        "averaged_predictions": averaged_verification,
+        "per_model_predictions_archive": archive_summary,
+        "uploaded_files": uploaded,
+    }
+    seed_manifest_relative = f"{run_relative}/seed_durability.json"
+    upload_json_verified(seed_manifest_relative, seed_payload)
+    readback = read_remote_json(seed_manifest_relative)
+    if readback != seed_payload:
+        raise RuntimeError(f"Remote seed durability readback differs for {job_name}")
+    return {
+        "status": "VERIFIED",
+        "run_relative_path": run_relative,
+        "seed_manifest_relative_path": seed_manifest_relative,
+        "uploaded_file_count": len(uploaded),
+        "averaged_predictions": averaged_verification,
+        "per_model_predictions_archive": archive_summary,
+    }
+
 def write_result_tables(rows: list[dict]) -> None:
-    write_json(DRIVE_RUN_ROOT / "training_results.json", rows)
+    upload_json_verified("training_results.json", rows)
     scalar_rows = []
     for row in rows:
         flat = {key: value for key, value in row.items() if key != "evaluation_metrics"}
@@ -649,19 +1080,83 @@ def write_result_tables(rows: list[dict]) -> None:
     if not scalar_rows:
         return
     fieldnames = sorted({key for row in scalar_rows for key in row})
-    csv_path = DRIVE_RUN_ROOT / "training_results.csv"
+    csv_path = LOCAL_RUN_ROOT / "training_results.csv"
     with csv_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(scalar_rows)
+    upload_relative_file(csv_path, force=True)
+
+def verify_remote_run(rows: list[dict]) -> bool:
+    expected_seeds = set(BASE_SEEDS)
+    verified_seeds = set()
+    for row in rows:
+        seed_payload = read_remote_json(row["remote_seed_manifest"])
+        if seed_payload.get("status") != "VERIFIED":
+            raise RuntimeError(f"Seed durability is not VERIFIED: {row['job_name']}")
+        verified_seeds.add(int(seed_payload["base_seed"]))
+    if verified_seeds != expected_seeds:
+        raise RuntimeError(
+            f"Remote seed set mismatch: expected={sorted(expected_seeds)} "
+            f"observed={sorted(verified_seeds)}"
+        )
+    remote_summary = read_remote_json("run_summary.json")
+    if remote_summary.get("status") != "OK":
+        raise RuntimeError("Remote run_summary.json is not OK")
+    if remote_summary.get("completed_jobs") != len(expected_seeds):
+        raise RuntimeError("Remote run_summary.json does not prove all expected jobs")
+    if remote_summary.get("config_sha256") != CONFIG_SHA256:
+        raise RuntimeError("Remote run_summary.json config digest differs")
+    remote_heartbeat = read_remote_json("heartbeat.json")
+    if remote_heartbeat.get("status") != "OK" or remote_heartbeat.get("phase") != "complete":
+        raise RuntimeError("Remote heartbeat is not terminal OK/complete")
+    if not remote_heartbeat.get("remote_durability_verified"):
+        raise RuntimeError("Remote heartbeat lacks the durability-verification marker")
+    return True
+
+launcher_git_commit = subprocess.check_output(
+    ["git", "-C", str(REPO_DIR), "rev-parse", "HEAD"],
+    text=True,
+).strip()
+approval_record = {
+    "status": "APPROVED_FOR_LAUNCH",
+    "config_sha256": CONFIG_SHA256,
+    "approved_config_sha256": APPROVED_CONFIG_SHA256,
+    "approved_code_branch": CAMPAIGN["code_branch"],
+    "approved_campaign_commit": APPROVED_CAMPAIGN_COMMIT,
+    "launcher_branch": BRANCH,
+    "launcher_commit": launcher_git_commit,
+    "gpu_name": GPU_NAME,
+    "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
+    "approval_bundle": APPROVAL_BUNDLE,
+}
+upload_json_verified("config_approval.json", approval_record)
+upload_json_verified("data_audit.json", DATA_AUDIT)
+gpu_evidence = subprocess.run(
+    ["nvidia-smi"],
+    text=True,
+    capture_output=True,
+    check=False,
+)
+upload_text_verified(
+    "runtime_gpu.txt",
+    gpu_evidence.stdout + "\n" + gpu_evidence.stderr,
+)
+for base_seed, resolved_yaml in RESOLVED_CONFIGS.items():
+    upload_text_verified(f"resolved_configs/prelaunch_seed{base_seed}.yaml", resolved_yaml)
 
 rows = []
+REMOTE_DURABILITY_VERIFIED = False
+current_job = None
+current_log_path = None
 heartbeat("RUNNING", "launch", completed_jobs=0, expected_jobs=len(BASE_SEEDS))
 try:
     for base_seed in BASE_SEEDS:
         assert_approved_sources()
         job_name = f"lambdarankic_2026_ytd_110_name_seed{base_seed}"
+        current_job = job_name
         log_path = LOCAL_RUN_ROOT / "logs" / f"{job_name}.log"
+        current_log_path = log_path
         log_path.parent.mkdir(parents=True, exist_ok=True)
         launch_overrides = [
             f"+experiment={CAMPAIGN['hydra_experiment']}",
@@ -675,9 +1170,7 @@ try:
                 overrides=launch_overrides,
             )
         launch_resolved = OmegaConf.to_container(launch_job_cfg, resolve=True)
-        expected_launch = json.loads(
-            json.dumps(APPROVAL_BUNDLE["resolved_hydra_config"])
-        )
+        expected_launch = json.loads(json.dumps(APPROVAL_BUNDLE["resolved_hydra_config"]))
         expected_launch["seed"] = base_seed
         expected_launch["experiment_name"] = job_name
         expected_launch["output_dir"] = LOCAL_TRAINING_ROOT.as_posix()
@@ -686,12 +1179,10 @@ try:
                 f"Launch config for seed {base_seed} differs from the approved config."
             )
         create_config_from_dict(launch_resolved)
-        launch_config_path = (
-            DRIVE_RUN_ROOT / "resolved_configs" / f"launch_seed{base_seed}.yaml"
-        )
-        launch_config_path.write_text(
+        launch_config_relative = f"resolved_configs/launch_seed{base_seed}.yaml"
+        upload_text_verified(
+            launch_config_relative,
             OmegaConf.to_yaml(launch_job_cfg, resolve=True),
-            encoding="utf-8",
         )
         command = [
             sys.executable,
@@ -720,66 +1211,89 @@ try:
             )
             while process.poll() is None:
                 time.sleep(CAMPAIGN["artifact_contract"]["periodic_sync_seconds"])
-                copied = sync_tree(LOCAL_RUN_ROOT, DRIVE_RUN_ROOT)
-                heartbeat(
-                    "RUNNING",
-                    "training",
-                    current_job=job_name,
-                    base_seed=base_seed,
-                    completed_jobs=len(rows),
-                    expected_jobs=len(BASE_SEEDS),
-                    elapsed_seconds=round(time.time() - started, 1),
-                    files_synced=copied,
-                )
+                try:
+                    progress = publish_in_progress(job_name, log_path)
+                    heartbeat(
+                        "RUNNING",
+                        "training",
+                        current_job=job_name,
+                        base_seed=base_seed,
+                        completed_jobs=len(rows),
+                        expected_jobs=len(BASE_SEEDS),
+                        elapsed_seconds=round(time.time() - started, 1),
+                        **progress,
+                    )
+                except Exception as publication_exc:
+                    print("Non-terminal Drive publication warning:", repr(publication_exc))
+        publish_in_progress(job_name, log_path)
         if process.returncode != 0:
-            sync_tree(LOCAL_RUN_ROOT, DRIVE_RUN_ROOT, force=True)
             raise RuntimeError(f"Training failed for {job_name}; return code {process.returncode}")
 
         run_dir = latest_run_dir(job_name)
-        training_summary = json.loads((run_dir / "training_summary.json").read_text(encoding="utf-8"))
+        training_summary = json.loads(
+            (run_dir / "training_summary.json").read_text(encoding="utf-8")
+        )
         evaluation_summary = json.loads(
             (run_dir / "evaluation_summary.json").read_text(encoding="utf-8")
         )
-        checkpoint_count = len(list((run_dir / "checkpoints").glob("model_*_best.pth")))
-        averaged_prediction_count = len(list((run_dir / "averaged_predictions").glob("*.csv")))
-        per_model_prediction_dirs = len(list(run_dir.glob("predictions_model_*")))
-        if checkpoint_count != CAMPAIGN["ensemble_models_per_seed"]:
-            raise RuntimeError(f"Expected 20 checkpoints for {job_name}; found {checkpoint_count}")
-        if per_model_prediction_dirs != CAMPAIGN["ensemble_models_per_seed"]:
+        checkpoints = sorted((run_dir / "checkpoints").glob("model_*_best.pth"))
+        averaged_predictions = sorted((run_dir / "averaged_predictions").glob("*.csv"))
+        prediction_dirs = sorted(path for path in run_dir.glob("predictions_model_*") if path.is_dir())
+        if len(checkpoints) != CAMPAIGN["ensemble_models_per_seed"]:
+            raise RuntimeError(f"Expected 20 checkpoints for {job_name}; found {len(checkpoints)}")
+        if len(prediction_dirs) != CAMPAIGN["ensemble_models_per_seed"]:
             raise RuntimeError(
                 f"Expected 20 per-model prediction directories for {job_name}; "
-                f"found {per_model_prediction_dirs}"
+                f"found {len(prediction_dirs)}"
             )
-        if averaged_prediction_count != DATA_AUDIT["test_prediction_session_count"]:
+        if len(averaged_predictions) != DATA_AUDIT["test_prediction_session_count"]:
             raise RuntimeError(
                 f"Averaged-prediction count mismatch for {job_name}: "
-                f"{averaged_prediction_count} vs {DATA_AUDIT['test_prediction_session_count']}"
+                f"{len(averaged_predictions)} vs {DATA_AUDIT['test_prediction_session_count']}"
             )
         if not (run_dir / "graph_data.pt").is_file():
             raise FileNotFoundError(f"Missing graph_data.pt for {job_name}")
 
+        heartbeat(
+            "RUNNING",
+            "publishing_seed",
+            current_job=job_name,
+            base_seed=base_seed,
+            completed_jobs=len(rows),
+            expected_jobs=len(BASE_SEEDS),
+        )
+        seed_remote = publish_completed_seed(
+            run_dir,
+            job_name,
+            base_seed,
+            command,
+        )
         row = {
             "status": "OK",
             "job_name": job_name,
             "base_seed": base_seed,
-            "ensemble_models": checkpoint_count,
-            "averaged_prediction_count": averaged_prediction_count,
+            "ensemble_models": len(checkpoints),
+            "averaged_prediction_count": len(averaged_predictions),
             "elapsed_seconds": round(time.time() - started, 1),
-            "run_dir": str(run_dir),
+            "local_run_dir": str(run_dir),
+            "remote_run_relative_path": seed_remote["run_relative_path"],
+            "remote_seed_manifest": seed_remote["seed_manifest_relative_path"],
+            "remote_durability_status": seed_remote["status"],
             "mean_best_val_rank_ic": training_summary.get("mean_best_val_rank_ic"),
             "mean_best_val_ic": training_summary.get("mean_best_val_ic"),
             "mean_best_val_loss": training_summary.get("mean_best_val_loss"),
             "evaluation_metrics": evaluation_summary.get("metrics", {}),
         }
         rows.append(row)
-        sync_tree(LOCAL_RUN_ROOT, DRIVE_RUN_ROOT, force=True)
         write_result_tables(rows)
         heartbeat(
             "RUNNING",
             "job_complete",
             current_job=job_name,
+            base_seed=base_seed,
             completed_jobs=len(rows),
             expected_jobs=len(BASE_SEEDS),
+            remote_durability_status="VERIFIED",
         )
 
     numeric_keys = sorted(
@@ -805,42 +1319,64 @@ try:
                 "sample_std": float(np.std(values, ddof=1)) if len(values) > 1 else None,
                 "values": values,
             }
-    write_json(DRIVE_RUN_ROOT / "cross_seed_evaluation_summary.json", cross_seed)
-    write_json(
-        DRIVE_RUN_ROOT / "run_summary.json",
-        {
-            "status": "OK",
-            "campaign_id": CAMPAIGN["campaign_id"],
-            "config_sha256": CONFIG_SHA256,
-            "git_commit": git_commit,
-            "gpu_name": GPU_NAME,
-            "data_audit": DATA_AUDIT,
-            "completed_jobs": len(rows),
-            "expected_jobs": len(BASE_SEEDS),
-            "training_rows": rows,
-            "cross_seed_evaluation_summary": cross_seed,
-        },
-    )
-    heartbeat("OK", "complete", completed_jobs=len(rows), expected_jobs=len(BASE_SEEDS))
-    print("Complete. Durable run root:", DRIVE_RUN_ROOT)
-except Exception as exc:
-    sync_tree(LOCAL_RUN_ROOT, DRIVE_RUN_ROOT, force=True)
+    upload_json_verified("cross_seed_evaluation_summary.json", cross_seed)
+    run_summary = {
+        "status": "OK",
+        "campaign_id": CAMPAIGN["campaign_id"],
+        "config_sha256": CONFIG_SHA256,
+        "approved_code_branch": CAMPAIGN["code_branch"],
+        "approved_campaign_commit": APPROVED_CAMPAIGN_COMMIT,
+        "launcher_branch": BRANCH,
+        "launcher_commit": launcher_git_commit,
+        "gpu_name": GPU_NAME,
+        "drive_run_folder_id": DRIVE_RUN_FOLDER_ID,
+        "drive_run_url": DRIVE_RUN_URL,
+        "data_audit": DATA_AUDIT,
+        "completed_jobs": len(rows),
+        "expected_jobs": len(BASE_SEEDS),
+        "training_rows": rows,
+        "cross_seed_evaluation_summary": cross_seed,
+    }
+    upload_json_verified("run_summary.json", run_summary)
     heartbeat(
-        "FAILED",
-        "failed",
-        error=repr(exc),
+        "OK",
+        "complete",
         completed_jobs=len(rows),
         expected_jobs=len(BASE_SEEDS),
+        verified_seeds=[row["base_seed"] for row in rows],
+        remote_durability_verified=True,
     )
+    REMOTE_DURABILITY_VERIFIED = verify_remote_run(rows)
+    print("Complete. Durable run root:", DRIVE_RUN_URL)
+except Exception as exc:
+    try:
+        if current_job and current_log_path:
+            publish_in_progress(current_job, current_log_path)
+        heartbeat(
+            "FAILED",
+            "failed",
+            error=repr(exc),
+            completed_jobs=len(rows),
+            expected_jobs=len(BASE_SEEDS),
+            remote_durability_verified=False,
+        )
+    except Exception as failure_publish_exc:
+        print("Unable to publish terminal failure heartbeat:", repr(failure_publish_exc))
+    print("Runtime intentionally left assigned because remote durability was not proved.")
     raise
-finally:
+
+if REMOTE_DURABILITY_VERIFIED:
     try:
         from google.colab import runtime
 
         runtime.unassign()
     except Exception as exc:
         print("Manual Runtime > Disconnect and delete runtime may be needed:", exc)
-"""
+else:
+    print("Runtime intentionally left assigned because remote durability was not proved.")
+""".replace("__CAMPAIGN_DRIVE_FOLDER_ID__", CAMPAIGN_DRIVE_FOLDER_ID).replace(
+    "__APPROVED_CAMPAIGN_COMMIT__", APPROVED_CAMPAIGN_COMMIT
+)
 
 cells = [
     md(
@@ -857,9 +1393,11 @@ cells = [
         SHA-256 is entered exactly.
 
         Runtime contract: visible Colab **G4 GPU** only. T4, L4, and CPU are
-        rejected. Durable checkpoints, per-model predictions, averaged
-        predictions, graph data, logs, heartbeats, and summaries are synced to
-        Drive. The final foreground cell unassigns the runtime in `finally`.
+        rejected. Durable checkpoints, averaged predictions, graph data, logs,
+        heartbeats, and summaries are uploaded through the Drive API and read
+        back before success. Per-model predictions are stored as one verified
+        archive per seed, never as thousands of individual Drive files. The
+        runtime is unassigned only after terminal remote verification succeeds.
 
         Approval digest: `{APPROVAL_SHA256}`
         """
