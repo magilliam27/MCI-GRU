@@ -61,3 +61,12 @@ Date: 2026-07-13
 
 1. Complete the newest Google authorization tab preserved beside the exact-commit Colab notebook.
 2. Reply `ready` so the waiting dry-run can be monitored through the 12-row inventory, 21-command plan, Drive publication, and final remote heartbeat readback.
+
+## Continuation Update: Chrome Plugin Reload Required
+
+- The user completed the newest OAuth authorization.
+- Before the preserved tabs could be reclaimed, the local Chrome plugin updated from bundle `26.707.62119` to `26.707.71524` while the older browser runtime remained loaded.
+- Both the primary task and a fresh monitoring teammate reproduced `TypeError: Cannot redefine property: process` during the mandatory Chrome-control bootstrap, including after a clean JavaScript-kernel reset.
+- The preserved exact-commit Colab and authorization tabs were not altered.
+- Direct Drive readback found no new LambdaRankIC replay folder, artifacts, or `COMPLETE` heartbeat, so the dry-run has not published evidence and the full replay has not started.
+- Required recovery: reload or restart Codex so the Chrome plugin and browser-control runtime load the same version, then reclaim the preserved tabs and continue with `DRY_RUN=True`.
