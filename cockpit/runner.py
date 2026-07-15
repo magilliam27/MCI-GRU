@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import re
 import subprocess
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from datetime import date
 from typing import TYPE_CHECKING, Protocol
@@ -14,6 +16,7 @@ from cockpit.decisions import (
     WorkstreamDecision,
     load_decision_registry,
     overlay_auto_decisions,
+    parse_decision_registry_text,
     read_registry_aliases,
     read_registry_workstream_names,
 )
@@ -43,7 +46,9 @@ from cockpit.models import (
 from cockpit.policy import (
     AUTO_DECISIONS_PATH,
     DEFAULT_STALE_LOOKBACK_DAYS,
+    compare_auto_decisions,
     compute_auto_decisions,
+    parse_auto_decisions_text,
     write_auto_decisions,
 )
 from cockpit.policy import (
@@ -52,10 +57,11 @@ from cockpit.policy import (
 from cockpit.render import render_cockpit_packet, render_workstream_register
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Collection, Mapping, Sequence
     from pathlib import Path
 
     from cockpit.evidence import LocalEvidence, RunCommand
+    from cockpit.models import AutoDisposition
 
     GitHubEvidenceCollector = Callable[[], GitHubEvidence | None]
 
@@ -367,14 +373,13 @@ def _resolve_seed_name(survivors: list[str], aliases: dict[str, str]) -> str:
     return " ".join(token.title() for token in survivors)
 
 
-def implied_aliases(surfaces: Mapping[str, SurfaceDecision]) -> dict[str, str]:
-    """Derive deterministic discovery aliases from reviewed surface classifications."""
+def implied_aliases(surfaces: Mapping[str, AutoDisposition]) -> dict[str, str]:
+    """Derive aliases only from independently grounded generated classifications."""
     candidates: dict[str, set[str]] = {}
     for branch in sorted(surfaces):
         surface = surfaces[branch]
-        independently_grounded = surface.provenance == "override" or (
-            surface.provenance == "auto"
-            and surface.confidence == Confidence.HIGH
+        independently_grounded = (
+            surface.confidence == Confidence.HIGH
             and surface.association_basis in INDEPENDENT_ASSOCIATION_BASES
         )
         if not independently_grounded or len(surface.workstreams) != 1:
@@ -429,6 +434,78 @@ def merge_workstream_sources(
     return merged
 
 
+def _without_current_worktree_dirty_paths(
+    evidence: LocalEvidence,
+    repo_root: Path,
+    ignored_dirty_paths: Collection[str],
+) -> LocalEvidence:
+    if isinstance(ignored_dirty_paths, str):
+        raise ValueError("ignored_dirty_paths must be a collection of repo-relative paths")
+    ignored = {_path_key(path) for path in ignored_dirty_paths}
+    if "" in ignored:
+        raise ValueError("ignored_dirty_paths must contain non-empty paths")
+    current_worktree = _path_key(str(repo_root.resolve()))
+    worktrees = [
+        replace(
+            worktree,
+            dirty_paths=[path for path in worktree.dirty_paths if _path_key(path) not in ignored],
+        )
+        if _path_key(worktree.path) == current_worktree
+        else worktree
+        for worktree in evidence.git_topology.worktrees
+    ]
+    return replace(
+        evidence,
+        dirty_paths=[path for path in evidence.dirty_paths if _path_key(path) not in ignored],
+        git_topology=replace(evidence.git_topology, worktrees=worktrees),
+    )
+
+
+def _without_automation_branch_evidence(
+    evidence: LocalEvidence,
+    branch: str,
+) -> LocalEvidence:
+    """Remove the producer's own dated branch from its policy input snapshot."""
+    normalized = branch.casefold()
+    topology = evidence.git_topology
+    return replace(
+        evidence,
+        recent_branches=[
+            item for item in evidence.recent_branches if item[0].casefold() != normalized
+        ],
+        branch_commit_dates={
+            name: reviewed
+            for name, reviewed in evidence.branch_commit_dates.items()
+            if name.casefold() != normalized
+        },
+        git_topology=replace(
+            topology,
+            current_branch="main"
+            if topology.current_branch.casefold() == normalized
+            else topology.current_branch,
+            origin_main_ahead=0,
+            branches=[name for name in topology.branches if name.casefold() != normalized],
+            unmerged_branches=[
+                name for name in topology.unmerged_branches if name.casefold() != normalized
+            ],
+            unmerged_branch_details=[
+                detail
+                for detail in topology.unmerged_branch_details
+                if detail.name.casefold() != normalized
+            ],
+            worktrees=[
+                worktree
+                for worktree in topology.worktrees
+                if worktree.branch.casefold() != normalized
+            ],
+        ),
+    )
+
+
+def _path_key(value: str) -> str:
+    return value.strip().replace("\\", "/").rstrip("/").casefold()
+
+
 def run_local_cockpit_refresh(
     repo_root: Path,
     run_date: date,
@@ -437,11 +514,41 @@ def run_local_cockpit_refresh(
     github_sync_enabled: bool = False,
     git_snapshot_timing: str = "at cockpit evidence collection",
     sources: Sequence[WorkstreamSource] | None = None,
-    auto_decisions_enabled: bool = False,
+    auto_decisions_enabled: bool = True,
+    projected_commits: int = 0,
+    ignored_dirty_paths: Collection[str] = (),
+    automation_branch: str | None = None,
+    comparison_ref: str = "HEAD",
     github_evidence: GitHubEvidence | None | _GitHubEvidenceOmitted = (_GITHUB_EVIDENCE_OMITTED),
     github_evidence_collector: GitHubEvidenceCollector | None = None,
 ) -> CockpitRunResult:
+    if (
+        not isinstance(projected_commits, int)
+        or isinstance(projected_commits, bool)
+        or projected_commits < 0
+    ):
+        raise ValueError("projected_commits must be a non-negative integer")
     evidence = collect_local_evidence(repo_root, run_command=run_command)
+    if not comparison_ref.strip():
+        raise ValueError("comparison_ref must be a non-empty git revision")
+    if automation_branch is not None:
+        if not automation_branch.strip():
+            raise ValueError("automation_branch must be a non-empty branch name")
+        evidence = _without_automation_branch_evidence(evidence, automation_branch)
+    if ignored_dirty_paths:
+        evidence = _without_current_worktree_dirty_paths(
+            evidence,
+            repo_root,
+            ignored_dirty_paths,
+        )
+    if projected_commits:
+        evidence = replace(
+            evidence,
+            git_topology=replace(
+                evidence.git_topology,
+                origin_main_ahead=evidence.git_topology.origin_main_ahead + projected_commits,
+            ),
+        )
     registry_names = read_registry_workstream_names(repo_root)
     default_sources = sources is None
     if default_sources:
@@ -455,9 +562,25 @@ def run_local_cockpit_refresh(
         *merge_workstream_sources(sources, evidence, run_date),
         GIT_HYGIENE_SEED,
     ]
+    known_workstreams = {seed.name for seed in preliminary_seeds} | registry_names
     registry = load_decision_registry(
         repo_root,
-        known_workstreams={seed.name for seed in preliminary_seeds} | registry_names,
+        known_workstreams=known_workstreams,
+    )
+    previous_auto_decisions = (
+        _read_committed_auto_decisions(repo_root, run_command, comparison_ref)
+        if auto_decisions_enabled
+        else None
+    )
+    previous_registry = (
+        _read_committed_decision_registry(
+            repo_root,
+            run_command,
+            known_workstreams,
+            comparison_ref,
+        )
+        if auto_decisions_enabled
+        else None
     )
     collected_github_evidence: GitHubEvidence | None = None
     if auto_decisions_enabled:
@@ -471,6 +594,15 @@ def run_local_cockpit_refresh(
                 collected_github_evidence = None
         else:
             collected_github_evidence = github_evidence
+        if automation_branch is not None and collected_github_evidence is not None:
+            collected_github_evidence = replace(
+                collected_github_evidence,
+                pull_requests=tuple(
+                    pull_request
+                    for pull_request in collected_github_evidence.pull_requests
+                    if pull_request.head_ref.casefold() != automation_branch.casefold()
+                ),
+            )
 
     learned_aliases: dict[str, str] = {}
     if auto_decisions_enabled:
@@ -487,8 +619,7 @@ def run_local_cockpit_refresh(
             github_evidence=collected_github_evidence,
             stale_lookback_days=DEFAULT_STALE_LOOKBACK_DAYS,
         )
-        base_effective = overlay_auto_decisions(registry, base_auto_decisions)
-        learned_aliases = implied_aliases(base_effective.surfaces)
+        learned_aliases = implied_aliases(base_auto_decisions.surfaces)
     effective_aliases = {**learned_aliases, **registry.aliases}
     if default_sources:
         sources = (
@@ -502,6 +633,7 @@ def run_local_cockpit_refresh(
     auto_decisions = AutoDecisionSet()
     effective_registry = registry
     overrides_applied: list[AutoOverride] = []
+    decision_changes = []
     if auto_decisions_enabled:
         auto_decisions = compute_auto_decisions(
             surfaces=_topology_surfaces(evidence.git_topology),
@@ -515,6 +647,14 @@ def run_local_cockpit_refresh(
             branch_commit_dates=evidence.branch_commit_dates,
             github_evidence=collected_github_evidence,
             stale_lookback_days=DEFAULT_STALE_LOOKBACK_DAYS,
+        )
+        assert previous_auto_decisions is not None
+        assert previous_registry is not None
+        decision_changes = compare_auto_decisions(
+            previous_auto_decisions,
+            auto_decisions,
+            registry,
+            previous_registry=previous_registry,
         )
         write_auto_decisions(repo_root, auto_decisions)
         effective_registry = overlay_auto_decisions(registry, auto_decisions)
@@ -559,6 +699,7 @@ def run_local_cockpit_refresh(
         auto_decisions_enabled=auto_decisions_enabled,
         auto_dispositions=auto_decisions.surfaces,
         auto_workstream_decisions=auto_decisions.workstreams,
+        decision_changes=decision_changes,
         low_confidence_decisions=auto_decisions.low_confidence_decisions,
         overrides_applied=overrides_applied,
     )
@@ -581,29 +722,43 @@ def run_github_cockpit_refresh(
     run_date: date,
     run_command: RunCommand | None = None,
     *,
-    auto_decisions_enabled: bool = False,
+    auto_decisions_enabled: bool = True,
 ) -> CockpitRunResult:
     runner = run_command or _run_command(repo_root)
-    runner(["git", "switch", "-C", cockpit_branch_name(run_date)])
-    result = run_local_cockpit_refresh(
-        repo_root,
-        run_date,
-        run_command=runner,
-        github_sync_enabled=True,
-        git_snapshot_timing="before GitHub sync commits/pushes",
-        auto_decisions_enabled=auto_decisions_enabled,
-    )
-    github = sync_github(
-        enabled=True,
-        repo_root=repo_root,
-        run_date=run_date,
-        run_color=result.color.value,
-        decision_queue=_decision_queue(result.report),
-        run_command=runner,
-    )
-    report = _report_with_github_result(result.report, github)
-    result.packet_path.write_text(render_cockpit_packet(report), encoding="utf-8")
-    _commit_synced_packet(run_date, runner)
+    branch = cockpit_branch_name(run_date)
+    base_oid, remote_head_oid = _switch_to_cockpit_branch(runner, branch)
+    paths = _producer_paths(run_date)
+    snapshot = _snapshot_producer_files(repo_root, paths)
+    starting_head = runner(["git", "rev-parse", "HEAD"]).strip().lower()
+    try:
+        result = run_local_cockpit_refresh(
+            repo_root,
+            run_date,
+            run_command=runner,
+            github_sync_enabled=True,
+            git_snapshot_timing="before GitHub sync commits/pushes",
+            auto_decisions_enabled=auto_decisions_enabled,
+            automation_branch=branch,
+            comparison_ref="origin/main",
+        )
+        report = _report_with_github_result(result.report, _planned_github_sync(run_date))
+        result.packet_path.write_text(render_cockpit_packet(report), encoding="utf-8")
+        github = sync_github(
+            enabled=True,
+            repo_root=repo_root,
+            run_date=run_date,
+            run_color=result.color.value,
+            decision_queue=_decision_queue(result.report),
+            run_command=runner,
+            producer_base_oid=base_oid,
+            producer_remote_head_oid=remote_head_oid,
+        )
+    except Exception:
+        with suppress(Exception):
+            current_head = runner(["git", "rev-parse", "HEAD"]).strip().lower()
+            if current_head == starting_head:
+                _restore_producer_files(repo_root, paths, snapshot, runner)
+        raise
     return CockpitRunResult(
         register_path=result.register_path,
         packet_path=result.packet_path,
@@ -612,6 +767,157 @@ def run_github_cockpit_refresh(
         report=report,
         github=github,
     )
+
+
+def _producer_paths(run_date: date) -> tuple[str, ...]:
+    return (
+        "docs/agents/workstreams.md",
+        f"docs/agents/cockpit/{run_date.isoformat()}.md",
+        AUTO_DECISIONS_PATH,
+        DECISION_REGISTRY_PATH,
+        "docs/agents/cockpit/override-receipts.json",
+        "docs/agents/cockpit/RUNBOOK.md",
+    )
+
+
+def _snapshot_producer_files(
+    repo_root: Path,
+    paths: tuple[str, ...],
+) -> dict[str, bytes | None]:
+    return {
+        relative: path.read_bytes() if (path := repo_root / relative).exists() else None
+        for relative in paths
+    }
+
+
+def _restore_producer_files(
+    repo_root: Path,
+    paths: tuple[str, ...],
+    snapshot: Mapping[str, bytes | None],
+    runner: RunCommand,
+) -> None:
+    with suppress(Exception):
+        runner(["git", "restore", "--staged", "--", *paths])
+    for relative in paths:
+        path = repo_root / relative
+        original = snapshot[relative]
+        if original is None:
+            if path.exists():
+                path.unlink()
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(original)
+
+
+def _require_clean_github_checkout(runner: RunCommand) -> None:
+    if runner(["git", "status", "--porcelain=v1"]).strip():
+        raise RuntimeError("GitHub cockpit refresh requires a clean checkout.")
+
+
+def _switch_to_cockpit_branch(
+    runner: RunCommand,
+    branch: str,
+) -> tuple[str, str | None]:
+    _require_clean_github_checkout(runner)
+    current = runner(["git", "branch", "--show-current"]).strip()
+    if current != branch:
+        raise RuntimeError(
+            "GitHub cockpit refresh requires a pre-provisioned disposable linked worktree "
+            f"on {branch}; the caller checkout is never switched."
+        )
+    _require_disposable_linked_worktree(runner)
+    run_date = _cockpit_branch_date(branch)
+    allowed_paths = set(_producer_paths(run_date))
+    runner(["git", "fetch", "origin", "main"])
+    base_oid = runner(["git", "rev-parse", "FETCH_HEAD"]).strip().lower()
+    remote = runner(["git", "ls-remote", "--heads", "origin", branch]).strip()
+    remote_head_oid: str | None = None
+    if remote:
+        advertised_oid = remote.split()[0].lower()
+        runner(["git", "fetch", "origin", branch])
+        fetched_oid = runner(["git", "rev-parse", "FETCH_HEAD"]).strip().lower()
+        remote_head_oid = fetched_oid
+        if fetched_oid != advertised_oid:
+            raise RuntimeError("Dated cockpit fetch does not match the advertised remote head.")
+        _require_allowed_producer_diff(runner, base_oid, fetched_oid, allowed_paths)
+        local_oid = runner(["git", "rev-parse", "HEAD"]).strip().lower()
+        if local_oid != fetched_oid:
+            raise RuntimeError("Local dated cockpit branch does not match fetched remote head.")
+    else:
+        local_oid = runner(["git", "rev-parse", "HEAD"]).strip().lower()
+        if local_oid != base_oid:
+            raise RuntimeError(
+                "Unpublished dated cockpit branch does not match fetched origin/main."
+            )
+        else:
+            _require_allowed_producer_diff(runner, base_oid, local_oid, allowed_paths)
+    _require_clean_github_checkout(runner)
+    return base_oid, remote_head_oid
+
+
+def _require_disposable_linked_worktree(runner: RunCommand) -> None:
+    git_dir = _path_key(runner(["git", "rev-parse", "--absolute-git-dir"]))
+    common_dir = _path_key(
+        runner(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"])
+    )
+    if not git_dir.startswith(f"{common_dir}/worktrees/"):
+        raise RuntimeError(
+            "GitHub cockpit refresh requires a pre-provisioned disposable linked worktree."
+        )
+
+
+def _cockpit_branch_date(branch: str) -> date:
+    prefix = "codex/cockpit-refresh-"
+    value = branch.removeprefix(prefix)
+    if not branch.startswith(prefix) or len(value) != 8 or not value.isdigit():
+        raise RuntimeError("GitHub cockpit refresh requires a dated cockpit branch.")
+    try:
+        return date(int(value[:4]), int(value[4:6]), int(value[6:]))
+    except ValueError as exc:
+        raise RuntimeError("GitHub cockpit refresh requires a valid branch date.") from exc
+
+
+def _require_allowed_producer_diff(
+    runner: RunCommand,
+    base_oid: str,
+    head_oid: str,
+    allowed_paths: set[str],
+) -> None:
+    output = runner(
+        [
+            "git",
+            "diff",
+            "--name-status",
+            "-z",
+            "--find-renames",
+            f"{base_oid}...{head_oid}",
+            "--",
+        ]
+    )
+    fields = output.split("\0")
+    if fields and fields[-1] == "":
+        fields.pop()
+    paths: set[str] = set()
+    index = 0
+    while index < len(fields):
+        status_parts = fields[index].split("\t")
+        index += 1
+        status = status_parts[0]
+        if not status or status[0] not in "ACDMRTUXB":
+            raise RuntimeError("GitHub cockpit refresh received malformed branch diff evidence.")
+        expected_paths = 2 if status[0] in "RC" else 1
+        values = status_parts[1:]
+        while len(values) < expected_paths and index < len(fields):
+            values.append(fields[index])
+            index += 1
+        if len(values) != expected_paths or any(not value for value in values):
+            raise RuntimeError("GitHub cockpit refresh received malformed branch diff evidence.")
+        paths.update(values)
+    unexpected = paths - allowed_paths
+    if unexpected:
+        raise RuntimeError(
+            "GitHub cockpit refresh found an unexpected path: " + ", ".join(sorted(unexpected))
+        )
 
 
 def _auto_overrides(
@@ -889,11 +1195,16 @@ def _git_hygiene_workstream(
 
 def _topology_surfaces(topology: GitTopologySnapshot) -> list[TopologySurface]:
     surfaces: list[TopologySurface] = []
-    seen: set[str] = set()
+    surface_ids: set[str] = set()
+    plain_branches: set[str] = set()
+    represented_worktrees: set[str] = set()
+    _require_unique_worktree_paths(topology.worktrees)
     details_by_name = {branch.name: branch for branch in topology.unmerged_branch_details}
     worktrees_by_branch: dict[str, list[WorktreeEvidence]] = {}
     for worktree in topology.worktrees:
         worktrees_by_branch.setdefault(worktree.branch, []).append(worktree)
+    for worktrees in worktrees_by_branch.values():
+        worktrees.sort(key=_worktree_sort_key)
     candidate_branches = [
         branch
         for branch in topology.branches
@@ -902,29 +1213,82 @@ def _topology_surfaces(topology: GitTopologySnapshot) -> list[TopologySurface]:
     if _is_live_branch(topology.current_branch, topology.current_branch, details_by_name):
         candidate_branches.insert(0, topology.current_branch)
     for branch in candidate_branches:
-        if branch in seen:
+        if branch in plain_branches:
             continue
-        surfaces.append(
+        branch_worktrees = worktrees_by_branch.get(branch, [])
+        primary_worktrees = branch_worktrees[:1]
+        _append_unique_surface(
+            surfaces,
+            surface_ids,
             _surface_from_branch(
                 branch,
                 details_by_name.get(branch),
-                worktrees_by_branch.get(branch, []),
+                primary_worktrees,
+            ),
+        )
+        plain_branches.add(branch)
+        for worktree in primary_worktrees:
+            represented_worktrees.add(_path_key(worktree.path))
+        for worktree in branch_worktrees[1:]:
+            _append_unique_surface(
+                surfaces,
+                surface_ids,
+                _surface_from_attached_worktree_collision(
+                    worktree,
+                    details_by_name.get(branch),
+                ),
             )
-        )
-        seen.add(branch)
-    for worktree in topology.worktrees:
-        if worktree.branch in seen or not _is_live_worktree(worktree):
+            represented_worktrees.add(_path_key(worktree.path))
+    for worktree in sorted(topology.worktrees, key=_worktree_sort_key):
+        path_key = _path_key(worktree.path)
+        if path_key in represented_worktrees or not _is_live_worktree(worktree):
             continue
-        surfaces.append(_surface_from_worktree(worktree, details_by_name.get(worktree.branch)))
-        seen.add(worktree.branch)
+        if worktree.branch not in plain_branches:
+            surface = _surface_from_worktree(worktree, details_by_name.get(worktree.branch))
+            plain_branches.add(worktree.branch)
+        else:
+            surface = _surface_from_attached_worktree_collision(
+                worktree,
+                details_by_name.get(worktree.branch),
+            )
+        _append_unique_surface(surfaces, surface_ids, surface)
+        represented_worktrees.add(path_key)
     for branch in topology.unmerged_branch_details:
-        if branch.name in seen:
+        if branch.name in plain_branches:
             continue
-        surfaces.append(
-            _surface_from_branch(branch.name, branch, worktrees_by_branch.get(branch.name, []))
+        _append_unique_surface(
+            surfaces,
+            surface_ids,
+            _surface_from_branch(branch.name, branch, []),
         )
-        seen.add(branch.name)
+        plain_branches.add(branch.name)
     return surfaces
+
+
+def _require_unique_worktree_paths(worktrees: list[WorktreeEvidence]) -> None:
+    seen: set[str] = set()
+    for worktree in worktrees:
+        path_key = _path_key(worktree.path)
+        if not path_key or path_key in seen:
+            raise RuntimeError("Cockpit topology contains duplicate worktree path evidence.")
+        seen.add(path_key)
+
+
+def _append_unique_surface(
+    surfaces: list[TopologySurface],
+    surface_ids: set[str],
+    surface: TopologySurface,
+) -> None:
+    if surface.branch in surface_ids:
+        raise RuntimeError(
+            f"Cockpit topology contains duplicate surface identity: {surface.branch}"
+        )
+    surfaces.append(surface)
+    surface_ids.add(surface.branch)
+
+
+def _worktree_sort_key(worktree: WorktreeEvidence) -> tuple[str, str, str]:
+    return (_path_key(worktree.path), worktree.head.casefold(), worktree.branch.casefold())
 
 
 def _is_live_branch(
@@ -974,6 +1338,29 @@ def _surface_from_worktree(
         label=f"{label} @ {_worktree_path_label(worktree)}",
         provenance=provenance,
     )
+
+
+def _surface_from_attached_worktree_collision(
+    worktree: WorktreeEvidence,
+    detail: BranchEvidence | None,
+) -> TopologySurface:
+    if worktree.detached:
+        raise RuntimeError("Detached worktrees must already have path-scoped surface identities.")
+    surface_id = _attached_worktree_surface_id(worktree)
+    branch_label = _branch_label(detail or BranchEvidence(name=worktree.branch, local=True))
+    return TopologySurface(
+        branch=surface_id,
+        label=(
+            f"`{surface_id}` for {branch_label} @ {_worktree_path_label(worktree)} "
+            "(attached worktree)"
+        ),
+        provenance=detail.provenance_label if detail else "worktree",
+    )
+
+
+def _attached_worktree_surface_id(worktree: WorktreeEvidence) -> str:
+    path_digest = hashlib.sha256(_path_key(worktree.path).encode("utf-8")).hexdigest()[:10]
+    return f"worktree:{worktree.branch}@{path_digest}"
 
 
 def _matching_surface_entries(
@@ -1221,17 +1608,53 @@ def _report_with_github_result(report: CockpitReport, github: GitHubSyncResult) 
     )
 
 
-def _commit_synced_packet(run_date: date, runner: RunCommand) -> None:
-    packet_path = f"docs/agents/cockpit/{run_date.isoformat()}.md"
-    if not runner(["git", "status", "--short", "--", packet_path]).strip():
-        return
-    runner(["git", "add", packet_path])
-    runner(["git", "commit", "-m", f"Record cockpit GitHub sync for {run_date.isoformat()}"])
-    runner(["git", "push", "-u", "origin", cockpit_branch_name(run_date)])
+def _planned_github_sync(run_date: date) -> GitHubSyncResult:
+    return GitHubSyncResult(
+        branch=cockpit_branch_name(run_date),
+        pr_url="",
+        cockpit_issue_number=0,
+        cockpit_issue_url="",
+        actions_taken=[
+            "ensure the generated cockpit artifact set is committed on the dated branch",
+            "ensure the dated cockpit PR and cockpit issue exist",
+            "ensure one dated cockpit issue digest and available cockpit labels",
+        ],
+    )
 
 
 def _decision_queue(report: CockpitReport) -> list[str]:
     return [f"{decision.workstream}: {decision.question}" for decision in report.decisions]
+
+
+def _read_committed_auto_decisions(
+    repo_root: Path,
+    run_command: RunCommand | None,
+    comparison_ref: str = "HEAD",
+) -> AutoDecisionSet:
+    runner = run_command or _run_command(repo_root)
+    try:
+        payload = runner(["git", "show", f"{comparison_ref}:{AUTO_DECISIONS_PATH}"])
+    except Exception:
+        return AutoDecisionSet()
+    return parse_auto_decisions_text(payload)
+
+
+def _read_committed_decision_registry(
+    repo_root: Path,
+    run_command: RunCommand | None,
+    known_workstreams: set[str],
+    comparison_ref: str = "HEAD",
+) -> DecisionRegistry:
+    runner = run_command or _run_command(repo_root)
+    try:
+        payload = runner(["git", "show", f"{comparison_ref}:{DECISION_REGISTRY_PATH}"])
+        return parse_decision_registry_text(
+            payload,
+            known_workstreams=known_workstreams,
+            admit_historical_workstreams=True,
+        )
+    except (OSError, subprocess.SubprocessError, ValueError, AssertionError):
+        return DecisionRegistry()
 
 
 def _run_command(repo_root: Path) -> RunCommand:

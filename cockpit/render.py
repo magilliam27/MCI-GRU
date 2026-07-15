@@ -6,6 +6,7 @@ if TYPE_CHECKING:
     from datetime import date
 
     from cockpit.models import (
+        AutoDecisionChange,
         AutoDisposition,
         AutoOverride,
         AutoWorkstreamDecision,
@@ -71,6 +72,8 @@ def render_cockpit_packet(report: CockpitReport) -> str:
     if report.auto_decisions_enabled:
         _extend_auto_dispositions(lines, report.auto_dispositions)
         _extend_auto_statuses(lines, report.auto_workstream_decisions)
+        if report.decision_changes:
+            _extend_decision_changes(lines, report.decision_changes)
         _extend_low_confidence(lines, report.low_confidence_decisions)
         _extend_overrides(lines, report.overrides_applied)
     return "\n".join(lines)
@@ -189,6 +192,41 @@ def _extend_low_confidence(
             f"rule `{decision.rule}`; confidence low; evidence: {decision.evidence}"
         )
         lines.append(f"  Alternatives: {_alternatives(decision.alternatives)}")
+    lines.append("")
+
+
+def _extend_decision_changes(lines: list[str], changes: list[AutoDecisionChange]) -> None:
+    lines.extend(["## Generated Decision Changes", ""])
+    if not changes:
+        lines.extend(["None.", ""])
+        return
+    for item in changes:
+        label = f"**{item.kind} {item.target}**"
+        if item.change == "added":
+            description = f"added as {item.after}"
+        elif item.change == "removed":
+            description = f"removed (was {item.before})"
+        elif item.change == "choice":
+            description = f"choice changed {item.before} → {item.after}"
+        elif item.change == "confidence":
+            description = f"confidence changed {item.before} → {item.after}"
+        elif item.change == "metadata":
+            description = f"metadata `{item.field}` changed {item.before} → {item.after}"
+        elif item.change == "override-added":
+            description = f"override added; generated {item.before} → explicit {item.after}"
+        elif item.change == "override-changed":
+            description = (
+                f"override changed; explicit {item.before} metadata updated"
+                if item.before == item.after
+                else f"override changed; explicit {item.before} → explicit {item.after}"
+            )
+        else:
+            description = (
+                f"override cleared; explicit {item.before} → no generated decision"
+                if item.after == "none"
+                else f"override cleared; explicit {item.before} → generated {item.after}"
+            )
+        lines.append(f"- {label}: {description}")
     lines.append("")
 
 

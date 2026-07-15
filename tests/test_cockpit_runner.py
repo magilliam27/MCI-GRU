@@ -9,16 +9,26 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from cockpit.decisions import DECISION_REGISTRY_PATH, SurfaceDecision, SurfaceDisposition
+import cockpit.runner as cockpit_runner_module
+from cockpit.decisions import DECISION_REGISTRY_PATH, SurfaceDisposition
 from cockpit.evidence import collect_local_evidence
-from cockpit.models import Confidence, GitHubEvidence, PullRequestEvidence, WorkstreamStatus
-from cockpit.policy import AUTO_DECISIONS_PATH
+from cockpit.models import (
+    AutoDecisionChange,
+    AutoDecisionSet,
+    AutoDisposition,
+    Confidence,
+    GitHubEvidence,
+    PullRequestEvidence,
+    WorkstreamStatus,
+)
+from cockpit.policy import AUTO_DECISIONS_PATH, write_auto_decisions
 from cockpit.runner import (
     GitActivitySource,
     StaticWorkstreamSource,
     WorkstreamSeed,
     _branch_topic_tokens,
     _run_command,
+    _switch_to_cockpit_branch,
     implied_aliases,
     merge_workstream_sources,
     run_github_cockpit_refresh,
@@ -207,10 +217,11 @@ def test_collect_local_evidence_builds_git_topology_snapshot(tmp_path: Path) -> 
         "local+remote",
         "local",
     ]
-    assert [worktree.branch for worktree in evidence.git_topology.dirty_worktrees] == [
-        "codex/top10-lambdarank-screen-20260625",
-        "detached@a2684d2",
+    dirty_worktree_branches = [
+        worktree.branch for worktree in evidence.git_topology.dirty_worktrees
     ]
+    assert dirty_worktree_branches[0] == "codex/top10-lambdarank-screen-20260625"
+    assert dirty_worktree_branches[1].startswith("detached@a2684d2-")
     assert [worktree.path for worktree in evidence.git_topology.detached_worktrees] == [
         "C:/repo/.codex/worktrees/detached/MCI-GRU"
     ]
@@ -311,6 +322,7 @@ def test_run_local_cockpit_refresh_writes_register_and_packet(tmp_path: Path) ->
         repo_root=repo,
         run_date=date(2026, 6, 20),
         run_command=fake_run,
+        auto_decisions_enabled=False,
     )
 
     assert result.register_path == repo / "docs" / "agents" / "workstreams.md"
@@ -338,6 +350,7 @@ def test_run_local_cockpit_refresh_flag_off_preserves_output_parity(tmp_path: Pa
         default_repo,
         run_date,
         run_command=_fake_topology_runner(["codex/lambdarank-live"]),
+        auto_decisions_enabled=False,
     )
     explicit = run_local_cockpit_refresh(
         explicit_repo,
@@ -403,7 +416,7 @@ def test_flag_off_preserves_registry_plus_heuristic_surface_association(
     assert not (repo / AUTO_DECISIONS_PATH).exists()
 
 
-def test_run_local_cockpit_refresh_applies_generated_decisions_when_enabled(
+def test_run_local_cockpit_refresh_applies_generated_decisions_by_default(
     tmp_path: Path,
 ) -> None:
     repo = _repo_with_required_docs(tmp_path)
@@ -433,7 +446,6 @@ def test_run_local_cockpit_refresh_applies_generated_decisions_when_enabled(
         repo,
         date(2026, 7, 12),
         run_command=fake_run,
-        auto_decisions_enabled=True,
         github_evidence=GitHubEvidence(),
     )
 
@@ -445,6 +457,228 @@ def test_run_local_cockpit_refresh_applies_generated_decisions_when_enabled(
     assert result.report.auto_dispositions[branch].rule == "merged-into-main"
     assert "## Auto-Dispositions Applied" in packet
     assert f"**{branch}** → archive" in packet
+
+
+def test_run_local_cockpit_refresh_compares_before_overwriting_prior_auto_file(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    branch = "codex/lambdarank-live"
+    write_auto_decisions(
+        repo,
+        AutoDecisionSet(
+            surfaces={
+                branch: AutoDisposition(
+                    workstreams=("LambdaRankIC",),
+                    disposition=SurfaceDisposition.PARKED,
+                    rule="prior-rule",
+                    evidence="Prior generated result.",
+                    confidence=Confidence.HIGH,
+                    alternatives=(),
+                    last_reviewed=date(2026, 7, 12),
+                )
+            }
+        ),
+    )
+    committed_payload = (repo / AUTO_DECISIONS_PATH).read_text(encoding="utf-8")
+    topology_runner = _fake_topology_runner([branch])
+
+    def committed_baseline_runner(args: list[str]) -> str:
+        if args == ["git", "show", f"HEAD:{AUTO_DECISIONS_PATH}"]:
+            return committed_payload
+        return topology_runner(args)
+
+    result = run_local_cockpit_refresh(
+        repo,
+        date(2026, 7, 13),
+        run_command=committed_baseline_runner,
+        github_evidence=GitHubEvidence(),
+    )
+
+    change = AutoDecisionChange(
+        kind="surface",
+        target=branch,
+        change="choice",
+        before="parked",
+        after="canonical",
+    )
+    assert change in result.report.decision_changes
+    first_packet = result.packet_path.read_bytes()
+    assert "choice changed parked → canonical" in first_packet.decode("utf-8")
+
+    unchanged = run_local_cockpit_refresh(
+        repo,
+        date(2026, 7, 13),
+        run_command=committed_baseline_runner,
+        github_evidence=GitHubEvidence(),
+    )
+
+    assert change in unchanged.report.decision_changes
+    assert unchanged.packet_path.read_bytes() == first_packet
+
+
+def test_run_local_cockpit_refresh_reports_new_override_against_committed_registry(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    branch = "codex/lambdarank-live"
+    topology_runner = _fake_topology_runner([branch])
+    run_date = date(2026, 7, 13)
+
+    run_local_cockpit_refresh(
+        repo,
+        run_date,
+        run_command=topology_runner,
+        github_evidence=GitHubEvidence(),
+    )
+    committed_auto = (repo / AUTO_DECISIONS_PATH).read_text(encoding="utf-8")
+    committed_registry = (repo / DECISION_REGISTRY_PATH).read_text(encoding="utf-8")
+    generated_status = json.loads(committed_auto)["workstreams"]["LambdaRankIC"]["status"]
+    assert generated_status == "active"
+
+    _write_decision_registry(
+        repo,
+        workstreams={
+            "LambdaRankIC": {
+                "status": "parked",
+                "canonical_surface": branch,
+                "reason": "Explicit PR comment correction.",
+                "next_action": "Pause.",
+                "last_reviewed": run_date.isoformat(),
+            }
+        },
+        surfaces={},
+    )
+
+    def committed_baseline_runner(args: list[str]) -> str:
+        if args == ["git", "show", f"HEAD:{AUTO_DECISIONS_PATH}"]:
+            return committed_auto
+        if args == ["git", "show", f"HEAD:{DECISION_REGISTRY_PATH}"]:
+            return committed_registry
+        return topology_runner(args)
+
+    result = run_local_cockpit_refresh(
+        repo,
+        run_date,
+        run_command=committed_baseline_runner,
+        github_evidence=GitHubEvidence(),
+    )
+
+    assert (
+        AutoDecisionChange(
+            kind="workstream",
+            target="LambdaRankIC",
+            change="override-added",
+            before="active",
+            after="parked",
+        )
+        in result.report.decision_changes
+    )
+    assert "override added; generated active → explicit parked" in result.packet_path.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_run_local_cockpit_refresh_reports_cleared_historical_overrides_absent_now(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    branch = "codex/retired-workstream"
+    committed_registry = json.dumps(
+        {
+            "format_version": 1,
+            "workstreams": {
+                "Retired workstream": {
+                    "status": "parked",
+                    "canonical_surface": branch,
+                    "reason": "The historical override parked this workstream.",
+                    "next_action": "Keep it parked.",
+                    "last_reviewed": "2026-07-12",
+                }
+            },
+            "surfaces": {
+                branch: {
+                    "workstreams": ["Retired workstream"],
+                    "disposition": "archive",
+                    "reason": "The historical override archived this branch.",
+                    "next_action": "Retain the archived evidence.",
+                    "last_reviewed": "2026-07-12",
+                }
+            },
+        }
+    )
+    topology_runner = _fake_topology_runner([])
+
+    def committed_baseline_runner(args: list[str]) -> str:
+        if args == ["git", "show", f"HEAD:{DECISION_REGISTRY_PATH}"]:
+            return committed_registry
+        return topology_runner(args)
+
+    result = run_local_cockpit_refresh(
+        repo,
+        date(2026, 7, 13),
+        run_command=committed_baseline_runner,
+        sources=(),
+        github_evidence=GitHubEvidence(),
+    )
+
+    assert (
+        AutoDecisionChange(
+            kind="workstream",
+            target="Retired workstream",
+            change="override-cleared",
+            before="parked",
+            after="none",
+        )
+        in result.report.decision_changes
+    )
+    assert (
+        AutoDecisionChange(
+            kind="surface",
+            target=branch,
+            change="override-cleared",
+            before="archive",
+            after="none",
+        )
+        in result.report.decision_changes
+    )
+
+
+def test_run_local_cockpit_refresh_ignores_malformed_historical_registry(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    committed_registry = json.dumps(
+        {
+            "format_version": 1,
+            "workstreams": {
+                "Retired workstream": {
+                    "status": "not-a-valid-status",
+                    "canonical_surface": "codex/retired-workstream",
+                    "reason": "Malformed committed evidence.",
+                    "next_action": "Do not trust this snapshot.",
+                    "last_reviewed": "2026-07-12",
+                }
+            },
+            "surfaces": {},
+        }
+    )
+    topology_runner = _fake_topology_runner([])
+
+    def committed_baseline_runner(args: list[str]) -> str:
+        if args == ["git", "show", f"HEAD:{DECISION_REGISTRY_PATH}"]:
+            return committed_registry
+        return topology_runner(args)
+
+    result = run_local_cockpit_refresh(
+        repo,
+        date(2026, 7, 13),
+        run_command=committed_baseline_runner,
+        sources=(),
+        github_evidence=GitHubEvidence(),
+    )
+
+    assert all(change.target != "Retired workstream" for change in result.report.decision_changes)
 
 
 def test_auto_decisions_disabled_never_calls_github_collector(tmp_path: Path) -> None:
@@ -687,6 +921,7 @@ def test_run_local_cockpit_refresh_surfaces_git_topology_without_placeholders(
         repo_root=repo,
         run_date=date(2026, 6, 28),
         run_command=fake_run,
+        auto_decisions_enabled=False,
     )
 
     register = result.register_path.read_text(encoding="utf-8")
@@ -786,12 +1021,10 @@ def test_decision_registry_keeps_reviewed_surfaces_resolved(tmp_path: Path) -> N
 
     by_name = {row.name: row for row in result.report.active_workstreams}
     register = result.register_path.read_text(encoding="utf-8")
-    assert by_name["LambdaRankIC"].continuation == "PR #65 / codex/canonical-lambdarank"
+    assert by_name["LambdaRankIC"].continuation == "codex/canonical-lambdarank"
     assert by_name["LambdaRankIC"].last_reviewed == date(2026, 7, 9)
     assert "workstream-decisions.json" in by_name["LambdaRankIC"].source_of_truth
-    assert (
-        "| Daily bug scans | ready-for-agent |  | PR #67 / codex/backtest-plot-test |" in register
-    )
+    assert "| Daily bug scans | ready-for-agent |  | codex/backtest-plot-test |" in register
     assert not any(row.name == "LambdaRankIC" for row in result.report.decision_workstreams)
     assert not any(
         decision.workstream == "Git and worktree hygiene" for decision in result.report.decisions
@@ -844,6 +1077,7 @@ def test_decision_registry_reopens_only_for_new_unreviewed_surface(tmp_path: Pat
                 "codex/lambdarank-new-experiment",
             ]
         ),
+        auto_decisions_enabled=False,
     )
 
     decision = next(row for row in result.report.decision_workstreams if row.name == "LambdaRankIC")
@@ -939,15 +1173,21 @@ def test_run_local_cockpit_refresh_labels_detached_current_checkout(
 
     register = result.register_path.read_text(encoding="utf-8")
     packet = result.packet_path.read_text(encoding="utf-8")
+    auto_payload = json.loads((repo / AUTO_DECISIONS_PATH).read_text(encoding="utf-8"))
+    detached_id = next(
+        surface_id
+        for surface_id in auto_payload["surfaces"]
+        if surface_id.startswith("detached@a2684d2-")
+    )
     assert result.color.value == "yellow"
     assert "Git surface: HEAD (no branch)" not in register
     assert "`HEAD (no branch)` (local)" not in register
     assert "Git surface: (HEAD detached at a2684d2)" not in register
     assert "`(HEAD detached at a2684d2)` (local)" not in register
-    assert "Git surface: detached@a2684d2" in register
-    assert "`detached@a2684d2` @ `C:/repo` (detached)" in register
-    assert "Current branch: `detached@a2684d2`" in packet
-    assert "Detached worktrees: `detached@a2684d2` at `C:/repo`" in packet
+    assert f"Git surface: {detached_id}" in register
+    assert f"`{detached_id}` @ `C:/repo` (detached)" in register
+    assert f"Current branch: `{detached_id}`" in packet
+    assert f"Detached worktrees: `{detached_id}` at `C:/repo`" in packet
 
 
 def test_run_local_cockpit_refresh_uses_repo_path_for_detached_current_checkout(
@@ -994,10 +1234,177 @@ def test_run_local_cockpit_refresh_uses_repo_path_for_detached_current_checkout(
 
     register = result.register_path.read_text(encoding="utf-8")
     packet = result.packet_path.read_text(encoding="utf-8")
-    assert "Current branch: `detached@2222222`" in packet
-    assert "Git surface: detached@2222222" in register
-    assert "Current branch: `detached@1111111`" not in packet
-    assert "Git surface: detached@1111111" in register
+    auto_payload = json.loads((repo / AUTO_DECISIONS_PATH).read_text(encoding="utf-8"))
+    current_id = next(
+        surface_id
+        for surface_id in auto_payload["surfaces"]
+        if surface_id.startswith("detached@2222222-")
+    )
+    other_id = next(
+        surface_id
+        for surface_id in auto_payload["surfaces"]
+        if surface_id.startswith("detached@1111111-")
+    )
+    assert f"Current branch: `{current_id}`" in packet
+    assert f"Git surface: {current_id}" in register
+    assert f"Current branch: `{other_id}`" not in packet
+    assert f"Git surface: {other_id}" in register
+
+
+def test_detached_worktrees_have_stable_path_scoped_surfaces_and_decisions(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    worktrees = ["C:/detached/alpha", "C:/detached/beta", "C:/detached/gamma"]
+
+    def fake_run(args: list[str]) -> str:
+        command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return ""
+        if command == "git status --short":
+            return ""
+        if command == "git status --short --branch":
+            return "## main\n"
+        if command == "git branch --format=%(refname:short)":
+            return "main\n"
+        if command == "git branch --all --no-merged origin/main":
+            return ""
+        if command == "git rev-list --left-right --count origin/main...HEAD":
+            return "0\t0\n"
+        if command == "git worktree list --porcelain":
+            return (
+                "worktree C:/detached/alpha\n"
+                f"HEAD {'a' * 40}\n"
+                "detached\n\n"
+                "worktree C:/detached/beta\n"
+                f"HEAD {'a' * 40}\n"
+                "detached\n\n"
+                "worktree C:/detached/gamma\n"
+                f"HEAD {'b' * 40}\n"
+                "detached\n"
+            )
+        if command == "git log -5 --oneline":
+            return ""
+        if args[:2] == ["git", "-c"] and args[3] == "-C":
+            return "## HEAD (no branch)\n"
+        raise AssertionError(command)
+
+    first = run_local_cockpit_refresh(repo, date(2026, 7, 13), run_command=fake_run)
+    first_register = first.register_path.read_bytes()
+    first_auto = (repo / AUTO_DECISIONS_PATH).read_bytes()
+    payload = json.loads(first_auto)
+    detached_ids = sorted(
+        surface_id for surface_id in payload["surfaces"] if surface_id.startswith("detached@")
+    )
+
+    assert len(detached_ids) == 3
+    assert len(set(detached_ids)) == 3
+    assert sum(surface_id.startswith("detached@aaaaaaa-") for surface_id in detached_ids) == 2
+    assert sum(surface_id.startswith("detached@bbbbbbb-") for surface_id in detached_ids) == 1
+    register = first_register.decode("utf-8")
+    for path in worktrees:
+        assert path in register
+    for surface_id in detached_ids:
+        assert f"Git surface: {surface_id}" in register
+
+    second = run_local_cockpit_refresh(repo, date(2026, 7, 13), run_command=fake_run)
+    assert second.register_path.read_bytes() == first_register
+    assert (repo / AUTO_DECISIONS_PATH).read_bytes() == first_auto
+
+
+def test_attached_same_branch_worktrees_have_independent_stable_surfaces(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    worktree_paths = {
+        "shared_alpha": "C:/attached/shared-alpha",
+        "shared_beta": "C:/attached/shared-beta",
+        "ordinary": "C:/attached/ordinary",
+        "detached": "C:/attached/detached",
+    }
+
+    def fake_run(args: list[str]) -> str:
+        command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return ""
+        if command == "git status --short":
+            return ""
+        if command == "git status --short --branch":
+            return "## main\n"
+        if command == "git branch --format=%(refname:short)":
+            return "main\ncodex/shared\ncodex/ordinary\n"
+        if command == "git branch --all --no-merged origin/main":
+            return "  codex/shared\n  codex/ordinary\n"
+        if command == "git rev-list --left-right --count origin/main...HEAD":
+            return "0\t0\n"
+        if command == "git worktree list --porcelain":
+            return (
+                "worktree C:/attached/main\n"
+                f"HEAD {'0' * 40}\n"
+                "branch refs/heads/main\n\n"
+                f"worktree {worktree_paths['shared_beta']}\n"
+                f"HEAD {'a' * 40}\n"
+                "branch refs/heads/codex/shared\n\n"
+                f"worktree {worktree_paths['ordinary']}\n"
+                f"HEAD {'b' * 40}\n"
+                "branch refs/heads/codex/ordinary\n\n"
+                f"worktree {worktree_paths['shared_alpha']}\n"
+                f"HEAD {'a' * 40}\n"
+                "branch refs/heads/codex/shared\n\n"
+                f"worktree {worktree_paths['detached']}\n"
+                f"HEAD {'c' * 40}\n"
+                "detached\n"
+            )
+        if command == "git log -5 --oneline":
+            return ""
+        if args[:2] == ["git", "-c"] and args[3] == "-C":
+            branch_by_path = {
+                "C:/attached/main": "main",
+                worktree_paths["shared_alpha"]: "codex/shared",
+                worktree_paths["shared_beta"]: "codex/shared",
+                worktree_paths["ordinary"]: "codex/ordinary",
+            }
+            branch = branch_by_path.get(args[4])
+            return f"## {branch}\n" if branch is not None else "## HEAD (no branch)\n"
+        raise AssertionError(command)
+
+    first = run_local_cockpit_refresh(repo, date(2026, 7, 13), run_command=fake_run)
+    first_register = first.register_path.read_bytes()
+    first_auto = (repo / AUTO_DECISIONS_PATH).read_bytes()
+    payload = json.loads(first_auto)
+    surface_ids = set(payload["surfaces"])
+    shared_collision_ids = {
+        surface_id for surface_id in surface_ids if surface_id.startswith("worktree:codex/shared@")
+    }
+    detached_ids = {
+        surface_id for surface_id in surface_ids if surface_id.startswith("detached@ccccccc-")
+    }
+
+    assert "codex/shared" in surface_ids
+    assert "codex/ordinary" in surface_ids
+    assert len(shared_collision_ids) == 1
+    assert len(detached_ids) == 1
+    assert len(surface_ids) == 4
+    register = first_register.decode("utf-8")
+    register_rows = register.splitlines()
+    shared_row = next(row for row in register_rows if "Git surface: codex/shared" in row)
+    collision_id = next(iter(shared_collision_ids))
+    collision_row = next(row for row in register_rows if f"Git surface: {collision_id}" in row)
+    ordinary_row = next(row for row in register_rows if "Git surface: codex/ordinary" in row)
+    detached_id = next(iter(detached_ids))
+    detached_row = next(row for row in register_rows if f"Git surface: {detached_id}" in row)
+    assert worktree_paths["shared_alpha"] in shared_row
+    assert worktree_paths["shared_beta"] not in shared_row
+    assert worktree_paths["shared_beta"] in collision_row
+    assert worktree_paths["shared_alpha"] not in collision_row
+    assert worktree_paths["ordinary"] in ordinary_row
+    assert worktree_paths["detached"] in detached_row
+    for surface_id in surface_ids:
+        assert f"Git surface: {surface_id}" in register
+
+    second = run_local_cockpit_refresh(repo, date(2026, 7, 13), run_command=fake_run)
+    assert second.register_path.read_bytes() == first_register
+    assert (repo / AUTO_DECISIONS_PATH).read_bytes() == first_auto
 
 
 def test_run_local_cockpit_refresh_suppresses_seeds_for_main_divergence(
@@ -1031,6 +1438,7 @@ def test_run_local_cockpit_refresh_suppresses_seeds_for_main_divergence(
         repo_root=repo,
         run_date=date(2026, 6, 28),
         run_command=fake_run,
+        auto_decisions_enabled=False,
     )
 
     register = result.register_path.read_text(encoding="utf-8")
@@ -1135,29 +1543,49 @@ def test_run_local_cockpit_refresh_reports_missing_decision_registry(tmp_path: P
     assert f"Missing required doc: {DECISION_REGISTRY_PATH}" in packet
 
 
-def test_run_github_cockpit_refresh_switches_branch_and_syncs(tmp_path: Path) -> None:
+def test_run_github_cockpit_refresh_uses_preprovisioned_worktree_and_syncs(
+    tmp_path: Path,
+) -> None:
     repo = _repo_with_required_docs(tmp_path)
     commands: list[list[str]] = []
+    current_branch = "codex/cockpit-refresh-20260620"
+    pushed = False
 
     def fake_run(args: list[str]) -> str:
+        nonlocal current_branch, pushed
         commands.append(args)
+        disposable_metadata = _disposable_worktree_metadata(args)
+        if disposable_metadata is not None:
+            return disposable_metadata
         command = " ".join(args)
-        if command.startswith("git for-each-ref"):
+        if command == "git status --porcelain=v1":
             return ""
-        if command == "git switch -C codex/cockpit-refresh-20260620":
+        if command == "git branch --show-current":
+            return current_branch + "\n"
+        if command == "git ls-remote --heads origin codex/cockpit-refresh-20260620":
+            return ""
+        if command == "git fetch origin main":
+            return ""
+        if command in {"git rev-parse FETCH_HEAD", "git rev-parse HEAD"}:
+            return "a" * 40 + "\n"
+        if command.startswith("git diff --name-status -z --find-renames"):
+            return ""
+        if command.startswith("git for-each-ref"):
             return ""
         if command == "git status --short":
             return ""
         if command == "git status --short --branch":
-            return "## main\n"
+            return "## codex/cockpit-refresh-20260620\n"
         if command == "git branch --format=%(refname:short)":
-            return "main\n"
+            return "main\ncodex/cockpit-refresh-20260620\n"
         if command == "git branch --all --no-merged origin/main":
             return ""
         if command == "git rev-list --left-right --count origin/main...HEAD":
             return "0\t0\n"
         if command == "git worktree list --porcelain":
-            return "worktree C:/repo\nHEAD 60e3d96\nbranch refs/heads/main\n"
+            return (
+                "worktree C:/repo\nHEAD 60e3d96\nbranch refs/heads/codex/cockpit-refresh-20260620\n"
+            )
         if command == "git log -5 --oneline":
             return "60e3d96 Add local MCI-GRU cockpit runner\n"
         if args[:2] == ["git", "-c"] and args[3] == "-C":
@@ -1168,18 +1596,37 @@ def test_run_github_cockpit_refresh_switches_branch_and_syncs(tmp_path: Path) ->
             return "M docs/agents/workstreams.md\nM docs/agents/cockpit/2026-06-20.md\n"
         if command.startswith("git add docs/agents/workstreams.md"):
             return ""
+        if command == "git diff --cached --name-only":
+            return "docs/agents/workstreams.md\ndocs/agents/cockpit/2026-06-20.md\n"
         if command.startswith("git commit -m Refresh cockpit status for 2026-06-20"):
             return "[codex/cockpit-refresh-20260620 abc123] Refresh cockpit status for 2026-06-20"
         if command == "git push -u origin codex/cockpit-refresh-20260620":
+            pushed = True
             return ""
         if command.startswith("gh pr list"):
-            return "https://github.com/magilliam27/MCI-GRU/pull/99"
+            if not pushed:
+                return "[]"
+            return json.dumps(
+                [
+                    {
+                        "url": "https://github.com/magilliam27/MCI-GRU/pull/99",
+                        "title": "Cockpit refresh: 2026-06-20",
+                        "baseRefName": "main",
+                        "headRefName": "codex/cockpit-refresh-20260620",
+                        "state": "OPEN",
+                    }
+                ]
+            )
         if command.startswith("gh issue list"):
             return "100"
         if command.startswith("gh label list"):
             return "cockpit-reviewed\n"
+        if command.startswith("gh issue view 100"):
+            return ""
         if command.startswith("gh issue edit 100"):
             return ""
+        if command == ("gh api repos/magilliam27/MCI-GRU/issues/100/comments --paginate --slurp"):
+            return "[[]]"
         if command.startswith("gh issue comment 100"):
             return ""
         if command == "git status --short -- docs/agents/cockpit/2026-06-20.md":
@@ -1192,23 +1639,337 @@ def test_run_github_cockpit_refresh_switches_branch_and_syncs(tmp_path: Path) ->
         run_command=fake_run,
     )
 
-    assert commands[0] == ["git", "switch", "-C", "codex/cockpit-refresh-20260620"]
+    assert commands[:10] == [
+        ["git", "status", "--porcelain=v1"],
+        ["git", "branch", "--show-current"],
+        ["git", "rev-parse", "--absolute-git-dir"],
+        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        ["git", "fetch", "origin", "main"],
+        ["git", "rev-parse", "FETCH_HEAD"],
+        ["git", "ls-remote", "--heads", "origin", "codex/cockpit-refresh-20260620"],
+        ["git", "rev-parse", "HEAD"],
+        [
+            "git",
+            "diff",
+            "--name-status",
+            "-z",
+            "--find-renames",
+            f"{'a' * 40}...{'a' * 40}",
+            "--",
+        ],
+        ["git", "status", "--porcelain=v1"],
+    ]
     assert result.github is not None
     assert result.github.pr_url == "https://github.com/magilliam27/MCI-GRU/pull/99"
     assert result.register_path.exists()
     assert any(command[:3] == ["gh", "issue", "comment"] for command in commands)
 
 
-def test_run_github_cockpit_refresh_rewrites_packet_with_actions_taken(tmp_path: Path) -> None:
+def test_run_github_cockpit_refresh_refuses_a_dirty_checkout_before_switching(
+    tmp_path: Path,
+) -> None:
     repo = _repo_with_required_docs(tmp_path)
     commands: list[list[str]] = []
 
     def fake_run(args: list[str]) -> str:
         commands.append(args)
-        command = " ".join(args)
-        if command.startswith("git for-each-ref"):
+        disposable_metadata = _disposable_worktree_metadata(args)
+        if disposable_metadata is not None:
+            return disposable_metadata
+        if args == ["git", "status", "--porcelain=v1"]:
+            return "M user-work.txt\n"
+        if args == ["git", "switch", "-C", "codex/cockpit-refresh-20260620"]:
             return ""
-        if command == "git switch -C codex/cockpit-refresh-20260620":
+        raise AssertionError(" ".join(args))
+
+    with pytest.raises(RuntimeError, match="clean checkout"):
+        run_github_cockpit_refresh(
+            repo_root=repo,
+            run_date=date(2026, 6, 20),
+            run_command=fake_run,
+        )
+
+    assert commands == [["git", "status", "--porcelain=v1"]]
+
+
+def test_producer_reuses_fetched_remote_dated_branch_at_exact_oid() -> None:
+    branch = "codex/cockpit-refresh-20260620"
+    head_oid = "a" * 40
+    commands: list[list[str]] = []
+
+    def fake_run(args: list[str]) -> str:
+        commands.append(args)
+        disposable_metadata = _disposable_worktree_metadata(args)
+        if disposable_metadata is not None:
+            return disposable_metadata
+        if args == ["git", "status", "--porcelain=v1"]:
+            return ""
+        if args == ["git", "branch", "--show-current"]:
+            return branch + "\n"
+        if args == ["git", "ls-remote", "--heads", "origin", branch]:
+            return f"{head_oid}\trefs/heads/{branch}\n"
+        if args == ["git", "fetch", "origin", "main"]:
+            return ""
+        if args == ["git", "fetch", "origin", branch]:
+            return ""
+        if args in (["git", "rev-parse", "FETCH_HEAD"], ["git", "rev-parse", "HEAD"]):
+            return head_oid + "\n"
+        if args[:4] == ["git", "diff", "--name-status", "-z"]:
+            return ""
+        raise AssertionError(" ".join(args))
+
+    _switch_to_cockpit_branch(fake_run, branch)
+
+    assert ["git", "fetch", "origin", branch] in commands
+    assert not any(command[:2] == ["git", "switch"] for command in commands)
+    assert not any("-C" in command or "reset" in command for command in commands)
+
+
+def test_producer_reuses_remote_branch_containing_curator_registry_commit() -> None:
+    branch = "codex/cockpit-refresh-20260620"
+    base_oid = "b" * 40
+    head_oid = "a" * 40
+    fetched = ""
+
+    def fake_run(args: list[str]) -> str:
+        nonlocal fetched
+        disposable_metadata = _disposable_worktree_metadata(args)
+        if disposable_metadata is not None:
+            return disposable_metadata
+        if args == ["git", "status", "--porcelain=v1"]:
+            return ""
+        if args == ["git", "branch", "--show-current"]:
+            return branch + "\n"
+        if args == ["git", "fetch", "origin", "main"]:
+            fetched = "main"
+            return ""
+        if args == ["git", "ls-remote", "--heads", "origin", branch]:
+            return f"{head_oid}\trefs/heads/{branch}\n"
+        if args == ["git", "fetch", "origin", branch]:
+            fetched = "branch"
+            return ""
+        if args == ["git", "rev-parse", "FETCH_HEAD"]:
+            return (base_oid if fetched == "main" else head_oid) + "\n"
+        if args == ["git", "rev-parse", "HEAD"]:
+            return head_oid + "\n"
+        if args == [
+            "git",
+            "diff",
+            "--name-status",
+            "-z",
+            "--find-renames",
+            f"{base_oid}...{head_oid}",
+            "--",
+        ]:
+            return f"M\x00{DECISION_REGISTRY_PATH}\x00"
+        raise AssertionError(" ".join(args))
+
+    assert _switch_to_cockpit_branch(fake_run, branch) == (base_oid, head_oid)
+
+
+def test_producer_rejects_unrelated_path_already_on_remote_dated_branch() -> None:
+    branch = "codex/cockpit-refresh-20260620"
+    base_oid = "b" * 40
+    head_oid = "a" * 40
+    fetched = ""
+    commands: list[list[str]] = []
+
+    def fake_run(args: list[str]) -> str:
+        nonlocal fetched
+        commands.append(args)
+        disposable_metadata = _disposable_worktree_metadata(args)
+        if disposable_metadata is not None:
+            return disposable_metadata
+        if args == ["git", "status", "--porcelain=v1"]:
+            return ""
+        if args == ["git", "branch", "--show-current"]:
+            return branch + "\n"
+        if args == ["git", "fetch", "origin", "main"]:
+            fetched = "main"
+            return ""
+        if args == ["git", "ls-remote", "--heads", "origin", branch]:
+            return f"{head_oid}\trefs/heads/{branch}\n"
+        if args == ["git", "fetch", "origin", branch]:
+            fetched = "branch"
+            return ""
+        if args == ["git", "rev-parse", "FETCH_HEAD"]:
+            return (base_oid if fetched == "main" else head_oid) + "\n"
+        if args == ["git", "rev-parse", "HEAD"]:
+            return head_oid + "\n"
+        if args == [
+            "git",
+            "diff",
+            "--name-status",
+            "-z",
+            "--find-renames",
+            f"{base_oid}...{head_oid}",
+            "--",
+        ]:
+            return "A\x00user-work.txt\x00"
+        raise AssertionError(" ".join(args))
+
+    with pytest.raises(RuntimeError, match="unexpected path: user-work.txt"):
+        _switch_to_cockpit_branch(fake_run, branch)
+
+    assert not any("-C" in command or "reset" in command for command in commands)
+
+
+def test_producer_refuses_clean_primary_main_without_switching() -> None:
+    branch = "codex/cockpit-refresh-20260620"
+    base_oid = "b" * 40
+    commands: list[list[str]] = []
+    current = "main"
+
+    def fake_run(args: list[str]) -> str:
+        nonlocal current
+        commands.append(args)
+        if args == ["git", "status", "--porcelain=v1"]:
+            return ""
+        if args == ["git", "branch", "--show-current"]:
+            return current + "\n"
+        if args == ["git", "fetch", "origin", "main"]:
+            return ""
+        if args == ["git", "rev-parse", "FETCH_HEAD"]:
+            return base_oid + "\n"
+        if args == ["git", "ls-remote", "--heads", "origin", branch]:
+            return ""
+        if args == ["git", "branch", "--list", branch]:
+            return ""
+        if args[:4] == ["git", "diff", "--name-status", "-z"]:
+            return ""
+        if args == ["git", "switch", "--create", branch, "FETCH_HEAD"]:
+            current = branch
+            return ""
+        if args == ["git", "rev-parse", "HEAD"]:
+            return base_oid + "\n"
+        raise AssertionError(" ".join(args))
+
+    with pytest.raises(RuntimeError, match="pre-provisioned disposable linked worktree"):
+        _switch_to_cockpit_branch(fake_run, branch)
+
+    assert commands == [
+        ["git", "status", "--porcelain=v1"],
+        ["git", "branch", "--show-current"],
+    ]
+    assert current == "main"
+
+
+def test_producer_refuses_primary_checkout_even_on_dated_branch() -> None:
+    branch = "codex/cockpit-refresh-20260620"
+    commands: list[list[str]] = []
+
+    def fake_run(args: list[str]) -> str:
+        commands.append(args)
+        if args == ["git", "status", "--porcelain=v1"]:
+            return ""
+        if args == ["git", "branch", "--show-current"]:
+            return branch + "\n"
+        if args == ["git", "rev-parse", "--absolute-git-dir"]:
+            return "C:/repo/.git\n"
+        if args == ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"]:
+            return "C:/repo/.git\n"
+        raise AssertionError(" ".join(args))
+
+    with pytest.raises(RuntimeError, match="pre-provisioned disposable linked worktree"):
+        _switch_to_cockpit_branch(fake_run, branch)
+
+    assert not any(command[:2] == ["git", "switch"] for command in commands)
+
+
+def test_producer_accepts_preprovisioned_unpublished_branch_at_fetched_main() -> None:
+    branch = "codex/cockpit-refresh-20260620"
+    base_oid = "b" * 40
+    commands: list[list[str]] = []
+
+    def fake_run(args: list[str]) -> str:
+        commands.append(args)
+        disposable_metadata = _disposable_worktree_metadata(args)
+        if disposable_metadata is not None:
+            return disposable_metadata
+        if args == ["git", "status", "--porcelain=v1"]:
+            return ""
+        if args == ["git", "branch", "--show-current"]:
+            return branch + "\n"
+        if args == ["git", "ls-remote", "--heads", "origin", branch]:
+            return ""
+        if args == ["git", "fetch", "origin", "main"]:
+            return ""
+        if args == ["git", "rev-parse", "FETCH_HEAD"]:
+            return base_oid + "\n"
+        if args == ["git", "rev-parse", "HEAD"]:
+            return base_oid + "\n"
+        if args[:4] == ["git", "diff", "--name-status", "-z"]:
+            return ""
+        raise AssertionError(" ".join(args))
+
+    _switch_to_cockpit_branch(fake_run, branch)
+
+    assert ["git", "fetch", "origin", "main"] in commands
+    assert not any(command[:2] == ["git", "switch"] for command in commands)
+    assert not any("-C" in command or "reset" in command for command in commands)
+
+
+def test_producer_rejects_local_dated_branch_that_differs_from_remote() -> None:
+    branch = "codex/cockpit-refresh-20260620"
+    commands: list[list[str]] = []
+
+    def fake_run(args: list[str]) -> str:
+        commands.append(args)
+        disposable_metadata = _disposable_worktree_metadata(args)
+        if disposable_metadata is not None:
+            return disposable_metadata
+        if args == ["git", "status", "--porcelain=v1"]:
+            return ""
+        if args == ["git", "branch", "--show-current"]:
+            return branch + "\n"
+        if args == ["git", "ls-remote", "--heads", "origin", branch]:
+            return f"{'a' * 40}\trefs/heads/{branch}\n"
+        if args == ["git", "fetch", "origin", "main"]:
+            return ""
+        if args == ["git", "fetch", "origin", branch]:
+            return ""
+        if args == ["git", "rev-parse", "FETCH_HEAD"]:
+            return "a" * 40 + "\n"
+        if args == ["git", "rev-parse", "HEAD"]:
+            return "c" * 40 + "\n"
+        if args[:4] == ["git", "diff", "--name-status", "-z"]:
+            return ""
+        raise AssertionError(" ".join(args))
+
+    with pytest.raises(RuntimeError, match="does not match fetched remote head"):
+        _switch_to_cockpit_branch(fake_run, branch)
+
+    assert not any("-C" in command or "reset" in command for command in commands)
+
+
+def test_run_github_cockpit_refresh_commits_final_packet_once(tmp_path: Path) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    commands: list[list[str]] = []
+    diff_calls = 0
+    pr_checks = 0
+
+    def fake_run(args: list[str]) -> str:
+        nonlocal diff_calls, pr_checks
+        commands.append(args)
+        disposable_metadata = _disposable_worktree_metadata(args)
+        if disposable_metadata is not None:
+            return disposable_metadata
+        command = " ".join(args)
+        if command == "git status --porcelain=v1":
+            return ""
+        if command == "git branch --show-current":
+            return "codex/cockpit-refresh-20260620\n"
+        if command == "git ls-remote --heads origin codex/cockpit-refresh-20260620":
+            return f"{'a' * 40}\trefs/heads/codex/cockpit-refresh-20260620\n"
+        if command == "git fetch origin codex/cockpit-refresh-20260620":
+            return ""
+        if command == "git fetch origin main":
+            return ""
+        if command in {"git rev-parse FETCH_HEAD", "git rev-parse HEAD"}:
+            return "a" * 40 + "\n"
+        if command.startswith("git diff --name-status -z --find-renames"):
+            return ""
+        if command.startswith("git for-each-ref"):
             return ""
         if command == "git status --short":
             return ""
@@ -1234,18 +1995,42 @@ def test_run_github_cockpit_refresh_rewrites_packet_with_actions_taken(tmp_path:
             return "M docs/agents/workstreams.md\nM docs/agents/cockpit/2026-06-20.md\n"
         if command.startswith("git add docs/agents/workstreams.md"):
             return ""
+        if command == "git diff --cached --name-only":
+            diff_calls += 1
+            if diff_calls == 1:
+                return "docs/agents/workstreams.md\ndocs/agents/cockpit/2026-06-20.md\n"
+            return "docs/agents/cockpit/2026-06-20.md\n"
         if command.startswith("git commit -m Refresh cockpit status for 2026-06-20"):
             return "[codex/cockpit-refresh-20260620 abc123] Refresh cockpit status for 2026-06-20"
         if command == "git push -u origin codex/cockpit-refresh-20260620":
             return ""
         if command.startswith("gh pr list"):
-            return "https://github.com/magilliam27/MCI-GRU/pull/99"
+            pr_checks += 1
+            if pr_checks == 1:
+                return "[]"
+            return json.dumps(
+                [
+                    {
+                        "url": "https://github.com/magilliam27/MCI-GRU/pull/99",
+                        "title": "Cockpit refresh: 2026-06-20",
+                        "baseRefName": "main",
+                        "headRefName": "codex/cockpit-refresh-20260620",
+                        "state": "OPEN",
+                    }
+                ]
+            )
         if command.startswith("gh issue list"):
             return "100"
         if command.startswith("gh label list"):
             return "cockpit-reviewed\n"
+        if command.startswith("gh issue view 100"):
+            return ""
         if command.startswith("gh issue edit 100"):
             return ""
+        if command == ("gh api repos/magilliam27/MCI-GRU/issues/100/comments --paginate --slurp"):
+            return "[[]]"
+        if command == ("gh api repos/magilliam27/MCI-GRU/issues/100/comments --paginate --slurp"):
+            return "[[]]"
         if command.startswith("gh issue comment 100"):
             return ""
         if command == "git status --short -- docs/agents/cockpit/2026-06-20.md":
@@ -1268,26 +2053,261 @@ def test_run_github_cockpit_refresh_rewrites_packet_with_actions_taken(tmp_path:
     assert result.github is not None
     assert "GitHub Actions Taken" in packet
     assert "Git topology snapshot timing: before GitHub sync commits/pushes" in packet
-    assert "committed cockpit files" in packet
-    assert "commented on cockpit issue #100" in packet
+    assert "ensure the generated cockpit artifact set is committed" in packet
+    assert "ensure one dated cockpit issue digest" in packet
     assert "GitHub sync skipped" not in packet
     assert "GitHub mutation disabled" not in packet
-    comment_index = next(
-        index for index, command in enumerate(commands) if command[:3] == ["gh", "issue", "comment"]
+    commits = [command for command in commands if command[:2] == ["git", "commit"]]
+    assert len(commits) == 1
+    assert commits[0][3] == "Refresh cockpit status for 2026-06-20"
+    assert diff_calls == 1
+
+
+def test_local_refresh_excludes_automation_branch_self_churn_from_generated_artifacts(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    branch = "codex/cockpit-refresh-20260620"
+    ahead = 0
+
+    def fake_run(args: list[str]) -> str:
+        command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return f"2026-06-20\trefs/heads/{branch}\n"
+        if command == "git status --short":
+            return ""
+        if command == "git status --short --branch":
+            return f"## {branch}\n"
+        if command == "git branch --format=%(refname:short)":
+            return f"main\n{branch}\n"
+        if command == "git branch --all --no-merged origin/main":
+            return f"  {branch}\n" if ahead else ""
+        if command == "git rev-list --left-right --count origin/main...HEAD":
+            return f"0\t{ahead}\n"
+        if command == "git worktree list --porcelain":
+            return f"worktree C:/automation\nHEAD abc1234\nbranch refs/heads/{branch}\n"
+        if command == "git log -5 --oneline":
+            return "abc1234 Automation branch\n"
+        if args[:2] == ["git", "-c"] and args[3] == "-C":
+            return f"## {branch}\n"
+        if command == f"git show origin/main:{AUTO_DECISIONS_PATH}":
+            return '{"format_version":2,"surfaces":{},"workstreams":{}}'
+        if command == f"git show origin/main:{DECISION_REGISTRY_PATH}":
+            return _empty_registry()
+        raise AssertionError(command)
+
+    kwargs = {
+        "repo_root": repo,
+        "run_date": date(2026, 6, 20),
+        "run_command": fake_run,
+        "github_evidence": None,
+        "automation_branch": branch,
+        "comparison_ref": "origin/main",
+    }
+    first = run_local_cockpit_refresh(**kwargs)
+    first_packet = first.packet_path.read_bytes()
+    first_auto = (repo / AUTO_DECISIONS_PATH).read_bytes()
+    first_register = first.register_path.read_bytes()
+
+    ahead = 2
+    second = run_local_cockpit_refresh(**kwargs)
+
+    assert second.packet_path.read_bytes() == first_packet
+    assert (repo / AUTO_DECISIONS_PATH).read_bytes() == first_auto
+    assert second.register_path.read_bytes() == first_register
+
+
+def test_producer_restores_owned_files_when_sync_fails_before_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    topology_runner = _fake_topology_runner([])
+
+    def fake_run(args: list[str]) -> str:
+        if args == ["git", "rev-parse", "HEAD"]:
+            return "a" * 40 + "\n"
+        if args[:4] == ["git", "restore", "--staged", "--"]:
+            return ""
+        return topology_runner(args)
+
+    monkeypatch.setattr(
+        cockpit_runner_module,
+        "_switch_to_cockpit_branch",
+        lambda runner, branch: ("a" * 40, None),
     )
-    final_commit_index = next(
-        index
-        for index, command in enumerate(commands)
-        if command[:3] == ["git", "commit", "-m"]
-        and command[3] == "Record cockpit GitHub sync for 2026-06-20"
+
+    def fail_sync(**kwargs):
+        del kwargs
+        raise RuntimeError("sync failed before commit")
+
+    monkeypatch.setattr(cockpit_runner_module, "sync_github", fail_sync)
+
+    with pytest.raises(RuntimeError, match="sync failed before commit"):
+        run_github_cockpit_refresh(
+            repo_root=repo,
+            run_date=date(2026, 6, 20),
+            run_command=fake_run,
+        )
+
+    for relative in (
+        "docs/agents/workstreams.md",
+        "docs/agents/cockpit/2026-06-20.md",
+        AUTO_DECISIONS_PATH,
+    ):
+        assert not (repo / relative).exists()
+
+
+def test_github_refresh_same_date_is_commit_and_comment_idempotent(tmp_path: Path) -> None:
+    origin = tmp_path / "origin.git"
+    origin.mkdir()
+    _git(["init", "--bare"], cwd=origin)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(["init", "-b", "main"], cwd=repo)
+    _git(["config", "user.name", "Cockpit Test"], cwd=repo)
+    _git(["config", "user.email", "cockpit-test@example.invalid"], cwd=repo)
+    _repo_with_required_docs(repo)
+    cockpit_dir = repo / "docs" / "agents" / "cockpit"
+    (cockpit_dir / "RUNBOOK.md").write_text("# Cockpit runbook\n", encoding="utf-8")
+    (cockpit_dir / "override-receipts.json").write_text(
+        '{"format_version":1,"processed_comment_ids":[]}\n',
+        encoding="utf-8",
     )
-    final_push_indices = [
-        index
-        for index, command in enumerate(commands)
-        if command == ["git", "push", "-u", "origin", "codex/cockpit-refresh-20260620"]
-    ]
-    assert final_commit_index > comment_index
-    assert final_push_indices[-1] > final_commit_index
+    _git(["add", "."], cwd=repo)
+    _git(["commit", "-m", "Create cockpit baseline"], cwd=repo)
+    _git(["remote", "add", "origin", str(origin)], cwd=repo)
+    _git(["push", "-u", "origin", "main"], cwd=repo)
+    source_head = _git(["rev-parse", "HEAD"], cwd=repo)
+    execution = tmp_path / "cockpit-execution"
+    _git(
+        [
+            "worktree",
+            "add",
+            "-b",
+            "codex/cockpit-refresh-20260620",
+            str(execution),
+            "main",
+        ],
+        cwd=repo,
+    )
+
+    pr_exists = False
+    comments: list[dict[str, object]] = []
+
+    def runner(args: list[str]) -> str:
+        nonlocal pr_exists
+        if args[0] == "git":
+            completed = subprocess.run(
+                args,
+                cwd=execution,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            return completed.stdout
+        if args == ["gh", "auth", "status"]:
+            return "Logged in\n"
+        if args[:3] == ["gh", "pr", "list"]:
+            if "--head" in args:
+                if not pr_exists:
+                    return "[]"
+                return json.dumps(
+                    [
+                        {
+                            "number": 99,
+                            "url": "https://github.example/pull/99",
+                            "title": "Cockpit refresh: 2026-06-20",
+                            "baseRefName": "main",
+                            "headRefName": "codex/cockpit-refresh-20260620",
+                            "state": "OPEN",
+                        }
+                    ]
+                )
+            if not pr_exists:
+                return "[]"
+            return json.dumps(
+                [
+                    {
+                        "number": 99,
+                        "headRefName": "codex/cockpit-refresh-20260620",
+                        "url": "https://github.example/pull/99",
+                        "isDraft": False,
+                        "state": "OPEN",
+                        "mergedAt": None,
+                        "updatedAt": "2026-06-20T12:00:00Z",
+                    }
+                ]
+            )
+        if args[:3] == ["gh", "pr", "view"]:
+            return json.dumps(
+                {
+                    "title": "Cockpit refresh: 2026-06-20",
+                    "headRefName": "codex/cockpit-refresh-20260620",
+                    "headRefOid": _git(["rev-parse", "HEAD"], cwd=execution),
+                    "baseRefName": "main",
+                    "baseRefOid": _git(["rev-parse", "main"], cwd=execution),
+                    "headRepositoryOwner": {"login": "magilliam27"},
+                    "isCrossRepository": False,
+                    "url": "https://github.example/pull/99",
+                    "state": "OPEN",
+                }
+            )
+        if args[:3] == ["gh", "api", "repos/magilliam27/MCI-GRU/pulls/99/files"]:
+            paths = _git(["diff", "--name-only", "main...HEAD"], cwd=execution).splitlines()
+            return json.dumps([[{"filename": path} for path in paths]])
+        if args[:3] == ["gh", "pr", "create"]:
+            pr_exists = True
+            return "https://github.example/pull/99\n"
+        if args[:3] == ["gh", "issue", "list"]:
+            return "100\n" if "--search" in args else "[]"
+        if args[:3] == ["gh", "label", "list"]:
+            return ""
+        if args[:3] == ["gh", "api", "repos/magilliam27/MCI-GRU/issues/100/comments"]:
+            return json.dumps([comments])
+        if args[:3] == ["gh", "issue", "comment"]:
+            comments.append(
+                {
+                    "id": 501,
+                    "body": args[-1],
+                    "user": {"login": "magilliam27"},
+                    "author_association": "OWNER",
+                }
+            )
+            return ""
+        raise AssertionError(" ".join(args))
+
+    first = run_github_cockpit_refresh(
+        repo_root=execution,
+        run_date=date(2026, 6, 20),
+        run_command=runner,
+    )
+    first_head = _git(["rev-parse", "HEAD"], cwd=execution)
+    artifact_bytes = {
+        path: (execution / path).read_bytes()
+        for path in (
+            "docs/agents/workstreams.md",
+            "docs/agents/cockpit/2026-06-20.md",
+            AUTO_DECISIONS_PATH,
+        )
+    }
+
+    second = run_github_cockpit_refresh(
+        repo_root=execution,
+        run_date=date(2026, 6, 20),
+        run_command=runner,
+    )
+
+    assert _git(["branch", "--show-current"], cwd=repo).strip() == "main"
+    assert _git(["rev-parse", "HEAD"], cwd=repo) == source_head
+    assert _git(["status", "--porcelain"], cwd=repo) == ""
+    assert _git(["rev-parse", "HEAD"], cwd=execution) == first_head
+    assert _git(["status", "--porcelain"], cwd=execution) == ""
+    assert len(comments) == 1
+    assert second.packet_path.read_bytes() == artifact_bytes["docs/agents/cockpit/2026-06-20.md"]
+    assert second.register_path.read_bytes() == artifact_bytes["docs/agents/workstreams.md"]
+    assert (execution / AUTO_DECISIONS_PATH).read_bytes() == artifact_bytes[AUTO_DECISIONS_PATH]
+    assert first.github is not None and second.github is not None
 
 
 def test_run_local_cockpit_refresh_admits_registry_only_workstream(tmp_path: Path) -> None:
@@ -1538,6 +2558,42 @@ def test_registry_workstream_without_surface_renders_under_live_topology(
     assert "| Harness rollout | parked |" in register
 
 
+@pytest.mark.parametrize(
+    "branches",
+    [pytest.param([], id="empty-topology"), pytest.param(["codex/unrelated-live"], id="unrelated")],
+)
+def test_evidenceless_seed_remains_stale_across_topology(
+    tmp_path: Path,
+    branches: list[str],
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    source = _FixedSource(
+        [
+            WorkstreamSeed(
+                name="Evidence gap",
+                status=WorkstreamStatus.NEEDS_USER_DECISION,
+                next_action="Legacy unresolved seed action.",
+                branch_terms=("evidence-gap",),
+            )
+        ]
+    )
+
+    result = run_local_cockpit_refresh(
+        repo_root=repo,
+        run_date=date(2026, 7, 12),
+        run_command=_fake_topology_runner(branches),
+        sources=(source,),
+        github_evidence=GitHubEvidence(),
+    )
+
+    register = result.register_path.read_text(encoding="utf-8")
+    payload = json.loads((repo / AUTO_DECISIONS_PATH).read_text(encoding="utf-8"))
+    assert "| Evidence gap | stale |" in register
+    assert "| Evidence gap | needs-user-decision |" not in register
+    assert payload["workstreams"]["Evidence gap"]["status"] == "stale"
+    assert payload["workstreams"]["Evidence gap"]["rule"] == "no-current-evidence-stale"
+
+
 _GIT_ACTIVITY_RUN_DATE = date(2026, 7, 11)
 
 
@@ -1571,17 +2627,27 @@ def test_branch_topic_tokens_strips_prefix_date_and_hash(branch: str, expected: 
     assert _branch_topic_tokens(branch) == expected
 
 
-def test_implied_aliases_derives_slug_and_tokens_from_reviewed_surface() -> None:
+def _generated_surface_for_alias(
+    workstream: str,
+    *,
+    confidence: Confidence = Confidence.HIGH,
+    association_basis: str = "branch-term",
+) -> AutoDisposition:
+    return AutoDisposition(
+        workstreams=(workstream,),
+        disposition=SurfaceDisposition.CANONICAL,
+        rule="unique-live-surface",
+        evidence="Independently generated classification.",
+        confidence=confidence,
+        alternatives=(),
+        last_reviewed=date(2026, 7, 12),
+        association_basis=association_basis,
+    )
+
+
+def test_implied_aliases_derives_slug_and_tokens_from_generated_surface() -> None:
     aliases = implied_aliases(
-        {
-            "codex/portfolio-ic-hybrid-testing-20260712": SurfaceDecision(
-                workstreams=("Portfolio-IC",),
-                disposition=SurfaceDisposition.CANONICAL,
-                reason="Reviewed classification.",
-                next_action="Continue.",
-                last_reviewed=date(2026, 7, 12),
-            )
-        }
+        {"codex/portfolio-ic-hybrid-testing-20260712": _generated_surface_for_alias("Portfolio-IC")}
     )
 
     assert aliases == {
@@ -1595,13 +2661,7 @@ def test_implied_aliases_derives_slug_and_tokens_from_reviewed_surface() -> None
 
 def test_implied_aliases_drops_collisions_without_losing_unique_aliases() -> None:
     surfaces = {
-        branch: SurfaceDecision(
-            workstreams=(workstream,),
-            disposition=SurfaceDisposition.CANONICAL,
-            reason="Reviewed classification.",
-            next_action="Continue.",
-            last_reviewed=date(2026, 7, 12),
-        )
+        branch: _generated_surface_for_alias(workstream)
         for branch, workstream in {
             "codex/alpha-shared-20260712": "Alpha",
             "codex/beta-shared-20260712": "Beta",
@@ -1621,13 +2681,8 @@ def test_implied_aliases_drops_collisions_without_losing_unique_aliases() -> Non
 
 def test_implied_aliases_accepts_only_independently_grounded_high_confidence_auto() -> None:
     surfaces = {
-        f"codex/{slug}": SurfaceDecision(
-            workstreams=(workstream,),
-            disposition=SurfaceDisposition.CANONICAL,
-            reason="Generated classification.",
-            next_action="Continue.",
-            last_reviewed=date(2026, 7, 12),
-            provenance="auto",
+        f"codex/{slug}": _generated_surface_for_alias(
+            workstream,
             confidence=confidence,
             association_basis=basis,
         )
@@ -1858,6 +2913,64 @@ def test_run_local_cockpit_refresh_uses_reviewed_surface_alias_for_new_branch(
         github_evidence=None,
     )
     assert auto_path.read_bytes() == first_bytes
+
+
+def test_explicit_surface_assignment_does_not_teach_generated_aliases(tmp_path: Path) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    reviewed = "codex/mystery-shared-20260712"
+    discovered = "codex/shared-followup-20260713"
+    _write_decision_registry(
+        repo,
+        workstreams={
+            "Portfolio-IC": {
+                "status": "active",
+                "canonical_surface": reviewed,
+                "reason": "Explicit human workstream override.",
+                "next_action": "Continue through the effective overlay.",
+                "last_reviewed": "2026-07-12",
+            }
+        },
+        surfaces={
+            reviewed: {
+                "workstreams": ["Portfolio-IC"],
+                "disposition": "canonical",
+                "reason": "Explicit human association.",
+                "next_action": "Apply only in the effective overlay.",
+                "last_reviewed": "2026-07-12",
+            }
+        },
+    )
+
+    def fake_run(args: list[str]) -> str:
+        command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return f"2026-07-12\trefs/heads/{reviewed}\n2026-07-13\trefs/heads/{discovered}\n"
+        if command == "git status --short --branch":
+            return "## main...origin/main\n"
+        if command == "git branch --format=%(refname:short)":
+            return f"main\n{reviewed}\n{discovered}\n"
+        if command == "git branch --all --no-merged origin/main":
+            return f"  {reviewed}\n  {discovered}\n"
+        if command == "git rev-list --left-right --count origin/main...HEAD":
+            return "0\t0\n"
+        if command == "git worktree list --porcelain":
+            return "worktree C:/repo\nHEAD abc1234\nbranch refs/heads/main\n"
+        if command == "git log -5 --oneline":
+            return "abc1234 Current main\n"
+        if args[:2] == ["git", "-c"] and args[3] == "-C":
+            return "## main...origin/main\n"
+        raise AssertionError(command)
+
+    run_local_cockpit_refresh(
+        repo_root=repo,
+        run_date=date(2026, 7, 13),
+        run_command=fake_run,
+        github_evidence=None,
+    )
+
+    payload = json.loads((repo / AUTO_DECISIONS_PATH).read_text(encoding="utf-8"))
+    assert payload["surfaces"][reviewed]["workstreams"] != ["Portfolio-IC"]
+    assert payload["surfaces"][discovered]["workstreams"] != ["Portfolio-IC"]
 
 
 def test_run_local_cockpit_refresh_auto_alias_learning_reaches_fixed_point_in_one_run(
@@ -2100,3 +3213,11 @@ def _git(args: list[str], cwd: Path) -> str:
         text=True,
     )
     return completed.stdout
+
+
+def _disposable_worktree_metadata(args: list[str]) -> str | None:
+    if args == ["git", "rev-parse", "--absolute-git-dir"]:
+        return "C:/repo/.git/worktrees/cockpit-refresh\n"
+    if args == ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"]:
+        return "C:/repo/.git\n"
+    return None

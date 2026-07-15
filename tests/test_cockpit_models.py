@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from cockpit.models import (
+    AutoDecisionChange,
     GitHubEvidence,
     IssueEvidence,
     PullRequestEvidence,
@@ -51,6 +52,21 @@ def test_github_evidence_models_are_immutable_typed_records() -> None:
         type(issue).__setattr__(issue, "labels", ())
     with pytest.raises(FrozenInstanceError):
         type(evidence).__setattr__(evidence, "issues", ())
+
+
+def test_auto_decision_change_is_an_immutable_typed_record() -> None:
+    change = AutoDecisionChange(
+        kind="surface",
+        target="codex/example",
+        change="choice",
+        before="parked",
+        after="canonical",
+    )
+
+    assert change.before == "parked"
+    assert change.after == "canonical"
+    with pytest.raises(FrozenInstanceError):
+        type(change).__setattr__(change, "after", "archive")
 
 
 def test_strenum_compat_fallback_supports_python_310_import_path(monkeypatch) -> None:

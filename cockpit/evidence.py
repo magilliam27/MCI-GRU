@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -272,14 +273,22 @@ def _parse_worktrees(output: str) -> list[WorktreeEvidence]:
 def _worktree_from_block(block: dict[str, str | bool]) -> WorktreeEvidence:
     head = str(block.get("head", "unknown"))
     detached = bool(block.get("detached", False))
-    branch = str(block.get("branch", f"detached@{head[:7]}" if detached else "unknown"))
+    path = str(block.get("path", ""))
+    detached_branch = _detached_surface_id(path, head) if detached else "unknown"
+    branch = str(block.get("branch", detached_branch))
     return WorktreeEvidence(
-        path=str(block.get("path", "")),
+        path=path,
         head=head,
         branch=branch,
         detached=detached,
         status_header="",
     )
+
+
+def _detached_surface_id(path: str, head: str) -> str:
+    normalized_path = _normalize_path(Path(path)) if path else "<missing-worktree-path>"
+    path_digest = hashlib.sha256(normalized_path.encode("utf-8")).hexdigest()[:10]
+    return f"detached@{head[:7]}-{path_digest}"
 
 
 def _collect_worktree_statuses(

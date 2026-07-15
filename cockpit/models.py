@@ -236,6 +236,25 @@ class AutoOverride:
 
 
 @dataclass(frozen=True)
+class AutoDecisionChange:
+    kind: Literal["surface", "workstream"]
+    target: str
+    change: Literal[
+        "added",
+        "removed",
+        "choice",
+        "confidence",
+        "metadata",
+        "override-added",
+        "override-changed",
+        "override-cleared",
+    ]
+    before: str = ""
+    after: str = ""
+    field: str = ""
+
+
+@dataclass(frozen=True)
 class AutoDecisionSet:
     surfaces: dict[str, AutoDisposition] = field(default_factory=dict)
     workstreams: dict[str, AutoWorkstreamDecision] = field(default_factory=dict)
@@ -274,5 +293,6 @@ class CockpitReport:
     auto_decisions_enabled: bool = False
     auto_dispositions: dict[str, AutoDisposition] = field(default_factory=dict)
     auto_workstream_decisions: dict[str, AutoWorkstreamDecision] = field(default_factory=dict)
+    decision_changes: list[AutoDecisionChange] = field(default_factory=list)
     low_confidence_decisions: list[LowConfidenceDecision] = field(default_factory=list)
     overrides_applied: list[AutoOverride] = field(default_factory=list)

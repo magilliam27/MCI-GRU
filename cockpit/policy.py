@@ -4,9 +4,11 @@ import json
 import re
 from dataclasses import dataclass, replace
 from datetime import date
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
+from cockpit.decisions import DecisionRegistry
 from cockpit.models import (
+    AutoDecisionChange,
     AutoDecisionSet,
     AutoDisposition,
     AutoWorkstreamDecision,
@@ -23,15 +25,13 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from pathlib import Path
 
-    from cockpit.decisions import DecisionRegistry
-
-
 AUTO_DECISIONS_PATH = "docs/agents/cockpit/auto-decisions.json"
 AUTO_FORMAT_VERSION = 2
 SUPPORTED_AUTO_FORMAT_VERSIONS = frozenset({1, 2})
 DEFAULT_STALE_LOOKBACK_DAYS = 30
 _HYGIENE_WORKSTREAM = "Git and worktree hygiene"
 _UNKNOWN_EVIDENCE_DATE = date(1970, 1, 1)
+_REMOVED_GENERATED_VALUE = "no generated decision"
 _GENERIC_ISSUE_BRANCH_TERMS = frozenset(
     {
         "bug",
@@ -142,9 +142,9 @@ def compute_auto_decisions(
         phase2_enabled=phase2_enabled,
     )
     auto_surfaces = {
-        branch: replace(
+        branch: _audit_surface_association(
             decision,
-            association_basis=surface_associations[branch].basis,
+            surface_associations[branch],
         )
         for branch, decision in auto_surfaces.items()
     }
@@ -159,6 +159,11 @@ def compute_auto_decisions(
         github_evidence=github_evidence,
         aliases=aliases,
         phase2_enabled=phase2_enabled,
+    )
+    auto_workstreams = _audit_workstream_associations(
+        auto_workstreams,
+        surface_associations,
+        activity_dates,
     )
     return AutoDecisionSet(surfaces=auto_surfaces, workstreams=auto_workstreams)
 
@@ -183,21 +188,389 @@ def write_auto_decisions(repo_root: Path, decisions: AutoDecisionSet) -> Path:
 
 
 def read_auto_decisions(repo_root: Path) -> AutoDecisionSet:
-    """Read generated decisions defensively; any malformed contract becomes empty."""
+    """Read generated decisions, treating only an absent artifact as an empty baseline."""
     path = repo_root / AUTO_DECISIONS_PATH
     if not path.exists():
         return AutoDecisionSet()
+    return parse_auto_decisions_text(path.read_text(encoding="utf-8"))
+
+
+def parse_auto_decisions_text(payload: str) -> AutoDecisionSet:
+    """Parse present generated-decision evidence, rejecting any corrupt payload."""
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        return _parse_auto_decisions(raw)
-    except (OSError, ValueError, TypeError, json.JSONDecodeError):
-        return AutoDecisionSet()
+        return _parse_auto_decisions(json.loads(payload))
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("invalid generated auto-decision payload") from exc
+
+
+def compare_auto_decisions(
+    previous: AutoDecisionSet,
+    current: AutoDecisionSet,
+    registry: DecisionRegistry,
+    *,
+    previous_registry: DecisionRegistry | None = None,
+) -> list[AutoDecisionChange]:
+    """Describe deterministic user-visible changes between generated decision sets."""
+    baseline_registry = previous_registry or DecisionRegistry()
+    changes = [
+        AutoDecisionChange(
+            kind="surface",
+            target=branch,
+            change="added",
+            after=decision.disposition.value,
+        )
+        for branch, decision in sorted(current.surfaces.items())
+        if branch not in previous.surfaces
+    ]
+    changes.extend(
+        AutoDecisionChange(
+            kind="surface",
+            target=branch,
+            change="removed",
+            before=decision.disposition.value,
+        )
+        for branch, decision in sorted(previous.surfaces.items())
+        if branch not in current.surfaces
+    )
+    changes.extend(
+        AutoDecisionChange(
+            kind="surface",
+            target=branch,
+            change="choice",
+            before=previous.surfaces[branch].disposition.value,
+            after=decision.disposition.value,
+        )
+        for branch, decision in sorted(current.surfaces.items())
+        if branch in previous.surfaces
+        and previous.surfaces[branch].disposition != decision.disposition
+    )
+    changes.extend(
+        AutoDecisionChange(
+            kind="surface",
+            target=branch,
+            change="confidence",
+            before=previous.surfaces[branch].confidence.value,
+            after=decision.confidence.value,
+        )
+        for branch, decision in sorted(current.surfaces.items())
+        if branch in previous.surfaces
+        and previous.surfaces[branch].confidence != decision.confidence
+    )
+    changes.extend(
+        AutoDecisionChange(
+            kind="surface",
+            target=branch,
+            change="confidence",
+            before=decision.confidence.value,
+            after=_REMOVED_GENERATED_VALUE,
+        )
+        for branch, decision in sorted(previous.surfaces.items())
+        if branch not in current.surfaces
+    )
+    changes.extend(_surface_metadata_changes(previous, current))
+    changes.extend(_surface_override_changes(previous, current, baseline_registry, registry))
+    changes.extend(
+        AutoDecisionChange(
+            kind="workstream",
+            target=name,
+            change="added",
+            after=decision.status.value,
+        )
+        for name, decision in sorted(current.workstreams.items())
+        if name not in previous.workstreams
+    )
+    changes.extend(
+        AutoDecisionChange(
+            kind="workstream",
+            target=name,
+            change="removed",
+            before=decision.status.value,
+        )
+        for name, decision in sorted(previous.workstreams.items())
+        if name not in current.workstreams
+    )
+    changes.extend(
+        AutoDecisionChange(
+            kind="workstream",
+            target=name,
+            change="choice",
+            before=previous.workstreams[name].status.value,
+            after=decision.status.value,
+        )
+        for name, decision in sorted(current.workstreams.items())
+        if name in previous.workstreams and previous.workstreams[name].status != decision.status
+    )
+    changes.extend(
+        AutoDecisionChange(
+            kind="workstream",
+            target=name,
+            change="confidence",
+            before=previous.workstreams[name].confidence.value,
+            after=decision.confidence.value,
+        )
+        for name, decision in sorted(current.workstreams.items())
+        if name in previous.workstreams
+        and previous.workstreams[name].confidence != decision.confidence
+    )
+    changes.extend(
+        AutoDecisionChange(
+            kind="workstream",
+            target=name,
+            change="confidence",
+            before=decision.confidence.value,
+            after=_REMOVED_GENERATED_VALUE,
+        )
+        for name, decision in sorted(previous.workstreams.items())
+        if name not in current.workstreams
+    )
+    changes.extend(_workstream_metadata_changes(previous, current))
+    changes.extend(_workstream_override_changes(previous, current, baseline_registry, registry))
+    return changes
+
+
+def _surface_metadata_changes(
+    previous: AutoDecisionSet,
+    current: AutoDecisionSet,
+) -> list[AutoDecisionChange]:
+    fields = (
+        ("workstreams", lambda decision: _sequence_value(decision.workstreams)),
+        ("rule", lambda decision: decision.rule),
+        ("evidence", lambda decision: decision.evidence),
+        ("alternatives", lambda decision: _sequence_value(decision.alternatives)),
+        ("last_reviewed", lambda decision: decision.last_reviewed.isoformat()),
+        ("association_basis", lambda decision: decision.association_basis),
+    )
+    changes: list[AutoDecisionChange] = []
+    for branch, prior in sorted(previous.surfaces.items()):
+        decision = current.surfaces.get(branch)
+        for field, value in fields:
+            before = value(prior)
+            after = value(decision) if decision is not None else _REMOVED_GENERATED_VALUE
+            if before != after:
+                changes.append(
+                    AutoDecisionChange(
+                        kind="surface",
+                        target=branch,
+                        change="metadata",
+                        field=field,
+                        before=before,
+                        after=after,
+                    )
+                )
+    return changes
+
+
+def _sequence_value(values: tuple[str, ...]) -> str:
+    return "; ".join(values) if values else "none"
+
+
+def _workstream_metadata_changes(
+    previous: AutoDecisionSet,
+    current: AutoDecisionSet,
+) -> list[AutoDecisionChange]:
+    fields = (
+        ("canonical_surface", lambda decision: decision.canonical_surface or "none"),
+        ("rule", lambda decision: decision.rule),
+        ("evidence", lambda decision: decision.evidence),
+        ("alternatives", lambda decision: _sequence_value(decision.alternatives)),
+        ("last_reviewed", lambda decision: decision.last_reviewed.isoformat()),
+    )
+    changes: list[AutoDecisionChange] = []
+    for name, prior in sorted(previous.workstreams.items()):
+        decision = current.workstreams.get(name)
+        for field, value in fields:
+            before = value(prior)
+            after = value(decision) if decision is not None else _REMOVED_GENERATED_VALUE
+            if before != after:
+                changes.append(
+                    AutoDecisionChange(
+                        kind="workstream",
+                        target=name,
+                        change="metadata",
+                        field=field,
+                        before=before,
+                        after=after,
+                    )
+                )
+    return changes
+
+
+def _surface_override_changes(
+    previous: AutoDecisionSet,
+    current: AutoDecisionSet,
+    previous_registry: DecisionRegistry,
+    current_registry: DecisionRegistry,
+) -> list[AutoDecisionChange]:
+    changes: list[AutoDecisionChange] = []
+    targets = sorted(previous_registry.surfaces.keys() | current_registry.surfaces.keys())
+    for branch in targets:
+        previous_override = previous_registry.surfaces.get(branch)
+        current_override = current_registry.surfaces.get(branch)
+        previous_choice = previous_override.disposition.value if previous_override else None
+        current_choice = current_override.disposition.value if current_override else None
+        if previous_override == current_override:
+            continue
+        previous_generated = previous.surfaces.get(branch)
+        current_generated = current.surfaces.get(branch)
+        before = previous_choice or (
+            current_generated.disposition.value
+            if current_generated is not None
+            else previous_generated.disposition.value
+            if previous_generated is not None
+            else "none"
+        )
+        after = current_choice or (
+            current_generated.disposition.value if current_generated is not None else "none"
+        )
+        changes.append(
+            AutoDecisionChange(
+                kind="surface",
+                target=branch,
+                change=_override_lifecycle_change(
+                    previous_override is not None,
+                    current_override is not None,
+                ),
+                before=before,
+                after=after,
+            )
+        )
+    return changes
+
+
+def _workstream_override_changes(
+    previous: AutoDecisionSet,
+    current: AutoDecisionSet,
+    previous_registry: DecisionRegistry,
+    current_registry: DecisionRegistry,
+) -> list[AutoDecisionChange]:
+    changes: list[AutoDecisionChange] = []
+    targets = sorted(previous_registry.workstreams.keys() | current_registry.workstreams.keys())
+    for name in targets:
+        previous_override = previous_registry.workstreams.get(name)
+        current_override = current_registry.workstreams.get(name)
+        previous_choice = previous_override.status.value if previous_override else None
+        current_choice = current_override.status.value if current_override else None
+        if previous_override == current_override:
+            continue
+        previous_generated = previous.workstreams.get(name)
+        current_generated = current.workstreams.get(name)
+        before = previous_choice or (
+            current_generated.status.value
+            if current_generated is not None
+            else previous_generated.status.value
+            if previous_generated is not None
+            else "none"
+        )
+        after = current_choice or (
+            current_generated.status.value if current_generated is not None else "none"
+        )
+        changes.append(
+            AutoDecisionChange(
+                kind="workstream",
+                target=name,
+                change=_override_lifecycle_change(
+                    previous_override is not None,
+                    current_override is not None,
+                ),
+                before=before,
+                after=after,
+            )
+        )
+    return changes
+
+
+def _override_lifecycle_change(
+    had_override: bool,
+    has_override: bool,
+) -> Literal["override-added", "override-changed", "override-cleared"]:
+    if had_override and has_override:
+        return "override-changed"
+    if had_override:
+        return "override-cleared"
+    return "override-added"
 
 
 @dataclass(frozen=True)
 class _SurfaceAssociation:
     workstreams: tuple[str, ...]
     basis: str
+    tied_workstreams: tuple[str, ...] = ()
+
+
+def _audit_surface_association(
+    decision: AutoDisposition,
+    association: _SurfaceAssociation,
+) -> AutoDisposition:
+    audited = replace(decision, association_basis=association.basis)
+    if not association.tied_workstreams:
+        return audited
+    primary = association.workstreams[0]
+    tied = tuple(name for name in association.tied_workstreams if name != primary)
+    tie_evidence = (
+        "Workstream association ambiguity: equal best branch-term matches "
+        f"{', '.join(association.tied_workstreams)}; {primary} is the deterministic primary "
+        "and all tied workstreams are retained."
+    )
+    association_alternatives = tuple(
+        f"workstream association: {name} is tied with deterministic primary {primary}"
+        for name in tied
+    )
+    return replace(
+        audited,
+        confidence=Confidence.LOW,
+        evidence=f"{audited.evidence} {tie_evidence}",
+        alternatives=tuple(dict.fromkeys((*audited.alternatives, *association_alternatives))),
+    )
+
+
+def _audit_workstream_associations(
+    decisions: dict[str, AutoWorkstreamDecision],
+    associations: Mapping[str, _SurfaceAssociation],
+    activity_dates: Mapping[str, date],
+) -> dict[str, AutoWorkstreamDecision]:
+    audited = dict(decisions)
+    for branch, association in sorted(associations.items()):
+        if not association.tied_workstreams:
+            continue
+        primary = association.workstreams[0]
+        tie_evidence = (
+            "Workstream association ambiguity: equal best branch-term matches "
+            f"{', '.join(association.tied_workstreams)}; {primary} is the deterministic primary "
+            "and all tied workstreams are retained."
+        )
+        for name in association.tied_workstreams:
+            if name == primary:
+                continue
+            alternative = f"active: associate {branch} with {name} instead of {primary}"
+            current = audited.get(name)
+            if current is None or current.rule == "no-current-evidence-stale":
+                audited[name] = AutoWorkstreamDecision(
+                    status=WorkstreamStatus.STALE,
+                    canonical_surface="",
+                    rule="association-tie-unselected",
+                    evidence=(
+                        f"{tie_evidence} Surface {branch} was assigned to {primary}; "
+                        f"no selected surface remains for {name}."
+                    ),
+                    confidence=Confidence.LOW,
+                    alternatives=(alternative,),
+                    last_reviewed=_surface_metadata_date(branch, activity_dates),
+                )
+                continue
+            audited[name] = replace(
+                current,
+                confidence=Confidence.LOW,
+                evidence=(
+                    f"{current.evidence} {tie_evidence} Surface {branch} was assigned to "
+                    f"{primary} instead of {name}."
+                ),
+                alternatives=tuple(dict.fromkeys((*current.alternatives, alternative))),
+                last_reviewed=max(
+                    current.last_reviewed,
+                    _surface_metadata_date(branch, activity_dates),
+                ),
+            )
+    return dict(sorted(audited.items()))
 
 
 def _surface_association(
@@ -210,10 +583,6 @@ def _surface_association(
     linked_pr_branches: set[str],
     linked_issue_workstreams: set[str],
 ) -> _SurfaceAssociation:
-    explicit = registry.surfaces.get(branch)
-    if explicit is not None:
-        return _SurfaceAssociation(tuple(sorted(explicit.workstreams)), "explicit-surface")
-
     tokens = branch_topic_tokens(branch)
     joined = "-".join(tokens)
     alias_key = (
@@ -236,8 +605,8 @@ def _surface_association(
         )
         return _SurfaceAssociation((alias_target,), basis)
 
-    candidates: list[tuple[int, int, str]] = []
-    for index, workstream in enumerate(workstreams):
+    candidates: list[tuple[int, str]] = []
+    for workstream in workstreams:
         if workstream.name == _HYGIENE_WORKSTREAM:
             continue
         specificity = max(
@@ -245,16 +614,24 @@ def _surface_association(
             default=0,
         )
         if specificity:
-            candidates.append((specificity, -index, workstream.name))
+            candidates.append((specificity, workstream.name))
     if candidates:
-        selected = max(candidates)[2]
+        best_specificity = max(specificity for specificity, _ in candidates)
+        matches = tuple(
+            sorted({name for specificity, name in candidates if specificity == best_specificity})
+        )
+        selected = matches[0]
         basis = getattr(workstreams_by_name[selected], "association_basis", "branch-term")
         if basis == "title-case-fallback":
             if branch in linked_pr_branches:
                 basis = "linked-pr"
             elif selected in linked_issue_workstreams:
                 basis = "linked-issue"
-        return _SurfaceAssociation((selected,), basis)
+        return _SurfaceAssociation(
+            (selected,),
+            basis,
+            tied_workstreams=matches if len(matches) > 1 else (),
+        )
     return _SurfaceAssociation((_HYGIENE_WORKSTREAM,), "unclassified")
 
 
@@ -275,28 +652,19 @@ def _surface_decisions(
     decisions: dict[str, AutoDisposition] = {}
     live_by_workstream: dict[str, list[str]] = {}
     competition_uncertainties: dict[str, tuple[str, ...]] = {}
+    non_branch_uncertainties: dict[str, str] = {}
     selected_open_pr_rejections: dict[str, PullRequestEvidence] = {}
     open_prs = _open_prs_by_branch(github_evidence)
     for surface in surfaces:
         branch = surface.branch
         workstream_names = associations[branch]
         activity_date = activity_dates.get(branch)
-        metadata_date = _surface_metadata_date(branch, activity_dates, registry)
-        explicit = registry.surfaces.get(branch)
-        if explicit is not None and explicit.disposition != SurfaceDisposition.CANONICAL:
-            decisions[branch] = AutoDisposition(
-                workstreams=workstream_names,
-                disposition=explicit.disposition,
-                rule="explicit-noncanonical-override",
-                evidence=(
-                    f"Explicit {explicit.disposition.value} surface override excludes branch "
-                    "from canonical competition."
-                ),
-                confidence=Confidence.HIGH,
-                alternatives=("canonical: rejected by explicit override",),
-                last_reviewed=metadata_date,
+        metadata_date = _surface_metadata_date(branch, activity_dates)
+        if branch not in real_branches:
+            non_branch_uncertainties[branch] = (
+                f"Surface provenance {surface.provenance} is not a normalized branch ref; "
+                "merged state cannot be inferred."
             )
-            continue
         if branch not in unmerged and branch in uncertain_worktrees:
             for workstream_name in workstream_names:
                 live_by_workstream.setdefault(workstream_name, []).append(branch)
@@ -316,23 +684,12 @@ def _surface_decisions(
                 last_reviewed=metadata_date,
             )
             continue
-        if branch not in real_branches:
-            decisions[branch] = AutoDisposition(
-                workstreams=workstream_names,
-                disposition=SurfaceDisposition.CANONICAL,
-                rule="non-branch-surface",
-                evidence=(
-                    f"Surface provenance {surface.provenance} is not a normalized branch ref; "
-                    "merged state cannot be inferred."
-                ),
-                confidence=Confidence.LOW,
-                alternatives=(),
-                last_reviewed=metadata_date,
-            )
+        if branch in non_branch_uncertainties:
+            for workstream_name in workstream_names:
+                live_by_workstream.setdefault(workstream_name, []).append(branch)
             continue
         if (
             phase2_enabled
-            and explicit is None
             and branch not in open_prs
             and activity_date is not None
             and activity_date <= run_date
@@ -367,7 +724,7 @@ def _surface_decisions(
             live_by_workstream.setdefault(workstream_name, []).append(branch)
 
     proposals: dict[str, list[tuple[SurfaceDisposition, str, Confidence, tuple[str, ...]]]] = {}
-    for workstream_name, branches in sorted(live_by_workstream.items()):
+    for _workstream_name, branches in sorted(live_by_workstream.items()):
         unique_branches = sorted(set(branches))
         uncertain_branches = [branch for branch in unique_branches if branch in uncertain_worktrees]
         uncertainty_alternative = (
@@ -375,18 +732,16 @@ def _surface_decisions(
             if uncertain_branches
             else ""
         )
-        uncertainty_evidence = tuple(uncertain_worktrees[branch] for branch in uncertain_branches)
+        non_branch_branches = [
+            branch for branch in unique_branches if branch in non_branch_uncertainties
+        ]
+        uncertainty_evidence = tuple(
+            uncertain_worktrees[branch] for branch in uncertain_branches
+        ) + tuple(non_branch_uncertainties[branch] for branch in non_branch_branches)
         for branch in unique_branches:
             competition_uncertainties[branch] = uncertainty_evidence
         open_branches = [branch for branch in unique_branches if branch in open_prs]
-        explicit_canonical = [
-            branch
-            for branch in unique_branches
-            if (decision := registry.surfaces.get(branch)) is not None
-            and decision.disposition == SurfaceDisposition.CANONICAL
-            and workstream_name in decision.workstreams
-        ]
-        if open_branches and not explicit_canonical:
+        if open_branches:
             selected = _select_open_pr_surface(open_branches, open_prs)
             conflicting = len(unique_branches) > 1
             for branch in unique_branches:
@@ -416,29 +771,31 @@ def _surface_decisions(
         if len(unique_branches) == 1:
             branch = unique_branches[0]
             uncertain = branch in uncertain_worktrees
+            non_branch = branch in non_branch_uncertainties
             proposals.setdefault(branch, []).append(
                 (
                     SurfaceDisposition.CANONICAL,
-                    "worktree-state-uncertain" if uncertain else "unique-live-surface",
-                    Confidence.LOW if uncertain else Confidence.HIGH,
-                    (uncertainty_alternative,) if uncertain else (),
+                    "non-branch-surface"
+                    if non_branch
+                    else "worktree-state-uncertain"
+                    if uncertain
+                    else "unique-live-surface",
+                    Confidence.LOW if uncertain or non_branch else Confidence.HIGH,
+                    (("archive: resolve non-branch provenance and merged state before cleanup"),)
+                    if non_branch
+                    else (uncertainty_alternative,)
+                    if uncertain
+                    else (),
                 )
             )
             continue
-        unconstrained = _select_newest_surface(unique_branches, activity_dates)
-        selected = (
-            _select_newest_surface(explicit_canonical, activity_dates)
-            if explicit_canonical
-            else unconstrained
-        )
-        rule = "explicit-canonical-override" if explicit_canonical else "newest-live-surface"
+        selected = _select_newest_surface(unique_branches, activity_dates)
+        rule = "newest-live-surface"
         for branch in unique_branches:
             if branch == selected:
                 alternatives_list = [
                     candidate for candidate in unique_branches if candidate != branch
                 ]
-                if unconstrained != selected:
-                    alternatives_list.append(f"newest-by-activity: {unconstrained}")
                 if uncertainty_alternative:
                     alternatives_list.append(uncertainty_alternative)
                 alternatives = tuple(alternatives_list)
@@ -475,14 +832,14 @@ def _surface_decisions(
             else Confidence.HIGH
         )
         rule = (
-            "explicit-canonical-override"
-            if any(item[1] == "explicit-canonical-override" for item in branch_proposals)
-            else "open-pr-canonical"
+            "open-pr-canonical"
             if any(item[1] == "open-pr-canonical" for item in branch_proposals)
             else "newest-live-surface"
             if any(item[1] == "newest-live-surface" for item in branch_proposals)
             else "worktree-state-uncertain"
             if any(item[1] == "worktree-state-uncertain" for item in branch_proposals)
+            else "non-branch-surface"
+            if any(item[1] == "non-branch-surface" for item in branch_proposals)
             else "unique-live-surface"
         )
         alternatives = tuple(
@@ -492,6 +849,8 @@ def _surface_decisions(
         names = associations[branch]
         if rule == "worktree-state-uncertain":
             evidence = uncertain_worktrees[branch]
+        elif rule == "non-branch-surface":
+            evidence = non_branch_uncertainties[branch]
         elif rule == "open-pr-canonical" and branch in selected_open_pr_rejections:
             pull_request = selected_open_pr_rejections[branch]
             evidence = (
@@ -518,11 +877,6 @@ def _surface_decisions(
                 + _tip_date_clause(activity_date)
                 + "."
             )
-        elif rule == "explicit-canonical-override" and disposition == SurfaceDisposition.CANONICAL:
-            evidence = (
-                f"Explicit canonical surface for {', '.join(names)} overrides generated "
-                "newest-surface selection" + _tip_date_clause(activity_date) + "."
-            )
         elif disposition == SurfaceDisposition.CANONICAL:
             evidence = (
                 f"Newest live surface for {', '.join(names)} selected by committer date "
@@ -535,8 +889,8 @@ def _surface_decisions(
                 + "."
             )
         uncertainties = competition_uncertainties.get(branch, ())
-        if uncertainties and rule != "worktree-state-uncertain":
-            evidence += " Uncertain worktree evidence: " + " ".join(uncertainties)
+        if uncertainties and rule not in {"non-branch-surface", "worktree-state-uncertain"}:
+            evidence += " Competition uncertainty: " + " ".join(uncertainties)
         decisions[branch] = AutoDisposition(
             workstreams=names,
             disposition=disposition,
@@ -544,7 +898,7 @@ def _surface_decisions(
             evidence=evidence,
             confidence=confidence,
             alternatives=alternatives,
-            last_reviewed=_surface_metadata_date(branch, activity_dates, registry),
+            last_reviewed=_surface_metadata_date(branch, activity_dates),
         )
     return dict(sorted(decisions.items()))
 
@@ -580,54 +934,34 @@ def _workstream_decisions(
                 github_evidence=github_evidence,
                 issue_associations=issue_associations,
             )
-            if phase2_decision is not None:
-                decisions[workstream.name] = phase2_decision
+            decisions[workstream.name] = phase2_decision or _no_current_evidence_decision()
             continue
         if not known:
+            decisions[workstream.name] = _no_current_evidence_decision()
             continue
-        effective_dispositions = {
-            branch: _effective_surface_disposition(branch, auto_surfaces, registry)
-            for branch in known
-        }
+        generated_dispositions = {branch: auto_surfaces[branch].disposition for branch in known}
         candidate_live = [
             branch
             for branch in known
-            if not _is_explicit_noncanonical(branch, registry)
-            and (
-                effective_dispositions[branch] == SurfaceDisposition.CANONICAL
-                or auto_surfaces[branch].rule
-                in {"newest-live-surface", "explicit-canonical-override"}
-            )
+            if generated_dispositions[branch] == SurfaceDisposition.CANONICAL
+            or auto_surfaces[branch].rule == "newest-live-surface"
         ]
         live = [
             branch
             for branch in known
-            if effective_dispositions[branch] == SurfaceDisposition.CANONICAL
+            if generated_dispositions[branch] == SurfaceDisposition.CANONICAL
         ]
-        explicit_canonical = [
-            branch
-            for branch in live
-            if (explicit := registry.surfaces.get(branch)) is not None
-            and explicit.disposition == SurfaceDisposition.CANONICAL
-        ]
-        canonical_candidates = explicit_canonical or live
-        canonical = (
-            _select_newest_surface(canonical_candidates, activity_dates)
-            if canonical_candidates
-            else ""
-        )
-        metadata_dates = [
-            _surface_metadata_date(branch, activity_dates, registry) for branch in known
-        ]
+        canonical = _select_newest_surface(live, activity_dates) if live else ""
+        metadata_dates = [_surface_metadata_date(branch, activity_dates) for branch in known]
         metadata_date = (
-            _surface_metadata_date(canonical, activity_dates, registry)
+            _surface_metadata_date(canonical, activity_dates)
             if canonical
             else max(metadata_dates, default=_UNKNOWN_EVIDENCE_DATE)
         )
 
         all_complete = not live and all(
             disposition == SurfaceDisposition.ARCHIVE
-            for disposition in effective_dispositions.values()
+            for disposition in generated_dispositions.values()
         )
         if all_complete:
             decisions[workstream.name] = AutoWorkstreamDecision(
@@ -780,6 +1114,21 @@ def _workstream_decisions(
     return decisions
 
 
+def _no_current_evidence_decision() -> AutoWorkstreamDecision:
+    return AutoWorkstreamDecision(
+        status=WorkstreamStatus.STALE,
+        canonical_surface="",
+        rule="no-current-evidence-stale",
+        evidence=(
+            "No associated surface, pull request, or issue evidence is available; "
+            "stale is the conservative terminal status."
+        ),
+        confidence=Confidence.LOW,
+        alternatives=("active: require an associated current surface, open PR, or active issue",),
+        last_reviewed=_UNKNOWN_EVIDENCE_DATE,
+    )
+
+
 def _phase2_workstream_decision(
     *,
     workstream: PolicyWorkstream,
@@ -804,24 +1153,14 @@ def _phase2_workstream_decision(
     if not known and not issues and not matching_pull_requests:
         return None
 
-    effective_dispositions = {
-        branch: _effective_surface_disposition(branch, auto_surfaces, registry) for branch in known
-    }
+    generated_dispositions = {branch: auto_surfaces[branch].disposition for branch in known}
     live = [
-        branch for branch in known if effective_dispositions[branch] == SurfaceDisposition.CANONICAL
+        branch for branch in known if generated_dispositions[branch] == SurfaceDisposition.CANONICAL
     ]
     live_pull_requests = tuple(pr for pr in matching_pull_requests if pr.head_ref in live)
-    explicit_canonical = [
-        branch
-        for branch in live
-        if (explicit := registry.surfaces.get(branch)) is not None
-        and explicit.disposition == SurfaceDisposition.CANONICAL
-    ]
     open_prs = tuple(pr for pr in live_pull_requests if pr.state == "open")
     open_pr_branches = sorted({pr.head_ref for pr in open_prs})
-    if explicit_canonical:
-        canonical = _select_newest_surface(explicit_canonical, activity_dates)
-    elif open_pr_branches:
+    if open_pr_branches:
         canonical = _select_open_pr_surface(
             open_pr_branches,
             {pr.head_ref: pr for pr in open_prs},
@@ -922,7 +1261,7 @@ def _phase2_workstream_decision(
         and not live
         and all(
             disposition == SurfaceDisposition.ARCHIVE
-            for disposition in effective_dispositions.values()
+            for disposition in generated_dispositions.values()
         )
     )
     completion_conflict = bool(
@@ -1076,7 +1415,7 @@ def _phase2_workstream_decision(
     if association_ambiguities:
         evidence += " Issue title association is ambiguous across exact workstream terms."
     metadata_dates = [
-        *(_surface_metadata_date(branch, activity_dates, registry) for branch in known),
+        *(_surface_metadata_date(branch, activity_dates) for branch in known),
         *(issue.updated_at for issue in issues),
         *(pr.updated_at for pr in matching_pull_requests),
     ]
@@ -1194,38 +1533,11 @@ def _canonical_uncertainty_context(
     )
 
 
-def _effective_surface_disposition(
-    branch: str,
-    auto_surfaces: Mapping[str, AutoDisposition],
-    registry: DecisionRegistry,
-) -> SurfaceDisposition:
-    explicit = registry.surfaces.get(branch)
-    if explicit is not None:
-        return explicit.disposition
-    return auto_surfaces[branch].disposition
-
-
-def _is_explicit_noncanonical(
-    branch: str,
-    registry: DecisionRegistry,
-) -> bool:
-    explicit = registry.surfaces.get(branch)
-    return explicit is not None and explicit.disposition != SurfaceDisposition.CANONICAL
-
-
 def _surface_metadata_date(
     branch: str,
     activity_dates: Mapping[str, date],
-    registry: DecisionRegistry,
 ) -> date:
-    metadata_dates: list[date] = []
-    activity_date = activity_dates.get(branch)
-    if activity_date is not None:
-        metadata_dates.append(activity_date)
-    explicit = registry.surfaces.get(branch)
-    if explicit is not None:
-        metadata_dates.append(explicit.last_reviewed)
-    return max(metadata_dates, default=_UNKNOWN_EVIDENCE_DATE)
+    return activity_dates.get(branch, _UNKNOWN_EVIDENCE_DATE)
 
 
 def _select_newest_surface(
@@ -1336,19 +1648,16 @@ def _parse_auto_decisions(raw: object) -> AutoDecisionSet:
     surface_entries = _object(root["surfaces"])
     workstream_entries = _object(root["workstreams"])
     surfaces = {
-        branch: _parse_surface(value, format_version=format_version)
+        _identifier(branch, "surface key"): _parse_surface(
+            value,
+            format_version=format_version,
+        )
         for branch, value in surface_entries.items()
-        if isinstance(branch, str)
     }
-    if len(surfaces) != len(surface_entries):
-        raise ValueError("invalid surface key")
     workstreams = {
-        name: _parse_workstream(value)
+        _identifier(name, "workstream key"): _parse_workstream(value)
         for name, value in workstream_entries.items()
-        if isinstance(name, str)
     }
-    if len(workstreams) != len(workstream_entries):
-        raise ValueError("invalid workstream key")
     return AutoDecisionSet(surfaces=surfaces, workstreams=workstreams)
 
 
@@ -1368,7 +1677,7 @@ def _parse_surface(raw: object, *, format_version: int) -> AutoDisposition:
         raise ValueError("invalid surface decision")
     if format_version >= 2 and "association_basis" not in item:
         raise ValueError("invalid surface decision")
-    workstreams = _strings(item["workstreams"], allow_empty=False)
+    workstreams = _strings(item["workstreams"], allow_empty=False, unique=True)
     return AutoDisposition(
         workstreams=workstreams,
         disposition=SurfaceDisposition(_text(item["disposition"])),
@@ -1396,9 +1705,7 @@ def _parse_workstream(raw: object) -> AutoWorkstreamDecision:
     }
     if set(item) != required:
         raise ValueError("invalid workstream decision")
-    canonical_surface = item["canonical_surface"]
-    if not isinstance(canonical_surface, str):
-        raise ValueError("invalid canonical surface")
+    canonical_surface = _optional_identifier(item["canonical_surface"], "canonical surface")
     return AutoWorkstreamDecision(
         status=WorkstreamStatus(_text(item["status"])),
         canonical_surface=canonical_surface,
@@ -1422,11 +1729,31 @@ def _text(value: object) -> str:
     return value.strip()
 
 
-def _strings(value: object, *, allow_empty: bool) -> tuple[str, ...]:
+def _identifier(value: object, label: str) -> str:
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise ValueError(f"invalid {label}")
+    return value
+
+
+def _optional_identifier(value: object, label: str) -> str:
+    if value == "":
+        return ""
+    return _identifier(value, label)
+
+
+def _strings(
+    value: object,
+    *,
+    allow_empty: bool,
+    unique: bool = False,
+) -> tuple[str, ...]:
     if not isinstance(value, list):
         raise ValueError("expected string list")
     if not allow_empty and not value:
         raise ValueError("expected non-empty string list")
     if not all(isinstance(item, str) and item.strip() for item in value):
         raise ValueError("expected string list")
-    return tuple(item.strip() for item in value)
+    normalized = tuple(item.strip() for item in value)
+    if unique and len(set(normalized)) != len(normalized):
+        raise ValueError("expected unique string list")
+    return normalized
