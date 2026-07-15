@@ -361,13 +361,14 @@ def test_run_local_cockpit_refresh_flag_off_preserves_output_parity(tmp_path: Pa
 
     assert default.register_path.read_bytes() == explicit.register_path.read_bytes()
     assert default.packet_path.read_bytes() == explicit.packet_path.read_bytes()
+    # Text reads normalize platform newlines before checking the frozen content snapshots.
     assert (
-        hashlib.sha256(default.register_path.read_bytes()).hexdigest()
-        == "8b9b352fc9c4816671a660c42af810684dd25a87659cffb1b4aad08802e0f59a"
+        hashlib.sha256(default.register_path.read_text(encoding="utf-8").encode()).hexdigest()
+        == "f3525d8ddc817444cd23874d924aa06fb29f744146d421a0ef513f0bc5eead66"
     )
     assert (
-        hashlib.sha256(default.packet_path.read_bytes()).hexdigest()
-        == "ba65fc280b9a57f1c17cebba5987b27e1289e9ede16b87de1388199734f94824"
+        hashlib.sha256(default.packet_path.read_text(encoding="utf-8").encode()).hexdigest()
+        == "d2cd85962196a5e1da5fca4e2c77f1565bfce6686340f72c139534314427203a"
     )
     assert not (default_repo / AUTO_DECISIONS_PATH).exists()
     assert not (explicit_repo / AUTO_DECISIONS_PATH).exists()
