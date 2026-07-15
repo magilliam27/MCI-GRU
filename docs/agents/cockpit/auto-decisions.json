@@ -70,13 +70,12 @@
       "workstreams": [
         "Automated Disposition Phase1"
       ],
-      "disposition": "canonical",
-      "rule": "newest-live-surface",
-      "evidence": "Newest live surface for Automated Disposition Phase1 selected by committer date with lexical branch-name tie-break; tip committer date 2026-07-13. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Workstream association ambiguity: equal best branch-term matches Automated Disposition Phase1, Automated Disposition Phase4; Automated Disposition Phase1 is the deterministic primary and all tied workstreams are retained.",
+      "disposition": "stale",
+      "rule": "open-pr-canonical",
+      "evidence": "Competing surface rejected because PR #89 (https://github.com/magilliam27/MCI-GRU/pull/89) is the deterministic open-PR continuation for Automated Disposition Phase1; tip committer date 2026-07-13. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Workstream association ambiguity: equal best branch-term matches Automated Disposition Phase1, Automated Disposition Phase4; Automated Disposition Phase1 is the deterministic primary and all tied workstreams are retained.",
       "confidence": "low",
       "association_basis": "title-case-fallback",
       "alternatives": [
-        "archive: resolve uncertain worktree state for codex/automated-disposition-phase4-20260713",
         "codex/automated-disposition-phase4-20260713",
         "workstream association: Automated Disposition Phase4 is tied with deterministic primary Automated Disposition Phase1"
       ],
@@ -86,17 +85,16 @@
       "workstreams": [
         "Automated Disposition Phase1"
       ],
-      "disposition": "stale",
-      "rule": "newest-live-surface",
-      "evidence": "Competing live surface for Automated Disposition Phase1 rejected by newest-surface rule; tip committer date 2026-07-13. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Workstream association ambiguity: equal best branch-term matches Automated Disposition Phase1, Automated Disposition Phase4; Automated Disposition Phase1 is the deterministic primary and all tied workstreams are retained.",
+      "disposition": "canonical",
+      "rule": "open-pr-canonical",
+      "evidence": "Open PR #89 (https://github.com/magilliam27/MCI-GRU/pull/89) heads branch; canonical continuation is that PR. Competing live surfaces require deterministic selection. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Workstream association ambiguity: equal best branch-term matches Automated Disposition Phase1, Automated Disposition Phase4; Automated Disposition Phase1 is the deterministic primary and all tied workstreams are retained.",
       "confidence": "low",
-      "association_basis": "title-case-fallback",
+      "association_basis": "linked-pr",
       "alternatives": [
-        "archive: resolve uncertain worktree state for codex/automated-disposition-phase4-20260713",
         "codex/automated-disposition-phase1-20260712",
         "workstream association: Automated Disposition Phase4 is tied with deterministic primary Automated Disposition Phase1"
       ],
-      "last_reviewed": "2026-07-13"
+      "last_reviewed": "2026-07-14"
     },
     "codex/cockpit-hygiene-20260626": {
       "workstreams": [
@@ -293,43 +291,31 @@
     },
     "codex/lambdarankic-1024-all-years-20260625": {
       "workstreams": [
-        "Lambdarankic 110 Name Stability Run Plan"
+        "LambdaRankIC"
       ],
       "disposition": "stale",
       "rule": "newest-live-surface",
-      "evidence": "Competing live surface for Lambdarankic 110 Name Stability Run Plan rejected by newest-surface rule; tip committer date 2026-06-26. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained.",
+      "evidence": "Competing live surface for LambdaRankIC rejected by newest-surface rule; tip committer date 2026-06-26. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted.",
       "confidence": "low",
-      "association_basis": "linked-pr",
+      "association_basis": "explicit-alias",
       "alternatives": [
         "archive: resolve uncertain worktree state for codex/lambdarankic-ytd-drive-durability-20260714",
-        "codex/lambdarankic-ytd-drive-durability-20260714",
-        "workstream association: Lambdarankic 2026 Ytd is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic Cross Seed Agreement Diagnostics is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic G4 Recovery Relaunch Patch is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic Rank Drop Sensitivity Replay is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic Saved Prediction Replay is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic Stability Diagnostics Coordination is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan"
+        "codex/lambdarankic-ytd-drive-durability-20260714"
       ],
       "last_reviewed": "2026-06-26"
     },
     "codex/lambdarankic-2026-ytd-20260713": {
       "workstreams": [
-        "Lambdarankic 110 Name Stability Run Plan"
+        "LambdaRankIC"
       ],
       "disposition": "stale",
       "rule": "newest-live-surface",
-      "evidence": "Competing live surface for Lambdarankic 110 Name Stability Run Plan rejected by newest-surface rule; tip committer date 2026-07-13. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained.",
+      "evidence": "Competing live surface for LambdaRankIC rejected by newest-surface rule; tip committer date 2026-07-13. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted.",
       "confidence": "low",
-      "association_basis": "title-case-fallback",
+      "association_basis": "explicit-alias",
       "alternatives": [
         "archive: resolve uncertain worktree state for codex/lambdarankic-ytd-drive-durability-20260714",
-        "codex/lambdarankic-ytd-drive-durability-20260714",
-        "workstream association: Lambdarankic 2026 Ytd is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic Cross Seed Agreement Diagnostics is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic G4 Recovery Relaunch Patch is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic Rank Drop Sensitivity Replay is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic Saved Prediction Replay is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic Stability Diagnostics Coordination is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan"
+        "codex/lambdarankic-ytd-drive-durability-20260714"
       ],
       "last_reviewed": "2026-07-13"
     },
@@ -339,55 +325,46 @@
       ],
       "disposition": "stale",
       "rule": "newest-live-surface",
-      "evidence": "Competing live surface for LambdaRankIC rejected by newest-surface rule; tip committer date 2026-06-20.",
+      "evidence": "Competing live surface for LambdaRankIC rejected by newest-surface rule; tip committer date 2026-06-20. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted.",
       "confidence": "low",
-      "association_basis": "implied-alias",
+      "association_basis": "explicit-alias",
       "alternatives": [
-        "codex/top10-lambdarank-screen-20260625"
+        "archive: resolve uncertain worktree state for codex/lambdarankic-ytd-drive-durability-20260714",
+        "codex/lambdarankic-ytd-drive-durability-20260714"
       ],
       "last_reviewed": "2026-06-20"
     },
     "codex/lambdarankic-saved-prediction-replay-20260713": {
       "workstreams": [
-        "Lambdarankic 110 Name Stability Run Plan"
+        "LambdaRankIC"
       ],
       "disposition": "stale",
       "rule": "newest-live-surface",
-      "evidence": "Competing live surface for Lambdarankic 110 Name Stability Run Plan rejected by newest-surface rule; tip committer date 2026-07-13. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained.",
+      "evidence": "Competing live surface for LambdaRankIC rejected by newest-surface rule; tip committer date 2026-07-13. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted.",
       "confidence": "low",
-      "association_basis": "title-case-fallback",
+      "association_basis": "explicit-alias",
       "alternatives": [
         "archive: resolve uncertain worktree state for codex/lambdarankic-ytd-drive-durability-20260714",
-        "codex/lambdarankic-ytd-drive-durability-20260714",
-        "workstream association: Lambdarankic 2026 Ytd is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic Cross Seed Agreement Diagnostics is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic G4 Recovery Relaunch Patch is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic Rank Drop Sensitivity Replay is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic Saved Prediction Replay is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic Stability Diagnostics Coordination is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan"
+        "codex/lambdarankic-ytd-drive-durability-20260714"
       ],
       "last_reviewed": "2026-07-13"
     },
     "codex/lambdarankic-ytd-drive-durability-20260714": {
       "workstreams": [
-        "Lambdarankic 110 Name Stability Run Plan"
+        "LambdaRankIC"
       ],
       "disposition": "canonical",
       "rule": "newest-live-surface",
-      "evidence": "Newest live surface for Lambdarankic 110 Name Stability Run Plan selected by committer date with lexical branch-name tie-break; tip committer date 2026-07-14. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained.",
+      "evidence": "Newest live surface for LambdaRankIC selected by committer date with lexical branch-name tie-break; tip committer date 2026-07-14. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted.",
       "confidence": "low",
-      "association_basis": "title-case-fallback",
+      "association_basis": "explicit-alias",
       "alternatives": [
         "archive: resolve uncertain worktree state for codex/lambdarankic-ytd-drive-durability-20260714",
         "codex/lambdarankic-1024-all-years-20260625",
         "codex/lambdarankic-2026-ytd-20260713",
+        "codex/lambdarankic-lower-pair-screen",
         "codex/lambdarankic-saved-prediction-replay-20260713",
-        "workstream association: Lambdarankic 2026 Ytd is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic Cross Seed Agreement Diagnostics is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic G4 Recovery Relaunch Patch is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic Rank Drop Sensitivity Replay is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic Saved Prediction Replay is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic Stability Diagnostics Coordination is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan"
+        "codex/top10-lambdarank-screen-20260625"
       ],
       "last_reviewed": "2026-07-14"
     },
@@ -447,13 +424,12 @@
       ],
       "disposition": "canonical",
       "rule": "open-pr-canonical",
-      "evidence": "Open PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62) heads branch; canonical continuation is that PR. Workstream association ambiguity: equal best branch-term matches Docs Research Evidence Consolidation, Docs and research evidence, Filter Missing Sp500 Rics, Lambdarankic Cross Seed Agreement Diagnostics, Loss Seed Matrix Evidence; Docs Research Evidence Consolidation is the deterministic primary and all tied workstreams are retained.",
+      "evidence": "Open PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62) heads branch; canonical continuation is that PR. Workstream association ambiguity: equal best branch-term matches Docs Research Evidence Consolidation, Docs and research evidence, Filter Missing Sp500 Rics, Loss Seed Matrix Evidence; Docs Research Evidence Consolidation is the deterministic primary and all tied workstreams are retained.",
       "confidence": "low",
       "association_basis": "linked-pr",
       "alternatives": [
         "workstream association: Docs and research evidence is tied with deterministic primary Docs Research Evidence Consolidation",
         "workstream association: Filter Missing Sp500 Rics is tied with deterministic primary Docs Research Evidence Consolidation",
-        "workstream association: Lambdarankic Cross Seed Agreement Diagnostics is tied with deterministic primary Docs Research Evidence Consolidation",
         "workstream association: Loss Seed Matrix Evidence is tied with deterministic primary Docs Research Evidence Consolidation"
       ],
       "last_reviewed": "2026-07-07"
@@ -462,13 +438,14 @@
       "workstreams": [
         "LambdaRankIC"
       ],
-      "disposition": "canonical",
+      "disposition": "stale",
       "rule": "newest-live-surface",
-      "evidence": "Newest live surface for LambdaRankIC selected by committer date with lexical branch-name tie-break; tip committer date 2026-06-26.",
+      "evidence": "Competing live surface for LambdaRankIC rejected by newest-surface rule; tip committer date 2026-06-26. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted.",
       "confidence": "low",
       "association_basis": "explicit-alias",
       "alternatives": [
-        "codex/lambdarankic-lower-pair-screen"
+        "archive: resolve uncertain worktree state for codex/lambdarankic-ytd-drive-durability-20260714",
+        "codex/lambdarankic-ytd-drive-durability-20260714"
       ],
       "last_reviewed": "2026-06-26"
     },
@@ -531,16 +508,15 @@
     },
     "Automated Disposition Phase1": {
       "status": "active",
-      "canonical_surface": "codex/automated-disposition-phase1-20260712",
-      "rule": "recent-activity-active",
-      "evidence": "canonical surface codex/automated-disposition-phase1-20260712 activity 2026-07-13. Canonical surface uncertainty (newest-live-surface): Newest live surface for Automated Disposition Phase1 selected by committer date with lexical branch-name tie-break; tip committer date 2026-07-13. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Workstream association ambiguity: equal best branch-term matches Automated Disposition Phase1, Automated Disposition Phase4; Automated Disposition Phase1 is the deterministic primary and all tied workstreams are retained.",
+      "canonical_surface": "codex/automated-disposition-phase4-20260713",
+      "rule": "open-pr-active",
+      "evidence": "linked open PR #89 (https://github.com/magilliam27/MCI-GRU/pull/89); canonical surface codex/automated-disposition-phase4-20260713 activity 2026-07-14. Canonical surface uncertainty (open-pr-canonical): Open PR #89 (https://github.com/magilliam27/MCI-GRU/pull/89) heads branch; canonical continuation is that PR. Competing live surfaces require deterministic selection. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Workstream association ambiguity: equal best branch-term matches Automated Disposition Phase1, Automated Disposition Phase4; Automated Disposition Phase1 is the deterministic primary and all tied workstreams are retained.",
       "confidence": "low",
       "alternatives": [
-        "archive: resolve uncertain worktree state for codex/automated-disposition-phase4-20260713",
-        "codex/automated-disposition-phase4-20260713",
+        "codex/automated-disposition-phase1-20260712",
         "workstream association: Automated Disposition Phase4 is tied with deterministic primary Automated Disposition Phase1"
       ],
-      "last_reviewed": "2026-07-13"
+      "last_reviewed": "2026-07-15"
     },
     "Automated Disposition Phase4": {
       "status": "stale",
@@ -552,7 +528,7 @@
         "active: associate codex/automated-disposition-phase1-20260712 with Automated Disposition Phase4 instead of Automated Disposition Phase1",
         "active: associate codex/automated-disposition-phase4-20260713 with Automated Disposition Phase4 instead of Automated Disposition Phase1"
       ],
-      "last_reviewed": "2026-07-13"
+      "last_reviewed": "2026-07-14"
     },
     "Chore/File Cleanup": {
       "status": "active",
@@ -590,12 +566,11 @@
       "status": "active",
       "canonical_surface": "codex/salvage-loss-seed-matrix-evidence-20260707",
       "rule": "open-pr-active",
-      "evidence": "linked open PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62); canonical surface codex/salvage-loss-seed-matrix-evidence-20260707 activity 2026-07-07. Canonical surface uncertainty (open-pr-canonical): Open PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62) heads branch; canonical continuation is that PR. Workstream association ambiguity: equal best branch-term matches Docs Research Evidence Consolidation, Docs and research evidence, Filter Missing Sp500 Rics, Lambdarankic Cross Seed Agreement Diagnostics, Loss Seed Matrix Evidence; Docs Research Evidence Consolidation is the deterministic primary and all tied workstreams are retained.",
+      "evidence": "linked open PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62); canonical surface codex/salvage-loss-seed-matrix-evidence-20260707 activity 2026-07-07. Canonical surface uncertainty (open-pr-canonical): Open PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62) heads branch; canonical continuation is that PR. Workstream association ambiguity: equal best branch-term matches Docs Research Evidence Consolidation, Docs and research evidence, Filter Missing Sp500 Rics, Loss Seed Matrix Evidence; Docs Research Evidence Consolidation is the deterministic primary and all tied workstreams are retained.",
       "confidence": "low",
       "alternatives": [
         "workstream association: Docs and research evidence is tied with deterministic primary Docs Research Evidence Consolidation",
         "workstream association: Filter Missing Sp500 Rics is tied with deterministic primary Docs Research Evidence Consolidation",
-        "workstream association: Lambdarankic Cross Seed Agreement Diagnostics is tied with deterministic primary Docs Research Evidence Consolidation",
         "workstream association: Loss Seed Matrix Evidence is tied with deterministic primary Docs Research Evidence Consolidation"
       ],
       "last_reviewed": "2026-07-08"
@@ -604,7 +579,7 @@
       "status": "stale",
       "canonical_surface": "",
       "rule": "association-tie-unselected",
-      "evidence": "Workstream association ambiguity: equal best branch-term matches Docs Research Evidence Consolidation, Docs and research evidence, Filter Missing Sp500 Rics, Lambdarankic Cross Seed Agreement Diagnostics, Loss Seed Matrix Evidence; Docs Research Evidence Consolidation is the deterministic primary and all tied workstreams are retained. Surface codex/salvage-loss-seed-matrix-evidence-20260707 was assigned to Docs Research Evidence Consolidation; no selected surface remains for Docs and research evidence.",
+      "evidence": "Workstream association ambiguity: equal best branch-term matches Docs Research Evidence Consolidation, Docs and research evidence, Filter Missing Sp500 Rics, Loss Seed Matrix Evidence; Docs Research Evidence Consolidation is the deterministic primary and all tied workstreams are retained. Surface codex/salvage-loss-seed-matrix-evidence-20260707 was assigned to Docs Research Evidence Consolidation; no selected surface remains for Docs and research evidence.",
       "confidence": "low",
       "alternatives": [
         "active: associate codex/salvage-loss-seed-matrix-evidence-20260707 with Docs and research evidence instead of Docs Research Evidence Consolidation"
@@ -615,7 +590,7 @@
       "status": "active",
       "canonical_surface": "codex/filter-missing-sp500-rics-20260624",
       "rule": "recent-activity-active",
-      "evidence": "canonical surface codex/filter-missing-sp500-rics-20260624 activity 2026-06-24; matching open issue #5 (https://github.com/magilliam27/MCI-GRU/issues/5), issue #6 (https://github.com/magilliam27/MCI-GRU/issues/6). Issue title association is ambiguous across exact workstream terms. Workstream association ambiguity: equal best branch-term matches Docs Research Evidence Consolidation, Docs and research evidence, Filter Missing Sp500 Rics, Lambdarankic Cross Seed Agreement Diagnostics, Loss Seed Matrix Evidence; Docs Research Evidence Consolidation is the deterministic primary and all tied workstreams are retained. Surface codex/salvage-loss-seed-matrix-evidence-20260707 was assigned to Docs Research Evidence Consolidation instead of Filter Missing Sp500 Rics.",
+      "evidence": "canonical surface codex/filter-missing-sp500-rics-20260624 activity 2026-06-24; matching open issue #5 (https://github.com/magilliam27/MCI-GRU/issues/5), issue #6 (https://github.com/magilliam27/MCI-GRU/issues/6). Issue title association is ambiguous across exact workstream terms. Workstream association ambiguity: equal best branch-term matches Docs Research Evidence Consolidation, Docs and research evidence, Filter Missing Sp500 Rics, Loss Seed Matrix Evidence; Docs Research Evidence Consolidation is the deterministic primary and all tied workstreams are retained. Surface codex/salvage-loss-seed-matrix-evidence-20260707 was assigned to Docs Research Evidence Consolidation instead of Filter Missing Sp500 Rics.",
       "confidence": "low",
       "alternatives": [
         "done: merged PR #78 (https://github.com/magilliam27/MCI-GRU/pull/78), but matching open issue #5, #6 prevents completion",
@@ -649,124 +624,17 @@
     },
     "LambdaRankIC": {
       "status": "active",
-      "canonical_surface": "codex/top10-lambdarank-screen-20260625",
-      "rule": "recent-activity-active",
-      "evidence": "canonical surface codex/top10-lambdarank-screen-20260625 activity 2026-06-26. Canonical surface uncertainty (newest-live-surface): Newest live surface for LambdaRankIC selected by committer date with lexical branch-name tie-break; tip committer date 2026-06-26.",
-      "confidence": "low",
-      "alternatives": [
-        "codex/lambdarankic-lower-pair-screen"
-      ],
-      "last_reviewed": "2026-07-08"
-    },
-    "Lambdarankic 110 Name Stability Run Plan": {
-      "status": "active",
       "canonical_surface": "codex/lambdarankic-ytd-drive-durability-20260714",
-      "rule": "open-issue-active",
-      "evidence": "matching open issue #25 (https://github.com/magilliam27/MCI-GRU/issues/25), issue #30 (https://github.com/magilliam27/MCI-GRU/issues/30), issue #31 (https://github.com/magilliam27/MCI-GRU/issues/31). Canonical surface uncertainty (newest-live-surface): Newest live surface for Lambdarankic 110 Name Stability Run Plan selected by committer date with lexical branch-name tie-break; tip committer date 2026-07-14. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Issue title association is ambiguous across exact workstream terms.",
+      "rule": "recent-activity-active",
+      "evidence": "canonical surface codex/lambdarankic-ytd-drive-durability-20260714 activity 2026-07-14. Canonical surface uncertainty (newest-live-surface): Newest live surface for LambdaRankIC selected by committer date with lexical branch-name tie-break; tip committer date 2026-07-14. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted.",
       "confidence": "low",
       "alternatives": [
-        "done: closed matching issue #26 (https://github.com/magilliam27/MCI-GRU/issues/26), issue #28 (https://github.com/magilliam27/MCI-GRU/issues/28), but matching open issue #25, #30, #31 prevents completion",
-        "association ambiguity: issue #28 (https://github.com/magilliam27/MCI-GRU/issues/28) matches workstreams Lambdarankic 110 Name Stability Run Plan, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay",
-        "association ambiguity: issue #31 (https://github.com/magilliam27/MCI-GRU/issues/31) matches workstreams Lambdarankic 110 Name Stability Run Plan, Lambdarankic Cross Seed Agreement Diagnostics, Loss Seed Matrix Evidence",
         "archive: resolve uncertain worktree state for codex/lambdarankic-ytd-drive-durability-20260714",
         "codex/lambdarankic-1024-all-years-20260625",
         "codex/lambdarankic-2026-ytd-20260713",
+        "codex/lambdarankic-lower-pair-screen",
         "codex/lambdarankic-saved-prediction-replay-20260713",
-        "workstream association: Lambdarankic 2026 Ytd is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic Cross Seed Agreement Diagnostics is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic G4 Recovery Relaunch Patch is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic Rank Drop Sensitivity Replay is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic Saved Prediction Replay is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan",
-        "workstream association: Lambdarankic Stability Diagnostics Coordination is tied with deterministic primary Lambdarankic 110 Name Stability Run Plan"
-      ],
-      "last_reviewed": "2026-07-14"
-    },
-    "Lambdarankic 2026 Ytd": {
-      "status": "stale",
-      "canonical_surface": "",
-      "rule": "association-tie-unselected",
-      "evidence": "Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-1024-all-years-20260625 was assigned to Lambdarankic 110 Name Stability Run Plan; no selected surface remains for Lambdarankic 2026 Ytd. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-2026-ytd-20260713 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic 2026 Ytd. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-saved-prediction-replay-20260713 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic 2026 Ytd. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-ytd-drive-durability-20260714 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic 2026 Ytd.",
-      "confidence": "low",
-      "alternatives": [
-        "active: associate codex/lambdarankic-1024-all-years-20260625 with Lambdarankic 2026 Ytd instead of Lambdarankic 110 Name Stability Run Plan",
-        "active: associate codex/lambdarankic-2026-ytd-20260713 with Lambdarankic 2026 Ytd instead of Lambdarankic 110 Name Stability Run Plan",
-        "active: associate codex/lambdarankic-saved-prediction-replay-20260713 with Lambdarankic 2026 Ytd instead of Lambdarankic 110 Name Stability Run Plan",
-        "active: associate codex/lambdarankic-ytd-drive-durability-20260714 with Lambdarankic 2026 Ytd instead of Lambdarankic 110 Name Stability Run Plan"
-      ],
-      "last_reviewed": "2026-07-14"
-    },
-    "Lambdarankic Cross Seed Agreement Diagnostics": {
-      "status": "active",
-      "canonical_surface": "",
-      "rule": "open-issue-active",
-      "evidence": "matching open issue #31 (https://github.com/magilliam27/MCI-GRU/issues/31). Issue title association is ambiguous across exact workstream terms. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-1024-all-years-20260625 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic Cross Seed Agreement Diagnostics. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-2026-ytd-20260713 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic Cross Seed Agreement Diagnostics. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-saved-prediction-replay-20260713 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic Cross Seed Agreement Diagnostics. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-ytd-drive-durability-20260714 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic Cross Seed Agreement Diagnostics. Workstream association ambiguity: equal best branch-term matches Docs Research Evidence Consolidation, Docs and research evidence, Filter Missing Sp500 Rics, Lambdarankic Cross Seed Agreement Diagnostics, Loss Seed Matrix Evidence; Docs Research Evidence Consolidation is the deterministic primary and all tied workstreams are retained. Surface codex/salvage-loss-seed-matrix-evidence-20260707 was assigned to Docs Research Evidence Consolidation instead of Lambdarankic Cross Seed Agreement Diagnostics.",
-      "confidence": "low",
-      "alternatives": [
-        "association ambiguity: issue #31 (https://github.com/magilliam27/MCI-GRU/issues/31) matches workstreams Lambdarankic 110 Name Stability Run Plan, Lambdarankic Cross Seed Agreement Diagnostics, Loss Seed Matrix Evidence",
-        "active: associate codex/lambdarankic-1024-all-years-20260625 with Lambdarankic Cross Seed Agreement Diagnostics instead of Lambdarankic 110 Name Stability Run Plan",
-        "active: associate codex/lambdarankic-2026-ytd-20260713 with Lambdarankic Cross Seed Agreement Diagnostics instead of Lambdarankic 110 Name Stability Run Plan",
-        "active: associate codex/lambdarankic-saved-prediction-replay-20260713 with Lambdarankic Cross Seed Agreement Diagnostics instead of Lambdarankic 110 Name Stability Run Plan",
-        "active: associate codex/lambdarankic-ytd-drive-durability-20260714 with Lambdarankic Cross Seed Agreement Diagnostics instead of Lambdarankic 110 Name Stability Run Plan",
-        "active: associate codex/salvage-loss-seed-matrix-evidence-20260707 with Lambdarankic Cross Seed Agreement Diagnostics instead of Docs Research Evidence Consolidation"
-      ],
-      "last_reviewed": "2026-07-14"
-    },
-    "Lambdarankic G4 Recovery Relaunch Patch": {
-      "status": "stale",
-      "canonical_surface": "",
-      "rule": "association-tie-unselected",
-      "evidence": "Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-1024-all-years-20260625 was assigned to Lambdarankic 110 Name Stability Run Plan; no selected surface remains for Lambdarankic G4 Recovery Relaunch Patch. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-2026-ytd-20260713 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic G4 Recovery Relaunch Patch. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-saved-prediction-replay-20260713 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic G4 Recovery Relaunch Patch. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-ytd-drive-durability-20260714 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic G4 Recovery Relaunch Patch.",
-      "confidence": "low",
-      "alternatives": [
-        "active: associate codex/lambdarankic-1024-all-years-20260625 with Lambdarankic G4 Recovery Relaunch Patch instead of Lambdarankic 110 Name Stability Run Plan",
-        "active: associate codex/lambdarankic-2026-ytd-20260713 with Lambdarankic G4 Recovery Relaunch Patch instead of Lambdarankic 110 Name Stability Run Plan",
-        "active: associate codex/lambdarankic-saved-prediction-replay-20260713 with Lambdarankic G4 Recovery Relaunch Patch instead of Lambdarankic 110 Name Stability Run Plan",
-        "active: associate codex/lambdarankic-ytd-drive-durability-20260714 with Lambdarankic G4 Recovery Relaunch Patch instead of Lambdarankic 110 Name Stability Run Plan"
-      ],
-      "last_reviewed": "2026-07-14"
-    },
-    "Lambdarankic Rank Drop Sensitivity Replay": {
-      "status": "done",
-      "canonical_surface": "",
-      "rule": "github-complete",
-      "evidence": "closed matching issue #28 (https://github.com/magilliam27/MCI-GRU/issues/28); no live surface remains. Issue title association is ambiguous across exact workstream terms. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-1024-all-years-20260625 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic Rank Drop Sensitivity Replay. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-2026-ytd-20260713 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic Rank Drop Sensitivity Replay. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-saved-prediction-replay-20260713 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic Rank Drop Sensitivity Replay. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-ytd-drive-durability-20260714 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic Rank Drop Sensitivity Replay.",
-      "confidence": "low",
-      "alternatives": [
-        "association ambiguity: issue #28 (https://github.com/magilliam27/MCI-GRU/issues/28) matches workstreams Lambdarankic 110 Name Stability Run Plan, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay",
-        "active: associate codex/lambdarankic-1024-all-years-20260625 with Lambdarankic Rank Drop Sensitivity Replay instead of Lambdarankic 110 Name Stability Run Plan",
-        "active: associate codex/lambdarankic-2026-ytd-20260713 with Lambdarankic Rank Drop Sensitivity Replay instead of Lambdarankic 110 Name Stability Run Plan",
-        "active: associate codex/lambdarankic-saved-prediction-replay-20260713 with Lambdarankic Rank Drop Sensitivity Replay instead of Lambdarankic 110 Name Stability Run Plan",
-        "active: associate codex/lambdarankic-ytd-drive-durability-20260714 with Lambdarankic Rank Drop Sensitivity Replay instead of Lambdarankic 110 Name Stability Run Plan"
-      ],
-      "last_reviewed": "2026-07-14"
-    },
-    "Lambdarankic Saved Prediction Replay": {
-      "status": "active",
-      "canonical_surface": "",
-      "rule": "open-issue-active",
-      "evidence": "matching open issue #22 (https://github.com/magilliam27/MCI-GRU/issues/22), issue #24 (https://github.com/magilliam27/MCI-GRU/issues/24). Issue title association is ambiguous across exact workstream terms. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-1024-all-years-20260625 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic Saved Prediction Replay. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-2026-ytd-20260713 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic Saved Prediction Replay. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-saved-prediction-replay-20260713 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic Saved Prediction Replay. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-ytd-drive-durability-20260714 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic Saved Prediction Replay.",
-      "confidence": "low",
-      "alternatives": [
-        "done: closed matching issue #28 (https://github.com/magilliam27/MCI-GRU/issues/28), but matching open issue #22, #24 prevents completion",
-        "association ambiguity: issue #28 (https://github.com/magilliam27/MCI-GRU/issues/28) matches workstreams Lambdarankic 110 Name Stability Run Plan, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay",
-        "active: associate codex/lambdarankic-1024-all-years-20260625 with Lambdarankic Saved Prediction Replay instead of Lambdarankic 110 Name Stability Run Plan",
-        "active: associate codex/lambdarankic-2026-ytd-20260713 with Lambdarankic Saved Prediction Replay instead of Lambdarankic 110 Name Stability Run Plan",
-        "active: associate codex/lambdarankic-saved-prediction-replay-20260713 with Lambdarankic Saved Prediction Replay instead of Lambdarankic 110 Name Stability Run Plan",
-        "active: associate codex/lambdarankic-ytd-drive-durability-20260714 with Lambdarankic Saved Prediction Replay instead of Lambdarankic 110 Name Stability Run Plan"
-      ],
-      "last_reviewed": "2026-07-14"
-    },
-    "Lambdarankic Stability Diagnostics Coordination": {
-      "status": "stale",
-      "canonical_surface": "",
-      "rule": "association-tie-unselected",
-      "evidence": "Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-1024-all-years-20260625 was assigned to Lambdarankic 110 Name Stability Run Plan; no selected surface remains for Lambdarankic Stability Diagnostics Coordination. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-2026-ytd-20260713 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic Stability Diagnostics Coordination. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-saved-prediction-replay-20260713 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic Stability Diagnostics Coordination. Workstream association ambiguity: equal best branch-term matches Lambdarankic 110 Name Stability Run Plan, Lambdarankic 2026 Ytd, Lambdarankic Cross Seed Agreement Diagnostics, Lambdarankic G4 Recovery Relaunch Patch, Lambdarankic Rank Drop Sensitivity Replay, Lambdarankic Saved Prediction Replay, Lambdarankic Stability Diagnostics Coordination; Lambdarankic 110 Name Stability Run Plan is the deterministic primary and all tied workstreams are retained. Surface codex/lambdarankic-ytd-drive-durability-20260714 was assigned to Lambdarankic 110 Name Stability Run Plan instead of Lambdarankic Stability Diagnostics Coordination.",
-      "confidence": "low",
-      "alternatives": [
-        "active: associate codex/lambdarankic-1024-all-years-20260625 with Lambdarankic Stability Diagnostics Coordination instead of Lambdarankic 110 Name Stability Run Plan",
-        "active: associate codex/lambdarankic-2026-ytd-20260713 with Lambdarankic Stability Diagnostics Coordination instead of Lambdarankic 110 Name Stability Run Plan",
-        "active: associate codex/lambdarankic-saved-prediction-replay-20260713 with Lambdarankic Stability Diagnostics Coordination instead of Lambdarankic 110 Name Stability Run Plan",
-        "active: associate codex/lambdarankic-ytd-drive-durability-20260714 with Lambdarankic Stability Diagnostics Coordination instead of Lambdarankic 110 Name Stability Run Plan"
+        "codex/top10-lambdarank-screen-20260625"
       ],
       "last_reviewed": "2026-07-14"
     },
@@ -774,10 +642,9 @@
       "status": "active",
       "canonical_surface": "",
       "rule": "open-issue-active",
-      "evidence": "matching open issue #31 (https://github.com/magilliam27/MCI-GRU/issues/31). Issue title association is ambiguous across exact workstream terms. Workstream association ambiguity: equal best branch-term matches Docs Research Evidence Consolidation, Docs and research evidence, Filter Missing Sp500 Rics, Lambdarankic Cross Seed Agreement Diagnostics, Loss Seed Matrix Evidence; Docs Research Evidence Consolidation is the deterministic primary and all tied workstreams are retained. Surface codex/salvage-loss-seed-matrix-evidence-20260707 was assigned to Docs Research Evidence Consolidation instead of Loss Seed Matrix Evidence.",
+      "evidence": "matching open issue #31 (https://github.com/magilliam27/MCI-GRU/issues/31). Workstream association ambiguity: equal best branch-term matches Docs Research Evidence Consolidation, Docs and research evidence, Filter Missing Sp500 Rics, Loss Seed Matrix Evidence; Docs Research Evidence Consolidation is the deterministic primary and all tied workstreams are retained. Surface codex/salvage-loss-seed-matrix-evidence-20260707 was assigned to Docs Research Evidence Consolidation instead of Loss Seed Matrix Evidence.",
       "confidence": "low",
       "alternatives": [
-        "association ambiguity: issue #31 (https://github.com/magilliam27/MCI-GRU/issues/31) matches workstreams Lambdarankic 110 Name Stability Run Plan, Lambdarankic Cross Seed Agreement Diagnostics, Loss Seed Matrix Evidence",
         "active: associate codex/salvage-loss-seed-matrix-evidence-20260707 with Loss Seed Matrix Evidence instead of Docs Research Evidence Consolidation"
       ],
       "last_reviewed": "2026-07-07"
