@@ -64,6 +64,17 @@ CSV / LSEG / FRED
    decisions, and feature-drift metrics. `run_experiment.py` writes
    `evaluation_summary.json` and train-only `feature_reference.json`.
 
+   The no-retraining research-ledger path is separate from economic replay:
+   `scripts/run_saved_prediction_selection_audit.py --research-evidence` loads
+   one frozen saved-prediction set, an adjusted-close market panel, PIT
+   intervals, a complete expected-scorable manifest, and a canonical session
+   calendar. `selection_audit.py` validates every requested date before metrics;
+   `selection_nulls.py` runs the deterministic matched within-date score null;
+   and `artifacts.py` writes one versioned five-file bundle (`protocol.json`,
+   `date_evidence.csv`, `result.json`, `report.md`, `manifest.json`). This path
+   measures dated stock-selection information only. It does not model capital,
+   orders, fills, costs, leverage, or paper trading.
+
 ## Model Architecture (mci_gru/models/mci_gru.py)
 
 Four parallel streams whose outputs are concatenated before the final predictor:

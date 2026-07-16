@@ -2,6 +2,7 @@
   "format_version": 2,
   "workstream_aliases": {
     "lambdarank": "LambdaRankIC",
+    "lambdarankic": "LambdaRankIC",
     "top10": "LambdaRankIC",
     "portfolio-ic": "Portfolio-IC",
     "issue8": "Issue #8 volatility targeting",
