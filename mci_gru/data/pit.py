@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 
 import numpy as np
 import pandas as pd
@@ -17,8 +18,52 @@ class PITMaskSet:
     tradable: np.ndarray
 
 
-def normalise_pit_intervals(pit_intervals: pd.DataFrame) -> pd.DataFrame:
-    """Return ``kdcode, valid_from, valid_to`` intervals with normalised dates."""
+class PITKnowledgeClass(str, Enum):
+    """Strength of the membership-provenance evidence at a signal close."""
+
+    KNOWN_AS_OF = "KNOWN_AS_OF"
+    EFFECTIVE_ONLY = "EFFECTIVE_ONLY"
+    UNKNOWN = "UNKNOWN"
+
+
+def _as_utc_timestamp(
+    value: object,
+    *,
+    naive_timezone: str = "UTC",
+) -> pd.Timestamp | None:
+    try:
+        timestamp = pd.Timestamp(value)
+    except (TypeError, ValueError):
+        return None
+    if pd.isna(timestamp):
+        return None
+    if timestamp.tzinfo is None:
+        try:
+            return timestamp.tz_localize(naive_timezone).tz_convert("UTC")
+        except (TypeError, ValueError):
+            return None
+    return timestamp.tz_convert("UTC")
+
+
+def _normalise_known_from(value: object, *, naive_timezone: str) -> object:
+    timestamp = _as_utc_timestamp(value, naive_timezone=naive_timezone)
+    if timestamp is None:
+        return pd.NA
+    return timestamp.isoformat().replace("+00:00", "Z")
+
+
+def normalise_pit_intervals(
+    pit_intervals: pd.DataFrame,
+    *,
+    known_from_timezone: str = "UTC",
+) -> pd.DataFrame:
+    """Return PIT intervals with normalised dates and optional knowledge time.
+
+    Legacy effective-date-only inputs remain valid. ``known_from`` is preserved
+    only when supplied; it is never inferred from ``valid_from``. Naive
+    ``known_from`` values use the explicitly supplied ``known_from_timezone``
+    (UTC by default), and timezone-aware values are converted to canonical UTC.
+    """
     frame = pit_intervals.copy()
     frame.columns = [str(c).strip().lower() for c in frame.columns]
     if "constituent_ric" in frame.columns and "kdcode" not in frame.columns:
@@ -27,12 +72,64 @@ def normalise_pit_intervals(pit_intervals: pd.DataFrame) -> pd.DataFrame:
     missing = required - set(frame.columns)
     if missing:
         raise ValueError(f"PIT intervals missing columns: {sorted(missing)}")
-    frame = frame[["kdcode", "valid_from", "valid_to"]].copy()
+    columns = ["kdcode", "valid_from", "valid_to"]
+    if "known_from" in frame.columns:
+        columns.append("known_from")
+    frame = frame[columns].copy()
     frame = frame.dropna(subset=["kdcode", "valid_from", "valid_to"])
     frame["kdcode"] = frame["kdcode"].astype(str).str.strip()
     frame["valid_from"] = pd.to_datetime(frame["valid_from"]).dt.strftime("%Y-%m-%d")
     frame["valid_to"] = pd.to_datetime(frame["valid_to"]).dt.strftime("%Y-%m-%d")
+    if "known_from" in frame.columns:
+        frame["known_from"] = frame["known_from"].map(
+            lambda value: _normalise_known_from(
+                value,
+                naive_timezone=known_from_timezone,
+            )
+        )
     return frame[frame["kdcode"] != ""].reset_index(drop=True)
+
+
+def classify_pit_knowledge_as_of(
+    pit_intervals: pd.DataFrame,
+    signal_close: str | pd.Timestamp,
+    *,
+    known_from_timezone: str = "UTC",
+) -> PITKnowledgeClass:
+    """Classify active PIT membership evidence as known at ``signal_close``.
+
+    A legacy input without a ``known_from`` column is ``EFFECTIVE_ONLY``. When
+    the column is supplied, every interval active on the signal date must have
+    a valid timestamp no later than the signal close to be ``KNOWN_AS_OF``.
+    Missing, malformed, future-known, or non-active evidence is ``UNKNOWN``.
+    """
+    try:
+        local_signal_close = pd.Timestamp(signal_close)
+    except (TypeError, ValueError):
+        return PITKnowledgeClass.UNKNOWN
+    signal_close_utc = _as_utc_timestamp(local_signal_close)
+    if signal_close_utc is None:
+        return PITKnowledgeClass.UNKNOWN
+
+    intervals = normalise_pit_intervals(
+        pit_intervals,
+        known_from_timezone=known_from_timezone,
+    )
+    signal_date = local_signal_close.strftime("%Y-%m-%d")
+    active = intervals[
+        (intervals["valid_from"] <= signal_date) & (intervals["valid_to"] >= signal_date)
+    ]
+    if active.empty:
+        return PITKnowledgeClass.UNKNOWN
+    if "known_from" not in active.columns:
+        return PITKnowledgeClass.EFFECTIVE_ONLY
+
+    known_timestamps = [_as_utc_timestamp(value) for value in active["known_from"]]
+    if any(timestamp is None for timestamp in known_timestamps):
+        return PITKnowledgeClass.UNKNOWN
+    if any(timestamp > signal_close_utc for timestamp in known_timestamps if timestamp is not None):
+        return PITKnowledgeClass.UNKNOWN
+    return PITKnowledgeClass.KNOWN_AS_OF
 
 
 def load_pit_intervals(csv_path: str) -> pd.DataFrame:
