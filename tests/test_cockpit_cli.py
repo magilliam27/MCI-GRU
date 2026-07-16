@@ -19,6 +19,8 @@ def test_refresh_cockpit_help_lists_local_only_default() -> None:
     assert "--date" in completed.stdout
     assert "--repo-root" in completed.stdout
     assert "--github-sync" in completed.stdout
+    assert "--auto-decisions" in completed.stdout
+    assert "--no-auto-decisions" in completed.stdout
     assert "disabled by default" in completed.stdout
 
 
@@ -38,10 +40,15 @@ def test_cockpit_docs_are_linked_from_index() -> None:
 
 def test_refresh_cockpit_github_sync_uses_live_runner(monkeypatch, tmp_path: Path) -> None:
     module = importlib.import_module("scripts.refresh_cockpit")
-    calls: list[tuple[Path, date]] = []
+    calls: list[tuple[Path, date, bool]] = []
 
-    def fake_live_runner(repo_root: Path, run_date: date):
-        calls.append((repo_root, run_date))
+    def fake_live_runner(
+        repo_root: Path,
+        run_date: date,
+        *,
+        auto_decisions_enabled: bool = True,
+    ):
+        calls.append((repo_root, run_date, auto_decisions_enabled))
         return SimpleNamespace(
             register_path=repo_root / "docs" / "agents" / "workstreams.md",
             packet_path=repo_root / "docs" / "agents" / "cockpit" / "2026-06-20.md",
@@ -64,4 +71,81 @@ def test_refresh_cockpit_github_sync_uses_live_runner(monkeypatch, tmp_path: Pat
     )
 
     assert module.main() == 0
-    assert calls == [(tmp_path.resolve(), date(2026, 6, 20))]
+    assert calls == [(tmp_path.resolve(), date(2026, 6, 20), True)]
+
+
+def test_refresh_cockpit_enables_auto_decisions_for_local_runner_by_default(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    module = importlib.import_module("scripts.refresh_cockpit")
+    calls: list[tuple[Path, date, bool]] = []
+
+    def fake_local_runner(
+        repo_root: Path,
+        run_date: date,
+        *,
+        auto_decisions_enabled: bool = False,
+    ):
+        calls.append((repo_root, run_date, auto_decisions_enabled))
+        return SimpleNamespace(
+            register_path=repo_root / "docs" / "agents" / "workstreams.md",
+            packet_path=repo_root / "docs" / "agents" / "cockpit" / "2026-06-20.md",
+            color=SimpleNamespace(value="green"),
+            github=None,
+        )
+
+    monkeypatch.setattr(module, "run_local_cockpit_refresh", fake_local_runner)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "refresh_cockpit.py",
+            "--date",
+            "2026-06-20",
+            "--repo-root",
+            str(tmp_path),
+        ],
+    )
+
+    assert module.main() == 0
+    assert calls == [(tmp_path.resolve(), date(2026, 6, 20), True)]
+
+
+def test_refresh_cockpit_no_auto_decisions_uses_legacy_local_runner(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    module = importlib.import_module("scripts.refresh_cockpit")
+    calls: list[bool] = []
+
+    def fake_local_runner(
+        repo_root: Path,
+        run_date: date,
+        *,
+        auto_decisions_enabled: bool = True,
+    ):
+        calls.append(auto_decisions_enabled)
+        return SimpleNamespace(
+            register_path=repo_root / "docs" / "agents" / "workstreams.md",
+            packet_path=repo_root / "docs" / "agents" / "cockpit" / "2026-06-20.md",
+            color=SimpleNamespace(value="green"),
+            github=None,
+        )
+
+    monkeypatch.setattr(module, "run_local_cockpit_refresh", fake_local_runner)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "refresh_cockpit.py",
+            "--date",
+            "2026-06-20",
+            "--repo-root",
+            str(tmp_path),
+            "--no-auto-decisions",
+        ],
+    )
+
+    assert module.main() == 0
+    assert calls == [False]

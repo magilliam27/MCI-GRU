@@ -2,8 +2,14 @@ from __future__ import annotations
 
 from datetime import date
 
+from cockpit.decisions import SurfaceDisposition
 from cockpit.models import (
+    AutoDecisionChange,
+    AutoDisposition,
+    AutoOverride,
+    AutoWorkstreamDecision,
     CockpitReport,
+    Confidence,
     Decision,
     GitHubAction,
     RunColor,
@@ -90,3 +96,246 @@ def test_render_cockpit_packet_surfaces_decision_queue_and_skipped_actions() -> 
     assert "Choose whether to promote the weight sweep evidence." in markdown
     assert "## GitHub Actions Proposed Or Skipped" in markdown
     assert "GitHub sync disabled" in markdown
+
+
+def test_render_cockpit_packet_adds_deterministic_auto_decision_audit_sections() -> None:
+    disposition = AutoDisposition(
+        workstreams=("LambdaRankIC",),
+        disposition=SurfaceDisposition.CANONICAL,
+        rule="newest-live-surface",
+        evidence="Newest branch activity is 2026-07-11.",
+        confidence=Confidence.LOW,
+        alternatives=("codex/lambdarank-old",),
+        last_reviewed=date(2026, 7, 11),
+    )
+    status = AutoWorkstreamDecision(
+        status=WorkstreamStatus.ACTIVE,
+        canonical_surface="codex/lambdarank-new",
+        rule="recent-activity-active",
+        evidence="Canonical surface activity is within 30 days.",
+        confidence=Confidence.LOW,
+        alternatives=("stale: competing live surface remains",),
+        last_reviewed=date(2026, 7, 11),
+    )
+    report = CockpitReport(
+        run_date=date(2026, 7, 12),
+        color=RunColor.YELLOW,
+        executive_summary="Policy applied.",
+        auto_decisions_enabled=True,
+        auto_dispositions={"codex/lambdarank-new": disposition},
+        auto_workstream_decisions={"LambdaRankIC": status},
+        low_confidence_decisions=[
+            disposition.low_confidence("surface", "codex/lambdarank-new"),
+            status.low_confidence("workstream", "LambdaRankIC"),
+        ],
+        overrides_applied=[
+            AutoOverride(
+                kind="workstream",
+                target="LambdaRankIC",
+                generated_choice="active",
+                override_choice="parked",
+                rule="recent-activity-active",
+                confidence=Confidence.LOW,
+                evidence="Canonical surface activity is within 30 days.",
+                alternatives=("stale: competing live surface remains",),
+            )
+        ],
+    )
+
+    markdown = render_cockpit_packet(report)
+
+    assert "## Auto-Dispositions Applied" in markdown
+    assert "**codex/lambdarank-new** → canonical" in markdown
+    assert "rule `newest-live-surface`; confidence low" in markdown
+    assert "Alternatives: codex/lambdarank-old" in markdown
+    assert "## Auto-Statuses Applied" in markdown
+    assert "**LambdaRankIC** → active" in markdown
+    assert "canonical `codex/lambdarank-new`" in markdown
+    assert "## Low-Confidence Decisions" in markdown
+    assert "## Overrides Applied" in markdown
+    assert "generated active, override parked" in markdown
+
+
+def test_render_cockpit_packet_lists_generated_decision_changes() -> None:
+    report = CockpitReport(
+        run_date=date(2026, 7, 13),
+        color=RunColor.GREEN,
+        executive_summary="Policy applied.",
+        auto_decisions_enabled=True,
+        decision_changes=[
+            AutoDecisionChange(
+                kind="surface",
+                target="codex/new",
+                change="added",
+                after="canonical",
+            ),
+            AutoDecisionChange(
+                kind="surface",
+                target="codex/old",
+                change="removed",
+                before="stale",
+            ),
+            AutoDecisionChange(
+                kind="workstream",
+                target="Alpha",
+                change="choice",
+                before="active",
+                after="parked",
+            ),
+            AutoDecisionChange(
+                kind="workstream",
+                target="Alpha",
+                change="confidence",
+                before="high",
+                after="low",
+            ),
+            AutoDecisionChange(
+                kind="workstream",
+                target="Alpha",
+                change="override-added",
+                before="parked",
+                after="blocked",
+            ),
+        ],
+    )
+
+    markdown = render_cockpit_packet(report)
+
+    assert "## Generated Decision Changes" in markdown
+    assert "**surface codex/new**: added as canonical" in markdown
+    assert "**surface codex/old**: removed (was stale)" in markdown
+    assert "**workstream Alpha**: choice changed active → parked" in markdown
+    assert "**workstream Alpha**: confidence changed high → low" in markdown
+    assert "**workstream Alpha**: override added; generated parked → explicit blocked" in markdown
+
+
+def test_render_cockpit_packet_labels_generated_metadata_fields_and_values() -> None:
+    report = CockpitReport(
+        run_date=date(2026, 7, 13),
+        color=RunColor.GREEN,
+        executive_summary="Policy applied.",
+        auto_decisions_enabled=True,
+        decision_changes=[
+            AutoDecisionChange(
+                kind="surface",
+                target="codex/alpha",
+                change="metadata",
+                field="association_basis",
+                before="branch-term",
+                after="issue-link",
+            ),
+            AutoDecisionChange(
+                kind="workstream",
+                target="Alpha",
+                change="metadata",
+                field="canonical_surface",
+                before="codex/alpha",
+                after="none",
+            ),
+        ],
+    )
+
+    markdown = render_cockpit_packet(report)
+
+    assert (
+        "**surface codex/alpha**: metadata `association_basis` changed "
+        "branch-term → issue-link" in markdown
+    )
+    assert (
+        "**workstream Alpha**: metadata `canonical_surface` changed codex/alpha → none" in markdown
+    )
+
+
+def test_render_cockpit_packet_labels_changed_override_direction() -> None:
+    report = CockpitReport(
+        run_date=date(2026, 7, 13),
+        color=RunColor.GREEN,
+        executive_summary="Policy applied.",
+        auto_decisions_enabled=True,
+        decision_changes=[
+            AutoDecisionChange(
+                kind="surface",
+                target="codex/alpha",
+                change="override-changed",
+                before="archive",
+                after="stale",
+            )
+        ],
+    )
+
+    markdown = render_cockpit_packet(report)
+
+    assert (
+        "**surface codex/alpha**: override changed; explicit archive → explicit stale" in markdown
+    )
+
+
+def test_render_cockpit_packet_labels_metadata_only_override_change() -> None:
+    report = CockpitReport(
+        run_date=date(2026, 7, 13),
+        color=RunColor.GREEN,
+        executive_summary="Policy applied.",
+        auto_decisions_enabled=True,
+        decision_changes=[
+            AutoDecisionChange(
+                kind="surface",
+                target="codex/alpha",
+                change="override-changed",
+                before="archive",
+                after="archive",
+            )
+        ],
+    )
+
+    markdown = render_cockpit_packet(report)
+
+    assert (
+        "**surface codex/alpha**: override changed; explicit archive metadata updated" in markdown
+    )
+
+
+def test_render_cockpit_packet_labels_cleared_override_direction() -> None:
+    report = CockpitReport(
+        run_date=date(2026, 7, 13),
+        color=RunColor.GREEN,
+        executive_summary="Policy applied.",
+        auto_decisions_enabled=True,
+        decision_changes=[
+            AutoDecisionChange(
+                kind="workstream",
+                target="Alpha",
+                change="override-cleared",
+                before="parked",
+                after="active",
+            )
+        ],
+    )
+
+    markdown = render_cockpit_packet(report)
+
+    assert "**workstream Alpha**: override cleared; explicit parked → generated active" in markdown
+
+
+def test_render_cockpit_packet_labels_cleared_override_without_generated_target() -> None:
+    report = CockpitReport(
+        run_date=date(2026, 7, 13),
+        color=RunColor.GREEN,
+        executive_summary="Policy applied.",
+        auto_decisions_enabled=True,
+        decision_changes=[
+            AutoDecisionChange(
+                kind="surface",
+                target="codex/gone",
+                change="override-cleared",
+                before="archive",
+                after="none",
+            )
+        ],
+    )
+
+    markdown = render_cockpit_packet(report)
+
+    assert (
+        "**surface codex/gone**: override cleared; explicit archive → no generated decision"
+        in markdown
+    )
