@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -166,6 +167,49 @@ def _build_git_topology(
     current_branch = _parse_current_branch(status_branch)
     if _is_detached_branch_name(current_branch):
         current_branch = _detached_current_branch(repo_root, parsed_worktrees)
+    current_path = _normalize_path(repo_root)
+    control_plane_worktree: WorktreeEvidence | None = None
+    for index, worktree in enumerate(parsed_worktrees):
+        if _normalize_path(Path(worktree.path)) != current_path:
+            continue
+        control_plane_worktree = WorktreeEvidence(
+            path=worktree.path,
+            head=worktree.head,
+            branch=worktree.branch,
+            detached=worktree.detached,
+            status_header=worktree.status_header,
+            dirty_paths=worktree.dirty_paths,
+            status_error=worktree.status_error,
+            origin_main_ahead=origin_main_divergence[0],
+            origin_main_behind=origin_main_divergence[1],
+        )
+        parsed_worktrees[index] = control_plane_worktree
+        break
+    if control_plane_worktree is None:
+        fallback = parsed_worktrees[0] if parsed_worktrees else None
+        control_plane_worktree = WorktreeEvidence(
+            path=fallback.path if fallback is not None else repo_root.as_posix(),
+            head=fallback.head if fallback is not None else "unknown",
+            branch=fallback.branch if fallback is not None else current_branch,
+            detached=(
+                fallback.detached
+                if fallback is not None
+                else _is_detached_branch_name(current_branch)
+            ),
+            status_header=(
+                fallback.status_header
+                if fallback is not None
+                else _first_status_header(status_branch)
+            ),
+            dirty_paths=(
+                fallback.dirty_paths if fallback is not None else _parse_dirty_paths(status_branch)
+            ),
+            status_error=fallback.status_error if fallback is not None else "",
+            origin_main_ahead=origin_main_divergence[0],
+            origin_main_behind=origin_main_divergence[1],
+        )
+        if fallback is not None:
+            parsed_worktrees[0] = control_plane_worktree
     return GitTopologySnapshot(
         current_branch=current_branch,
         status_header=_first_status_header(status_branch),
@@ -175,6 +219,8 @@ def _build_git_topology(
         unmerged_branches=[branch.name for branch in unmerged_branches],
         unmerged_branch_details=unmerged_branches,
         worktrees=parsed_worktrees,
+        control_plane_worktree=control_plane_worktree,
+        primary_worktree=parsed_worktrees[0] if parsed_worktrees else control_plane_worktree,
     )
 
 
@@ -324,6 +370,12 @@ def _collect_worktree_statuses(
                 )
             )
             continue
+        status_divergence = _status_origin_main_divergence(status)
+        origin_main_ahead, origin_main_behind = _worktree_origin_main_divergence(
+            worktree,
+            run_command,
+            fallback=status_divergence,
+        )
         with_status.append(
             WorktreeEvidence(
                 path=worktree.path,
@@ -332,9 +384,59 @@ def _collect_worktree_statuses(
                 detached=worktree.detached,
                 status_header=_first_status_header(status),
                 dirty_paths=_parse_dirty_paths(status),
+                origin_main_ahead=origin_main_ahead,
+                origin_main_behind=origin_main_behind,
             )
         )
     return with_status
+
+
+def _worktree_origin_main_divergence(
+    worktree: WorktreeEvidence,
+    run_command: RunCommand,
+    *,
+    fallback: tuple[int | None, int | None],
+) -> tuple[int | None, int | None]:
+    try:
+        output = run_command(
+            [
+                "git",
+                "-c",
+                f"safe.directory={worktree.path}",
+                "-C",
+                worktree.path,
+                "rev-list",
+                "--left-right",
+                "--count",
+                "origin/main...HEAD",
+            ]
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return fallback
+    parsed = _parse_optional_divergence(output)
+    return parsed if parsed != (None, None) else fallback
+
+
+def _parse_optional_divergence(output: str) -> tuple[int | None, int | None]:
+    parts = output.split()
+    if len(parts) < 2:
+        return (None, None)
+    try:
+        return (int(parts[1]), int(parts[0]))
+    except ValueError:
+        return (None, None)
+
+
+def _status_origin_main_divergence(status_output: str) -> tuple[int | None, int | None]:
+    header = _first_status_header(status_output)
+    if "...origin/main" not in header or "[gone]" in header:
+        return (None, None)
+    ahead_match = re.search(r"\bahead (\d+)\b", header)
+    behind_match = re.search(r"\bbehind (\d+)\b", header)
+    return (
+        int(ahead_match.group(1)) if ahead_match else 0,
+        int(behind_match.group(1)) if behind_match else 0,
+    )
 
 
 def _run_git(args: list[str], cwd: Path) -> str:

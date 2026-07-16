@@ -1097,7 +1097,7 @@ def test_custom_workstream_seed_association_basis_fails_closed() -> None:
     assert decisions.surfaces[branch].association_basis == "unclassified"
 
 
-def test_linked_pull_request_grounds_title_fallback_surface_association() -> None:
+def test_linked_pull_request_preserves_title_fallback_surface_provenance() -> None:
     branch = "codex/novel-stream"
     seed = WorkstreamSeed(
         name="Novel stream",
@@ -1118,10 +1118,10 @@ def test_linked_pull_request_grounds_title_fallback_surface_association() -> Non
         github_evidence=GitHubEvidence(pull_requests=(_pr(80, branch, state="open"),)),
     )
 
-    assert decisions.surfaces[branch].association_basis == "linked-pr"
+    assert decisions.surfaces[branch].association_basis == "title-case-fallback"
 
 
-def test_unambiguous_linked_issue_grounds_title_fallback_surface_association() -> None:
+def test_unambiguous_linked_issue_preserves_title_fallback_surface_provenance() -> None:
     branch = "codex/novel-stream"
     seed = WorkstreamSeed(
         name="Novel stream",
@@ -1144,7 +1144,7 @@ def test_unambiguous_linked_issue_grounds_title_fallback_surface_association() -
         ),
     )
 
-    assert decisions.surfaces[branch].association_basis == "linked-issue"
+    assert decisions.surfaces[branch].association_basis == "title-case-fallback"
 
 
 def test_dirty_attached_worktree_is_not_archived_as_merged() -> None:

@@ -139,9 +139,7 @@ GIT_ACTIVITY_STOPWORDS = frozenset(
 # would create a permanent bogus row (e.g. "Main") that can never be retired.
 GIT_ACTIVITY_EXCLUDED_BRANCHES = frozenset({"main", "master", "head", "(no branch)"})
 
-INDEPENDENT_ASSOCIATION_BASES = frozenset(
-    {"explicit-surface", "explicit-alias", "branch-term", "linked-pr", "linked-issue"}
-)
+INDEPENDENT_ASSOCIATION_BASES = frozenset({"explicit-surface", "explicit-alias", "branch-term"})
 
 # ``YYYY-MM-DD-<slug>.md`` handoff filename shape.
 _HANDOFF_FILENAME = re.compile(r"^(\d{4}-\d{2}-\d{2})-(.+)\.md$")
@@ -445,19 +443,31 @@ def _without_current_worktree_dirty_paths(
     if "" in ignored:
         raise ValueError("ignored_dirty_paths must contain non-empty paths")
     current_worktree = _path_key(str(repo_root.resolve()))
-    worktrees = [
-        replace(
+
+    def without_owned_paths(worktree: WorktreeEvidence) -> WorktreeEvidence:
+        if _path_key(worktree.path) != current_worktree:
+            return worktree
+        return replace(
             worktree,
             dirty_paths=[path for path in worktree.dirty_paths if _path_key(path) not in ignored],
         )
-        if _path_key(worktree.path) == current_worktree
-        else worktree
-        for worktree in evidence.git_topology.worktrees
-    ]
+
+    worktrees = [without_owned_paths(worktree) for worktree in evidence.git_topology.worktrees]
+    control_plane = evidence.git_topology.control_plane_worktree
+    if control_plane is not None:
+        control_plane = without_owned_paths(control_plane)
+    primary = evidence.git_topology.primary_worktree
+    if primary is not None:
+        primary = without_owned_paths(primary)
     return replace(
         evidence,
         dirty_paths=[path for path in evidence.dirty_paths if _path_key(path) not in ignored],
-        git_topology=replace(evidence.git_topology, worktrees=worktrees),
+        git_topology=replace(
+            evidence.git_topology,
+            worktrees=worktrees,
+            control_plane_worktree=control_plane,
+            primary_worktree=primary,
+        ),
     )
 
 
@@ -468,6 +478,12 @@ def _without_automation_branch_evidence(
     """Remove the producer's own dated branch from its policy input snapshot."""
     normalized = branch.casefold()
     topology = evidence.git_topology
+    control_plane = topology.control_plane_worktree
+    if control_plane is not None and control_plane.branch.casefold() == normalized:
+        control_plane = replace(control_plane, origin_main_ahead=0)
+    primary = topology.primary_worktree
+    if primary is not None and primary.branch.casefold() == normalized:
+        primary = replace(primary, origin_main_ahead=0)
     return replace(
         evidence,
         recent_branches=[
@@ -498,6 +514,8 @@ def _without_automation_branch_evidence(
                 for worktree in topology.worktrees
                 if worktree.branch.casefold() != normalized
             ],
+            control_plane_worktree=control_plane,
+            primary_worktree=primary,
         ),
     )
 
@@ -542,11 +560,35 @@ def run_local_cockpit_refresh(
             ignored_dirty_paths,
         )
     if projected_commits:
+        topology = evidence.git_topology
+        current_worktree = _path_key(str(repo_root.resolve()))
+
+        def with_projected_commits(
+            worktree: WorktreeEvidence,
+        ) -> WorktreeEvidence:
+            if _path_key(worktree.path) != current_worktree or worktree.origin_main_ahead is None:
+                return worktree
+            return replace(
+                worktree,
+                origin_main_ahead=worktree.origin_main_ahead + projected_commits,
+            )
+
         evidence = replace(
             evidence,
             git_topology=replace(
-                evidence.git_topology,
-                origin_main_ahead=evidence.git_topology.origin_main_ahead + projected_commits,
+                topology,
+                origin_main_ahead=topology.origin_main_ahead + projected_commits,
+                worktrees=[with_projected_commits(worktree) for worktree in topology.worktrees],
+                control_plane_worktree=(
+                    with_projected_commits(topology.control_plane_worktree)
+                    if topology.control_plane_worktree is not None
+                    else None
+                ),
+                primary_worktree=(
+                    with_projected_commits(topology.primary_worktree)
+                    if topology.primary_worktree is not None
+                    else None
+                ),
             ),
         )
     registry_names = read_registry_workstream_names(repo_root)
@@ -683,14 +725,19 @@ def run_local_cockpit_refresh(
         executive_summary=_executive_summary(evidence, workstreams),
         decisions=_decisions(evidence, color, workstreams),
         decision_workstreams=_decision_workstreams(workstreams),
-        active_workstreams=[row for row in workstreams if row.status == WorkstreamStatus.ACTIVE],
+        active_workstreams=[
+            row
+            for row in workstreams
+            if row.status in {WorkstreamStatus.ACTIVE, WorkstreamStatus.READY_FOR_AGENT}
+            and row.name != GIT_HYGIENE_SEED.name
+        ],
         blocked_workstreams=[row for row in workstreams if row.status == WorkstreamStatus.BLOCKED],
         local_only_work=[row for row in workstreams if row.status == WorkstreamStatus.LOCAL_ONLY],
+        parked_workstreams=[row for row in workstreams if row.status == WorkstreamStatus.PARKED],
         stale_or_archive_candidates=[
             row
             for row in workstreams
-            if row.status
-            in {WorkstreamStatus.PARKED, WorkstreamStatus.STALE, WorkstreamStatus.ARCHIVE}
+            if row.status in {WorkstreamStatus.STALE, WorkstreamStatus.ARCHIVE}
         ],
         github_actions_skipped=_github_actions_skipped(github_sync_enabled),
         git_tree_impact=_git_tree_impact(evidence.git_topology, git_snapshot_timing),
@@ -1553,10 +1600,20 @@ def _github_actions_skipped(github_sync_enabled: bool) -> list[GitHubAction]:
 
 
 def _git_tree_impact(topology: GitTopologySnapshot, snapshot_timing: str) -> list[str]:
+    control_plane = topology.control_plane_worktree or WorktreeEvidence(
+        path="unknown",
+        head="unknown",
+        branch=topology.current_branch,
+        detached=False,
+        status_header=topology.status_header,
+        origin_main_ahead=topology.origin_main_ahead,
+        origin_main_behind=topology.origin_main_behind,
+    )
+    primary = topology.primary_worktree or control_plane
     return [
         f"Git topology snapshot timing: {snapshot_timing}",
-        f"Current branch: `{topology.current_branch}`",
-        f"origin/main divergence: {topology.origin_main_ahead} ahead / {topology.origin_main_behind} behind",
+        _format_checkout("Control-plane checkout", control_plane),
+        _format_checkout("Canonical active checkout (primary worktree)", primary),
         f"Unmerged branches: {len(topology.unmerged_branches)}",
         (
             f"Worktrees: {len(topology.worktrees)} total, "
@@ -1566,6 +1623,18 @@ def _git_tree_impact(topology: GitTopologySnapshot, snapshot_timing: str) -> lis
         _format_worktree_list("Dirty worktrees", topology.dirty_worktrees),
         _format_worktree_list("Detached worktrees", topology.detached_worktrees),
     ]
+
+
+def _format_checkout(label: str, worktree: WorktreeEvidence) -> str:
+    if worktree.origin_main_ahead is None or worktree.origin_main_behind is None:
+        divergence = "origin/main divergence unavailable"
+    else:
+        divergence = (
+            f"origin/main divergence: {worktree.origin_main_ahead} ahead / "
+            f"{worktree.origin_main_behind} behind"
+        )
+    dirty = "yes" if worktree.is_dirty else "no"
+    return f"{label}: `{worktree.path}` on `{worktree.branch}`; {divergence}; dirty: {dirty}"
 
 
 def _format_branch_detail_list(label: str, topology: GitTopologySnapshot) -> str:
@@ -1617,7 +1686,11 @@ def _planned_github_sync(run_date: date) -> GitHubSyncResult:
         actions_taken=[
             "ensure the generated cockpit artifact set is committed on the dated branch",
             "ensure the dated cockpit PR and cockpit issue exist",
-            "ensure one dated cockpit issue digest and available cockpit labels",
+            (
+                "ensure one dated cockpit issue digest; reconcile and read back existing "
+                "cockpit-reviewed, codex, and codex-automation PR labels; persist the "
+                "label receipt in that digest"
+            ),
         ],
     )
 

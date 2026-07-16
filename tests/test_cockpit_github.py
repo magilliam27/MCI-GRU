@@ -536,6 +536,8 @@ def test_sync_github_creates_branch_pr_issue_and_comment_with_fake_runner(
     tmp_path: Path,
 ) -> None:
     commands: list[list[str]] = []
+    issue_labels: set[str] = set()
+    pr_labels: set[str] = set()
 
     def fake_run(args: list[str]) -> str:
         commands.append(args)
@@ -567,8 +569,14 @@ def test_sync_github_creates_branch_pr_issue_and_comment_with_fake_runner(
         if command.startswith("gh label list"):
             return "cockpit-reviewed\nready-for-agent\n"
         if command.startswith("gh issue view 100"):
-            return ""
+            return "\n".join(sorted(issue_labels))
         if command.startswith("gh issue edit 100"):
+            issue_labels.update(args[-1].split(","))
+            return ""
+        if command.startswith("gh pr view 99"):
+            return "\n".join(sorted(pr_labels))
+        if command.startswith("gh pr edit 99"):
+            pr_labels.update(args[-1].split(","))
             return ""
         if args[:3] == ["gh", "api", "repos/magilliam27/MCI-GRU/issues/100/comments"]:
             return "[[]]"
@@ -599,6 +607,112 @@ def test_sync_github_creates_branch_pr_issue_and_comment_with_fake_runner(
         assert "docs/agents/cockpit/override-receipts.json" in command
     assert any(command[:3] == ["gh", "pr", "list"] and "--state" in command for command in commands)
     assert any(command[:3] == ["gh", "issue", "comment"] for command in commands)
+
+
+def test_sync_github_labels_dated_pr_idempotently_and_reads_back(tmp_path: Path) -> None:
+    commands: list[list[str]] = []
+    digest_bodies: list[str] = []
+    pr_labels = {"codex"}
+    digest_comment: dict[str, object] | None = None
+
+    def fake_run(args: list[str]) -> str:
+        nonlocal digest_comment
+        commands.append(args)
+        command = " ".join(args)
+        if command == "gh auth status":
+            return "Logged in"
+        if command == "git branch --show-current":
+            return "codex/cockpit-refresh-20260620\n"
+        if command.startswith("git status --short -- docs/agents/workstreams.md"):
+            return ""
+        if command == "git push -u origin codex/cockpit-refresh-20260620":
+            return ""
+        if command.startswith("gh pr list"):
+            return _existing_cockpit_pr_payload()
+        if command.startswith("gh issue list"):
+            return "100"
+        if command.startswith("gh label list"):
+            return "cockpit-reviewed\ncodex\ncodex-automation-v2\n"
+        if command.startswith("gh issue view 100"):
+            return "cockpit-reviewed\n"
+        if command.startswith("gh pr view 99"):
+            return "\n".join(sorted(pr_labels))
+        if command.startswith("gh pr edit 99"):
+            pr_labels.update(args[-1].split(","))
+            return ""
+        if args[:3] == ["gh", "api", "repos/magilliam27/MCI-GRU/issues/100/comments"]:
+            return json.dumps([[digest_comment]] if digest_comment is not None else [[]])
+        if args[:3] == ["gh", "issue", "comment"]:
+            digest_bodies.append(args[-1])
+            digest_comment = {
+                "id": 501,
+                "body": args[-1],
+                "user": {"login": "magilliam27"},
+                "author_association": "OWNER",
+            }
+            return ""
+        if args[:4] == ["gh", "api", "--method", "PATCH"]:
+            body = args[-1].removeprefix("body=")
+            digest_bodies.append(body)
+            assert digest_comment is not None
+            digest_comment["body"] = body
+            return ""
+        raise AssertionError(command)
+
+    results = [
+        sync_github(
+            enabled=True,
+            repo_root=tmp_path,
+            run_date=date(2026, 6, 20),
+            run_command=fake_run,
+        )
+        for _ in range(2)
+    ]
+
+    pr_edits = [command for command in commands if command[:3] == ["gh", "pr", "edit"]]
+    assert pr_edits == [
+        [
+            "gh",
+            "pr",
+            "edit",
+            "99",
+            "--repo",
+            "magilliam27/MCI-GRU",
+            "--add-label",
+            "cockpit-reviewed",
+        ]
+    ]
+    assert pr_labels == {"cockpit-reviewed", "codex"}
+    assert not any(command[:3] == ["gh", "label", "create"] for command in commands)
+    assert sum(command[:3] == ["gh", "pr", "view"] for command in commands) == 3
+    assert any(
+        "applied labels to dated cockpit PR #99" in item for item in results[0].actions_taken
+    )
+    assert any(
+        "labels already present on dated cockpit PR #99" in item
+        for item in results[1].actions_skipped
+    )
+    first_receipt = results[0].dated_pr_labels
+    assert first_receipt is not None
+    assert first_receipt.applied == ("cockpit-reviewed",)
+    assert first_receipt.already_present == ("codex",)
+    assert first_receipt.skipped_missing == ("codex-automation",)
+    assert first_receipt.verified_present == ("cockpit-reviewed", "codex")
+    assert "Dated PR label receipt:" in digest_bodies[0]
+    assert "- applied: cockpit-reviewed" in digest_bodies[0]
+    assert "- already-present: codex" in digest_bodies[0]
+    assert "- skipped-missing: codex-automation" in digest_bodies[0]
+    assert "- verified-after-readback: cockpit-reviewed, codex" in digest_bodies[0]
+    second_receipt = results[1].dated_pr_labels
+    assert second_receipt is not None
+    assert second_receipt.applied == ()
+    assert second_receipt.already_present == ("cockpit-reviewed", "codex")
+    assert digest_comment is not None
+    persistent_body = str(digest_comment["body"])
+    assert "- applied: cockpit-reviewed" in persistent_body
+    assert "- already-present: codex" in persistent_body
+    assert "- applied: none" not in persistent_body
+    assert not any(command[:4] == ["gh", "api", "--method", "PATCH"] for command in commands)
 
 
 def test_sync_github_same_date_skips_identical_issue_digest_comment(tmp_path: Path) -> None:
@@ -974,6 +1088,34 @@ def test_apply_existing_labels_is_idempotent_for_already_applied_label() -> None
         )
 
     assert sum(command[:3] == ["gh", "issue", "edit"] for command in commands) == 1
+
+
+def test_apply_existing_pr_labels_fails_closed_when_readback_is_missing() -> None:
+    commands: list[list[str]] = []
+
+    def fake_run(args: list[str]) -> str:
+        commands.append(args)
+        if args[:3] == ["gh", "label", "list"]:
+            return "cockpit-reviewed\n"
+        if args[:3] == ["gh", "pr", "view"]:
+            return ""
+        if args[:3] == ["gh", "pr", "edit"]:
+            return ""
+        raise AssertionError(" ".join(args))
+
+    with pytest.raises(RuntimeError, match="Label readback failed for dated cockpit PR #99"):
+        _apply_existing_labels(
+            fake_run,
+            "magilliam27/MCI-GRU",
+            99,
+            ["cockpit-reviewed"],
+            [],
+            [],
+            resource="pr",
+            target_name="dated cockpit PR",
+        )
+
+    assert sum(command[:3] == ["gh", "pr", "view"] for command in commands) == 2
 
 
 def test_sync_github_refuses_an_unrelated_staged_path(tmp_path: Path) -> None:

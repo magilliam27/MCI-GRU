@@ -40,10 +40,19 @@ _ISSUE_LIST_COMMAND = [
     "--json",
     "number,title,url,state,labels,updatedAt",
 ]
+_DATED_COCKPIT_PR_LABELS = ("cockpit-reviewed", "codex", "codex-automation")
 
 
 class GitHubSyncDisabled(RuntimeError):
     """Raised when a caller tries to sync GitHub without explicit enablement."""
+
+
+@dataclass(frozen=True)
+class LabelSyncReceipt:
+    applied: tuple[str, ...] = ()
+    already_present: tuple[str, ...] = ()
+    skipped_missing: tuple[str, ...] = ()
+    verified_present: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -54,6 +63,7 @@ class GitHubSyncResult:
     cockpit_issue_url: str
     actions_taken: list[str] = field(default_factory=list)
     actions_skipped: list[str] = field(default_factory=list)
+    dated_pr_labels: LabelSyncReceipt | None = None
 
 
 @dataclass(frozen=True)
@@ -385,6 +395,7 @@ def sync_github(
         _require_allowed_git_diff(runner, producer_base_oid, local_head_oid, set(paths))
     runner(["git", "push", "-u", "origin", branch])
     pr_url = _ensure_pr(runner, repo, branch, run_date)
+    pr_number = _parse_issue_url_number(pr_url)
     issue_number, issue_url = _ensure_cockpit_issue(runner, repo)
     _apply_existing_labels(
         runner,
@@ -394,11 +405,31 @@ def sync_github(
         actions_taken,
         actions_skipped,
     )
+    pr_actions_taken: list[str] = []
+    pr_actions_skipped: list[str] = []
+    pr_label_receipt = _apply_existing_labels(
+        runner,
+        repo,
+        pr_number,
+        list(_DATED_COCKPIT_PR_LABELS),
+        pr_actions_taken,
+        pr_actions_skipped,
+        resource="pr",
+        target_name="dated cockpit PR",
+    )
+    actions_taken.extend(pr_actions_taken)
+    actions_skipped.extend(pr_actions_skipped)
     digest_action = _ensure_issue_digest_comment(
         runner,
         repo=repo,
         issue_number=issue_number,
-        body=_issue_comment(run_date, run_color, pr_url, decisions),
+        body=_issue_comment(
+            run_date,
+            run_color,
+            pr_url,
+            decisions,
+            label_receipt=pr_label_receipt,
+        ),
         run_date=run_date,
     )
     if digest_action == "unchanged":
@@ -412,6 +443,7 @@ def sync_github(
         cockpit_issue_url=issue_url,
         actions_taken=actions_taken,
         actions_skipped=actions_skipped,
+        dated_pr_labels=pr_label_receipt,
     )
 
 
@@ -558,7 +590,19 @@ def create_issue(
     existing_labels = set(
         _split_lines(
             run_command(
-                ["gh", "label", "list", "--repo", repo, "--json", "name", "--jq", ".[].name"]
+                [
+                    "gh",
+                    "label",
+                    "list",
+                    "--repo",
+                    repo,
+                    "--limit",
+                    "1000",
+                    "--json",
+                    "name",
+                    "--jq",
+                    ".[].name",
+                ]
             )
         )
     )
@@ -673,43 +717,54 @@ def _apply_existing_labels(
     labels: list[str],
     actions_taken: list[str],
     actions_skipped: list[str],
-) -> None:
+    *,
+    resource: str = "issue",
+    target_name: str = "cockpit issue",
+) -> LabelSyncReceipt:
+    if resource not in {"issue", "pr"}:
+        raise ValueError("Label target resource must be 'issue' or 'pr'.")
     existing = set(
         _split_lines(
-            runner(["gh", "label", "list", "--repo", repo, "--json", "name", "--jq", ".[].name"])
+            runner(
+                [
+                    "gh",
+                    "label",
+                    "list",
+                    "--repo",
+                    repo,
+                    "--limit",
+                    "1000",
+                    "--json",
+                    "name",
+                    "--jq",
+                    ".[].name",
+                ]
+            )
         )
     )
     eligible_labels = [label for label in labels if label in existing]
-    current = (
-        set(
-            _split_lines(
-                runner(
-                    [
-                        "gh",
-                        "issue",
-                        "view",
-                        str(issue_number),
-                        "--repo",
-                        repo,
-                        "--json",
-                        "labels",
-                        "--jq",
-                        ".labels[].name",
-                    ]
-                )
-            )
-        )
-        if eligible_labels
-        else set()
-    )
+    view_command = [
+        "gh",
+        resource,
+        "view",
+        str(issue_number),
+        "--repo",
+        repo,
+        "--json",
+        "labels",
+        "--jq",
+        ".labels[].name",
+    ]
+    current = set(_split_lines(runner(view_command))) if eligible_labels else set()
     labels_to_apply = [label for label in labels if label in existing and label not in current]
     labels_already_applied = [label for label in labels if label in existing and label in current]
     missing = [label for label in labels if label not in existing]
+    readback = current
     if labels_to_apply:
         runner(
             [
                 "gh",
-                "issue",
+                resource,
                 "edit",
                 str(issue_number),
                 "--repo",
@@ -718,16 +773,44 @@ def _apply_existing_labels(
                 ",".join(labels_to_apply),
             ]
         )
+        if resource == "pr":
+            readback = set(_split_lines(runner(view_command)))
+            absent_after_edit = [label for label in eligible_labels if label not in readback]
+            if absent_after_edit:
+                raise RuntimeError(
+                    f"Label readback failed for {target_name} #{issue_number}: "
+                    + ", ".join(absent_after_edit)
+                )
+        else:
+            readback = current | set(labels_to_apply)
         actions_taken.append(
-            f"applied labels to cockpit issue #{issue_number}: {', '.join(labels_to_apply)}"
+            f"applied labels to {target_name} #{issue_number}: {', '.join(labels_to_apply)}"
         )
     if missing:
-        actions_skipped.append(f"missing labels: {', '.join(missing)}")
+        actions_skipped.append(
+            f"skipped missing labels for {target_name} #{issue_number}: {', '.join(missing)}"
+        )
     if labels_already_applied:
-        actions_skipped.append("labels already applied: " + ", ".join(labels_already_applied))
+        actions_skipped.append(
+            f"labels already present on {target_name} #{issue_number}: "
+            + ", ".join(labels_already_applied)
+        )
+    return LabelSyncReceipt(
+        applied=tuple(labels_to_apply),
+        already_present=tuple(labels_already_applied),
+        skipped_missing=tuple(missing),
+        verified_present=tuple(label for label in labels if label in readback),
+    )
 
 
-def _issue_comment(run_date: date, run_color: str, pr_url: str, decision_queue: list[str]) -> str:
+def _issue_comment(
+    run_date: date,
+    run_color: str,
+    pr_url: str,
+    decision_queue: list[str],
+    *,
+    label_receipt: LabelSyncReceipt | None = None,
+) -> str:
     lines = [
         f"<!-- mci-gru-cockpit-refresh:{run_date.isoformat()} -->",
         f"Cockpit refresh {run_date.isoformat()}: {run_color}",
@@ -737,7 +820,25 @@ def _issue_comment(run_date: date, run_color: str, pr_url: str, decision_queue: 
     if decision_queue:
         lines.extend(["", "Decision queue:"])
         lines.extend(f"- {decision}" for decision in decision_queue)
+    if label_receipt is not None:
+        lines.extend(
+            [
+                "",
+                "Dated PR label receipt:",
+                f"- applied: {_label_receipt_value(label_receipt.applied)}",
+                (f"- already-present: {_label_receipt_value(label_receipt.already_present)}"),
+                (f"- skipped-missing: {_label_receipt_value(label_receipt.skipped_missing)}"),
+                (
+                    "- verified-after-readback: "
+                    f"{_label_receipt_value(label_receipt.verified_present)}"
+                ),
+            ]
+        )
     return "\n".join(lines)
+
+
+def _label_receipt_value(labels: tuple[str, ...]) -> str:
+    return ", ".join(labels) if labels else "none"
 
 
 def _ensure_issue_digest_comment(
@@ -786,6 +887,7 @@ def _ensure_issue_digest_comment(
         )
         return "created"
     comment_id, existing_body = matches[0]
+    body = _preserve_label_receipt_history(existing_body, body)
     if existing_body == body:
         return "unchanged"
     runner(
@@ -800,6 +902,71 @@ def _ensure_issue_digest_comment(
         ]
     )
     return "updated"
+
+
+def _preserve_label_receipt_history(existing_body: str, current_body: str) -> str:
+    previous = _extract_label_receipt(existing_body)
+    current = _extract_label_receipt(current_body)
+    if previous is None or current is None:
+        return current_body
+    ever_applied = set(previous.applied) | set(current.applied)
+    applied = tuple(label for label in _DATED_COCKPIT_PR_LABELS if label in ever_applied)
+    already_present = tuple(
+        label
+        for label in _DATED_COCKPIT_PR_LABELS
+        if label not in ever_applied and label in current.already_present
+    )
+    skipped_missing = tuple(
+        label
+        for label in _DATED_COCKPIT_PR_LABELS
+        if label not in ever_applied
+        and label not in already_present
+        and label in current.skipped_missing
+    )
+    durable = LabelSyncReceipt(
+        applied=applied,
+        already_present=already_present,
+        skipped_missing=skipped_missing,
+        verified_present=current.verified_present,
+    )
+    return _replace_label_receipt(current_body, durable)
+
+
+def _extract_label_receipt(body: str) -> LabelSyncReceipt | None:
+    lines = body.splitlines()
+    try:
+        start = lines.index("Dated PR label receipt:")
+    except ValueError:
+        return None
+    expected = (
+        "- applied: ",
+        "- already-present: ",
+        "- skipped-missing: ",
+        "- verified-after-readback: ",
+    )
+    values: list[tuple[str, ...]] = []
+    for offset, prefix in enumerate(expected, start=1):
+        if start + offset >= len(lines) or not lines[start + offset].startswith(prefix):
+            raise RuntimeError("Cockpit issue label receipt is malformed.")
+        raw = lines[start + offset].removeprefix(prefix)
+        values.append(() if raw == "none" else tuple(item.strip() for item in raw.split(",")))
+    return LabelSyncReceipt(*values)
+
+
+def _replace_label_receipt(body: str, receipt: LabelSyncReceipt) -> str:
+    lines = body.splitlines()
+    try:
+        start = lines.index("Dated PR label receipt:")
+    except ValueError:
+        return body
+    replacement = [
+        "Dated PR label receipt:",
+        f"- applied: {_label_receipt_value(receipt.applied)}",
+        f"- already-present: {_label_receipt_value(receipt.already_present)}",
+        f"- skipped-missing: {_label_receipt_value(receipt.skipped_missing)}",
+        f"- verified-after-readback: {_label_receipt_value(receipt.verified_present)}",
+    ]
+    return "\n".join([*lines[:start], *replacement, *lines[start + 5 :]])
 
 
 def _trusted_digest_author(comment: dict[str, object], repo: str) -> bool:

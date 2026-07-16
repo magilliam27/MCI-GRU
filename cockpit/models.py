@@ -126,6 +126,8 @@ class WorktreeEvidence:
     status_header: str
     dirty_paths: list[str] = field(default_factory=list)
     status_error: str = ""
+    origin_main_ahead: int | None = None
+    origin_main_behind: int | None = None
 
     @property
     def is_dirty(self) -> bool:
@@ -142,6 +144,8 @@ class GitTopologySnapshot:
     unmerged_branches: list[str] = field(default_factory=list)
     unmerged_branch_details: list[BranchEvidence] = field(default_factory=list)
     worktrees: list[WorktreeEvidence] = field(default_factory=list)
+    control_plane_worktree: WorktreeEvidence | None = None
+    primary_worktree: WorktreeEvidence | None = None
 
     @property
     def detached_worktrees(self) -> list[WorktreeEvidence]:
@@ -156,6 +160,13 @@ class GitTopologySnapshot:
         return bool(
             self.origin_main_ahead
             or self.origin_main_behind
+            or (
+                self.primary_worktree is not None
+                and (
+                    self.primary_worktree.origin_main_ahead
+                    or self.primary_worktree.origin_main_behind
+                )
+            )
             or self.unmerged_branches
             or self.detached_worktrees
             or self.dirty_worktrees
@@ -284,6 +295,7 @@ class CockpitReport:
     active_workstreams: list[Workstream] = field(default_factory=list)
     blocked_workstreams: list[Workstream] = field(default_factory=list)
     local_only_work: list[Workstream] = field(default_factory=list)
+    parked_workstreams: list[Workstream] = field(default_factory=list)
     stale_or_archive_candidates: list[Workstream] = field(default_factory=list)
     github_actions_taken: list[GitHubAction] = field(default_factory=list)
     github_actions_skipped: list[GitHubAction] = field(default_factory=list)

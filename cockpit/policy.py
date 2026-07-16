@@ -91,17 +91,6 @@ def compute_auto_decisions(
         else {branch: activity_date for branch, activity_date in recent_branches}
     )
     workstreams_by_name = {workstream.name: workstream for workstream in workstreams}
-    issue_associations = _associate_issues(github_evidence, workstreams, aliases)
-    linked_issue_workstreams = {
-        name
-        for name, (issues, ambiguities) in issue_associations.items()
-        if issues and not ambiguities
-    }
-    linked_pr_branches = (
-        {pull_request.head_ref for pull_request in github_evidence.pull_requests}
-        if github_evidence is not None
-        else set()
-    )
     surface_associations = {
         surface.branch: _surface_association(
             surface.branch,
@@ -110,8 +99,6 @@ def compute_auto_decisions(
             registry,
             aliases,
             implied_aliases or {},
-            linked_pr_branches,
-            linked_issue_workstreams,
         )
         for surface in surfaces
     }
@@ -580,8 +567,6 @@ def _surface_association(
     registry: DecisionRegistry,
     aliases: Mapping[str, str],
     implied_aliases: Mapping[str, str],
-    linked_pr_branches: set[str],
-    linked_issue_workstreams: set[str],
 ) -> _SurfaceAssociation:
     tokens = branch_topic_tokens(branch)
     joined = "-".join(tokens)
@@ -622,11 +607,6 @@ def _surface_association(
         )
         selected = matches[0]
         basis = getattr(workstreams_by_name[selected], "association_basis", "branch-term")
-        if basis == "title-case-fallback":
-            if branch in linked_pr_branches:
-                basis = "linked-pr"
-            elif selected in linked_issue_workstreams:
-                basis = "linked-issue"
         return _SurfaceAssociation(
             (selected,),
             basis,

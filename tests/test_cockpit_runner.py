@@ -11,15 +11,17 @@ import pytest
 
 import cockpit.runner as cockpit_runner_module
 from cockpit.decisions import DECISION_REGISTRY_PATH, SurfaceDisposition
-from cockpit.evidence import collect_local_evidence
+from cockpit.evidence import LocalEvidence, collect_local_evidence
 from cockpit.models import (
     AutoDecisionChange,
     AutoDecisionSet,
     AutoDisposition,
     Confidence,
     GitHubEvidence,
+    GitTopologySnapshot,
     PullRequestEvidence,
     WorkstreamStatus,
+    WorktreeEvidence,
 )
 from cockpit.policy import AUTO_DECISIONS_PATH, write_auto_decisions
 from cockpit.runner import (
@@ -29,11 +31,64 @@ from cockpit.runner import (
     _branch_topic_tokens,
     _run_command,
     _switch_to_cockpit_branch,
+    _without_current_worktree_dirty_paths,
     implied_aliases,
     merge_workstream_sources,
     run_github_cockpit_refresh,
     run_local_cockpit_refresh,
 )
+
+
+def test_ignored_owned_paths_update_control_plane_checkout_evidence(tmp_path: Path) -> None:
+    repo = tmp_path / "control-plane"
+    control_plane = WorktreeEvidence(
+        path=str(repo.resolve()),
+        head="abc123",
+        branch="codex/cockpit-refresh",
+        detached=False,
+        status_header="## codex/cockpit-refresh",
+        dirty_paths=["docs/agents/workstreams.md", "src/user_change.py"],
+    )
+    canonical = WorktreeEvidence(
+        path="C:/canonical",
+        head="def456",
+        branch="main",
+        detached=False,
+        status_header="## main",
+        dirty_paths=["src/canonical_change.py"],
+    )
+    topology = GitTopologySnapshot(
+        current_branch=control_plane.branch,
+        status_header=control_plane.status_header,
+        origin_main_ahead=0,
+        origin_main_behind=0,
+        worktrees=[canonical, control_plane],
+        control_plane_worktree=control_plane,
+        primary_worktree=canonical,
+    )
+    evidence = LocalEvidence(
+        repo_root=repo,
+        required_docs={},
+        recent_handoffs=[],
+        dirty_paths=list(control_plane.dirty_paths),
+        branches=["main", control_plane.branch],
+        worktrees="",
+        recent_commits="",
+        git_topology=topology,
+    )
+
+    filtered = _without_current_worktree_dirty_paths(
+        evidence,
+        repo,
+        ["docs/agents/workstreams.md"],
+    )
+
+    assert filtered.dirty_paths == ["src/user_change.py"]
+    assert filtered.git_topology.worktrees[1].dirty_paths == ["src/user_change.py"]
+    assert filtered.git_topology.control_plane_worktree is not None
+    assert filtered.git_topology.control_plane_worktree.dirty_paths == ["src/user_change.py"]
+    assert filtered.git_topology.primary_worktree == canonical
+
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -185,6 +240,13 @@ def test_collect_local_evidence_builds_git_topology_snapshot(tmp_path: Path) -> 
             )
         if command == "git log -5 --oneline":
             return "5274d21 Promote research maps and agent process docs\n"
+        if args[:2] == ["git", "-c"] and args[-4:] == [
+            "rev-list",
+            "--left-right",
+            "--count",
+            "origin/main...HEAD",
+        ]:
+            return "2\t8\n" if args[4] == "C:/repo" else "0\t0\n"
         if (
             args[:2] == ["git", "-c"]
             and args[3] == "-C"
@@ -259,6 +321,10 @@ def test_default_cockpit_runners_apply_safe_directory_to_git_commands(
             )
         if command == f"git -C {repo.as_posix()} status --porcelain=v1 -b --untracked-files=all":
             return SimpleNamespace(stdout="## main\n")
+        if command == (
+            f"git -C {repo.as_posix()} rev-list --left-right --count origin/main...HEAD"
+        ):
+            return SimpleNamespace(stdout="0\t0\n")
         if command == "git log -5 --oneline":
             return SimpleNamespace(stdout="60e3d96 Add local MCI-GRU cockpit runner\n")
         raise AssertionError(command)
@@ -368,7 +434,7 @@ def test_run_local_cockpit_refresh_flag_off_preserves_output_parity(tmp_path: Pa
     )
     assert (
         hashlib.sha256(default.packet_path.read_text(encoding="utf-8").encode()).hexdigest()
-        == "d2cd85962196a5e1da5fca4e2c77f1565bfce6686340f72c139534314427203a"
+        == "a005ad3baa795a4fc8b62700fd6a26bcbc3945bcfa4e9474dfba81d9ac41b1c1"
     )
     assert not (default_repo / AUTO_DECISIONS_PATH).exists()
     assert not (explicit_repo / AUTO_DECISIONS_PATH).exists()
@@ -904,6 +970,13 @@ def test_run_local_cockpit_refresh_surfaces_git_topology_without_placeholders(
             )
         if command == "git log -5 --oneline":
             return "5274d21 Promote research maps and agent process docs\n"
+        if args[:2] == ["git", "-c"] and args[-4:] == [
+            "rev-list",
+            "--left-right",
+            "--count",
+            "origin/main...HEAD",
+        ]:
+            return "2\t8\n" if args[4] == "C:/repo" else "0\t1\n"
         if (
             args[:2] == ["git", "-c"]
             and args[3] == "-C"
@@ -935,8 +1008,16 @@ def test_run_local_cockpit_refresh_surfaces_git_topology_without_placeholders(
     assert "`origin/codex/lambdarankic-1024-all-years-20260625` (remote-only)" in register
     assert "codex/portfolio-ic-hybrid-testing" in register
     assert "## Git Tree Impact" in packet
-    assert "Current branch: `codex/top10-lambdarank-screen-20260625`" in packet
-    assert "origin/main divergence: 8 ahead / 2 behind" in packet
+    assert (
+        "Control-plane checkout: `C:/repo` on "
+        "`codex/top10-lambdarank-screen-20260625`; origin/main divergence: "
+        "8 ahead / 2 behind; dirty: no"
+    ) in packet
+    assert (
+        "Canonical active checkout (primary worktree): `C:/repo` on "
+        "`codex/top10-lambdarank-screen-20260625`; origin/main divergence: "
+        "8 ahead / 2 behind; dirty: no"
+    ) in packet
     assert "Unmerged branches: 3" in packet
     assert (
         "Unmerged branch names: `codex/top10-lambdarank-screen-20260625` (local), "
@@ -961,6 +1042,74 @@ def test_run_local_cockpit_refresh_surfaces_git_topology_without_placeholders(
     assert (
         "- **Portfolio-IC:** Decide whether to promote, park, or rerun current evidence." in packet
     )
+
+
+def test_cockpit_packet_distinguishes_control_plane_and_canonical_divergence(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    branch = "codex/cockpit-refresh-20260715"
+    canonical_path = "C:/Users/magil/MCI-GRU"
+    control_path = repo.as_posix()
+
+    def fake_run(args: list[str]) -> str:
+        command = " ".join(args)
+        if command.startswith("git for-each-ref"):
+            return ""
+        if command == "git status --short --branch":
+            return f"## {branch}...origin/main\n"
+        if command == "git branch --format=%(refname:short)":
+            return f"main\n{branch}\n"
+        if command == "git branch --all --no-merged origin/main":
+            return f"  {branch}\n"
+        if command == "git rev-list --left-right --count origin/main...HEAD":
+            return "0\t0\n"
+        if command == "git worktree list --porcelain":
+            return (
+                f"worktree {canonical_path}\n"
+                "HEAD d6b0f60\n"
+                "branch refs/heads/codex/canonical-feature\n"
+                "\n"
+                f"worktree {control_path}\n"
+                "HEAD 074474d\n"
+                f"branch refs/heads/{branch}\n"
+            )
+        if command == "git log -5 --oneline":
+            return "074474d Cockpit refresh\n"
+        if args[:2] == ["git", "-c"] and args[3] == "-C":
+            if args[-4:] == [
+                "rev-list",
+                "--left-right",
+                "--count",
+                "origin/main...HEAD",
+            ]:
+                return "5\t1\n" if args[4] == canonical_path else "0\t0\n"
+            if args[4] == canonical_path:
+                return "## codex/canonical-feature...origin/codex/canonical-feature\n"
+            if args[4] == control_path:
+                return f"## {branch}...origin/main\n"
+        raise AssertionError(command)
+
+    result = run_local_cockpit_refresh(
+        repo_root=repo,
+        run_date=date(2026, 7, 15),
+        run_command=fake_run,
+        automation_branch=branch,
+        comparison_ref="origin/main",
+        github_evidence=None,
+    )
+
+    packet = result.packet_path.read_text(encoding="utf-8")
+    assert result.color.value == "yellow"
+    assert (
+        f"Control-plane checkout: `{control_path}` on `{branch}`; "
+        "origin/main divergence: 0 ahead / 0 behind; dirty: no"
+    ) in packet
+    assert (
+        f"Canonical active checkout (primary worktree): `{canonical_path}` on "
+        "`codex/canonical-feature`; "
+        "origin/main divergence: 1 ahead / 5 behind; dirty: no"
+    ) in packet
 
 
 def test_decision_registry_keeps_reviewed_surfaces_resolved(tmp_path: Path) -> None:
@@ -1187,7 +1336,7 @@ def test_run_local_cockpit_refresh_labels_detached_current_checkout(
     assert "`(HEAD detached at a2684d2)` (local)" not in register
     assert f"Git surface: {detached_id}" in register
     assert f"`{detached_id}` @ `C:/repo` (detached)" in register
-    assert f"Current branch: `{detached_id}`" in packet
+    assert f"Control-plane checkout: `C:/repo` on `{detached_id}`" in packet
     assert f"Detached worktrees: `{detached_id}` at `C:/repo`" in packet
 
 
@@ -1246,9 +1395,10 @@ def test_run_local_cockpit_refresh_uses_repo_path_for_detached_current_checkout(
         for surface_id in auto_payload["surfaces"]
         if surface_id.startswith("detached@1111111-")
     )
-    assert f"Current branch: `{current_id}`" in packet
+    control_line = next(line for line in packet.splitlines() if "Control-plane checkout" in line)
+    assert f"on `{current_id}`" in control_line
     assert f"Git surface: {current_id}" in register
-    assert f"Current branch: `{other_id}`" not in packet
+    assert f"on `{other_id}`" not in control_line
     assert f"Git surface: {other_id}" in register
 
 
@@ -1551,6 +1701,7 @@ def test_run_github_cockpit_refresh_uses_preprovisioned_worktree_and_syncs(
     commands: list[list[str]] = []
     current_branch = "codex/cockpit-refresh-20260620"
     pushed = False
+    pr_labels: set[str] = set()
 
     def fake_run(args: list[str]) -> str:
         nonlocal current_branch, pushed
@@ -1625,6 +1776,11 @@ def test_run_github_cockpit_refresh_uses_preprovisioned_worktree_and_syncs(
         if command.startswith("gh issue view 100"):
             return ""
         if command.startswith("gh issue edit 100"):
+            return ""
+        if command.startswith("gh pr view 99"):
+            return "\n".join(sorted(pr_labels))
+        if command.startswith("gh pr edit 99"):
+            pr_labels.update(args[-1].split(","))
             return ""
         if command == ("gh api repos/magilliam27/MCI-GRU/issues/100/comments --paginate --slurp"):
             return "[[]]"
@@ -1948,6 +2104,7 @@ def test_run_github_cockpit_refresh_commits_final_packet_once(tmp_path: Path) ->
     commands: list[list[str]] = []
     diff_calls = 0
     pr_checks = 0
+    pr_labels: set[str] = set()
 
     def fake_run(args: list[str]) -> str:
         nonlocal diff_calls, pr_checks
@@ -2027,6 +2184,11 @@ def test_run_github_cockpit_refresh_commits_final_packet_once(tmp_path: Path) ->
         if command.startswith("gh issue view 100"):
             return ""
         if command.startswith("gh issue edit 100"):
+            return ""
+        if command.startswith("gh pr view 99"):
+            return "\n".join(sorted(pr_labels))
+        if command.startswith("gh pr edit 99"):
+            pr_labels.update(args[-1].split(","))
             return ""
         if command == ("gh api repos/magilliam27/MCI-GRU/issues/100/comments --paginate --slurp"):
             return "[[]]"
@@ -2336,6 +2498,72 @@ def test_run_local_cockpit_refresh_admits_registry_only_workstream(tmp_path: Pat
     register = result.register_path.read_text(encoding="utf-8")
     assert "Harness rollout" in register
     assert "| Harness rollout | ready-for-agent |" in register
+
+
+def test_cockpit_packet_groups_canonical_parked_and_cleanup_queues(tmp_path: Path) -> None:
+    repo = _repo_with_required_docs(tmp_path)
+    _write_decision_registry(
+        repo,
+        workstreams={
+            "LambdaRankIC": {
+                "status": "active",
+                "canonical_surface": "origin/main after merged recovery",
+                "reason": "Reviewed active baseline.",
+                "next_action": "Continue approved diagnostics.",
+                "last_reviewed": "2026-07-10",
+            },
+            "Issue #8 volatility targeting": {
+                "status": "ready-for-agent",
+                "canonical_surface": "GitHub issue #8 plus current origin/main",
+                "reason": "Reviewed continuation is ready.",
+                "next_action": "Inspect existing Drive outputs first.",
+                "last_reviewed": "2026-07-09",
+            },
+            "Colab operations": {
+                "status": "ready-for-agent",
+                "canonical_surface": "origin/main plus the Chrome-control runbook",
+                "reason": "The canonical runbook is ready.",
+                "next_action": "Use the canonical runbook.",
+                "last_reviewed": "2026-07-09",
+            },
+            "Portfolio-IC": {
+                "status": "parked",
+                "canonical_surface": "origin/main pure IC baseline",
+                "reason": "Reviewed non-default evidence is parked.",
+                "next_action": "Keep parked.",
+                "last_reviewed": "2026-07-09",
+            },
+            "Historical cleanup": {
+                "status": "archive",
+                "canonical_surface": "merged historical branch",
+                "reason": "Historical surface is archive-only.",
+                "next_action": "Remove only with cleanup approval.",
+                "last_reviewed": "2026-07-09",
+            },
+        },
+        surfaces={},
+    )
+
+    result = run_local_cockpit_refresh(
+        repo_root=repo,
+        run_date=date(2026, 7, 10),
+        run_command=_fake_topology_runner([]),
+        github_evidence=None,
+    )
+
+    packet = result.packet_path.read_text(encoding="utf-8")
+    canonical = packet.split("## Canonical / Ready Queue", 1)[1].split("## ", 1)[0]
+    parked = packet.split("## Parked Queue", 1)[1].split("## ", 1)[0]
+    cleanup = packet.split("## Archive / Cleanup Candidates", 1)[1].split("## ", 1)[0]
+
+    assert "LambdaRankIC" in canonical
+    assert "Issue #8 volatility targeting" in canonical
+    assert "Colab operations" in canonical
+    assert "Git and worktree hygiene" not in canonical
+    assert "Portfolio-IC" in parked
+    assert "Historical cleanup" in cleanup
+    assert "Portfolio-IC" not in cleanup
+    assert "Issue #8 volatility targeting" not in parked + cleanup
 
 
 def test_run_local_cockpit_refresh_admits_surface_for_registry_only_workstream(
@@ -2692,6 +2920,8 @@ def test_implied_aliases_accepts_only_independently_grounded_high_confidence_aut
             ("low-learning", "Low", Confidence.LOW, "branch-term"),
             ("alias-loop", "Loop", Confidence.HIGH, "implied-alias"),
             ("fallback-learning", "Fallback", Confidence.HIGH, "title-case-fallback"),
+            ("legacy-pr-link", "Legacy PR", Confidence.HIGH, "linked-pr"),
+            ("legacy-issue-link", "Legacy issue", Confidence.HIGH, "linked-issue"),
         )
     }
 

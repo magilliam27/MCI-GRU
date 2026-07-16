@@ -61,10 +61,15 @@ def render_cockpit_packet(report: CockpitReport) -> str:
     _extend_bullets(lines, "Git Tree Impact", report.git_tree_impact)
     _extend_decisions(lines, report)
     _extend_workstreams(lines, "Workstreams Needing Decisions", report.decision_workstreams)
-    _extend_workstreams(lines, "Active Workstreams", report.active_workstreams)
+    _extend_workstreams(lines, "Canonical / Ready Queue", report.active_workstreams)
     _extend_workstreams(lines, "Blocked Workstreams", report.blocked_workstreams)
     _extend_workstreams(lines, "Local-Only Work", report.local_only_work)
-    _extend_workstreams(lines, "Stale Or Archive Candidates", report.stale_or_archive_candidates)
+    _extend_workstreams(lines, "Parked Queue", report.parked_workstreams)
+    _extend_workstreams(
+        lines,
+        "Archive / Cleanup Candidates",
+        report.stale_or_archive_candidates,
+    )
     _extend_actions(lines, "GitHub Actions Taken", report.github_actions_taken)
     _extend_actions(lines, "GitHub Actions Proposed Or Skipped", report.github_actions_skipped)
     _extend_bullets(lines, "Verification Notes", report.verification_notes)

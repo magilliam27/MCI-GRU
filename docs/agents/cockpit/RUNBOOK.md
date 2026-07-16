@@ -128,6 +128,13 @@ has disappeared; historical committed registries admit their own previously
 declared workstream names for this comparison while current registry validation
 stays strict. The cleared state is rendered as no generated decision.
 
+`association_basis` preserves the source association as
+`explicit-surface`, `explicit-alias`, `branch-term`, `title-case-fallback`, or
+`implied-alias`; linked PR or issue evidence may strengthen the decision without
+rewriting that provenance. Only high-confidence independently grounded bases
+may propose implied aliases. Title-case fallbacks, implied aliases, and legacy
+`linked-*` metadata cannot teach a later generated decision.
+
 The dated cockpit PR is the correction surface. The repository
 `.github/workflows/cockpit-overrides.yml` workflow routes new structured PR
 comments to `scripts/apply_cockpit_overrides.py`. For the initial rollout, only
@@ -200,9 +207,17 @@ The curator never deletes branches, removes worktrees, closes PRs, closes
 issues, or force-pushes. Surface dispositions remain advisory labels; those
 actions keep their existing approval gates.
 
-Labels are applied only when they already exist in GitHub. Missing labels are
-reported as skipped actions instead of being created with near-duplicate names.
-Safe labels include `cockpit-reviewed`, `ready-for-agent`, `needs-info`, and
+Labels are applied only when they already exist in GitHub. The dated cockpit PR
+reconciles the exact existing labels `cockpit-reviewed`, `codex`, and
+`codex-automation`; it never creates a missing or near-duplicate label. The sync
+reads the PR labels back after mutation and fails closed if an eligible label is
+still absent. Its trusted dated Cockpit issue digest records deterministic
+`applied`, `already-present`, `skipped-missing`, and
+`verified-after-readback` receipt fields. Same-date retries retain labels that
+the cockpit previously applied instead of rewriting that history as
+`already-present`. This external digest is post-mutation evidence; the pre-sync
+repository packet remains deterministic generated output.
+Other safe issue labels include `ready-for-agent`, `needs-info`, and
 `needs-triage` when present.
 
 Issue closure must go through `close_issue_with_evidence`, which comments with
@@ -375,14 +390,24 @@ Check for:
 
 Each daily packet must include a `Git Tree Impact` section that summarizes:
 
-- current branch;
+- the refresh/control-plane checkout path, branch, dirty state, and
+  `origin/main...HEAD` divergence;
+- the canonical active checkout (Git's primary worktree) path, branch, dirty
+  state, and separately parsed `origin/main` divergence;
 - snapshot timing, especially whether the packet was collected before GitHub
   sync commits/pushes;
-- `origin/main...HEAD` divergence;
 - count and names of branches not merged into `origin/main`, labelled as
   local, remote-only, or local+remote;
 - total, detached, and dirty worktrees;
 - dirty or detached worktree paths that require review.
+
+The actionable packet queues keep canonical/active and `ready-for-agent`
+continuations together, list `parked` work separately, and reserve the
+archive/cleanup queue for `stale` and `archive` candidates. `done`, blocked,
+local-only, and decision rows are not mixed into those queues: blocked,
+local-only, and decision rows keep their dedicated packet sections, while
+`done` rows remain in the generated workstream register and are omitted from
+the actionable packet queues.
 
 Detached surface IDs combine the seven-character HEAD prefix with a stable
 digest of the normalized worktree path. Two detached worktrees at the same
