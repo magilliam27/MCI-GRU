@@ -33,35 +33,35 @@
       ],
       "disposition": "stale",
       "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #92 (https://github.com/magilliam27/MCI-GRU/pull/92) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-06-21. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
+      "evidence": "Competing surface rejected because PR #93 (https://github.com/magilliam27/MCI-GRU/pull/93) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-06-21. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
       "confidence": "low",
       "association_basis": "unclassified",
       "alternatives": [
-        "codex/cockpit-refresh-20260716"
+        "codex/cockpit-refresh-20260718"
       ],
       "last_reviewed": "2026-06-21"
     },
     "codex/archive-local-main-c1d86bf": {
       "workstreams": [
-        "Git and worktree hygiene"
+        "Issue #8 volatility targeting"
       ],
       "disposition": "stale",
       "rule": "stale-no-recent-commits",
       "evidence": "Tip committer date 2026-05-05 is older than 30 days; GitHub evidence confirmed no open PR heads this branch.",
       "confidence": "high",
-      "association_basis": "unclassified",
+      "association_basis": "implied-alias",
       "alternatives": [],
       "last_reviewed": "2026-05-05"
     },
     "codex/archive-pit-universe-validation-pre-main-20260526": {
       "workstreams": [
-        "Git and worktree hygiene"
+        "Issue #8 volatility targeting"
       ],
       "disposition": "archive",
       "rule": "merged-into-main",
       "evidence": "Branch absent from unmerged topology; merged into origin/main; tip committer date 2026-05-26.",
       "confidence": "high",
-      "association_basis": "unclassified",
+      "association_basis": "implied-alias",
       "alternatives": [],
       "last_reviewed": "2026-05-26"
     },
@@ -69,13 +69,30 @@
       "workstreams": [
         "Automated Disposition Phase1"
       ],
-      "disposition": "canonical",
-      "rule": "unique-live-surface",
-      "evidence": "Only live surface for Automated Disposition Phase1; branch remains unmerged; tip committer date 2026-07-13.",
-      "confidence": "high",
+      "disposition": "archive",
+      "rule": "merged-into-main",
+      "evidence": "Branch absent from unmerged topology; merged into origin/main; tip committer date 2026-07-13. Workstream association ambiguity: equal best branch-term matches Automated Disposition Phase1, Automated Disposition Phase4; Automated Disposition Phase1 is the deterministic primary and all tied workstreams are retained.",
+      "confidence": "low",
       "association_basis": "title-case-fallback",
-      "alternatives": [],
+      "alternatives": [
+        "workstream association: Automated Disposition Phase4 is tied with deterministic primary Automated Disposition Phase1"
+      ],
       "last_reviewed": "2026-07-13"
+    },
+    "codex/automated-disposition-phase4-20260713": {
+      "workstreams": [
+        "Automated Disposition Phase1"
+      ],
+      "disposition": "canonical",
+      "rule": "worktree-state-uncertain",
+      "evidence": "Attached worktree is dirty; merged state cannot be trusted. Workstream association ambiguity: equal best branch-term matches Automated Disposition Phase1, Automated Disposition Phase4; Automated Disposition Phase1 is the deterministic primary and all tied workstreams are retained.",
+      "confidence": "low",
+      "association_basis": "title-case-fallback",
+      "alternatives": [
+        "archive: resolve uncertain worktree state for codex/automated-disposition-phase4-20260713",
+        "workstream association: Automated Disposition Phase4 is tied with deterministic primary Automated Disposition Phase1"
+      ],
+      "last_reviewed": "2026-07-16"
     },
     "codex/cockpit-hygiene-20260626": {
       "workstreams": [
@@ -83,11 +100,11 @@
       ],
       "disposition": "stale",
       "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #92 (https://github.com/magilliam27/MCI-GRU/pull/92) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-06-26. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
+      "evidence": "Competing surface rejected because PR #93 (https://github.com/magilliam27/MCI-GRU/pull/93) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-06-26. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
       "confidence": "low",
       "association_basis": "unclassified",
       "alternatives": [
-        "codex/cockpit-refresh-20260716"
+        "codex/cockpit-refresh-20260718"
       ],
       "last_reviewed": "2026-06-26"
     },
@@ -97,11 +114,11 @@
       ],
       "disposition": "stale",
       "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #92 (https://github.com/magilliam27/MCI-GRU/pull/92) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-07-11. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
+      "evidence": "Competing surface rejected because PR #93 (https://github.com/magilliam27/MCI-GRU/pull/93) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-07-11. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
       "confidence": "low",
       "association_basis": "unclassified",
       "alternatives": [
-        "codex/cockpit-refresh-20260716"
+        "codex/cockpit-refresh-20260718"
       ],
       "last_reviewed": "2026-07-11"
     },
@@ -111,11 +128,11 @@
       ],
       "disposition": "stale",
       "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #92 (https://github.com/magilliam27/MCI-GRU/pull/92) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-07-12. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
+      "evidence": "Competing surface rejected because PR #93 (https://github.com/magilliam27/MCI-GRU/pull/93) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-07-12. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
       "confidence": "low",
       "association_basis": "unclassified",
       "alternatives": [
-        "codex/cockpit-refresh-20260716"
+        "codex/cockpit-refresh-20260718"
       ],
       "last_reviewed": "2026-07-12"
     },
@@ -125,11 +142,11 @@
       ],
       "disposition": "stale",
       "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #92 (https://github.com/magilliam27/MCI-GRU/pull/92) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-07-13. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
+      "evidence": "Competing surface rejected because PR #93 (https://github.com/magilliam27/MCI-GRU/pull/93) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-07-13. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
       "confidence": "low",
       "association_basis": "unclassified",
       "alternatives": [
-        "codex/cockpit-refresh-20260716"
+        "codex/cockpit-refresh-20260718"
       ],
       "last_reviewed": "2026-07-13"
     },
@@ -139,11 +156,11 @@
       ],
       "disposition": "stale",
       "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #92 (https://github.com/magilliam27/MCI-GRU/pull/92) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-07-14. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
+      "evidence": "Competing surface rejected because PR #93 (https://github.com/magilliam27/MCI-GRU/pull/93) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-07-14. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
       "confidence": "low",
       "association_basis": "unclassified",
       "alternatives": [
-        "codex/cockpit-refresh-20260716"
+        "codex/cockpit-refresh-20260718"
       ],
       "last_reviewed": "2026-07-14"
     },
@@ -153,11 +170,11 @@
       ],
       "disposition": "stale",
       "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #92 (https://github.com/magilliam27/MCI-GRU/pull/92) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-07-15. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
+      "evidence": "Competing surface rejected because PR #93 (https://github.com/magilliam27/MCI-GRU/pull/93) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-07-15. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
       "confidence": "low",
       "association_basis": "unclassified",
       "alternatives": [
-        "codex/cockpit-refresh-20260716"
+        "codex/cockpit-refresh-20260718"
       ],
       "last_reviewed": "2026-07-15"
     },
@@ -165,9 +182,23 @@
       "workstreams": [
         "Git and worktree hygiene"
       ],
+      "disposition": "stale",
+      "rule": "open-pr-canonical",
+      "evidence": "Competing surface rejected because PR #93 (https://github.com/magilliam27/MCI-GRU/pull/93) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-07-16. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
+      "confidence": "low",
+      "association_basis": "unclassified",
+      "alternatives": [
+        "codex/cockpit-refresh-20260718"
+      ],
+      "last_reviewed": "2026-07-16"
+    },
+    "codex/cockpit-refresh-20260718": {
+      "workstreams": [
+        "Git and worktree hygiene"
+      ],
       "disposition": "canonical",
       "rule": "open-pr-canonical",
-      "evidence": "Open PR #92 (https://github.com/magilliam27/MCI-GRU/pull/92) heads branch; canonical continuation is that PR. Competing live surfaces require deterministic selection. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
+      "evidence": "Open PR #93 (https://github.com/magilliam27/MCI-GRU/pull/93) heads branch; canonical continuation is that PR. Competing live surfaces require deterministic selection. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
       "confidence": "low",
       "association_basis": "unclassified",
       "alternatives": [
@@ -178,14 +209,18 @@
         "codex/cockpit-refresh-20260713",
         "codex/cockpit-refresh-20260714",
         "codex/cockpit-refresh-20260715",
+        "codex/cockpit-refresh-20260716",
         "codex/main_2",
-        "detached@5563142-ab61c8c5c4",
-        "detached@6a79db1-2b4649c12b",
+        "detached@4684d44-eb8efbacba",
+        "detached@4684d44-f94150a537",
+        "detached@4684d44-fba221f7c3",
+        "detached@5521fc0-7d2cd652e0",
+        "detached@5521fc0-8549ce43f1",
+        "detached@94131dc-ab61c8c5c4",
         "detached@d6b0f60-0b23b089d3",
-        "detached@d6b0f60-453dd29d63",
-        "main"
+        "detached@d6b0f60-453dd29d63"
       ],
-      "last_reviewed": "2026-07-16"
+      "last_reviewed": "2026-07-18"
     },
     "codex/cockpit-worktree-status-error-test-20260701": {
       "workstreams": [
@@ -249,18 +284,30 @@
       "alternatives": [],
       "last_reviewed": "2026-07-12"
     },
+    "codex/fix-cockpit-override-module-invocation-20260716": {
+      "workstreams": [
+        "Fix Override Module Invocation"
+      ],
+      "disposition": "canonical",
+      "rule": "worktree-state-uncertain",
+      "evidence": "Attached worktree is dirty; merged state cannot be trusted.",
+      "confidence": "low",
+      "association_basis": "title-case-fallback",
+      "alternatives": [
+        "archive: resolve uncertain worktree state for codex/fix-cockpit-override-module-invocation-20260716"
+      ],
+      "last_reviewed": "2026-07-16"
+    },
     "codex/issue8-colab-efficiency-experiment": {
       "workstreams": [
         "Issue #8 volatility targeting"
       ],
-      "disposition": "canonical",
-      "rule": "newest-live-surface",
-      "evidence": "Newest live surface for Issue #8 volatility targeting selected by committer date with lexical branch-name tie-break; tip committer date 2026-06-18.",
-      "confidence": "low",
+      "disposition": "stale",
+      "rule": "stale-no-recent-commits",
+      "evidence": "Tip committer date 2026-06-18 is older than 30 days; GitHub evidence confirmed no open PR heads this branch.",
+      "confidence": "high",
       "association_basis": "explicit-alias",
-      "alternatives": [
-        "codex/issue8-vol-repeated-seed"
-      ],
+      "alternatives": [],
       "last_reviewed": "2026-06-18"
     },
     "codex/issue8-vol-ablation-sweep": {
@@ -275,18 +322,30 @@
       "alternatives": [],
       "last_reviewed": "2026-06-05"
     },
+    "codex/issue8-vol-current-main-20260716": {
+      "workstreams": [
+        "Issue #8 volatility targeting"
+      ],
+      "disposition": "stale",
+      "rule": "open-pr-canonical",
+      "evidence": "Competing surface rejected because PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62) is the deterministic open-PR continuation for Issue #8 volatility targeting; tip committer date 2026-07-16. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted.",
+      "confidence": "low",
+      "association_basis": "explicit-alias",
+      "alternatives": [
+        "codex/salvage-loss-seed-matrix-evidence-20260707"
+      ],
+      "last_reviewed": "2026-07-16"
+    },
     "codex/issue8-vol-repeated-seed": {
       "workstreams": [
         "Issue #8 volatility targeting"
       ],
       "disposition": "stale",
-      "rule": "newest-live-surface",
-      "evidence": "Competing live surface for Issue #8 volatility targeting rejected by newest-surface rule; tip committer date 2026-06-18.",
-      "confidence": "low",
+      "rule": "stale-no-recent-commits",
+      "evidence": "Tip committer date 2026-06-18 is older than 30 days; GitHub evidence confirmed no open PR heads this branch.",
+      "confidence": "high",
       "association_basis": "explicit-alias",
-      "alternatives": [
-        "codex/issue8-colab-efficiency-experiment"
-      ],
+      "alternatives": [],
       "last_reviewed": "2026-06-18"
     },
     "codex/lambdarank-ic-colab": {
@@ -306,12 +365,13 @@
         "LambdaRankIC"
       ],
       "disposition": "stale",
-      "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62) is the deterministic open-PR continuation for LambdaRankIC; tip committer date 2026-06-26. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
+      "rule": "newest-live-surface",
+      "evidence": "Competing live surface for LambdaRankIC rejected by newest-surface rule; tip committer date 2026-06-26. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
       "confidence": "low",
       "association_basis": "explicit-alias",
       "alternatives": [
-        "codex/salvage-loss-seed-matrix-evidence-20260707"
+        "archive: resolve uncertain worktree state for codex/lambdarankic-2026-ytd-backtest-20260714, codex/research-ledger-2026-audit-20260715",
+        "codex/research-ledger-2026-audit-20260715"
       ],
       "last_reviewed": "2026-06-26"
     },
@@ -321,23 +381,24 @@
       ],
       "disposition": "archive",
       "rule": "merged-into-main",
-      "evidence": "Branch absent from unmerged topology; merged into origin/main; tip committer date 2026-07-15.",
+      "evidence": "Branch absent from unmerged topology; merged into origin/main; tip committer date 2026-07-16.",
       "confidence": "high",
       "association_basis": "explicit-alias",
       "alternatives": [],
-      "last_reviewed": "2026-07-15"
+      "last_reviewed": "2026-07-16"
     },
     "codex/lambdarankic-2026-ytd-20260713": {
       "workstreams": [
         "LambdaRankIC"
       ],
       "disposition": "stale",
-      "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62) is the deterministic open-PR continuation for LambdaRankIC; tip committer date 2026-07-13. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
+      "rule": "newest-live-surface",
+      "evidence": "Competing live surface for LambdaRankIC rejected by newest-surface rule; tip committer date 2026-07-13. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
       "confidence": "low",
       "association_basis": "explicit-alias",
       "alternatives": [
-        "codex/salvage-loss-seed-matrix-evidence-20260707"
+        "archive: resolve uncertain worktree state for codex/lambdarankic-2026-ytd-backtest-20260714, codex/research-ledger-2026-audit-20260715",
+        "codex/research-ledger-2026-audit-20260715"
       ],
       "last_reviewed": "2026-07-13"
     },
@@ -346,12 +407,13 @@
         "LambdaRankIC"
       ],
       "disposition": "stale",
-      "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62) is the deterministic open-PR continuation for LambdaRankIC; tip committer date 2026-07-14. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
+      "rule": "newest-live-surface",
+      "evidence": "Competing live surface for LambdaRankIC rejected by newest-surface rule; tip committer date 2026-07-14. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
       "confidence": "low",
       "association_basis": "explicit-alias",
       "alternatives": [
-        "codex/salvage-loss-seed-matrix-evidence-20260707"
+        "archive: resolve uncertain worktree state for codex/lambdarankic-2026-ytd-backtest-20260714, codex/research-ledger-2026-audit-20260715",
+        "codex/research-ledger-2026-audit-20260715"
       ],
       "last_reviewed": "2026-07-14"
     },
@@ -360,12 +422,13 @@
         "LambdaRankIC"
       ],
       "disposition": "stale",
-      "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62) is the deterministic open-PR continuation for LambdaRankIC; tip committer date 2026-06-20. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
+      "rule": "newest-live-surface",
+      "evidence": "Competing live surface for LambdaRankIC rejected by newest-surface rule; tip committer date 2026-06-20. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
       "confidence": "low",
       "association_basis": "explicit-alias",
       "alternatives": [
-        "codex/salvage-loss-seed-matrix-evidence-20260707"
+        "archive: resolve uncertain worktree state for codex/lambdarankic-2026-ytd-backtest-20260714, codex/research-ledger-2026-audit-20260715",
+        "codex/research-ledger-2026-audit-20260715"
       ],
       "last_reviewed": "2026-06-20"
     },
@@ -374,12 +437,13 @@
         "LambdaRankIC"
       ],
       "disposition": "stale",
-      "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62) is the deterministic open-PR continuation for LambdaRankIC; tip committer date 2026-07-13. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
+      "rule": "newest-live-surface",
+      "evidence": "Competing live surface for LambdaRankIC rejected by newest-surface rule; tip committer date 2026-07-13. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
       "confidence": "low",
       "association_basis": "explicit-alias",
       "alternatives": [
-        "codex/salvage-loss-seed-matrix-evidence-20260707"
+        "archive: resolve uncertain worktree state for codex/lambdarankic-2026-ytd-backtest-20260714, codex/research-ledger-2026-audit-20260715",
+        "codex/research-ledger-2026-audit-20260715"
       ],
       "last_reviewed": "2026-07-13"
     },
@@ -388,12 +452,13 @@
         "LambdaRankIC"
       ],
       "disposition": "stale",
-      "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62) is the deterministic open-PR continuation for LambdaRankIC; tip committer date 2026-07-14. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
+      "rule": "newest-live-surface",
+      "evidence": "Competing live surface for LambdaRankIC rejected by newest-surface rule; tip committer date 2026-07-14. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
       "confidence": "low",
       "association_basis": "explicit-alias",
       "alternatives": [
-        "codex/salvage-loss-seed-matrix-evidence-20260707"
+        "archive: resolve uncertain worktree state for codex/lambdarankic-2026-ytd-backtest-20260714, codex/research-ledger-2026-audit-20260715",
+        "codex/research-ledger-2026-audit-20260715"
       ],
       "last_reviewed": "2026-07-14"
     },
@@ -403,11 +468,11 @@
       ],
       "disposition": "stale",
       "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #92 (https://github.com/magilliam27/MCI-GRU/pull/92) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-06-21. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
+      "evidence": "Competing surface rejected because PR #93 (https://github.com/magilliam27/MCI-GRU/pull/93) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-06-21. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
       "confidence": "low",
       "association_basis": "unclassified",
       "alternatives": [
-        "codex/cockpit-refresh-20260716"
+        "codex/cockpit-refresh-20260718"
       ],
       "last_reviewed": "2026-06-21"
     },
@@ -463,34 +528,35 @@
       "workstreams": [
         "LambdaRankIC"
       ],
-      "disposition": "stale",
-      "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62) is the deterministic open-PR continuation for LambdaRankIC; tip committer date 2026-07-15. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
-      "confidence": "low",
-      "association_basis": "implied-alias",
-      "alternatives": [
-        "codex/salvage-loss-seed-matrix-evidence-20260707"
-      ],
-      "last_reviewed": "2026-07-15"
-    },
-    "codex/salvage-loss-seed-matrix-evidence-20260707": {
-      "workstreams": [
-        "LambdaRankIC"
-      ],
       "disposition": "canonical",
-      "rule": "open-pr-canonical",
-      "evidence": "Open PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62) heads branch; canonical continuation is that PR. Competing live surfaces require deterministic selection. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
+      "rule": "newest-live-surface",
+      "evidence": "Newest live surface for LambdaRankIC selected by committer date with lexical branch-name tie-break; tip committer date 2026-07-15. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
       "confidence": "low",
       "association_basis": "implied-alias",
       "alternatives": [
+        "archive: resolve uncertain worktree state for codex/lambdarankic-2026-ytd-backtest-20260714, codex/research-ledger-2026-audit-20260715",
         "codex/lambdarankic-1024-all-years-20260625",
         "codex/lambdarankic-2026-ytd-20260713",
         "codex/lambdarankic-2026-ytd-backtest-20260714",
         "codex/lambdarankic-lower-pair-screen",
         "codex/lambdarankic-saved-prediction-replay-20260713",
         "codex/lambdarankic-ytd-drive-durability-20260714",
-        "codex/research-ledger-2026-audit-20260715",
         "codex/top10-lambdarank-screen-20260625"
+      ],
+      "last_reviewed": "2026-07-15"
+    },
+    "codex/salvage-loss-seed-matrix-evidence-20260707": {
+      "workstreams": [
+        "Issue #8 volatility targeting"
+      ],
+      "disposition": "canonical",
+      "rule": "open-pr-canonical",
+      "evidence": "Open PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62) heads branch; canonical continuation is that PR. Competing live surfaces require deterministic selection. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted.",
+      "confidence": "low",
+      "association_basis": "implied-alias",
+      "alternatives": [
+        "codex/issue8-vol-current-main-20260716",
+        "main"
       ],
       "last_reviewed": "2026-07-07"
     },
@@ -499,40 +565,97 @@
         "LambdaRankIC"
       ],
       "disposition": "stale",
-      "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62) is the deterministic open-PR continuation for LambdaRankIC; tip committer date 2026-06-26. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
+      "rule": "newest-live-surface",
+      "evidence": "Competing live surface for LambdaRankIC rejected by newest-surface rule; tip committer date 2026-06-26. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
       "confidence": "low",
       "association_basis": "explicit-alias",
       "alternatives": [
-        "codex/salvage-loss-seed-matrix-evidence-20260707"
+        "archive: resolve uncertain worktree state for codex/lambdarankic-2026-ytd-backtest-20260714, codex/research-ledger-2026-audit-20260715",
+        "codex/research-ledger-2026-audit-20260715"
       ],
       "last_reviewed": "2026-06-26"
     },
-    "detached@5563142-ab61c8c5c4": {
+    "detached@4684d44-eb8efbacba": {
       "workstreams": [
         "Git and worktree hygiene"
       ],
       "disposition": "stale",
       "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #92 (https://github.com/magilliam27/MCI-GRU/pull/92) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date unavailable. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
+      "evidence": "Competing surface rejected because PR #93 (https://github.com/magilliam27/MCI-GRU/pull/93) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date unavailable. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
       "confidence": "low",
       "association_basis": "unclassified",
       "alternatives": [
-        "codex/cockpit-refresh-20260716"
+        "codex/cockpit-refresh-20260718"
       ],
       "last_reviewed": "1970-01-01"
     },
-    "detached@6a79db1-2b4649c12b": {
+    "detached@4684d44-f94150a537": {
       "workstreams": [
         "Git and worktree hygiene"
       ],
       "disposition": "stale",
       "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #92 (https://github.com/magilliam27/MCI-GRU/pull/92) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date unavailable. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
+      "evidence": "Competing surface rejected because PR #93 (https://github.com/magilliam27/MCI-GRU/pull/93) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date unavailable. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
       "confidence": "low",
       "association_basis": "unclassified",
       "alternatives": [
-        "codex/cockpit-refresh-20260716"
+        "codex/cockpit-refresh-20260718"
+      ],
+      "last_reviewed": "1970-01-01"
+    },
+    "detached@4684d44-fba221f7c3": {
+      "workstreams": [
+        "Git and worktree hygiene"
+      ],
+      "disposition": "stale",
+      "rule": "open-pr-canonical",
+      "evidence": "Competing surface rejected because PR #93 (https://github.com/magilliam27/MCI-GRU/pull/93) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date unavailable. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
+      "confidence": "low",
+      "association_basis": "unclassified",
+      "alternatives": [
+        "codex/cockpit-refresh-20260718"
+      ],
+      "last_reviewed": "1970-01-01"
+    },
+    "detached@5521fc0-7d2cd652e0": {
+      "workstreams": [
+        "Git and worktree hygiene"
+      ],
+      "disposition": "stale",
+      "rule": "open-pr-canonical",
+      "evidence": "Competing surface rejected because PR #93 (https://github.com/magilliam27/MCI-GRU/pull/93) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date unavailable. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
+      "confidence": "low",
+      "association_basis": "unclassified",
+      "alternatives": [
+        "codex/cockpit-refresh-20260718"
+      ],
+      "last_reviewed": "1970-01-01"
+    },
+    "detached@5521fc0-8549ce43f1": {
+      "workstreams": [
+        "Git and worktree hygiene"
+      ],
+      "disposition": "stale",
+      "rule": "open-pr-canonical",
+      "evidence": "Competing surface rejected because PR #93 (https://github.com/magilliam27/MCI-GRU/pull/93) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date unavailable. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
+      "confidence": "low",
+      "association_basis": "unclassified",
+      "alternatives": [
+        "codex/cockpit-refresh-20260718"
+      ],
+      "last_reviewed": "1970-01-01"
+    },
+    "detached@94131dc-ab61c8c5c4": {
+      "workstreams": [
+        "Git and worktree hygiene"
+      ],
+      "disposition": "stale",
+      "rule": "open-pr-canonical",
+      "evidence": "Competing surface rejected because PR #93 (https://github.com/magilliam27/MCI-GRU/pull/93) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date unavailable. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
+      "confidence": "low",
+      "association_basis": "unclassified",
+      "alternatives": [
+        "codex/cockpit-refresh-20260718"
       ],
       "last_reviewed": "1970-01-01"
     },
@@ -542,11 +665,11 @@
       ],
       "disposition": "stale",
       "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #92 (https://github.com/magilliam27/MCI-GRU/pull/92) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date unavailable. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
+      "evidence": "Competing surface rejected because PR #93 (https://github.com/magilliam27/MCI-GRU/pull/93) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date unavailable. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
       "confidence": "low",
       "association_basis": "unclassified",
       "alternatives": [
-        "codex/cockpit-refresh-20260716"
+        "codex/cockpit-refresh-20260718"
       ],
       "last_reviewed": "1970-01-01"
     },
@@ -556,25 +679,25 @@
       ],
       "disposition": "stale",
       "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #92 (https://github.com/magilliam27/MCI-GRU/pull/92) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date unavailable. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
+      "evidence": "Competing surface rejected because PR #93 (https://github.com/magilliam27/MCI-GRU/pull/93) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date unavailable. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
       "confidence": "low",
       "association_basis": "unclassified",
       "alternatives": [
-        "codex/cockpit-refresh-20260716"
+        "codex/cockpit-refresh-20260718"
       ],
       "last_reviewed": "1970-01-01"
     },
     "main": {
       "workstreams": [
-        "Git and worktree hygiene"
+        "Issue #8 volatility targeting"
       ],
       "disposition": "stale",
       "rule": "open-pr-canonical",
-      "evidence": "Competing surface rejected because PR #92 (https://github.com/magilliam27/MCI-GRU/pull/92) is the deterministic open-PR continuation for Git and worktree hygiene; tip committer date 2026-07-16. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred. Surface provenance detached is not a normalized branch ref; merged state cannot be inferred.",
+      "evidence": "Competing surface rejected because PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62) is the deterministic open-PR continuation for Issue #8 volatility targeting; tip committer date 2026-07-16. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted.",
       "confidence": "low",
-      "association_basis": "unclassified",
+      "association_basis": "implied-alias",
       "alternatives": [
-        "codex/cockpit-refresh-20260716"
+        "codex/salvage-loss-seed-matrix-evidence-20260707"
       ],
       "last_reviewed": "2026-07-16"
     }
@@ -594,12 +717,27 @@
     },
     "Automated Disposition Phase1": {
       "status": "active",
-      "canonical_surface": "codex/automated-disposition-phase1-20260712",
+      "canonical_surface": "codex/automated-disposition-phase4-20260713",
       "rule": "recent-activity-active",
-      "evidence": "canonical surface codex/automated-disposition-phase1-20260712 activity 2026-07-13.",
-      "confidence": "high",
-      "alternatives": [],
-      "last_reviewed": "2026-07-13"
+      "evidence": "canonical surface codex/automated-disposition-phase4-20260713 activity 2026-07-16. Canonical surface uncertainty (worktree-state-uncertain): Attached worktree is dirty; merged state cannot be trusted. Workstream association ambiguity: equal best branch-term matches Automated Disposition Phase1, Automated Disposition Phase4; Automated Disposition Phase1 is the deterministic primary and all tied workstreams are retained.",
+      "confidence": "low",
+      "alternatives": [
+        "archive: resolve uncertain worktree state for codex/automated-disposition-phase4-20260713",
+        "workstream association: Automated Disposition Phase4 is tied with deterministic primary Automated Disposition Phase1"
+      ],
+      "last_reviewed": "2026-07-16"
+    },
+    "Automated Disposition Phase4": {
+      "status": "stale",
+      "canonical_surface": "",
+      "rule": "association-tie-unselected",
+      "evidence": "Workstream association ambiguity: equal best branch-term matches Automated Disposition Phase1, Automated Disposition Phase4; Automated Disposition Phase1 is the deterministic primary and all tied workstreams are retained. Surface codex/automated-disposition-phase1-20260712 was assigned to Automated Disposition Phase1; no selected surface remains for Automated Disposition Phase4. Workstream association ambiguity: equal best branch-term matches Automated Disposition Phase1, Automated Disposition Phase4; Automated Disposition Phase1 is the deterministic primary and all tied workstreams are retained. Surface codex/automated-disposition-phase4-20260713 was assigned to Automated Disposition Phase1 instead of Automated Disposition Phase4.",
+      "confidence": "low",
+      "alternatives": [
+        "active: associate codex/automated-disposition-phase1-20260712 with Automated Disposition Phase4 instead of Automated Disposition Phase1",
+        "active: associate codex/automated-disposition-phase4-20260713 with Automated Disposition Phase4 instead of Automated Disposition Phase1"
+      ],
+      "last_reviewed": "2026-07-16"
     },
     "Chore/File Cleanup": {
       "status": "active",
@@ -656,17 +794,29 @@
       ],
       "last_reviewed": "2026-07-12"
     },
+    "Fix Override Module Invocation": {
+      "status": "active",
+      "canonical_surface": "codex/fix-cockpit-override-module-invocation-20260716",
+      "rule": "recent-activity-active",
+      "evidence": "canonical surface codex/fix-cockpit-override-module-invocation-20260716 activity 2026-07-16. Canonical surface uncertainty (worktree-state-uncertain): Attached worktree is dirty; merged state cannot be trusted.",
+      "confidence": "low",
+      "alternatives": [
+        "archive: resolve uncertain worktree state for codex/fix-cockpit-override-module-invocation-20260716"
+      ],
+      "last_reviewed": "2026-07-16"
+    },
     "Issue #8 volatility targeting": {
       "status": "active",
-      "canonical_surface": "codex/issue8-colab-efficiency-experiment",
-      "rule": "recent-activity-active",
-      "evidence": "canonical surface codex/issue8-colab-efficiency-experiment activity 2026-06-18. Canonical surface uncertainty (newest-live-surface): Newest live surface for Issue #8 volatility targeting selected by committer date with lexical branch-name tie-break; tip committer date 2026-06-18. Issue title association is ambiguous across exact workstream terms.",
+      "canonical_surface": "codex/salvage-loss-seed-matrix-evidence-20260707",
+      "rule": "open-pr-active",
+      "evidence": "linked open PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62); canonical surface codex/salvage-loss-seed-matrix-evidence-20260707 activity 2026-07-07. Canonical surface uncertainty (open-pr-canonical): Open PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62) heads branch; canonical continuation is that PR. Competing live surfaces require deterministic selection. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Issue title association is ambiguous across exact workstream terms.",
       "confidence": "low",
       "alternatives": [
         "association ambiguity: issue #36 (https://github.com/magilliam27/MCI-GRU/issues/36) matches workstreams Colab operations, Issue #8 volatility targeting, Portfolio-IC",
-        "codex/issue8-vol-repeated-seed"
+        "codex/issue8-vol-current-main-20260716",
+        "main"
       ],
-      "last_reviewed": "2026-06-18"
+      "last_reviewed": "2026-07-16"
     },
     "LSEG access": {
       "status": "done",
@@ -681,18 +831,18 @@
     },
     "LambdaRankIC": {
       "status": "active",
-      "canonical_surface": "codex/salvage-loss-seed-matrix-evidence-20260707",
-      "rule": "open-pr-active",
-      "evidence": "linked open PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62); canonical surface codex/salvage-loss-seed-matrix-evidence-20260707 activity 2026-07-07. Canonical surface uncertainty (open-pr-canonical): Open PR #62 (https://github.com/magilliam27/MCI-GRU/pull/62) heads branch; canonical continuation is that PR. Competing live surfaces require deterministic selection. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
+      "canonical_surface": "codex/research-ledger-2026-audit-20260715",
+      "rule": "recent-activity-active",
+      "evidence": "canonical surface codex/research-ledger-2026-audit-20260715 activity 2026-07-15. Canonical surface uncertainty (newest-live-surface): Newest live surface for LambdaRankIC selected by committer date with lexical branch-name tie-break; tip committer date 2026-07-15. Competition uncertainty: Attached worktree is dirty; merged state cannot be trusted. Attached worktree is dirty; merged state cannot be trusted.",
       "confidence": "low",
       "alternatives": [
+        "archive: resolve uncertain worktree state for codex/lambdarankic-2026-ytd-backtest-20260714, codex/research-ledger-2026-audit-20260715",
         "codex/lambdarankic-1024-all-years-20260625",
         "codex/lambdarankic-2026-ytd-20260713",
         "codex/lambdarankic-2026-ytd-backtest-20260714",
         "codex/lambdarankic-lower-pair-screen",
         "codex/lambdarankic-saved-prediction-replay-20260713",
         "codex/lambdarankic-ytd-drive-durability-20260714",
-        "codex/research-ledger-2026-audit-20260715",
         "codex/top10-lambdarank-screen-20260625"
       ],
       "last_reviewed": "2026-07-16"
