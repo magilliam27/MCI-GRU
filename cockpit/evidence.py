@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import re
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -24,6 +26,7 @@ class LocalEvidence:
     recent_commits: str
     git_topology: GitTopologySnapshot
     recent_branches: list[tuple[str, date]] = field(default_factory=list)
+    branch_commit_dates: dict[str, date] = field(default_factory=dict)
 
 
 REQUIRED_DOCS = [
@@ -56,17 +59,17 @@ def collect_local_evidence(repo_root: Path, run_command: RunCommand | None = Non
         worktrees=worktrees,
         run_command=runner,
     )
-    recent_branches = _parse_recent_branches(
-        runner(
-            [
-                "git",
-                "for-each-ref",
-                "--sort=-committerdate",
-                "--format=%(committerdate:short) %(refname:short)",
-                "refs/heads",
-            ]
-        )
+    branch_date_output = runner(
+        [
+            "git",
+            "for-each-ref",
+            "--sort=-committerdate",
+            "--format=%(committerdate:short)%09%(refname)",
+            "refs/heads",
+            "refs/remotes/origin",
+        ]
     )
+    recent_branches, branch_commit_dates = _parse_branch_commit_dates(branch_date_output)
     return LocalEvidence(
         repo_root=repo_root,
         required_docs=required_docs,
@@ -77,17 +80,21 @@ def collect_local_evidence(repo_root: Path, run_command: RunCommand | None = Non
         recent_commits=runner(["git", "log", "-5", "--oneline"]).strip(),
         git_topology=topology,
         recent_branches=recent_branches,
+        branch_commit_dates=branch_commit_dates,
     )
 
 
-def _parse_recent_branches(output: str) -> list[tuple[str, date]]:
-    """Parse ``git for-each-ref`` committer-date/refname lines defensively.
+def _parse_branch_commit_dates(
+    output: str,
+) -> tuple[list[tuple[str, date]], dict[str, date]]:
+    """Parse local and origin committer dates with local duplicate precedence.
 
-    Each line is ``YYYY-MM-DD <branch>``. Lines that are blank, missing the
-    branch name, or carrying an unparseable date are skipped so a malformed ref
-    never aborts the daily refresh.
+    Full refnames are preferred, but historical short-ref fixtures remain valid.
+    Malformed lines and origin/HEAD are skipped.
     """
-    branches: list[tuple[str, date]] = []
+    local_dates: dict[str, date] = {}
+    remote_dates: dict[str, date] = {}
+    local_order: list[str] = []
     for line in output.splitlines():
         cleaned = line.strip()
         if not cleaned:
@@ -102,8 +109,25 @@ def _parse_recent_branches(output: str) -> list[tuple[str, date]]:
             committer_date = date.fromisoformat(raw_date)
         except ValueError:
             continue
-        branches.append((name, committer_date))
-    return branches
+        is_remote = name.startswith(("refs/remotes/origin/", "remotes/origin/", "origin/"))
+        normalized = (
+            name.removeprefix("refs/heads/")
+            .removeprefix("refs/remotes/origin/")
+            .removeprefix("remotes/origin/")
+            .removeprefix("origin/")
+            .strip()
+        )
+        if not normalized or normalized == "HEAD":
+            continue
+        if is_remote:
+            remote_dates.setdefault(normalized, committer_date)
+            continue
+        if normalized not in local_dates:
+            local_order.append(normalized)
+        local_dates.setdefault(normalized, committer_date)
+    combined = {**remote_dates, **local_dates}
+    recent_branches = [(name, local_dates[name]) for name in local_order]
+    return recent_branches, dict(sorted(combined.items()))
 
 
 def _recent_handoffs(repo_root: Path) -> list[str]:
@@ -143,6 +167,49 @@ def _build_git_topology(
     current_branch = _parse_current_branch(status_branch)
     if _is_detached_branch_name(current_branch):
         current_branch = _detached_current_branch(repo_root, parsed_worktrees)
+    current_path = _normalize_path(repo_root)
+    control_plane_worktree: WorktreeEvidence | None = None
+    for index, worktree in enumerate(parsed_worktrees):
+        if _normalize_path(Path(worktree.path)) != current_path:
+            continue
+        control_plane_worktree = WorktreeEvidence(
+            path=worktree.path,
+            head=worktree.head,
+            branch=worktree.branch,
+            detached=worktree.detached,
+            status_header=worktree.status_header,
+            dirty_paths=worktree.dirty_paths,
+            status_error=worktree.status_error,
+            origin_main_ahead=origin_main_divergence[0],
+            origin_main_behind=origin_main_divergence[1],
+        )
+        parsed_worktrees[index] = control_plane_worktree
+        break
+    if control_plane_worktree is None:
+        fallback = parsed_worktrees[0] if parsed_worktrees else None
+        control_plane_worktree = WorktreeEvidence(
+            path=fallback.path if fallback is not None else repo_root.as_posix(),
+            head=fallback.head if fallback is not None else "unknown",
+            branch=fallback.branch if fallback is not None else current_branch,
+            detached=(
+                fallback.detached
+                if fallback is not None
+                else _is_detached_branch_name(current_branch)
+            ),
+            status_header=(
+                fallback.status_header
+                if fallback is not None
+                else _first_status_header(status_branch)
+            ),
+            dirty_paths=(
+                fallback.dirty_paths if fallback is not None else _parse_dirty_paths(status_branch)
+            ),
+            status_error=fallback.status_error if fallback is not None else "",
+            origin_main_ahead=origin_main_divergence[0],
+            origin_main_behind=origin_main_divergence[1],
+        )
+        if fallback is not None:
+            parsed_worktrees[0] = control_plane_worktree
     return GitTopologySnapshot(
         current_branch=current_branch,
         status_header=_first_status_header(status_branch),
@@ -152,6 +219,8 @@ def _build_git_topology(
         unmerged_branches=[branch.name for branch in unmerged_branches],
         unmerged_branch_details=unmerged_branches,
         worktrees=parsed_worktrees,
+        control_plane_worktree=control_plane_worktree,
+        primary_worktree=parsed_worktrees[0] if parsed_worktrees else control_plane_worktree,
     )
 
 
@@ -250,14 +319,22 @@ def _parse_worktrees(output: str) -> list[WorktreeEvidence]:
 def _worktree_from_block(block: dict[str, str | bool]) -> WorktreeEvidence:
     head = str(block.get("head", "unknown"))
     detached = bool(block.get("detached", False))
-    branch = str(block.get("branch", f"detached@{head[:7]}" if detached else "unknown"))
+    path = str(block.get("path", ""))
+    detached_branch = _detached_surface_id(path, head) if detached else "unknown"
+    branch = str(block.get("branch", detached_branch))
     return WorktreeEvidence(
-        path=str(block.get("path", "")),
+        path=path,
         head=head,
         branch=branch,
         detached=detached,
         status_header="",
     )
+
+
+def _detached_surface_id(path: str, head: str) -> str:
+    normalized_path = _normalize_path(Path(path)) if path else "<missing-worktree-path>"
+    path_digest = hashlib.sha256(normalized_path.encode("utf-8")).hexdigest()[:10]
+    return f"detached@{head[:7]}-{path_digest}"
 
 
 def _collect_worktree_statuses(
@@ -293,6 +370,12 @@ def _collect_worktree_statuses(
                 )
             )
             continue
+        status_divergence = _status_origin_main_divergence(status)
+        origin_main_ahead, origin_main_behind = _worktree_origin_main_divergence(
+            worktree,
+            run_command,
+            fallback=status_divergence,
+        )
         with_status.append(
             WorktreeEvidence(
                 path=worktree.path,
@@ -301,9 +384,59 @@ def _collect_worktree_statuses(
                 detached=worktree.detached,
                 status_header=_first_status_header(status),
                 dirty_paths=_parse_dirty_paths(status),
+                origin_main_ahead=origin_main_ahead,
+                origin_main_behind=origin_main_behind,
             )
         )
     return with_status
+
+
+def _worktree_origin_main_divergence(
+    worktree: WorktreeEvidence,
+    run_command: RunCommand,
+    *,
+    fallback: tuple[int | None, int | None],
+) -> tuple[int | None, int | None]:
+    try:
+        output = run_command(
+            [
+                "git",
+                "-c",
+                f"safe.directory={worktree.path}",
+                "-C",
+                worktree.path,
+                "rev-list",
+                "--left-right",
+                "--count",
+                "origin/main...HEAD",
+            ]
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return fallback
+    parsed = _parse_optional_divergence(output)
+    return parsed if parsed != (None, None) else fallback
+
+
+def _parse_optional_divergence(output: str) -> tuple[int | None, int | None]:
+    parts = output.split()
+    if len(parts) < 2:
+        return (None, None)
+    try:
+        return (int(parts[1]), int(parts[0]))
+    except ValueError:
+        return (None, None)
+
+
+def _status_origin_main_divergence(status_output: str) -> tuple[int | None, int | None]:
+    header = _first_status_header(status_output)
+    if "...origin/main" not in header or "[gone]" in header:
+        return (None, None)
+    ahead_match = re.search(r"\bahead (\d+)\b", header)
+    behind_match = re.search(r"\bbehind (\d+)\b", header)
+    return (
+        int(ahead_match.group(1)) if ahead_match else 0,
+        int(behind_match.group(1)) if behind_match else 0,
+    )
 
 
 def _run_git(args: list[str], cwd: Path) -> str:

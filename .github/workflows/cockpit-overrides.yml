@@ -1,0 +1,45 @@
+name: Apply cockpit override comments
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: cockpit-overrides-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  apply-override:
+    if: >-
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/cockpit ')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Configure curator commit identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Apply the authenticated override
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/apply_cockpit_overrides.py
+          --repo ${{ github.repository }}
+          --pr-number ${{ github.event.issue.number }}
+          --comment-id ${{ github.event.comment.id }}

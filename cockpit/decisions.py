@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
-from cockpit._compat import StrEnum
-from cockpit.models import WorkstreamStatus
+from cockpit.models import Confidence, SurfaceDisposition, WorkstreamStatus
 
 if TYPE_CHECKING:
     from collections.abc import Collection
     from pathlib import Path
+
+    from cockpit.models import AutoDecisionSet
 
 DECISION_REGISTRY_PATH = "docs/agents/cockpit/workstream-decisions.json"
 FORMAT_VERSION = 2
@@ -18,13 +19,14 @@ FORMAT_VERSION = 2
 # section) remain valid, version 2 adds the optional alias section, and any other
 # version is rejected. The rejection contract test targets version 3.
 SUPPORTED_FORMAT_VERSIONS = frozenset({1, 2})
-
-
-class SurfaceDisposition(StrEnum):
-    CANONICAL = "canonical"
-    PARKED = "parked"
-    ARCHIVE = "archive"
-    STALE = "stale"
+CONTINUING_WORKSTREAM_STATUSES = frozenset(
+    {
+        WorkstreamStatus.ACTIVE,
+        WorkstreamStatus.BLOCKED,
+        WorkstreamStatus.LOCAL_ONLY,
+        WorkstreamStatus.READY_FOR_AGENT,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -34,6 +36,7 @@ class WorkstreamDecision:
     reason: str
     next_action: str
     last_reviewed: date
+    provenance: Literal["override", "auto"] = "override"
 
 
 @dataclass(frozen=True)
@@ -43,6 +46,9 @@ class SurfaceDecision:
     reason: str
     next_action: str
     last_reviewed: date
+    provenance: Literal["override", "auto"] = "override"
+    confidence: Confidence | None = None
+    association_basis: str = "explicit-surface"
 
 
 @dataclass(frozen=True)
@@ -54,6 +60,148 @@ class DecisionRegistry:
     def is_reviewed(self, workstream: str, branch: str) -> bool:
         surface = self.surfaces.get(branch)
         return surface is not None and workstream in surface.workstreams
+
+
+def overlay_auto_decisions(
+    registry: DecisionRegistry,
+    auto: AutoDecisionSet,
+) -> DecisionRegistry:
+    auto_surfaces = {
+        branch: SurfaceDecision(
+            workstreams=decision.workstreams,
+            disposition=decision.disposition,
+            reason=f"Auto rule {decision.rule}: {decision.evidence}",
+            next_action=_auto_surface_next_action(decision.disposition),
+            last_reviewed=decision.last_reviewed,
+            provenance="auto",
+            confidence=decision.confidence,
+            association_basis=decision.association_basis,
+        )
+        for branch, decision in auto.surfaces.items()
+    }
+    explicit_canonical_surfaces: dict[str, str] = {}
+    for branch, decision in registry.surfaces.items():
+        if decision.disposition != SurfaceDisposition.CANONICAL:
+            continue
+        for workstream in decision.workstreams:
+            existing = explicit_canonical_surfaces.get(workstream)
+            if existing is not None and existing != branch:
+                raise ValueError(
+                    "Multiple explicit canonical surfaces for workstream "
+                    f"{workstream}: {existing}, {branch}"
+                )
+            explicit_canonical_surfaces[workstream] = branch
+    explicit_canonical_workstreams = set(explicit_canonical_surfaces)
+    for branch, decision in tuple(auto_surfaces.items()):
+        if (
+            branch not in registry.surfaces
+            and decision.disposition == SurfaceDisposition.CANONICAL
+            and explicit_canonical_workstreams.intersection(decision.workstreams)
+        ):
+            workstreams = sorted(explicit_canonical_workstreams.intersection(decision.workstreams))
+            auto_surfaces[branch] = replace(
+                decision,
+                disposition=SurfaceDisposition.STALE,
+                reason=(
+                    "Generated canonical choice suppressed by an explicit canonical surface "
+                    f"for {', '.join(workstreams)}."
+                ),
+                next_action="Follow the explicit canonical surface recorded in the registry.",
+            )
+    auto_workstreams = {
+        name: WorkstreamDecision(
+            status=decision.status,
+            canonical_surface=decision.canonical_surface,
+            reason=f"Auto rule {decision.rule}: {decision.evidence}",
+            next_action=_auto_workstream_next_action(decision.status),
+            last_reviewed=decision.last_reviewed,
+            provenance="auto",
+        )
+        for name, decision in auto.workstreams.items()
+    }
+    effective_workstreams = {**auto_workstreams, **registry.workstreams}
+    for workstream, branch in explicit_canonical_surfaces.items():
+        if workstream in effective_workstreams:
+            effective_workstreams[workstream] = replace(
+                effective_workstreams[workstream], canonical_surface=branch
+            )
+    effective_surfaces = {**auto_surfaces, **registry.surfaces}
+    _validate_effective_canonical_surfaces(
+        effective_workstreams,
+        effective_surfaces,
+        registry.workstreams,
+        registry.surfaces,
+    )
+    return DecisionRegistry(
+        workstreams=effective_workstreams,
+        surfaces=effective_surfaces,
+        aliases=dict(registry.aliases),
+    )
+
+
+def _validate_effective_canonical_surfaces(
+    workstreams: dict[str, WorkstreamDecision],
+    surfaces: dict[str, SurfaceDecision],
+    explicit_workstreams: dict[str, WorkstreamDecision],
+    explicit_surfaces: dict[str, SurfaceDecision],
+) -> None:
+    for workstream, decision in workstreams.items():
+        if decision.status not in CONTINUING_WORKSTREAM_STATUSES:
+            continue
+        has_explicit_surface = any(
+            workstream in surface.workstreams for surface in explicit_surfaces.values()
+        )
+        associated = {
+            branch: surface
+            for branch, surface in surfaces.items()
+            if workstream in surface.workstreams
+        }
+        if not associated:
+            continue
+        canonical = sorted(
+            branch
+            for branch, surface in associated.items()
+            if surface.disposition == SurfaceDisposition.CANONICAL
+        )
+        explicit_workstream = explicit_workstreams.get(workstream)
+        has_authoritative_external_route = bool(
+            explicit_workstream is not None
+            and explicit_workstream.canonical_surface.strip()
+            and explicit_workstream.canonical_surface not in surfaces
+        )
+        if has_explicit_surface and not canonical and not has_authoritative_external_route:
+            raise ValueError(
+                f"No effective canonical surface for continuing workstream {workstream}"
+            )
+        if (
+            not has_authoritative_external_route
+            and len(canonical) == 1
+            and decision.canonical_surface != canonical[0]
+        ):
+            workstreams[workstream] = replace(
+                decision,
+                canonical_surface=canonical[0],
+            )
+
+
+def _auto_surface_next_action(disposition: SurfaceDisposition) -> str:
+    if disposition == SurfaceDisposition.CANONICAL:
+        return "Continue from this generated canonical surface."
+    if disposition == SurfaceDisposition.ARCHIVE:
+        return "Retain as archive-labelled evidence; remove only with separate approval."
+    if disposition == SurfaceDisposition.STALE:
+        return "Review before resuming; remove only with separate approval."
+    return "Keep parked until an explicit override resumes it."
+
+
+def _auto_workstream_next_action(status: WorkstreamStatus) -> str:
+    if status == WorkstreamStatus.ACTIVE:
+        return "Continue from the generated canonical surface."
+    if status == WorkstreamStatus.DONE:
+        return "Keep completion evidence; reopen only when new live evidence appears."
+    if status == WorkstreamStatus.STALE:
+        return "Review stale evidence before resuming."
+    return "Follow the generated workstream status."
 
 
 def read_registry_workstream_names(repo_root: Path) -> set[str]:
@@ -125,7 +273,26 @@ def load_decision_registry(
         return DecisionRegistry()
 
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        payload = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ValueError(f"Unable to read {DECISION_REGISTRY_PATH}") from exc
+    return parse_decision_registry_text(payload, known_workstreams=known_workstreams)
+
+
+def parse_decision_registry_text(
+    payload: str,
+    *,
+    known_workstreams: Collection[str],
+    admit_historical_workstreams: bool = False,
+) -> DecisionRegistry:
+    """Parse a registry payload from a file or committed Git evidence.
+
+    Current registry loads keep the default strict known-workstream boundary.
+    A committed historical snapshot may opt into names declared by that snapshot
+    so removed overrides remain available for lifecycle comparison.
+    """
+    try:
+        raw = json.loads(payload)
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid JSON in {DECISION_REGISTRY_PATH}: {exc.msg}") from exc
 
@@ -141,10 +308,21 @@ def load_decision_registry(
         raise ValueError(f"Unsupported cockpit decision registry format_version: {version}")
 
     known = set(known_workstreams)
+    if admit_historical_workstreams:
+        known.update(_historical_workstream_names(root))
     workstreams = _parse_workstreams(root.get("workstreams"), known)
     surfaces = _parse_surfaces(root.get("surfaces"), known)
     aliases = _parse_aliases(root.get("workstream_aliases"))
     return DecisionRegistry(workstreams=workstreams, surfaces=surfaces, aliases=aliases)
+
+
+def _historical_workstream_names(root: dict[str, object]) -> set[str]:
+    names = set(_object(root.get("workstreams"), "workstreams"))
+    surfaces = _object(root.get("surfaces"), "surfaces")
+    for branch, value in surfaces.items():
+        item = _object(value, f"surfaces.{branch}")
+        names.update(_string_list(item.get("workstreams"), f"surfaces.{branch}.workstreams"))
+    return names
 
 
 def _parse_aliases(raw: object) -> dict[str, str]:

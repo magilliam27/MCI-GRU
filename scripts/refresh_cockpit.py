@@ -27,6 +27,20 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Reserved for guarded GitHub sync; disabled by default in the local runner.",
     )
+    policy = parser.add_mutually_exclusive_group()
+    policy.add_argument(
+        "--auto-decisions",
+        dest="auto_decisions",
+        action="store_true",
+        default=True,
+        help="Generate and apply deterministic disposition policy decisions (default).",
+    )
+    policy.add_argument(
+        "--no-auto-decisions",
+        dest="auto_decisions",
+        action="store_false",
+        help="Disable generated decisions and reproduce the legacy refresh behavior.",
+    )
     return parser.parse_args()
 
 
@@ -34,10 +48,11 @@ def main() -> int:
     args = parse_args()
     repo_root = Path(args.repo_root).resolve()
     run_date = date.fromisoformat(args.date)
+    policy_options = {"auto_decisions_enabled": args.auto_decisions}
     if args.github_sync:
-        result = run_github_cockpit_refresh(repo_root, run_date)
+        result = run_github_cockpit_refresh(repo_root, run_date, **policy_options)
     else:
-        result = run_local_cockpit_refresh(repo_root, run_date)
+        result = run_local_cockpit_refresh(repo_root, run_date, **policy_options)
     print(f"Wrote {result.register_path}")
     print(f"Wrote {result.packet_path}")
     print(f"Run color: {result.color.value}")
