@@ -9,7 +9,7 @@
 >
 > **Same ground rules as the base spec:** behavior-preserving first, one
 > workstream = one PR = one green test run
-> (`.\.venv\Scripts\python.exe -m pytest tests/ -v --basetemp .tmp_pytest\pytest`
+> (`.\.venv\Scripts\python.exe scripts\run_pytest_isolated.py tests/ -v`
 > and `ruff check .`), rollback unit = one workstream, no new abstractions
 > without a second caller. Workstreams below flag explicitly where a change is
 > **not** behavior-preserving.
@@ -533,7 +533,7 @@ After Phase 2:       WS-O  logging (avoids pipeline.py churn during WS-J)
 5. WS-J merged → WS-O touches `pipeline.py`.
 
 **Per-PR gate (unchanged from base spec):** `ruff check .` clean, full
-pytest green on Windows venv with `--basetemp .tmp_pytest\pytest`, plus the
+pytest green on Windows venv through `.\.venv\Scripts\python.exe scripts\run_pytest_isolated.py tests/ -v`, plus the
 workstream-specific verification listed above. Phase 2 additionally requires
 the base spec's before/after artifact-diff protocol.
 

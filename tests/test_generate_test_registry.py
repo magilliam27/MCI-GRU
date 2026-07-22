@@ -115,6 +115,7 @@ def test_build_registry_writes_markdown_with_and_without_junit(tmp_path):
     assert out.exists()
     assert "test_alpha" in content
     assert "mci_gru.data.data_manager" in content
+    assert "## `tests/test_fake_module.py`" in content
     assert "No junit results found" in content
 
     junit = tmp_path / "junit.xml"
