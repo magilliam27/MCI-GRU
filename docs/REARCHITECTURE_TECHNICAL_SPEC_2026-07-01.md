@@ -15,7 +15,7 @@
 1. **Behavior-preserving first.** Every split keeps the exact same public
    import paths working (via `__init__.py` re-exports or shim modules) unless
    a call site is explicitly listed as "must change."
-2. **One workstream = one PR = one green test run.** `.\.venv\Scripts\python.exe -m pytest tests/ -v --basetemp .tmp_pytest\pytest` and `ruff check .` must pass before merging each workstream, not just at the end.
+2. **One workstream = one PR = one green test run.** `.\.venv\Scripts\python.exe scripts\run_pytest_isolated.py tests/ -v` and `ruff check .` must pass before merging each workstream, not just at the end.
 3. **Phase gates.** Phase 2 (core pipeline decomposition) does not start until
    Phase 0 and Phase 1 are merged and green — Phase 2 touches no-lookahead-
    sensitive code and needs a stable base to bisect against if something
@@ -596,7 +596,7 @@ WS-D  pytest markers                                                            
 WS-E  docs SOT check                                                         WS-K  infer.py adopts transforms.py
 ```
 
-Each phase requires: `ruff check .` clean, full `pytest tests/ -v --basetemp .tmp_pytest\pytest` green, and (Phase 2 only) the before/after artifact diff protocol in WS-J passing, before the next phase starts.
+Each phase requires: `ruff check .` clean, full `.\.venv\Scripts\python.exe scripts\run_pytest_isolated.py tests/ -v` green, and (Phase 2 only) the before/after artifact diff protocol in WS-J passing, before the next phase starts.
 
 ---
 

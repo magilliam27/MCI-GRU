@@ -6,7 +6,7 @@
 ## Quick Commands
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests/ -v --basetemp .tmp_pytest\pytest  # Windows-preferred full suite
+.\.venv\Scripts\python.exe scripts/run_pytest_isolated.py tests/ -v  # Windows-preferred full suite
 .\.venv\Scripts\python.exe run_experiment.py training.num_epochs=2 training.num_models=1 data.source=csv tracking.enabled=false  # smoke run (CSV + no MLflow)
 .\.venv\Scripts\python.exe paper_trade/scripts/run_nightly.py  # nightly paper-trade pipeline
 ```
@@ -90,16 +90,20 @@ tests/               ← pytest suite + backtest scripts
 - **Before adding features**, read `mci_gru/features/registry.py` for the plugin pattern.
 - **Before changing the graph**, read `mci_gru/graph/builder.py`, `docs/ARCHITECTURE.md` (Graph section), and `docs/agent_references/cursor/plans/graph_signal_upgrades_c28cf640.plan.md` (audit + roadmap).
 - **Before touching paper_trade/**, understand that it uses frozen checkpoints — do not import `GraphBuilder`.
-- **Run tests** after every change with the repo venv and repo-local pytest temp on Windows: `.\.venv\Scripts\python.exe -m pytest tests/ -v --basetemp .tmp_pytest\pytest`; system Python/profile temp has been unreliable here. See `docs/TESTING_GUIDE.md`.
+- **Run tests** after every change with the repo venv and isolated pytest launcher
+  on Windows: `.\.venv\Scripts\python.exe scripts/run_pytest_isolated.py tests/ -v`.
+  It creates a unique temp root for each run and routes both pytest's basetemp
+  and cache into it so normal-user and sandbox identities never reuse
+  identity-specific ACLs. See `docs/TESTING_GUIDE.md`.
 - **Config changes** go through Hydra YAML in `configs/` — see `docs/CONFIGURATION_GUIDE.md`.
 
 ## Testing
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests/ -v --basetemp .tmp_pytest\pytest
-.\.venv\Scripts\python.exe -m pytest tests/test_dynamic_graph_updates.py -v --basetemp .tmp_pytest\pytest
-.\.venv\Scripts\python.exe -m pytest tests/ -k "test_no_lookahead" -v --basetemp .tmp_pytest\pytest
-.\.venv\Scripts\python.exe -m pytest tests/ -m "not slow" -v --basetemp .tmp_pytest\pytest
+.\.venv\Scripts\python.exe scripts/run_pytest_isolated.py tests/ -v
+.\.venv\Scripts\python.exe scripts/run_pytest_isolated.py tests/test_dynamic_graph_updates.py -v
+.\.venv\Scripts\python.exe scripts/run_pytest_isolated.py tests/ -k "test_no_lookahead" -v
+.\.venv\Scripts\python.exe scripts/run_pytest_isolated.py tests/ -m "not slow" -v
 ```
 
 Tests verify: no-lookahead invariants, dynamic graph wiring, momentum blend modes,

@@ -13,20 +13,48 @@ python -m pytest tests/ -k "test_no_lookahead" -v
 ruff check .
 ```
 
-On Windows PowerShell, prefer the repo venv and repo-local pytest temp:
+On Windows PowerShell, prefer the repo venv and isolated pytest launcher:
 
 ```powershell
-New-Item -ItemType Directory -Force .tmp_pytest | Out-Null
-$env:TMP = (Resolve-Path .tmp_pytest).Path
-$env:TEMP = $env:TMP
-.\.venv\Scripts\python.exe -m pytest tests/ -k "test_no_lookahead" -v --basetemp .tmp_pytest\pytest
-.\.venv\Scripts\python.exe -m pytest tests/ -m "not slow" -v --basetemp .tmp_pytest\pytest
+.\.venv\Scripts\python.exe scripts/run_pytest_isolated.py tests/ -k "test_no_lookahead" -v
+.\.venv\Scripts\python.exe scripts/run_pytest_isolated.py tests/ -m "not slow" -v
 .\.venv\Scripts\ruff.exe check .
-.\.venv\Scripts\python.exe -m pytest tests/ -v --basetemp .tmp_pytest\pytest
+.\.venv\Scripts\python.exe scripts/run_pytest_isolated.py tests/ -v
 ```
 
-If pytest passes but emits a Windows permission warning for `.pytest_cache`,
-append `-p no:cacheprovider` to disable cache writes for that run.
+`scripts/run_pytest_isolated.py` creates a unique directory directly beneath the
+user temp directory, routes `TMP`, `TEMP`, `TMPDIR`, and pytest's basetemp into
+it. Pytest's cache provider remains available to tests, but the launcher forces
+`cache_dir` into the same per-run directory instead of writing `.pytest_cache`
+in the checkout. It attempts to remove only that directory when pytest exits.
+If cleanup encounters a true ACL denial, it warns and retains the path without
+masking pytest's exit code. This avoids reusing identity-specific Windows ACLs
+across a normal user, Codex sandbox sessions, or linked worktrees. Cleanup is
+limited to the launcher's uniquely named user-temp directory; it does not remove test
+definitions under `tests/`, junit output under `test_reports/`, or pre-existing
+pytest/cache directories.
+
+The launcher owns `--basetemp`, pytest's cache-provider loading, and the
+`cache_dir` and `addopts` overrides. It rejects attempts to replace them through
+command-line arguments, `PYTEST_ADDOPTS`, or `PYTEST_PLUGINS`, then appends its
+authoritative path values after forwarded pytest options. Safe config-file
+`addopts` still apply. A child-side guard checks pytest's fully parsed
+`basetemp` and `cache_dir` before configuration begins; if config-file arguments
+hide or replace the managed values, pytest fails with a usage error before
+creating either path. This keeps both pytest-owned paths inside the unique run
+root.
+
+Linked worktrees without their own `.venv` should invoke the launcher with an
+explicit interpreter from the main checkout:
+
+```powershell
+& "C:\path\to\main-checkout\.venv\Scripts\python.exe" scripts/run_pytest_isolated.py tests/ -v
+```
+
+Pass `--mci-keep-temp` only when temporary fixture output must be inspected.
+The launcher prints the retained path; inspect and remove it from the same
+Windows identity that created it. `MCI_GRU_PYTEST_TEMP_ROOT` can override the
+parent directory when the default user temp directory is unavailable.
 
 Use the smallest command that proves the changed behavior first. Run broader
 checks before pushing shared pipeline, graph, model, or paper-trade changes.
@@ -61,7 +89,7 @@ local test.
 
 - Interpreter path used, especially `.\.venv\Scripts\python.exe` on Windows.
 - Cwd, branch, and worktree.
-- Pytest temp override, including `TMP`/`TEMP` and `--basetemp`.
+- Pytest isolation method, normally `scripts/run_pytest_isolated.py` on Windows.
 - Command exit status.
 - Pass, skip, warning, and failure counts.
 - Residual risk or unverified surfaces.
