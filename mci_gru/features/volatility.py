@@ -79,6 +79,12 @@ def get_volatility_targeting_features(
 VOLATILITY_TARGETING_FEATURES = get_volatility_targeting_features()
 
 
+def _fill_from_prior_volatility(values: pd.Series, cold_start: float = 0.2) -> pd.Series:
+    """Fill missing volatility from observations available strictly earlier."""
+    prior_median = values.expanding(min_periods=1).median().shift(1)
+    return values.fillna(prior_median).fillna(cold_start)
+
+
 def add_volatility_features(
     df: pd.DataFrame,
     short_window: int = 5,
@@ -105,12 +111,8 @@ def add_volatility_features(
         )
     )
 
-    df[short_col] = df.groupby("kdcode")[short_col].transform(
-        lambda x: x.fillna(x.median() if not x.isna().all() else 0.2)
-    )
-    df[long_col] = df.groupby("kdcode")[long_col].transform(
-        lambda x: x.fillna(x.median() if not x.isna().all() else 0.2)
-    )
+    df[short_col] = df.groupby("kdcode")[short_col].transform(_fill_from_prior_volatility)
+    df[long_col] = df.groupby("kdcode")[long_col].transform(_fill_from_prior_volatility)
 
     df["vol_ratio"] = df[short_col] / (df[long_col] + 1e-8)
     df["vol_ratio"] = df["vol_ratio"].clip(0.1, 10)
