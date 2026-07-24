@@ -1,16 +1,20 @@
 # Triage Labels
 
-Use these labels for issue triage unless GitHub shows a newer project-specific
-label convention.
+The Matt Pocock skills use five canonical triage roles. Map them to these exact
+GitHub label strings:
 
-| Role | Label |
-| --- | --- |
-| Maintainer needs to evaluate | `needs-triage` |
-| Waiting on reporter or human input | `needs-info` |
-| Fully specified and ready for an agent | `ready-for-agent` |
-| Ready, but should be handled by a human | `ready-for-human` |
-| Will not be actioned | `wontfix` |
+| Label in `mattpocock/skills` | Label in MCI-GRU | Meaning |
+| --- | --- | --- |
+| `needs-triage` | `needs-triage` | Maintainer needs to evaluate this issue |
+| `needs-info` | `needs-info` | Waiting on the reporter for more information |
+| `ready-for-agent` | `ready-for-agent` | Fully specified and ready for an agent |
+| `ready-for-human` | `ready-for-human` | Requires human implementation |
+| `wontfix` | `wontfix` | Will not be actioned |
 
-Do not create near-duplicate labels with different spelling. If a matching
-label does not exist, report the missing label rather than inventing a new
-taxonomy.
+Before applying a canonical role, verify that its exact configured label
+exists. If it is missing, create that exact label with an appropriate
+description and continue the requested workflow. Never substitute a
+semantically similar label or create a near-duplicate spelling.
+
+When a skill names a triage role, use the corresponding exact string from this
+table.
