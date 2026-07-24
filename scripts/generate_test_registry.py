@@ -2,7 +2,7 @@
 """Generate docs/TEST_REGISTRY.md: a registry of every pytest test in tests/.
 
 For each test file the registry records the module docstring, the first-party
-modules it exercises (mci_gru / cockpit / paper_trade / scripts), pytest
+modules it exercises (mci_gru / paper_trade / scripts), pytest
 markers, and every test function. When test_reports/junit.xml exists (written
 by running pytest with --junitxml=test_reports/junit.xml), the last-run status
 and duration of each test are merged in.
@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-FIRST_PARTY_PREFIXES = ("mci_gru", "cockpit", "paper_trade", "scripts", "run_experiment")
+FIRST_PARTY_PREFIXES = ("mci_gru", "paper_trade", "scripts", "run_experiment")
 
 
 @dataclass

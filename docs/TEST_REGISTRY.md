@@ -4,9 +4,9 @@
 > Regenerate with:
 > `.\.venv\Scripts\python.exe scripts/generate_test_registry.py`
 
-Generated: 2026-07-21
-Test files: 81
-Test functions: 672 (parametrized cases collapsed)
+Generated: 2026-07-23
+Test files: 70
+Test functions: 382 (parametrized cases collapsed)
 Last-run results merged from `test_reports/junit.xml`.
 
 ## `tests/test_2022_weak_year_notebook_paths.py`
@@ -29,51 +29,14 @@ Last-run results merged from `test_reports/junit.xml`.
 | `test_ablation_colab_notebook_has_2026_holdout_confirmation` |  |  | PASSED | 0.00 |
 | `test_full_factorial_notebook_recovers_only_failed_regime_runs` |  |  | PASSED | 0.00 |
 
-## `tests/test_apply_cockpit_overrides.py`
-
-**Exercises:** `cockpit.runner`, `scripts.apply_cockpit_overrides`
-
-| Test | Description | Markers | Last run | Time (s) |
-|---|---|---|---|---|
-| `test_owner_comment_applies_exact_override_and_updates_same_pr` |  |  | PASSED | 0.02 |
-| `test_curator_rejects_noncanonical_override_of_sole_generated_canonical` |  |  | PASSED | 0.02 |
-| `test_curator_allows_noncanonical_override_with_alternate_explicit_canonical` |  |  | PASSED | 0.01 |
-| `test_untrusted_preseeded_marker_does_not_suppress_applied_acknowledgement` |  |  | PASSED | 0.01 |
-| `test_mismatched_trusted_marker_fails_before_override_commit_or_push` |  |  | PASSED | 0.01 |
-| `test_curator_does_not_acknowledge_when_same_branch_push_fails` |  |  | PASSED | 0.01 |
-| `test_retry_recovers_pushed_commit_when_initial_response_post_failed` |  |  | PASSED | 0.01 |
-| `test_curator_rejects_invalid_post_commit_oid_before_push_or_ack` |  |  | PASSED | 0.01 |
-| `test_processed_comment_recovers_commit_ack_without_another_commit` |  |  | PASSED | 0.01 |
-| `test_untrusted_marker_does_not_suppress_processed_commit_recovery` |  |  | PASSED | 0.01 |
-| `test_processed_comment_fails_closed_for_mismatched_trusted_marker` |  |  | PASSED | 0.01 |
-| `test_processed_comment_fails_closed_for_duplicate_trusted_markers` |  |  | PASSED | 0.01 |
-| `test_processed_receipt_without_matching_commit_fails_closed` |  |  | PASSED | 0.01 |
-| `test_nightly_reconciliation_does_not_repeat_duplicate_acknowledgement` |  |  | PASSED | 0.01 |
-| `test_rejected_comments_receive_response_without_registry_mutation` |  | parametrize | PASSED | 0.01 |
-| `test_clear_generated_only_target_is_rejected_without_receipt_or_commit` |  |  | PASSED | 0.01 |
-| `test_curator_rejects_dirty_checkout_before_fetch_or_switch` |  |  | PASSED | 0.00 |
-| `test_curator_rolls_back_its_files_when_refresh_fails` |  |  | PASSED | 0.01 |
-| `test_curator_rejects_staged_paths_outside_allowlist_and_rolls_back` |  |  | PASSED | 0.01 |
-| `test_curator_rejects_pr_paths_outside_generated_artifact_allowlist` |  |  | PASSED | 0.01 |
-| `test_curator_rejects_api_path_set_missing_fetched_path_before_switch` |  |  | PASSED | 0.01 |
-| `test_curator_rejects_api_path_set_with_extra_path_before_switch` |  |  | PASSED | 0.01 |
-| `test_curator_accepts_equal_rename_path_sets_in_different_order` |  |  | PASSED | 0.01 |
-| `test_curator_rejects_mismatched_rename_path_sets_before_switch` |  |  | PASSED | 0.00 |
-| `test_curator_rejects_explicit_date_that_differs_from_validated_branch_date` |  |  | PASSED | 0.00 |
-| `test_curator_rejects_fetched_base_that_changed_after_pr_validation` |  |  | PASSED | 0.00 |
-| `test_curator_reuses_current_validated_branch_at_exact_head` |  |  | PASSED | 0.01 |
-| `test_curator_rejects_fetched_head_that_changed_after_pr_validation` |  |  | PASSED | 0.00 |
-| `test_curator_rejects_renamed_source_path_in_fetched_commit` |  |  | PASSED | 0.00 |
-| `test_named_curator_branch_refresh_is_stable_across_head_sha_change` |  |  | PASSED | 3.72 |
-
 ## `tests/test_backtest_engine_golden.py`
 
 Golden-output regression tests for legacy backtest CLIs (WS-N step 2).
 
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
-| `test_backtest_engine_golden` |  | parametrize | PASSED | 36.61 |
-| `test_backtest_engine_deterministic` |  | parametrize | PASSED | 72.36 |
+| `test_backtest_engine_golden` |  | parametrize | PASSED | 31.83 |
+| `test_backtest_engine_deterministic` |  | parametrize | PASSED | 63.41 |
 
 ## `tests/test_backtest_fairness.py`
 
@@ -83,13 +46,13 @@ Test script to verify backtest fairness fixes.
 
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
-| `test_return_calculation` | Test that calculate_forward_returns adds the correct columns. |  | PASSED | 0.02 |
-| `test_simulation_timing` | Test that simulation uses correct timing (next-day open-to-open returns). |  | PASSED | 0.03 |
+| `test_return_calculation` | Test that calculate_forward_returns adds the correct columns. |  | PASSED | 0.01 |
+| `test_simulation_timing` | Test that simulation uses correct timing (next-day open-to-open returns). |  | PASSED | 0.02 |
 | `test_prediction_date_mapping` | Test that predictions on day t map to day t+1 entry open-to-open returns. |  | PASSED | 0.01 |
 | `test_rank_drop_gate_eligible` | With rank-drop gate: stock that fell >= 10 ranks is eligible and can be selected. |  | PASSED | 0.01 |
 | `test_rank_drop_gate_excluded` | With rank-drop gate: when no stock fell >= 10 ranks, holdings persist. |  | PASSED | 0.01 |
-| `test_rank_drop_gate_disabled_regression` | With rank-drop gate disabled, behavior matches no-gate (same number of trading days as without gate). |  | PASSED | 0.05 |
-| `test_portfolio_tracking_outputs_nonregression` | Validate additive portfolio tracking outputs and core output preservation. |  | PASSED | 0.09 |
+| `test_rank_drop_gate_disabled_regression` | With rank-drop gate disabled, behavior matches no-gate (same number of trading days as without gate). |  | PASSED | 0.04 |
+| `test_portfolio_tracking_outputs_nonregression` | Validate additive portfolio tracking outputs and core output preservation. |  | PASSED | 0.06 |
 
 ## `tests/test_backtest_plotting.py`
 
@@ -97,7 +60,7 @@ Test script to verify backtest fairness fixes.
 
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
-| `test_plot_equity_curve_uses_agg_backend_when_saving` |  |  | PASSED | 0.56 |
+| `test_plot_equity_curve_uses_agg_backend_when_saving` |  |  | PASSED | 0.41 |
 
 ## `tests/test_capacity_replay.py`
 
@@ -106,7 +69,7 @@ Test script to verify backtest fairness fixes.
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
 | `test_capacity_replay_uses_lagged_dollar_volume_and_t_plus_one_open_timing` |  |  | PASSED | 0.02 |
-| `test_capacity_replay_reports_lagged_volatility_gate_breaches` |  |  | PASSED | 0.02 |
+| `test_capacity_replay_reports_lagged_volatility_gate_breaches` |  |  | PASSED | 0.01 |
 | `test_capacity_replay_cli_writes_json_and_csv_with_force_guard` |  |  | PASSED | 0.07 |
 
 ## `tests/test_check_docs_sot.py`
@@ -128,332 +91,6 @@ Test script to verify backtest fairness fixes.
 |---|---|---|---|---|
 | `test_ci_smoke_uses_synthetic_csv_loader` |  |  | PASSED | 0.00 |
 
-## `tests/test_cockpit_cli.py`
-
-| Test | Description | Markers | Last run | Time (s) |
-|---|---|---|---|---|
-| `test_refresh_cockpit_help_lists_local_only_default` |  |  | PASSED | 0.13 |
-| `test_cockpit_docs_are_linked_from_index` |  |  | PASSED | 0.00 |
-| `test_refresh_cockpit_github_sync_uses_live_runner` |  |  | PASSED | 0.01 |
-| `test_refresh_cockpit_enables_auto_decisions_for_local_runner_by_default` |  |  | PASSED | 0.00 |
-| `test_refresh_cockpit_no_auto_decisions_uses_legacy_local_runner` |  |  | PASSED | 0.00 |
-
-## `tests/test_cockpit_curator_github.py`
-
-**Exercises:** `cockpit.github`, `cockpit.overrides`
-
-| Test | Description | Markers | Last run | Time (s) |
-|---|---|---|---|---|
-| `test_collect_pull_request_comments_returns_stable_paginated_evidence` |  |  | PASSED | 0.00 |
-| `test_collected_command_whitespace_is_rejected_by_selection_or_full_match` |  |  | PASSED | 0.00 |
-| `test_collect_pull_request_paths_returns_sorted_paginated_filenames` |  |  | PASSED | 0.00 |
-| `test_authorize_owner_comment_uses_trusted_owner_association_without_admin_api` |  |  | PASSED | 0.00 |
-| `test_authorize_owner_comment_rejects_non_owner_collaborators` |  | parametrize | PASSED | 0.00 |
-| `test_authorize_owner_comment_rejects_owner_login_without_owner_association` |  |  | PASSED | 0.00 |
-| `test_collect_cockpit_pr_target_returns_same_branch_metadata` |  |  | PASSED | 0.00 |
-| `test_collect_cockpit_pr_target_rejects_wrong_title_date_or_base` |  | parametrize | PASSED | 0.01 |
-| `test_collect_cockpit_pr_target_fails_closed_for_untrusted_head` |  | parametrize | PASSED | 0.01 |
-| `test_collect_cockpit_pr_target_fails_closed_when_pr_is_not_open` |  |  | PASSED | 0.00 |
-| `test_post_pull_request_response_uses_injected_boundary` |  |  | PASSED | 0.00 |
-
-## `tests/test_cockpit_decisions.py`
-
-**Exercises:** `cockpit.decisions`, `cockpit.models`
-
-| Test | Description | Markers | Last run | Time (s) |
-|---|---|---|---|---|
-| `test_load_decision_registry_parses_versioned_contract` |  |  | PASSED | 0.01 |
-| `test_overlay_auto_decisions_applies_explicit_overrides_last` |  |  | PASSED | 0.00 |
-| `test_overlay_explicit_canonical_surface_reconciles_effective_workstream_pointer` |  |  | PASSED | 0.00 |
-| `test_overlay_rejects_noncanonical_override_of_sole_generated_canonical` |  | parametrize | PASSED | 0.00 |
-| `test_overlay_allows_noncanonical_override_with_alternate_explicit_canonical` |  |  | PASSED | 0.00 |
-| `test_overlay_allows_authoritative_explicit_workstream_route_outside_topology` |  |  | PASSED | 0.00 |
-| `test_overlay_preserves_authoritative_external_route_with_generated_canonical` |  |  | PASSED | 0.00 |
-| `test_overlay_rejects_multiple_explicit_canonical_surfaces_for_one_workstream` |  |  | PASSED | 0.00 |
-| `test_overlay_reconciles_an_explicit_workstream_pointer_without_mutating_override` |  |  | PASSED | 0.00 |
-| `test_overlay_cleared_surface_override_restores_explicit_workstream_pointer` |  |  | PASSED | 0.00 |
-| `test_overlay_preserves_explicit_route_outside_generated_topology` |  |  | PASSED | 0.00 |
-| `test_overlay_auto_decisions_marks_generated_entries_reviewed` |  |  | PASSED | 0.00 |
-| `test_load_decision_registry_parses_v2_with_aliases` |  |  | PASSED | 0.00 |
-| `test_load_decision_registry_parses_v2_without_aliases` |  |  | PASSED | 0.01 |
-| `test_load_decision_registry_still_parses_v1` |  |  | PASSED | 0.01 |
-| `test_read_registry_aliases_returns_map_for_valid_file` |  |  | PASSED | 0.01 |
-| `test_read_registry_aliases_returns_empty_when_absent_or_broken` |  |  | PASSED | 0.01 |
-| `test_load_decision_registry_rejects_invalid_contract` |  | parametrize | PASSED | 0.07 |
-| `test_load_decision_registry_returns_empty_when_required_file_is_missing` |  |  | PASSED | 0.00 |
-| `test_read_registry_workstream_names_returns_keys_for_valid_file` |  |  | PASSED | 0.01 |
-| `test_read_registry_workstream_names_returns_empty_for_missing_file` |  |  | PASSED | 0.00 |
-| `test_read_registry_workstream_names_returns_empty_for_invalid_json` |  |  | PASSED | 0.01 |
-| `test_read_registry_workstream_names_returns_empty_when_workstreams_absent` |  |  | PASSED | 0.01 |
-| `test_read_registry_workstream_names_returns_empty_when_workstreams_not_object` |  |  | PASSED | 0.01 |
-
-## `tests/test_cockpit_github.py`
-
-**Exercises:** `cockpit.decisions`, `cockpit.github`, `cockpit.models`
-
-| Test | Description | Markers | Last run | Time (s) |
-|---|---|---|---|---|
-| `test_collect_github_evidence_uses_exact_read_only_commands_and_normalizes` |  |  | PASSED | 0.00 |
-| `test_collect_github_evidence_requests_and_keeps_more_than_default_page` |  |  | PASSED | 0.00 |
-| `test_collect_github_evidence_preserves_head_branch_case` |  |  | PASSED | 0.00 |
-| `test_collect_github_evidence_distinguishes_confirmed_empty_from_unavailable` |  |  | PASSED | 0.00 |
-| `test_collect_github_evidence_returns_none_on_oserror` |  |  | PASSED | 0.00 |
-| `test_collect_github_evidence_returns_none_on_ordinary_exception` |  | parametrize | PASSED | 0.00 |
-| `test_collect_github_evidence_rejects_malformed_issue_schema` |  |  | PASSED | 0.00 |
-| `test_collect_github_evidence_rejects_malformed_json_or_schema` |  | parametrize | PASSED | 0.00 |
-| `test_collect_github_evidence_rejects_unknown_pr_state` |  | parametrize | PASSED | 0.00 |
-| `test_collect_github_evidence_rejects_unknown_issue_state` |  |  | PASSED | 0.00 |
-| `test_collect_github_evidence_rejects_malformed_full_timestamp` |  | parametrize | PASSED | 0.00 |
-| `test_collect_github_evidence_accepts_z_and_offset_timestamps` |  |  | PASSED | 0.00 |
-| `test_cockpit_branch_name_is_dated` |  |  | PASSED | 0.00 |
-| `test_sync_github_requires_explicit_enablement` |  |  | PASSED | 0.00 |
-| `test_sync_github_requires_the_prepared_dated_branch` |  |  | PASSED | 0.00 |
-| `test_sync_github_rejects_unrelated_existing_pr_file_before_push` |  |  | PASSED | 0.00 |
-| `test_sync_github_reuses_curator_registry_pr_without_commit_churn` |  |  | PASSED | 0.00 |
-| `test_sync_github_creates_branch_pr_issue_and_comment_with_fake_runner` |  |  | PASSED | 0.00 |
-| `test_sync_github_labels_dated_pr_idempotently_and_reads_back` |  |  | PASSED | 0.00 |
-| `test_sync_github_same_date_skips_identical_issue_digest_comment` |  |  | PASSED | 0.00 |
-| `test_sync_github_same_date_updates_existing_issue_digest_comment` |  |  | PASSED | 0.00 |
-| `test_issue_digest_ignores_an_untrusted_forged_marker_and_creates_digest` |  |  | PASSED | 0.00 |
-| `test_issue_digest_updates_only_trusted_owner_marker_across_pages` |  |  | PASSED | 0.00 |
-| `test_issue_digest_fails_closed_for_multiple_trusted_markers` |  |  | PASSED | 0.00 |
-| `test_ensure_pr_rejects_existing_pr_with_wrong_contract` |  | parametrize | PASSED | 0.00 |
-| `test_ensure_pr_rejects_existing_pr_with_padded_head_ref` |  | parametrize | PASSED | 0.00 |
-| `test_apply_existing_labels_is_idempotent_for_already_applied_label` |  |  | PASSED | 0.00 |
-| `test_apply_existing_pr_labels_fails_closed_when_readback_is_missing` |  |  | PASSED | 0.00 |
-| `test_sync_github_refuses_an_unrelated_staged_path` |  |  | PASSED | 0.00 |
-| `test_default_github_runner_applies_safe_directory_to_git_commands` |  |  | PASSED | 0.00 |
-| `test_create_issue_applies_only_existing_labels` |  |  | PASSED | 0.00 |
-| `test_close_issue_requires_evidence` |  |  | PASSED | 0.00 |
-| `test_close_issue_comments_with_evidence_before_closing` |  |  | PASSED | 0.00 |
-
-## `tests/test_cockpit_models.py`
-
-**Exercises:** `cockpit.models`
-
-| Test | Description | Markers | Last run | Time (s) |
-|---|---|---|---|---|
-| `test_cockpit_status_enums_behave_as_strings` |  |  | PASSED | 0.00 |
-| `test_github_evidence_models_are_immutable_typed_records` |  |  | PASSED | 0.00 |
-| `test_auto_decision_change_is_an_immutable_typed_record` |  |  | PASSED | 0.00 |
-| `test_strenum_compat_fallback_supports_python_310_import_path` |  |  | PASSED | 0.00 |
-
-## `tests/test_cockpit_override_workflow.py`
-
-| Test | Description | Markers | Last run | Time (s) |
-|---|---|---|---|---|
-| `test_cockpit_override_workflow_routes_structured_pr_comments` |  |  | PASSED | 0.00 |
-| `test_cockpit_runbook_documents_default_policy_and_curator_contract` |  |  | PASSED | 0.00 |
-
-## `tests/test_cockpit_overrides.py`
-
-**Exercises:** `cockpit.models`, `cockpit.overrides`
-
-| Test | Description | Markers | Last run | Time (s) |
-|---|---|---|---|---|
-| `test_parse_workstream_status_override` |  |  | PASSED | 0.00 |
-| `test_parse_surface_disposition_override` |  |  | PASSED | 0.00 |
-| `test_parse_clear_override_commands` |  |  | PASSED | 0.00 |
-| `test_parse_rejects_blank_reason` |  |  | PASSED | 0.00 |
-| `test_parse_rejects_reason_with_outer_whitespace` |  | parametrize | PASSED | 0.00 |
-| `test_apply_workstream_override_mutates_only_targeted_entry` |  |  | PASSED | 0.01 |
-| `test_apply_override_persists_accepted_reason_text_exactly` |  |  | PASSED | 0.00 |
-| `test_apply_surface_override_mutates_only_targeted_entry` |  |  | PASSED | 0.00 |
-| `test_apply_canonical_surface_override_rejects_second_explicit_canonical` |  |  | PASSED | 0.00 |
-| `test_apply_canonical_surface_override_can_replace_its_target_entry` |  |  | PASSED | 0.00 |
-| `test_clear_then_apply_canonical_surface_replacement_changes_one_entry_at_a_time` |  |  | PASSED | 0.00 |
-| `test_apply_clear_commands_remove_only_the_targeted_override` |  |  | PASSED | 0.00 |
-| `test_clear_override_rejects_target_without_explicit_override` |  | parametrize | PASSED | 0.00 |
-| `test_duplicate_command_id_is_a_deterministic_no_op` |  |  | PASSED | 0.00 |
-| `test_apply_rejects_blank_command_id` |  |  | PASSED | 0.00 |
-| `test_parse_rejects_remote_prefixed_branch_even_when_listed_as_known` |  |  | PASSED | 0.00 |
-| `test_parse_rejects_invalid_commands` |  | parametrize | PASSED | 0.01 |
-| `test_apply_workstream_override_requires_caller_supplied_canonical_surface` |  |  | PASSED | 0.00 |
-| `test_apply_workstream_override_rejects_blank_canonical_surface` |  |  | PASSED | 0.00 |
-
-## `tests/test_cockpit_policy.py`
-
-**Exercises:** `cockpit.decisions`, `cockpit.models`, `cockpit.policy`, `cockpit.runner`
-
-| Test | Description | Markers | Last run | Time (s) |
-|---|---|---|---|---|
-| `test_compare_auto_decisions_reports_deterministic_additions` |  |  | PASSED | 0.00 |
-| `test_compare_auto_decisions_reports_removals` |  |  | PASSED | 0.00 |
-| `test_compare_auto_decisions_removals_preserve_complete_generated_audit_state` |  |  | PASSED | 0.00 |
-| `test_compare_auto_decisions_reports_choice_changes` |  |  | PASSED | 0.00 |
-| `test_compare_auto_decisions_reports_confidence_changes` |  |  | PASSED | 0.00 |
-| `test_compare_auto_decisions_reports_surface_metadata_changes_deterministically` |  |  | PASSED | 0.00 |
-| `test_compare_auto_decisions_reports_workstream_metadata_changes_deterministically` |  |  | PASSED | 0.00 |
-| `test_compare_auto_decisions_reports_changed_results_hidden_by_overrides` |  |  | PASSED | 0.00 |
-| `test_compare_auto_decisions_reports_new_override_when_generated_output_is_unchanged` |  |  | PASSED | 0.00 |
-| `test_compare_auto_decisions_reports_changed_overrides` |  |  | PASSED | 0.00 |
-| `test_compare_auto_decisions_reports_metadata_only_override_changes` |  |  | PASSED | 0.00 |
-| `test_compare_auto_decisions_reports_same_choice_override_presence_changes` |  |  | PASSED | 0.00 |
-| `test_compare_auto_decisions_reports_cleared_surface_and_workstream_overrides` |  |  | PASSED | 0.00 |
-| `test_compare_auto_decisions_reports_cleared_overrides_without_generated_targets` |  |  | PASSED | 0.00 |
-| `test_compute_auto_decisions_applies_surface_precedence_and_status_rules` |  |  | PASSED | 0.00 |
-| `test_compute_auto_decisions_marks_completed_workstream_done` |  |  | PASSED | 0.00 |
-| `test_compute_auto_decisions_records_explicit_and_implied_alias_basis` |  |  | PASSED | 0.00 |
-| `test_equal_best_branch_terms_retain_every_tied_workstream_as_low_confidence` |  |  | PASSED | 0.00 |
-| `test_unequal_branch_term_scores_keep_only_the_best_match_at_high_confidence` |  |  | PASSED | 0.00 |
-| `test_tied_loser_with_own_surface_keeps_one_canonical_per_workstream` |  |  | PASSED | 0.00 |
-| `test_custom_workstream_seed_association_basis_fails_closed` |  |  | PASSED | 0.00 |
-| `test_linked_pull_request_preserves_title_fallback_surface_provenance` |  |  | PASSED | 0.00 |
-| `test_unambiguous_linked_issue_preserves_title_fallback_surface_provenance` |  |  | PASSED | 0.00 |
-| `test_dirty_attached_worktree_is_not_archived_as_merged` |  |  | PASSED | 0.00 |
-| `test_status_error_attached_worktree_is_not_archived_as_merged` |  |  | PASSED | 0.00 |
-| `test_old_uncertain_canonical_surface_keeps_workstream_confidence_low` |  | parametrize | PASSED | 0.00 |
-| `test_uncertain_worktree_competes_with_ordinary_live_surface` |  |  | PASSED | 0.00 |
-| `test_explicit_archive_of_sole_canonical_fails_after_independent_generation` |  |  | PASSED | 0.00 |
-| `test_generated_decisions_are_independent_of_explicit_surface_disposition` |  |  | PASSED | 0.00 |
-| `test_generated_surface_association_is_independent_of_explicit_override_assignment` |  |  | PASSED | 0.00 |
-| `test_explicit_noncanonical_surface_does_not_change_generated_competition` |  | parametrize | PASSED | 0.00 |
-| `test_nonarchive_surface_override_does_not_rewrite_generated_workstream` |  | parametrize, parametrize | PASSED | 0.00 |
-| `test_phase2_surface_override_remains_separate_from_generated_policy` |  | parametrize, parametrize | PASSED | 0.01 |
-| `test_competing_surfaces_choose_newest_and_lexical_tie_without_blocking` |  |  | PASSED | 0.00 |
-| `test_explicit_canonical_surface_controls_effective_selection` |  |  | PASSED | 0.00 |
-| `test_explicit_canonical_merged_branch_prevents_workstream_completion` |  |  | PASSED | 0.00 |
-| `test_explicit_canonical_nonbranch_surface_applies_only_in_effective_overlay` |  |  | PASSED | 0.00 |
-| `test_unknown_surface_falls_back_to_git_hygiene` |  |  | PASSED | 0.00 |
-| `test_sole_detached_surface_includes_provenance_resolution_alternative` |  |  | PASSED | 0.00 |
-| `test_detached_surface_does_not_infer_merged_branch` |  |  | PASSED | 0.00 |
-| `test_competing_detached_surfaces_choose_one_low_confidence_canonical` |  |  | PASSED | 0.00 |
-| `test_open_pr_wins_mixed_branch_and_detached_surface_competition` |  |  | PASSED | 0.00 |
-| `test_worktree_only_surface_does_not_infer_merged_branch` |  |  | PASSED | 0.00 |
-| `test_unknown_merged_branch_archives_without_generating_hygiene_status` |  |  | PASSED | 0.00 |
-| `test_surface_matching_rejects_partial_token_substrings` |  |  | PASSED | 0.00 |
-| `test_surface_matching_selects_one_most_specific_primary_workstream` |  |  | PASSED | 0.00 |
-| `test_overlapping_terms_do_not_make_loser_canonical_in_second_workstream` |  |  | PASSED | 0.00 |
-| `test_explicit_multi_workstream_mapping_applies_only_in_effective_overlay` |  |  | PASSED | 0.00 |
-| `test_open_pr_is_canonical_but_merged_topology_still_archives` |  |  | PASSED | 0.00 |
-| `test_stale_open_pr_cannot_reactivate_merged_surface_workstream` |  |  | PASSED | 0.00 |
-| `test_stale_surface_confidence_tracks_online_and_offline_pr_evidence` |  |  | PASSED | 0.00 |
-| `test_missing_or_future_branch_date_never_causes_stale_by_age` |  | parametrize | PASSED | 0.00 |
-| `test_open_pr_prevents_stale_surface_and_makes_workstream_active` |  |  | PASSED | 0.00 |
-| `test_competing_open_prs_choose_one_deterministic_canonical_surface` |  |  | PASSED | 0.00 |
-| `test_issue_labels_drive_blocked_and_ready_statuses` |  | parametrize | PASSED | 0.00 |
-| `test_merged_pr_and_closed_issue_support_done_without_live_surface` |  |  | PASSED | 0.00 |
-| `test_closed_issue_cannot_mark_done_while_matching_unlabeled_issue_is_open` |  |  | PASSED | 0.00 |
-| `test_archived_surface_with_unlabeled_open_issue_is_active_low` |  |  | PASSED | 0.00 |
-| `test_no_surface_with_unlabeled_open_issue_is_active_high` |  |  | PASSED | 0.00 |
-| `test_no_surface_with_neutral_labeled_open_issue_is_active_high` |  |  | PASSED | 0.00 |
-| `test_archived_surface_with_closed_only_issue_is_done_high` |  |  | PASSED | 0.00 |
-| `test_auto_policy_emits_one_terminal_decision_per_known_non_hygiene_seed` |  |  | PASSED | 0.00 |
-| `test_auto_policy_emits_low_confidence_stale_for_evidenceless_seed` |  |  | PASSED | 0.00 |
-| `test_conflicting_open_pr_and_blocked_issue_choose_active_with_alternative` |  |  | PASSED | 0.00 |
-| `test_issue_title_matching_rejects_substrings_and_marks_ambiguity_low` |  |  | PASSED | 0.00 |
-| `test_generic_singleton_branch_terms_do_not_associate_unrelated_issues` |  | parametrize | PASSED | 0.00 |
-| `test_issue_title_matching_accepts_full_workstream_slug_and_explicit_alias` |  |  | PASSED | 0.00 |
-| `test_mixed_case_pr_head_matches_same_case_local_branch_exactly` |  |  | PASSED | 0.00 |
-| `test_explicit_noncanonical_override_of_sole_open_pr_choice_fails_closed` |  |  | PASSED | 0.00 |
-| `test_auto_decision_file_schema_is_sorted_and_rerun_is_byte_identical` |  |  | PASSED | 0.01 |
-| `test_auto_decision_reader_accepts_v1_surface_without_association_basis` |  |  | PASSED | 0.01 |
-| `test_parse_auto_decisions_text_fails_closed_for_corrupt_current_evidence` |  | parametrize | PASSED | 0.00 |
-| `test_parse_auto_decisions_text_rejects_semantically_invalid_identifiers` |  | parametrize | PASSED | 0.01 |
-| `test_parse_auto_decisions_text_accepts_valid_identifier_controls` |  |  | PASSED | 0.00 |
-| `test_missing_activity_date_does_not_churn_metadata_across_run_dates` |  |  | PASSED | 0.01 |
-| `test_future_activity_date_does_not_claim_workstream_stale` |  |  | PASSED | 0.00 |
-| `test_auto_decision_reader_treats_only_a_missing_file_as_empty` |  |  | PASSED | 0.01 |
-| `test_auto_decision_reader_rejects_boolean_format_version` |  | parametrize | PASSED | 0.01 |
-
-## `tests/test_cockpit_render.py`
-
-**Exercises:** `cockpit.decisions`, `cockpit.models`, `cockpit.render`
-
-| Test | Description | Markers | Last run | Time (s) |
-|---|---|---|---|---|
-| `test_render_workstream_register_uses_controlled_columns` |  |  | PASSED | 0.00 |
-| `test_render_cockpit_packet_surfaces_decision_queue_and_skipped_actions` |  |  | PASSED | 0.00 |
-| `test_render_cockpit_packet_adds_deterministic_auto_decision_audit_sections` |  |  | PASSED | 0.00 |
-| `test_render_cockpit_packet_lists_generated_decision_changes` |  |  | PASSED | 0.00 |
-| `test_render_cockpit_packet_labels_generated_metadata_fields_and_values` |  |  | PASSED | 0.00 |
-| `test_render_cockpit_packet_labels_changed_override_direction` |  |  | PASSED | 0.00 |
-| `test_render_cockpit_packet_labels_metadata_only_override_change` |  |  | PASSED | 0.00 |
-| `test_render_cockpit_packet_labels_cleared_override_direction` |  |  | PASSED | 0.00 |
-| `test_render_cockpit_packet_labels_cleared_override_without_generated_target` |  |  | PASSED | 0.00 |
-
-## `tests/test_cockpit_runner.py`
-
-**Exercises:** `cockpit.decisions`, `cockpit.evidence`, `cockpit.models`, `cockpit.policy`, `cockpit.runner`
-
-| Test | Description | Markers | Last run | Time (s) |
-|---|---|---|---|---|
-| `test_ignored_owned_paths_update_control_plane_checkout_evidence` |  |  | PASSED | 0.00 |
-| `test_collect_local_evidence_records_dirty_paths_and_required_docs` |  |  | PASSED | 0.01 |
-| `test_collect_local_evidence_normalizes_branch_dates_with_local_precedence` |  |  | PASSED | 0.01 |
-| `test_collect_local_evidence_builds_git_topology_snapshot` |  |  | PASSED | 0.01 |
-| `test_default_cockpit_runners_apply_safe_directory_to_git_commands` |  |  | PASSED | 0.01 |
-| `test_run_local_cockpit_refresh_writes_register_and_packet` |  |  | PASSED | 0.03 |
-| `test_run_local_cockpit_refresh_flag_off_preserves_output_parity` |  |  | PASSED | 0.03 |
-| `test_flag_off_preserves_registry_plus_heuristic_surface_association` |  |  | PASSED | 0.01 |
-| `test_run_local_cockpit_refresh_applies_generated_decisions_by_default` |  |  | PASSED | 0.02 |
-| `test_run_local_cockpit_refresh_compares_before_overwriting_prior_auto_file` |  |  | PASSED | 0.04 |
-| `test_run_local_cockpit_refresh_reports_new_override_against_committed_registry` |  |  | PASSED | 0.02 |
-| `test_run_local_cockpit_refresh_reports_cleared_historical_overrides_absent_now` |  |  | PASSED | 0.01 |
-| `test_run_local_cockpit_refresh_ignores_malformed_historical_registry` |  |  | PASSED | 0.01 |
-| `test_auto_decisions_disabled_never_calls_github_collector` |  |  | PASSED | 0.01 |
-| `test_auto_decisions_enabled_offline_records_degraded_github_gap` |  |  | PASSED | 0.02 |
-| `test_auto_decisions_enabled_survives_collector_oserror` |  |  | PASSED | 0.02 |
-| `test_auto_decisions_enabled_survives_any_ordinary_collector_exception` |  | parametrize | PASSED | 0.03 |
-| `test_omitted_github_evidence_calls_injected_collector` |  |  | PASSED | 0.02 |
-| `test_explicit_none_github_evidence_skips_collector_and_stays_offline` |  |  | PASSED | 0.01 |
-| `test_injected_online_github_evidence_changes_generated_output` |  |  | PASSED | 0.02 |
-| `test_run_local_cockpit_refresh_surfaces_git_topology_without_placeholders` |  |  | PASSED | 0.02 |
-| `test_cockpit_packet_distinguishes_control_plane_and_canonical_divergence` |  |  | PASSED | 0.02 |
-| `test_decision_registry_keeps_reviewed_surfaces_resolved` |  |  | PASSED | 0.13 |
-| `test_decision_registry_reopens_only_for_new_unreviewed_surface` |  |  | PASSED | 0.02 |
-| `test_run_local_cockpit_refresh_surfaces_unmatched_real_git_topology` |  |  | PASSED | 2.61 |
-| `test_run_local_cockpit_refresh_labels_detached_current_checkout` |  |  | PASSED | 0.12 |
-| `test_run_local_cockpit_refresh_uses_repo_path_for_detached_current_checkout` |  |  | PASSED | 0.15 |
-| `test_detached_worktrees_have_stable_path_scoped_surfaces_and_decisions` |  |  | PASSED | 0.26 |
-| `test_attached_same_branch_worktrees_have_independent_stable_surfaces` |  |  | PASSED | 0.25 |
-| `test_run_local_cockpit_refresh_suppresses_seeds_for_main_divergence` |  |  | PASSED | 0.02 |
-| `test_run_local_cockpit_refresh_reports_dirty_paths` |  |  | PASSED | 0.14 |
-| `test_run_local_cockpit_refresh_explains_missing_required_docs` |  |  | PASSED | 0.15 |
-| `test_run_local_cockpit_refresh_reports_missing_decision_registry` |  |  | PASSED | 0.29 |
-| `test_run_github_cockpit_refresh_uses_preprovisioned_worktree_and_syncs` |  |  | PASSED | 0.12 |
-| `test_run_github_cockpit_refresh_refuses_a_dirty_checkout_before_switching` |  |  | PASSED | 0.01 |
-| `test_producer_reuses_fetched_remote_dated_branch_at_exact_oid` |  |  | PASSED | 0.00 |
-| `test_producer_reuses_remote_branch_containing_curator_registry_commit` |  |  | PASSED | 0.00 |
-| `test_producer_rejects_unrelated_path_already_on_remote_dated_branch` |  |  | PASSED | 0.00 |
-| `test_producer_refuses_clean_primary_main_without_switching` |  |  | PASSED | 0.00 |
-| `test_producer_refuses_primary_checkout_even_on_dated_branch` |  |  | PASSED | 0.00 |
-| `test_producer_accepts_preprovisioned_unpublished_branch_at_fetched_main` |  |  | PASSED | 0.00 |
-| `test_producer_rejects_local_dated_branch_that_differs_from_remote` |  |  | PASSED | 0.00 |
-| `test_run_github_cockpit_refresh_commits_final_packet_once` |  |  | PASSED | 0.14 |
-| `test_local_refresh_excludes_automation_branch_self_churn_from_generated_artifacts` |  |  | PASSED | 0.03 |
-| `test_producer_restores_owned_files_when_sync_fails_before_commit` |  |  | PASSED | 0.12 |
-| `test_github_refresh_same_date_is_commit_and_comment_idempotent` |  |  | PASSED | 5.17 |
-| `test_run_local_cockpit_refresh_admits_registry_only_workstream` |  |  | PASSED | 0.11 |
-| `test_cockpit_packet_groups_canonical_parked_and_cleanup_queues` |  |  | PASSED | 0.02 |
-| `test_run_local_cockpit_refresh_admits_surface_for_registry_only_workstream` |  |  | PASSED | 0.12 |
-| `test_run_local_cockpit_refresh_rejects_unknown_workstream_reference` |  |  | PASSED | 0.02 |
-| `test_merge_workstream_sources_dedupes_with_earlier_source_winning` |  |  | PASSED | 0.00 |
-| `test_merge_workstream_sources_is_deterministic_across_calls` |  |  | PASSED | 0.00 |
-| `test_merge_workstream_sources_drops_reserved_surface_prefix` |  |  | PASSED | 0.00 |
-| `test_run_local_cockpit_refresh_drops_reserved_prefix_seed_without_crashing` |  |  | PASSED | 0.11 |
-| `test_run_local_cockpit_refresh_drops_source_hygiene_but_keeps_static_row` |  |  | PASSED | 0.11 |
-| `test_registry_workstream_without_surface_renders_under_live_topology` |  |  | PASSED | 0.21 |
-| `test_evidenceless_seed_remains_stale_across_topology` |  | parametrize | PASSED | 0.03 |
-| `test_branch_topic_tokens_strips_prefix_date_and_hash` |  | parametrize | PASSED | 0.00 |
-| `test_implied_aliases_derives_slug_and_tokens_from_generated_surface` |  |  | PASSED | 0.00 |
-| `test_implied_aliases_drops_collisions_without_losing_unique_aliases` |  |  | PASSED | 0.00 |
-| `test_implied_aliases_accepts_only_independently_grounded_high_confidence_auto` |  |  | PASSED | 0.00 |
-| `test_git_activity_source_emits_active_titlecased_seed` |  |  | PASSED | 0.00 |
-| `test_git_activity_source_skips_stopword_only_branch` |  |  | PASSED | 0.00 |
-| `test_git_activity_source_drops_stopword_token_but_keeps_topic` |  |  | PASSED | 0.00 |
-| `test_git_activity_source_resolves_alias_to_canonical_name` |  |  | PASSED | 0.00 |
-| `test_git_activity_source_applies_committer_date_lookback` |  |  | PASSED | 0.00 |
-| `test_git_activity_source_excludes_integration_branches` |  |  | PASSED | 0.00 |
-| `test_git_activity_source_collapses_and_is_deterministic` |  |  | PASSED | 0.00 |
-| `test_git_activity_source_derives_seed_from_recent_handoff` |  |  | PASSED | 0.00 |
-| `test_run_local_cockpit_refresh_adds_git_derived_workstream` |  |  | PASSED | 0.13 |
-| `test_run_local_cockpit_refresh_uses_reviewed_surface_alias_for_new_branch` |  |  | PASSED | 0.02 |
-| `test_explicit_surface_assignment_does_not_teach_generated_aliases` |  |  | PASSED | 0.02 |
-| `test_run_local_cockpit_refresh_auto_alias_learning_reaches_fixed_point_in_one_run` |  |  | PASSED | 0.03 |
-| `test_run_local_cockpit_refresh_explicit_alias_beats_implied_alias` |  |  | PASSED | 0.02 |
-| `test_run_local_cockpit_refresh_flag_off_ignores_implied_aliases` |  |  | PASSED | 0.02 |
-
 ## `tests/test_colab_recovery_upload_filter.py`
 
 **Exercises:** `scripts.colab_recovery_upload_filter`
@@ -461,7 +98,7 @@ Test script to verify backtest fairness fixes.
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
 | `test_default_recovery_upload_excludes_per_model_csvs_and_broad_csvs` |  |  | PASSED | 0.01 |
-| `test_per_model_and_checkpoint_uploads_are_explicit_opt_in` |  |  | PASSED | 0.01 |
+| `test_per_model_and_checkpoint_uploads_are_explicit_opt_in` |  |  | PASSED | 0.00 |
 | `test_count_averaged_prediction_csvs_counts_only_ensemble_predictions` |  |  | PASSED | 0.01 |
 | `test_recovery_upload_files_are_sorted_by_relative_path` |  |  | PASSED | 0.01 |
 
@@ -483,7 +120,7 @@ Unit tests for pure data-loading helpers with no prior coverage.
 | `TestUniverses.test_multi_country_flag` |  |  | PASSED | 0.00 |
 | `TestPathResolver.test_exact_path_wins` |  |  | PASSED | 0.00 |
 | `TestPathResolver.test_missing_file_raises_filenotfound` |  |  | PASSED | 0.00 |
-| `TestSectorEdges.test_load_sector_map_csv_parses_headers_case_insensitively` |  |  | PASSED | 0.01 |
+| `TestSectorEdges.test_load_sector_map_csv_parses_headers_case_insensitively` |  |  | PASSED | 0.00 |
 | `TestSectorEdges.test_load_sector_map_csv_missing_file_raises` |  |  | PASSED | 0.00 |
 | `TestSectorEdges.test_load_sector_map_csv_requires_expected_headers` |  |  | PASSED | 0.01 |
 | `TestSectorEdges.test_build_sector_edges_links_same_sector_only` |  |  | PASSED | 0.00 |
@@ -501,7 +138,7 @@ Tests for dynamic correlation graph wiring.
 | `TestStaticGraph.test_should_update_always_false` |  |  | PASSED | 0.00 |
 | `TestStaticGraph.test_update_if_needed_returns_none` |  |  | PASSED | 0.01 |
 | `TestStaticGraph.test_collate_dates_none_when_no_dates_in_dataset` |  |  | PASSED | 0.00 |
-| `TestDynamicGraph.test_update_fires_after_enough_months` |  |  | PASSED | 0.02 |
+| `TestDynamicGraph.test_update_fires_after_enough_months` |  |  | PASSED | 0.01 |
 | `TestDynamicGraph.test_get_current_graph_raises_before_build` |  |  | PASSED | 0.00 |
 | `TestDynamicGraph.test_collate_returns_dates_when_dataset_has_dates` |  |  | PASSED | 0.00 |
 | `TestDynamicGraph.test_vectorized_build_edges` | build_edges produces the same result as the old O(n^2) loop. |  | PASSED | 0.01 |
@@ -532,8 +169,8 @@ Tests for dynamic correlation graph wiring.
 | `TestSignedTopK.test_abs_corr_keeps_strong_negative_with_signed_value` |  |  | PASSED | 0.00 |
 | `TestSignedTopK.test_corr_metric_excludes_strong_negative` |  |  | PASSED | 0.00 |
 | `TestMultiFeatureSchedulePassthrough.test_collate_concats_2d_edge_features` |  |  | PASSED | 0.00 |
-| `TestGATBlockEdgeDim.test_forward_with_4d_edge_attr` |  |  | PASSED | 0.07 |
-| `TestGATBlockEdgeDim.test_forward_with_1d_edge_weight_default` | Default edge_feature_dim=1 keeps legacy scalar-weight behaviour. |  | PASSED | 0.01 |
+| `TestGATBlockEdgeDim.test_forward_with_4d_edge_attr` |  |  | PASSED | 0.06 |
+| `TestGATBlockEdgeDim.test_forward_with_1d_edge_weight_default` | Default edge_feature_dim=1 keeps legacy scalar-weight behaviour. |  | PASSED | 0.00 |
 | `TestGraphConfigValidation.test_top_k_negative_rejected` |  |  | PASSED | 0.00 |
 | `TestGraphConfigValidation.test_top_k_metric_invalid_rejected` |  |  | PASSED | 0.00 |
 | `TestGraphConfigValidation.test_default_flags_include_multi_feature_edges` |  |  | PASSED | 0.00 |
@@ -547,9 +184,9 @@ Ensemble invariant: prediction = mean of independently trained models.
 
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
-| `test_ensemble_prediction_is_mean_of_member_predictions` |  |  | PASSED | 0.06 |
+| `test_ensemble_prediction_is_mean_of_member_predictions` |  |  | PASSED | 0.07 |
 | `test_ensemble_writes_one_checkpoint_per_member` |  |  | PASSED | 0.03 |
-| `test_ensemble_averaging_matches_numpy_mean` | avg_predictions returned in-memory equals the numpy mean of member outputs. |  | PASSED | 0.06 |
+| `test_ensemble_averaging_matches_numpy_mean` | avg_predictions returned in-memory equals the numpy mean of member outputs. |  | PASSED | 0.05 |
 
 ## `tests/test_evaluation_portfolio.py`
 
@@ -570,7 +207,7 @@ Ensemble invariant: prediction = mean of independently trained models.
 | `test_daily_ic_series_computes_per_day_correlations` |  |  | PASSED | 0.00 |
 | `test_compute_metrics_reports_rank_ic_with_explicit_names` |  |  | PASSED | 0.00 |
 | `test_newey_west_sharpe_differs_from_naive_on_autocorrelated_returns` |  |  | PASSED | 0.00 |
-| `test_moving_block_bootstrap_ci_is_deterministic_and_contains_mean` |  |  | PASSED | 0.02 |
+| `test_moving_block_bootstrap_ci_is_deterministic_and_contains_mean` |  |  | PASSED | 0.01 |
 
 ## `tests/test_experiment_summary.py`
 
@@ -580,7 +217,7 @@ Unit tests for mci_gru.evaluation.experiment_summary (WS-M M2 move).
 
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
-| `test_data_file_fingerprint_hashes_existing_file` |  |  | PASSED | 0.01 |
+| `test_data_file_fingerprint_hashes_existing_file` |  |  | PASSED | 0.00 |
 | `test_data_file_fingerprint_missing_file_returns_nulls` |  |  | PASSED | 0.00 |
 | `test_resolved_evaluation_kwargs_derives_defaults_from_label_t` |  |  | PASSED | 0.00 |
 | `test_resolved_evaluation_kwargs_label_t_one_floors` |  |  | PASSED | 0.00 |
@@ -596,7 +233,7 @@ Unit tests for mci_gru.evaluation.experiment_summary (WS-M M2 move).
 
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
-| `test_feature_yaml_declares_regime_subsequent_return_keys` | Regime ablation overrides must target keys declared in feature YAML groups. |  | PASSED | 0.03 |
+| `test_feature_yaml_declares_regime_subsequent_return_keys` | Regime ablation overrides must target keys declared in feature YAML groups. |  | PASSED | 0.02 |
 
 ## `tests/test_feature_drift.py`
 
@@ -617,9 +254,9 @@ Contract tests for scripts/generate_test_registry.py.
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
 | `test_parse_test_module_extracts_tests_docs_markers_and_imports` |  |  | PASSED | 0.01 |
-| `test_load_junit_results_collapses_parametrized_cases_and_ranks_status` |  |  | PASSED | 0.01 |
+| `test_load_junit_results_collapses_parametrized_cases_and_ranks_status` |  |  | PASSED | 0.00 |
 | `test_build_registry_writes_markdown_with_and_without_junit` |  |  | PASSED | 0.01 |
-| `test_registry_covers_every_real_test_file` | The committed registry generator must see every test file in tests/. |  | PASSED | 0.36 |
+| `test_registry_covers_every_real_test_file` | The committed registry generator must see every test file in tests/. |  | PASSED | 0.08 |
 
 ## `tests/test_index_level_mode.py`
 
@@ -630,7 +267,7 @@ Tests for index-level experiment mode (no stock-level survivorship bias).
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
 | `test_index_level_config_valid` | experiment_mode must be 'stock_level' or 'index_level'; index_level accepts index_filename. |  | PASSED | 0.00 |
-| `test_load_index_series_returns_single_series` | load_index_series with index_filename CSV returns kdcode=INDEX and OHLCV columns. |  | PASSED | 0.01 |
+| `test_load_index_series_returns_single_series` | load_index_series with index_filename CSV returns kdcode=INDEX and OHLCV columns. |  | PASSED | 0.02 |
 | `test_index_level_mode_separation` | Index-level and stock-level are distinct modes; only index-level uses load_index_series. |  | PASSED | 0.00 |
 
 ## `tests/test_inference_edge_dim.py`
@@ -728,10 +365,10 @@ Phase 2 model flags: self-attention type embed, MHA path shapes, encoders.
 | `test_group_type_embed_on_has_embedding_params` |  |  | PASSED | 0.01 |
 | `test_market_learner_legacy_and_mha_same_shape` |  |  | PASSED | 0.01 |
 | `test_temporal_legacy_vs_gru_attn_shape_and_grad` |  |  | PASSED | 0.01 |
-| `test_paper_faithful_create_model_no_mha_no_selfattn` |  |  | PASSED | 0.00 |
+| `test_paper_faithful_create_model_no_mha_no_selfattn` |  |  | PASSED | 0.01 |
 | `test_forward_smoke_with_drop_edge_p` |  |  | PASSED | 0.01 |
 | `test_causal_transformer_d_model_10_does_not_crash` | Default gru last layer 10 with nhead=4 must not fail init (MHA needs d%h==0). |  | PASSED | 0.00 |
-| `test_create_model_temporal_transformer_paper_default_hidden` |  |  | PASSED | 0.01 |
+| `test_create_model_temporal_transformer_paper_default_hidden` |  |  | PASSED | 0.00 |
 | `test_multiscale_temporal_transformer_paper_default_hidden` |  |  | PASSED | 0.00 |
 
 ## `tests/test_mlflow_tracking.py`
@@ -755,7 +392,7 @@ Phase 2 model flags: self-attention type embed, MHA path shapes, encoders.
 | `test_static_blend_supports_custom_intermediate_speed` |  |  | PASSED | 0.01 |
 | `test_binary_momentum_keeps_warmup_rows_neutral` |  |  | PASSED | 0.01 |
 | `test_dynamic_formula_matches_proposition_9` |  |  | PASSED | 0.00 |
-| `test_dynamic_estimator_uses_only_prior_observations` |  |  | PASSED | 0.02 |
+| `test_dynamic_estimator_uses_only_prior_observations` |  |  | PASSED | 0.01 |
 | `test_dynamic_estimator_activates_after_sufficient_history` |  |  | PASSED | 0.01 |
 | `test_feature_config_validates_dynamic_controls_and_yaml_merge` |  |  | PASSED | 0.01 |
 
@@ -786,7 +423,7 @@ Test script to verify output management features.
 
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
-| `test_monitor_writes_feature_drift_outputs` |  |  | PASSED | 0.02 |
+| `test_monitor_writes_feature_drift_outputs` |  |  | PASSED | 0.03 |
 | `test_report_includes_feature_drift_section` |  |  | PASSED | 0.00 |
 
 ## `tests/test_phase3_graph_and_walkforward.py`
@@ -810,7 +447,7 @@ Phase 3: lead-lag toy, snapshot valid_from, walk-forward config, cross-attn smok
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
 | `test_alias_audit_finds_suffixed_candidates_with_market_rows` |  |  | PASSED | 0.02 |
-| `test_alias_audit_quantifies_daily_active_and_scoreable_impact` |  |  | PASSED | 0.02 |
+| `test_alias_audit_quantifies_daily_active_and_scoreable_impact` |  |  | PASSED | 0.01 |
 | `test_alias_audit_markdown_summarizes_candidate_coverage` |  |  | PASSED | 0.00 |
 
 ## `tests/test_pit_availability_report.py`
@@ -821,7 +458,7 @@ Phase 3: lead-lag toy, snapshot valid_from, walk-forward config, cross-attn smok
 |---|---|---|---|---|
 | `test_pit_availability_report_keeps_masked_panel_and_reports_tradability` |  |  | PASSED | 0.01 |
 | `test_pit_availability_report_explicit_calendar_counts_full_day_outage` |  |  | PASSED | 0.01 |
-| `test_write_pit_availability_report_cli_writes_json` |  |  | PASSED | 0.04 |
+| `test_write_pit_availability_report_cli_writes_json` |  |  | PASSED | 0.03 |
 
 ## `tests/test_pit_masked_panel.py`
 
@@ -839,7 +476,7 @@ Phase 3: lead-lag toy, snapshot valid_from, walk-forward config, cross-attn smok
 | `test_top_k_returns_ignores_invalid_candidates` |  |  | PASSED | 0.00 |
 | `test_self_attention_mask_prevents_inactive_node_influence` |  |  | PASSED | 0.00 |
 | `test_prediction_rows_for_date_filters_to_tradable_mask` |  |  | PASSED | 0.00 |
-| `test_prepare_data_masked_panel_keeps_union_axis_without_complete_stock_filter` |  |  | PASSED | 0.43 |
+| `test_prepare_data_masked_panel_keeps_union_axis_without_complete_stock_filter` |  |  | PASSED | 0.31 |
 
 ## `tests/test_pit_masked_panel_notebook.py`
 
@@ -848,7 +485,7 @@ Phase 3: lead-lag toy, snapshot valid_from, walk-forward config, cross-attn smok
 | `test_pit_masked_panel_notebook_uses_frozen_default_recipe` |  |  | PASSED | 0.00 |
 | `test_pit_masked_panel_summary_text_reports_full_run_budget` |  |  | PASSED | 0.01 |
 | `test_pit_masked_panel_summary_text_keeps_smoke_caveat` |  |  | PASSED | 0.00 |
-| `test_pit_masked_panel_notebook_code_cells_parse` |  |  | PASSED | 0.01 |
+| `test_pit_masked_panel_notebook_code_cells_parse` |  |  | PASSED | 0.00 |
 
 ## `tests/test_pit_membership_progression_audit.py`
 
@@ -857,7 +494,7 @@ Phase 3: lead-lag toy, snapshot valid_from, walk-forward config, cross-attn smok
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
 | `test_audit_outputs_change_summary_snapshot_progression_and_market_evidence` |  |  | PASSED | 0.04 |
-| `test_validation_period_guard_fails_when_snapshot_membership_never_changes` |  |  | PASSED | 0.01 |
+| `test_validation_period_guard_fails_when_snapshot_membership_never_changes` |  |  | PASSED | 0.00 |
 
 ## `tests/test_pit_repeated_seed_backtest_sensitivity.py`
 
@@ -866,9 +503,9 @@ Phase 3: lead-lag toy, snapshot valid_from, walk-forward config, cross-attn smok
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
 | `test_default_scenarios_include_spread_only_and_label21_diagnostic` |  |  | PASSED | 0.00 |
-| `test_repeated_seed_training_rows_are_not_collapsed_by_year` |  |  | PASSED | 0.02 |
+| `test_repeated_seed_training_rows_are_not_collapsed_by_year` |  |  | PASSED | 0.01 |
 | `test_build_backtest_command_uses_scenario_cost_and_label_settings` |  |  | PASSED | 0.01 |
-| `test_write_sensitivity_outputs_emits_cross_tabs_and_baseline_deltas` |  |  | PASSED | 0.06 |
+| `test_write_sensitivity_outputs_emits_cross_tabs_and_baseline_deltas` |  |  | PASSED | 0.05 |
 
 ## `tests/test_pit_repeated_seed_replication_notebook.py`
 
@@ -893,7 +530,7 @@ Phase 3: lead-lag toy, snapshot valid_from, walk-forward config, cross-attn smok
 |---|---|---|---|---|
 | `test_build_backtest_command_enables_costs_and_rank_gate` |  |  | PASSED | 0.00 |
 | `test_resolve_year_jobs_remaps_stale_colab_paths_to_current_run_root` |  |  | PASSED | 0.01 |
-| `test_write_summary_outputs_compares_cost_aware_rows_to_reviewed_artifact` |  |  | PASSED | 0.02 |
+| `test_write_summary_outputs_compares_cost_aware_rows_to_reviewed_artifact` |  |  | PASSED | 0.03 |
 
 ## `tests/test_pit_universe_validation_notebook.py`
 
@@ -902,7 +539,7 @@ Phase 3: lead-lag toy, snapshot valid_from, walk-forward config, cross-attn smok
 | `test_pit_notebook_includes_survivorship_controls` |  |  | PASSED | 0.00 |
 | `test_pit_notebook_writes_comparison_artifacts` |  |  | PASSED | 0.00 |
 | `test_pit_notebook_preserves_frozen_recipe_scope` |  |  | PASSED | 0.00 |
-| `test_pit_notebook_code_cells_parse` |  |  | PASSED | 0.00 |
+| `test_pit_notebook_code_cells_parse` |  |  | PASSED | 0.01 |
 
 ## `tests/test_portfolio_ic_config.py`
 
@@ -942,7 +579,7 @@ Phase 3: lead-lag toy, snapshot valid_from, walk-forward config, cross-attn smok
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
 | `test_trainer_can_run_one_cpu_step_with_portfolio_ic` |  |  | PASSED | 0.01 |
-| `test_trainer_moves_criterion_to_device` |  |  | PASSED | 0.01 |
+| `test_trainer_moves_criterion_to_device` |  |  | PASSED | 0.00 |
 | `test_trainer_writes_first_batch_profile_when_enabled` |  |  | PASSED | 0.01 |
 
 ## `tests/test_portfolio_ic_upward_sweep_notebook.py`
@@ -975,7 +612,7 @@ Regression tests for vectorised preprocessing (matches legacy semantics).
 |---|---|---|---|---|
 | `test_generate_time_series_features_matches_legacy_small_grid` | Vectorised path must match iterrows reference on a tiny panel. |  | PASSED | 0.01 |
 | `test_generate_time_series_features_duplicate_dt_kdcode_last_wins` | When duplicate (dt, kdcode) rows exist, last row wins (legacy iterrows behaviour). |  | PASSED | 0.01 |
-| `test_generate_time_series_features_shape` | Output shape matches (num_dates - his_t, n_stocks, his_t, n_features). | parametrize | PASSED | 0.02 |
+| `test_generate_time_series_features_shape` | Output shape matches (num_dates - his_t, n_stocks, his_t, n_features). | parametrize | PASSED | 0.01 |
 
 ## `tests/test_regime_features.py`
 
@@ -983,18 +620,18 @@ Regression tests for vectorised preprocessing (matches legacy semantics).
 
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
-| `test_compute_regime_monthly_features_outputs_expected_columns` |  |  | PASSED | 1.52 |
+| `test_compute_regime_monthly_features_outputs_expected_columns` |  |  | PASSED | 1.39 |
 | `test_compute_regime_monthly_features_adds_subsequent_return_signals` |  |  | PASSED | 0.02 |
-| `test_compute_regime_monthly_features_no_lookahead_exclusion_effect` |  |  | PASSED | 3.18 |
-| `test_regime_subsequent_return_horizon_excludes_future_window` |  |  | PASSED | 1.38 |
-| `test_add_regime_features_broadcasts_without_row_change` |  |  | PASSED | 4.12 |
+| `test_compute_regime_monthly_features_no_lookahead_exclusion_effect` |  |  | PASSED | 3.00 |
+| `test_regime_subsequent_return_horizon_excludes_future_window` |  |  | PASSED | 1.26 |
+| `test_add_regime_features_broadcasts_without_row_change` |  |  | PASSED | 3.73 |
 | `test_regime_input_contract_columns_present` |  |  | PASSED | 0.00 |
-| `test_regime_csv_contract_is_deprecated_and_requires_full_seven_variable_surface` | Deprecated CSV override must not silently drop paper-guided variables. |  | PASSED | 0.02 |
+| `test_regime_csv_contract_is_deprecated_and_requires_full_seven_variable_surface` | Deprecated CSV override must not silently drop paper-guided variables. |  | PASSED | 0.03 |
 | `test_regime_csv_loader_forward_fills_without_backfill` | Raw CSV gaps may use prior values only; leading gaps remain unavailable. |  | PASSED | 0.01 |
-| `test_live_regime_stock_bond_corr_uses_three_year_window` |  |  | PASSED | 0.02 |
-| `test_live_regime_stock_bond_corr_handles_sparse_merged_panel` |  |  | PASSED | 0.01 |
+| `test_live_regime_stock_bond_corr_uses_three_year_window` |  |  | PASSED | 0.01 |
+| `test_live_regime_stock_bond_corr_handles_sparse_merged_panel` |  |  | PASSED | 0.02 |
 | `test_live_regime_fetch_retries_transient_series_failure` |  |  | PASSED | 0.01 |
-| `test_transform_with_regime_df_produces_nonzero_regime_columns` | Regime columns must be non-constant when a real regime_df is passed to transform. |  | PASSED | 1.00 |
+| `test_transform_with_regime_df_produces_nonzero_regime_columns` | Regime columns must be non-constant when a real regime_df is passed to transform. |  | PASSED | 0.93 |
 | `test_regime_csv_lag_safety` | Lagged CSV regime inputs must not backfill the leading unavailable row. |  | PASSED | 0.02 |
 
 ## `tests/test_research_paper_to_mci_gru_skill.py`
@@ -1010,11 +647,11 @@ Regression tests for vectorised preprocessing (matches legacy semantics).
 
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
-| `test_build_run_manifest_hashes_core_artifacts_and_provenance` |  |  | PASSED | 0.15 |
+| `test_build_run_manifest_hashes_core_artifacts_and_provenance` |  |  | PASSED | 0.48 |
 | `test_build_run_manifest_uses_repo_dir_for_external_run_git_provenance` |  |  | PASSED | 0.12 |
 | `test_validate_run_bundle_reports_missing_artifacts` |  |  | PASSED | 0.00 |
-| `test_validate_run_bundle_rejects_empty_prediction_directory` |  |  | PASSED | 0.01 |
-| `test_write_run_manifest_refuses_overwrite_without_force` |  |  | PASSED | 0.35 |
+| `test_validate_run_bundle_rejects_empty_prediction_directory` |  |  | PASSED | 0.00 |
+| `test_write_run_manifest_refuses_overwrite_without_force` |  |  | PASSED | 0.26 |
 
 ## `tests/test_run_pytest_isolated.py`
 
@@ -1033,19 +670,19 @@ Regression tests for the isolated pytest launcher.
 | `test_build_pytest_command_injects_isolation_before_user_arguments` |  |  | PASSED | 0.00 |
 | `test_build_pytest_command_places_managed_options_before_double_dash` |  |  | PASSED | 0.00 |
 | `test_build_subprocess_environment_routes_all_temp_apis` |  |  | PASSED | 0.00 |
-| `test_validate_pytest_args_rejects_acl_unsafe_overrides` |  | parametrize | PASSED | 0.01 |
+| `test_validate_pytest_args_rejects_acl_unsafe_overrides` |  | parametrize | PASSED | 0.00 |
 | `test_validate_pytest_args_preserves_unrelated_options` |  | parametrize | PASSED | 0.00 |
 | `test_validate_pytest_environment_rejects_acl_unsafe_overrides` |  | parametrize | PASSED | 0.00 |
-| `test_main_rejects_unsafe_environment_before_creating_temp_root` |  | parametrize | PASSED | 0.01 |
+| `test_main_rejects_unsafe_environment_before_creating_temp_root` |  | parametrize | PASSED | 0.00 |
 | `test_response_file_cannot_override_the_managed_basetemp` |  |  | PASSED | 0.00 |
 | `test_main_reports_runner_option_conflicts_as_pytest_usage_errors` |  |  | PASSED | 0.00 |
-| `test_run_pytest_cleans_unique_root_after_success` |  |  | PASSED | 0.68 |
-| `test_run_pytest_preserves_failure_exit_and_cleans_root` |  |  | PASSED | 0.86 |
-| `test_run_pytest_places_managed_paths_before_double_dash` |  |  | PASSED | 0.89 |
-| `test_run_pytest_can_keep_temp_for_explicit_diagnostics` |  |  | PASSED | 1.19 |
-| `test_run_pytest_contains_active_cache_and_removes_it` |  |  | PASSED | 0.78 |
-| `test_run_pytest_rejects_config_addopts_that_hide_managed_paths` |  | parametrize | PASSED | 1.35 |
-| `test_run_pytest_preserves_safe_config_addopts_and_overrides_cache_dir` |  |  | PASSED | 0.90 |
+| `test_run_pytest_cleans_unique_root_after_success` |  |  | PASSED | 0.61 |
+| `test_run_pytest_preserves_failure_exit_and_cleans_root` |  |  | PASSED | 0.63 |
+| `test_run_pytest_places_managed_paths_before_double_dash` |  |  | PASSED | 0.60 |
+| `test_run_pytest_can_keep_temp_for_explicit_diagnostics` |  |  | PASSED | 0.59 |
+| `test_run_pytest_contains_active_cache_and_removes_it` |  |  | PASSED | 0.57 |
+| `test_run_pytest_rejects_config_addopts_that_hide_managed_paths` |  | parametrize | PASSED | 1.02 |
+| `test_run_pytest_preserves_safe_config_addopts_and_overrides_cache_dir` |  |  | PASSED | 0.56 |
 | `test_cleanup_failure_warns_without_masking_pytest_exit` |  | parametrize | PASSED | 0.01 |
 
 ## `tests/test_saved_prediction_selection_audit.py`
@@ -1056,8 +693,8 @@ Regression tests for the isolated pytest launcher.
 |---|---|---|---|---|
 | `test_selection_audit_computes_ic_topk_multiple_testing_and_deflated_sharpe` |  |  | PASSED | 0.03 |
 | `test_selection_audit_flags_insufficient_evidence_when_alignment_is_empty` |  |  | PASSED | 0.02 |
-| `test_selection_audit_cli_uses_requested_top_k_without_default_duplicates` |  |  | PASSED | 0.06 |
-| `test_write_selection_audit_strict_json_and_overwrite_guard` |  |  | PASSED | 0.01 |
+| `test_selection_audit_cli_uses_requested_top_k_without_default_duplicates` |  |  | PASSED | 0.04 |
+| `test_write_selection_audit_strict_json_and_overwrite_guard` |  |  | PASSED | 0.00 |
 
 ## `tests/test_selection_research_artifacts.py`
 
@@ -1065,10 +702,10 @@ Regression tests for the isolated pytest launcher.
 
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
-| `test_write_selection_research_bundle_is_canonical_and_manifested` |  |  | PASSED | 0.03 |
-| `test_cross_root_semantic_inputs_produce_identical_ids_and_bytes` |  |  | PASSED | 0.03 |
-| `test_study_id_changes_for_each_semantic_identity_component` |  | parametrize | PASSED | 0.02 |
-| `test_bundle_verifies_identical_rerun_and_rejects_conflicting_bytes` |  |  | PASSED | 0.02 |
+| `test_write_selection_research_bundle_is_canonical_and_manifested` |  |  | PASSED | 0.02 |
+| `test_cross_root_semantic_inputs_produce_identical_ids_and_bytes` |  |  | PASSED | 0.02 |
+| `test_study_id_changes_for_each_semantic_identity_component` |  | parametrize | PASSED | 0.01 |
+| `test_bundle_verifies_identical_rerun_and_rejects_conflicting_bytes` |  |  | PASSED | 0.01 |
 
 ## `tests/test_selection_research_claims.py`
 
@@ -1076,8 +713,8 @@ Regression tests for the isolated pytest launcher.
 
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
-| `test_positive_complete_60_date_fixture_can_claim_preliminary_but_not_confirmatory` |  |  | PASSED | 1.74 |
-| `test_negative_60_date_fixture_reports_no_detectable_signal` |  |  | PASSED | 1.70 |
+| `test_positive_complete_60_date_fixture_can_claim_preliminary_but_not_confirmatory` |  |  | PASSED | 1.07 |
+| `test_negative_60_date_fixture_reports_no_detectable_signal` |  |  | PASSED | 1.10 |
 
 ## `tests/test_selection_research_integration.py`
 
@@ -1085,20 +722,20 @@ Regression tests for the isolated pytest launcher.
 
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
-| `test_saved_prediction_selection_research_never_invokes_training` |  |  | PASSED | 2.97 |
-| `test_research_evidence_uses_canonical_sessions_and_keeps_invalid_dates` |  |  | PASSED | 0.19 |
-| `test_future_market_rows_do_not_change_prior_dated_evidence` |  |  | PASSED | 0.42 |
-| `test_missing_middle_session_is_not_replaced_by_later_stock_row` |  |  | PASSED | 0.19 |
-| `test_unmatured_tail_outcome_is_reported_and_never_zeroed` |  |  | PASSED | 0.28 |
-| `test_top_k_spread_uses_the_same_expected_set_denominator` |  |  | PASSED | 0.26 |
-| `test_pit_knowledge_after_signal_close_invalidates_the_date` |  |  | PASSED | 0.15 |
-| `test_explicit_signal_close_must_belong_to_its_local_session_date` |  |  | PASSED | 0.03 |
-| `test_expected_denominator_covers_every_active_member_with_exclusion_reason` |  |  | PASSED | 0.28 |
-| `test_pit_entry_and_exit_boundaries_change_only_the_declared_daily_denominator` |  |  | PASSED | 0.27 |
-| `test_invalid_price_provenance_nulls_headline_and_report_claim` |  |  | PASSED | 0.28 |
+| `test_saved_prediction_selection_research_never_invokes_training` |  |  | PASSED | 2.57 |
+| `test_research_evidence_uses_canonical_sessions_and_keeps_invalid_dates` |  |  | PASSED | 0.13 |
+| `test_future_market_rows_do_not_change_prior_dated_evidence` |  |  | PASSED | 0.24 |
+| `test_missing_middle_session_is_not_replaced_by_later_stock_row` |  |  | PASSED | 0.10 |
+| `test_unmatured_tail_outcome_is_reported_and_never_zeroed` |  |  | PASSED | 0.23 |
+| `test_top_k_spread_uses_the_same_expected_set_denominator` |  |  | PASSED | 0.13 |
+| `test_pit_knowledge_after_signal_close_invalidates_the_date` |  |  | PASSED | 0.12 |
+| `test_explicit_signal_close_must_belong_to_its_local_session_date` |  |  | PASSED | 0.02 |
+| `test_expected_denominator_covers_every_active_member_with_exclusion_reason` |  |  | PASSED | 0.21 |
+| `test_pit_entry_and_exit_boundaries_change_only_the_declared_daily_denominator` |  |  | PASSED | 0.14 |
+| `test_invalid_price_provenance_nulls_headline_and_report_claim` |  |  | PASSED | 0.15 |
 | `test_complete_trial_ledger_declaration_requires_a_hashed_ledger` |  |  | PASSED | 0.01 |
-| `test_end_to_end_bundle_is_byte_identical_across_output_roots` |  |  | PASSED | 0.23 |
-| `test_cli_research_mode_writes_only_the_five_file_bundle` |  |  | PASSED | 0.21 |
+| `test_end_to_end_bundle_is_byte_identical_across_output_roots` |  |  | PASSED | 0.25 |
+| `test_cli_research_mode_writes_only_the_five_file_bundle` |  |  | PASSED | 0.13 |
 
 ## `tests/test_selection_research_pit.py`
 
@@ -1107,11 +744,11 @@ Regression tests for the isolated pytest launcher.
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
 | `test_optional_known_from_survives_normalization_and_is_checked_at_signal_close` |  |  | PASSED | 0.01 |
-| `test_legacy_intervals_without_known_from_remain_effective_only` |  |  | PASSED | 0.01 |
+| `test_legacy_intervals_without_known_from_remain_effective_only` |  |  | PASSED | 0.00 |
 | `test_future_known_from_is_not_treated_as_known_at_signal_close` |  |  | PASSED | 0.00 |
 | `test_naive_known_from_uses_the_declared_timezone` |  |  | PASSED | 0.01 |
 | `test_known_from_is_never_inferred_from_valid_from` |  |  | PASSED | 0.00 |
-| `test_missing_supplied_known_from_is_unknown_not_effective_only` |  |  | PASSED | 0.00 |
+| `test_missing_supplied_known_from_is_unknown_not_effective_only` |  |  | PASSED | 0.01 |
 
 ## `tests/test_selection_research_statistics.py`
 
@@ -1121,10 +758,10 @@ Regression tests for the isolated pytest launcher.
 |---|---|---|---|---|
 | `test_daily_spearman_is_dated_and_preserves_invalid_statuses` |  |  | PASSED | 0.00 |
 | `test_overlap_aware_hac_lag_is_enforced_for_mean_inference` |  |  | PASSED | 0.00 |
-| `test_overlap_aware_moving_block_mean_interval_is_enforced_and_deterministic` |  |  | PASSED | 0.01 |
+| `test_overlap_aware_moving_block_mean_interval_is_enforced_and_deterministic` |  |  | PASSED | 0.00 |
 | `test_empirical_one_sided_p_value_uses_plus_one_correction` |  |  | PASSED | 0.00 |
 | `test_permutation_preserves_daily_set_score_multiset_and_ties` |  |  | PASSED | 0.00 |
-| `test_permutation_is_deterministic_and_assignment_is_outcome_independent` |  |  | PASSED | 0.14 |
+| `test_permutation_is_deterministic_and_assignment_is_outcome_independent` |  |  | PASSED | 0.08 |
 
 ## `tests/test_sp500_gics_top10_mcap_export.py`
 
@@ -1133,8 +770,8 @@ Regression tests for the isolated pytest launcher.
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
 | `test_select_top_by_sector_keeps_top_n_per_gics_sector` |  |  | PASSED | 0.00 |
-| `test_normalise_metadata_accepts_current_constituent_columns` |  |  | PASSED | 0.01 |
-| `test_normalise_metadata_rejects_missing_constituent_ric_values` |  |  | PASSED | 0.01 |
+| `test_normalise_metadata_accepts_current_constituent_columns` |  |  | PASSED | 0.00 |
+| `test_normalise_metadata_rejects_missing_constituent_ric_values` |  |  | PASSED | 0.00 |
 
 ## `tests/test_sp500_joiner_leaver_pit_export.py`
 
@@ -1142,7 +779,7 @@ Regression tests for the isolated pytest launcher.
 
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
-| `test_joiner_leaver_export_builds_pipeline_pit_universe_schema` |  |  | PASSED | 0.01 |
+| `test_joiner_leaver_export_builds_pipeline_pit_universe_schema` |  |  | PASSED | 0.00 |
 | `test_joiner_leaver_export_merges_duplicate_pipeline_intervals` |  |  | PASSED | 0.01 |
 | `test_joiner_leaver_export_adds_unsuffixed_aliases_and_coalesces_overlaps` |  |  | PASSED | 0.01 |
 
@@ -1175,7 +812,7 @@ Regression tests for the isolated pytest launcher.
 | `test_training_config_exposes_dataloader_and_profile_defaults` |  |  | PASSED | 0.00 |
 | `test_create_config_from_dict_accepts_efficiency_overrides` |  |  | PASSED | 0.00 |
 | `test_create_data_loaders_preserves_default_loader_behavior` |  |  | PASSED | 0.00 |
-| `test_create_data_loaders_accepts_efficiency_overrides` |  |  | PASSED | 0.01 |
+| `test_create_data_loaders_accepts_efficiency_overrides` |  |  | PASSED | 0.00 |
 
 ## `tests/test_transforms.py`
 
@@ -1185,11 +822,11 @@ Unit tests for mci_gru.data.transforms.
 
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
-| `test_impute_feature_nans_by_day_mean_then_zero_fill` |  |  | PASSED | 0.01 |
+| `test_impute_feature_nans_by_day_mean_then_zero_fill` |  |  | PASSED | 0.00 |
 | `test_compute_zscore_norm_stats_train_period_only` |  |  | PASSED | 0.00 |
 | `test_normalize_features_zscore_clip_and_scale` |  |  | PASSED | 0.00 |
 | `test_normalize_features_zscore_default_fallback_vs_keyerror` |  |  | PASSED | 0.00 |
-| `test_build_single_date_tensors_shapes` |  |  | PASSED | 0.01 |
+| `test_build_single_date_tensors_shapes` |  |  | PASSED | 0.00 |
 
 ## `tests/test_trial_ledger.py`
 
@@ -1198,8 +835,8 @@ Unit tests for mci_gru.data.transforms.
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
 | `test_build_trial_record_flattens_existing_summary_files` |  |  | PASSED | 0.01 |
-| `test_write_trial_ledger_writes_csv_and_jsonl` |  |  | PASSED | 0.02 |
-| `test_write_trial_ledger_strict_jsonl_and_force_guard` |  |  | PASSED | 0.02 |
+| `test_write_trial_ledger_writes_csv_and_jsonl` |  |  | PASSED | 0.01 |
+| `test_write_trial_ledger_strict_jsonl_and_force_guard` |  |  | PASSED | 0.01 |
 
 ## `tests/test_volatility_targeting_ablation_notebook.py`
 
@@ -1208,7 +845,7 @@ Unit tests for mci_gru.data.transforms.
 | `test_issue8_ablation_notebook_defines_stage1_component_sweep` |  |  | PASSED | 0.00 |
 | `test_issue8_ablation_notebook_uses_current_pit_recipe_and_g4_preflight` |  |  | PASSED | 0.00 |
 | `test_issue8_ablation_notebook_runs_cost_rank_gate_backtests_and_writes_deltas` |  |  | PASSED | 0.00 |
-| `test_issue8_ablation_notebook_code_cells_parse` |  |  | PASSED | 0.01 |
+| `test_issue8_ablation_notebook_code_cells_parse` |  |  | PASSED | 0.00 |
 
 ## `tests/test_volatility_targeting_features.py`
 
@@ -1216,11 +853,11 @@ Unit tests for mci_gru.data.transforms.
 
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
-| `test_harvey_style_volatility_targeting_feature_values` |  |  | PASSED | 0.02 |
-| `test_volatility_targeting_uses_harvey_ex_ante_lag` |  |  | PASSED | 0.04 |
-| `test_volatility_targeting_is_per_stock_isolated` |  |  | PASSED | 0.03 |
-| `test_volatility_targeting_registry_and_config_wiring` |  |  | PASSED | 0.04 |
-| `test_volatility_targeting_component_selection_controls_model_feature_list` |  |  | PASSED | 0.02 |
+| `test_harvey_style_volatility_targeting_feature_values` |  |  | PASSED | 0.01 |
+| `test_volatility_targeting_uses_harvey_ex_ante_lag` |  |  | PASSED | 0.01 |
+| `test_volatility_targeting_is_per_stock_isolated` |  |  | PASSED | 0.01 |
+| `test_volatility_targeting_registry_and_config_wiring` |  |  | PASSED | 0.01 |
+| `test_volatility_targeting_component_selection_controls_model_feature_list` |  |  | PASSED | 0.01 |
 | `test_volatility_targeting_config_rejects_invalid_controls` |  |  | PASSED | 0.00 |
 
 ## `tests/test_volatility_targeting_pit_notebooks.py`
@@ -1228,7 +865,7 @@ Unit tests for mci_gru.data.transforms.
 | Test | Description | Markers | Last run | Time (s) |
 |---|---|---|---|---|
 | `test_volatility_pit_notebooks_have_real_gpu_gate` |  |  | PASSED | 0.00 |
-| `test_volatility_pit_code_cells_parse` |  |  | PASSED | 0.01 |
+| `test_volatility_pit_code_cells_parse` |  |  | PASSED | 0.00 |
 
 ## `tests/test_volatility_targeting_repeated_seed_notebook.py`
 
@@ -1236,7 +873,7 @@ Unit tests for mci_gru.data.transforms.
 |---|---|---|---|---|
 | `test_issue8_repeated_seed_notebook_pins_candidate_grid` |  |  | PASSED | 0.00 |
 | `test_issue8_repeated_seed_notebook_uses_current_pit_recipe_and_candidate_overrides` |  |  | PASSED | 0.00 |
-| `test_issue8_repeated_seed_notebook_writes_matched_delta_artifacts` |  |  | PASSED | 0.01 |
+| `test_issue8_repeated_seed_notebook_writes_matched_delta_artifacts` |  |  | PASSED | 0.00 |
 | `test_issue8_repeated_seed_notebook_runs_cost_rank_gate_backtests` |  |  | PASSED | 0.00 |
-| `test_issue8_repeated_seed_notebook_code_cells_parse` |  |  | PASSED | 0.01 |
+| `test_issue8_repeated_seed_notebook_code_cells_parse` |  |  | PASSED | 0.00 |
 

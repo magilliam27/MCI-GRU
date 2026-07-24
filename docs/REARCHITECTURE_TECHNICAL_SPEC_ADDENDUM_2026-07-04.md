@@ -1,11 +1,11 @@
 # MCI-GRU Repo Rearchitecture — Addendum Spec (WS-L … WS-Q)
 
 > Companion to `docs/REARCHITECTURE_TECHNICAL_SPEC_2026-07-01.md` (the "base
-> spec", workstreams WS-A…WS-K). That spec remains the plan of record for
+> spec", workstreams WS-A and WS-C…WS-K). That spec remains the plan of record for
 > everything it covers. This addendum formalizes the six workstreams surfaced
 > by the 2026-07-02 full-repo architecture review that the base spec does not
 > cover, and replaces the base spec's Sequencing Summary with a consolidated
-> master sequencing across all seventeen workstreams.
+> master sequencing across all sixteen retained workstreams.
 >
 > **Same ground rules as the base spec:** behavior-preserving first, one
 > workstream = one PR = one green test run
@@ -22,7 +22,7 @@
 - [WS-O: Structured logging in core modules](#ws-o-structured-logging-in-core-modules)
 - [WS-P: Cross-layer coupling fixes](#ws-p-cross-layer-coupling-fixes)
 - [WS-Q: Repository hygiene sweep](#ws-q-repository-hygiene-sweep)
-- [Master sequencing (all 17 workstreams)](#master-sequencing-all-17-workstreams)
+- [Master sequencing (all 16 retained workstreams)](#master-sequencing-all-16-retained-workstreams)
 - [Acceptance criteria (addendum)](#acceptance-criteria-addendum)
 
 ---
@@ -499,7 +499,7 @@ code-path impact: all four targets are ruff-excluded and imported by nothing
 
 ---
 
-## Master sequencing (all 17 workstreams)
+## Master sequencing (all 16 retained workstreams)
 
 Supersedes the base spec's Sequencing Summary. Phases 0–2 keep their
 base-spec gates; addendum workstreams slot in as follows.
@@ -508,11 +508,10 @@ base-spec gates; addendum workstreams slot in as follows.
 Phase 0 (parallel)                Phase 1 (parallel, after Phase 0)   Phase 2 (sequential, after Phase 1)
 ──────────────────────────       ─────────────────────────────      ───────────────────────────────────
 WS-A  deps/lockfile               WS-F  models split                  WS-I  transforms.py extraction
-WS-B  cockpit relocation          WS-G  graph/builder split                  ↓
-WS-D  pytest markers              WS-H  trainer/ensemble split        WS-J  pipeline.py staging
-WS-E  docs SOT check                                                         ↓
-WS-M  config ingestion + slim                                        WS-K  infer.py adopts transforms
-WS-Q  hygiene sweep
+WS-D  pytest markers              WS-G  graph/builder split                  ↓
+WS-E  docs SOT check              WS-H  trainer/ensemble split        WS-J  pipeline.py staging
+WS-M  config ingestion + slim                                                ↓
+WS-Q  hygiene sweep                                                   WS-K  infer.py adopts transforms
 WS-L  nb_lib  ──────┐
                     ▼
 WS-C  backtest relocation         Phase 3 (after WS-C merged)

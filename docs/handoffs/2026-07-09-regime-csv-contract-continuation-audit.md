@@ -37,9 +37,6 @@ Last updated: 2026-07-11
 - `mci_gru/regime_contract.py`: shared seven-variable column list.
 - `mci_gru/features/regime.py`: regime feature construction and current-only/subsequent-return feature switches.
 - `tests/test_regime_features.py`: current main has lagged CSV no-backfill and regime no-lookahead-adjacent tests; PR34 adds the unlagged CSV gap test.
-- `docs/agents/cockpit/workstream-decisions.json`: durable reviewed disposition for the Regime CSV workstream and its historical branches.
-- `docs/agents/cockpit/2026-07-10.md`: latest merged cockpit snapshot at merge-review time; the 2026-07-08 packet is historical only.
-- `docs/agents/workstreams.md`: generated continuation register; do not edit it instead of the decision registry.
 
 ## Merge Review Verification
 
@@ -57,7 +54,7 @@ Last updated: 2026-07-11
 - Branch inventory:
   - `codex/deprecate-regime-csv` local only, `[gone]`, head `1e5d406`.
   - `codex/regime-csv-no-backfill-coverage` local plus remote-tracking, head `3010b16`, worktree `C:/Users/magil/.codex/worktrees/pr34-regime-no-backfill/MCI-GRU`.
-  - `remotes/origin/codex/regime-csv-forward-fill-test` also exists locally at `1986f2e`, but cockpit named the two surfaces above.
+  - `remotes/origin/codex/regime-csv-forward-fill-test` also exists locally at `1986f2e`.
 - Divergence from local `origin/main`:
   - `origin/main...codex/deprecate-regime-csv`: `94 3`.
   - `origin/main...codex/regime-csv-no-backfill-coverage`: `42 2`.
@@ -79,14 +76,12 @@ Last updated: 2026-07-11
 ## Next Actions
 
 1. Merge PR #70 after the corrected handoff passes CI.
-2. Record `origin/main` as the landed Regime CSV surface in the cockpit decision registry.
-3. Separately decide whether no-vendor CSV contract tests should move out from under the module-level FRED skip hook.
-4. Audit legacy `REGIME_INPUTS_CSV` mentions as a separate documentation task; keep CSV explicitly deprecated.
+2. Separately decide whether no-vendor CSV contract tests should move out from under the module-level FRED skip hook.
+3. Audit legacy `REGIME_INPUTS_CSV` mentions as a separate documentation task; keep CSV explicitly deprecated.
 
 ## Commands Run
 
-- `Get-Content` on `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/REGIME_DATA_CONTRACT.md`, `docs/CONFIGURATION_GUIDE.md`, `docs/agents/domain.md`, `docs/agents/workstreams.md`.
-- `Get-Content C:/Users/magil/.codex/worktrees/89a4/MCI-GRU/docs/agents/cockpit/2026-07-08.md`.
+- `Get-Content` on `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/REGIME_DATA_CONTRACT.md`, `docs/CONFIGURATION_GUIDE.md`, and `docs/agents/domain.md`.
 - `git status --short --branch`
 - `git worktree list --porcelain`
 - `git branch --all --list '*regime*' --verbose`
