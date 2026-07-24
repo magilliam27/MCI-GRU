@@ -115,7 +115,11 @@ def test_build_registry_writes_markdown_with_and_without_junit(tmp_path):
     assert out.exists()
     assert "test_alpha" in content
     assert "mci_gru.data.data_manager" in content
+    assert "## `tests/test_fake_module.py`" in content
     assert "No junit results found" in content
+    assert content.endswith("\n")
+    assert not content.endswith("\n\n")
+    assert all(line == line.rstrip() for line in content.splitlines())
 
     junit = tmp_path / "junit.xml"
     junit.write_text(
@@ -126,6 +130,9 @@ def test_build_registry_writes_markdown_with_and_without_junit(tmp_path):
     content = build_registry(tests_dir, junit_path=junit, out_path=out)
     assert "PASSED" in content
     assert "Last run" in content
+    assert content.endswith("\n")
+    assert not content.endswith("\n\n")
+    assert all(line == line.rstrip() for line in content.splitlines())
 
 
 def test_registry_covers_every_real_test_file():

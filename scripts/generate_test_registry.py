@@ -2,7 +2,7 @@
 """Generate docs/TEST_REGISTRY.md: a registry of every pytest test in tests/.
 
 For each test file the registry records the module docstring, the first-party
-modules it exercises (mci_gru / cockpit / paper_trade / scripts), pytest
+modules it exercises (mci_gru / paper_trade / scripts), pytest
 markers, and every test function. When test_reports/junit.xml exists (written
 by running pytest with --junitxml=test_reports/junit.xml), the last-run status
 and duration of each test are merged in.
@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-FIRST_PARTY_PREFIXES = ("mci_gru", "cockpit", "paper_trade", "scripts", "run_experiment")
+FIRST_PARTY_PREFIXES = ("mci_gru", "paper_trade", "scripts", "run_experiment")
 
 
 @dataclass
@@ -167,6 +167,7 @@ def render_registry(
     modules: list[TestModule],
     junit: dict[tuple[str, str], tuple[str, float]] | None,
     junit_path: Path | None,
+    display_root: Path,
     module_skips: set[str] | None = None,
 ) -> str:
     total_tests = sum(len(m.tests) for m in modules)
@@ -178,9 +179,9 @@ def render_registry(
     lines.append("> `.\\.venv\\Scripts\\python.exe scripts/generate_test_registry.py`")
     lines.append("")
     stamp = dt.date.today().isoformat()
-    lines.append(f"Generated: {stamp}  ")
-    lines.append(f"Test files: {len(modules)}  ")
-    lines.append(f"Test functions: {total_tests} (parametrized cases collapsed)  ")
+    lines.append(f"Generated: {stamp}")
+    lines.append(f"Test files: {len(modules)}")
+    lines.append(f"Test functions: {total_tests} (parametrized cases collapsed)")
     if junit is not None and junit_path is not None:
         lines.append(f"Last-run results merged from `{_display_junit_path(junit_path)}`.")
     else:
@@ -191,7 +192,7 @@ def render_registry(
     lines.append("")
 
     for module in sorted(modules, key=lambda m: m.path.name):
-        rel = module.path.relative_to(REPO_ROOT).as_posix()
+        rel = module.path.relative_to(display_root).as_posix()
         lines.append(f"## `{rel}`")
         lines.append("")
         if module.doc:
@@ -223,7 +224,7 @@ def render_registry(
             lines.append(row)
         lines.append("")
 
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines).rstrip("\n") + "\n"
 
 
 def build_registry(tests_dir: Path, junit_path: Path | None, out_path: Path) -> str:
@@ -234,7 +235,13 @@ def build_registry(tests_dir: Path, junit_path: Path | None, out_path: Path) -> 
         junit, module_skips = load_junit_results(junit_path)
     else:
         junit_path = None
-    content = render_registry(modules, junit, junit_path, module_skips)
+    content = render_registry(
+        modules,
+        junit,
+        junit_path,
+        display_root=tests_dir.parent,
+        module_skips=module_skips,
+    )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(content, encoding="utf-8")
     return content

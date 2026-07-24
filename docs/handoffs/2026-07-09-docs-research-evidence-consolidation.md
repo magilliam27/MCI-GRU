@@ -94,8 +94,8 @@ must remain test evidence, not empirical research evidence.
 ## Next Actions
 
 1. Merge PR #60 only after the amended head is green and conflict-free.
-2. Let the next cockpit refresh consume the merged registry and README state;
-   do not create another competing docs/research continuation branch.
+2. Treat the merged README routing on `origin/main` as canonical; do not create
+   another competing docs/research continuation branch.
 3. Review PR #62 separately as an incomplete evidence-preservation decision.
 4. Require explicit approval before deleting or removing parked branches and
    worktrees.
@@ -114,7 +114,6 @@ must remain test evidence, not empirical research evidence.
 
 - `AGENTS.md`
 - `docs/agents/domain.md`
-- `docs/agents/cockpit/workstream-decisions.json`
 - `docs/research/README.md`
 - `docs/research/current/README.md`
 - `tests/test_pit_saved_prediction_backtests.py`

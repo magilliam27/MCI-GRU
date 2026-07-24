@@ -44,29 +44,12 @@ state, blockers, commands, and next steps. A handoff is not research evidence
 unless a current report cites it as provenance.
 _Avoid_: Result report, canonical doc
 
-**Workstream Decision Registry**:
-The versioned cockpit input that preserves reviewed workstream statuses,
-canonical continuation surfaces, rationales, next actions, and git-surface
-dispositions across generated daily refreshes.
-_Avoid_: Manual edit to the generated workstream register, branch-name ignore list
-
 **Canonical Continuation Surface**:
-The reviewed issue, PR, branch, worktree, or `main` plus canonical doc from which
-a workstream should continue. Historical matching branches do not compete with
-it after they are recorded in the Workstream Decision Registry.
+The reviewed issue, PR, branch, worktree, or `main` plus the current
+source-of-truth document from which work should continue. Historical matching
+branches do not compete with it after an explicit handoff or canonical document
+records the decision.
 _Avoid_: Latest branch by name, arbitrary matching worktree
-
-**Reviewed Git Surface**:
-A normalized branch or detached-worktree label whose relationship to one or
-more workstreams and whose canonical, parked, archive, or stale disposition is
-recorded in the Workstream Decision Registry.
-_Avoid_: Silently ignored branch, deleted branch
-
-**Unreviewed Git Surface**:
-A live topology surface that matches a workstream but is absent from that
-workstream's registry assignments. It reopens only the affected workstream for
-review without invalidating unrelated recorded decisions.
-_Avoid_: Every historical branch, automatically canonical branch
 
 **Research Mechanism**:
 A paper's durable economic or statistical idea that may be transferable into MCI-GRU, limited to at most three per paper.
@@ -195,10 +178,6 @@ _Avoid_: Auto-created issue, hidden tracker mutation
   report-by-report review.
 - A **Handoff** preserves operational continuity and can provide provenance, but
   it is not research evidence by default.
-- A **Workstream Decision Registry** preserves a **Canonical Continuation
-  Surface** across generated cockpit refreshes.
-- A **Reviewed Git Surface** cannot reopen its recorded workstream merely by
-  remaining in git topology; an **Unreviewed Git Surface** can.
 - A paper can contribute one to three **Research Mechanisms**.
 - A **Research Mechanism** can have many **Empirical Choices**.
 - A **Research-to-Implementation Brief** uses stable sections: Intake, Mechanisms, Data Readiness Gate, Landing Zone Ranking, Invariant Check, Feasibility Opinion, GitHub-Ready Slices, ADR Candidates, Rejected Ideas, and Open Questions.
