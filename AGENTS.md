@@ -22,6 +22,26 @@ multi-feature edges; `drop_edge_p=0.1`; static weekly momentum; and strict
 current-only global regime features. `FRED_API_KEY` is required unless a smoke
 run explicitly disables global regime.
 
+## Agent skills
+
+### Issue tracker
+
+Implementation work and PRDs are tracked in GitHub Issues for
+`magilliam27/MCI-GRU`. Write-oriented workflows may autonomously manage their
+issue and PR lifecycle through scoped `codex/*` branches, never directly on
+`main`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the five canonical Matt Pocock triage roles with their exact default label
+strings. Missing canonical labels may be created as part of the requested
+workflow. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository with its glossary in root `CONTEXT.md` and
+decisions under `docs/adr/` when created. See `docs/agents/domain.md`.
+
 ## Repository Map
 
 ```
