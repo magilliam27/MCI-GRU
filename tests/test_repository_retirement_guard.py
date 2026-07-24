@@ -15,6 +15,7 @@ RETIRED_PATHS = (
     "scripts/refresh_cockpit.py",
 )
 PYTHON_SOURCE_ROOTS = ("mci_gru", "paper_trade", "scripts", "tests")
+PYTHON_SOURCE_FILES = ("run_experiment.py",)
 
 
 def test_retired_repository_surfaces_stay_absent():
@@ -25,25 +26,30 @@ def test_retired_repository_surfaces_stay_absent():
 
 def test_retired_package_stays_out_of_packaging_and_imports():
     pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    assert '"cockpit*"' not in pyproject
-    assert '"cockpit"' not in pyproject
+    for section_name in ("tool.setuptools.packages.find", "tool.ruff.lint.isort"):
+        section_start = pyproject.index(f"[{section_name}]")
+        section_end = pyproject.find("\n[", section_start + 1)
+        section = pyproject[section_start : section_end if section_end >= 0 else None]
+        assert "cockpit" not in section.lower()
 
     this_file = Path(__file__).resolve()
     offenders: list[str] = []
+    source_paths = [REPO_ROOT / path for path in PYTHON_SOURCE_FILES]
     for source_root in PYTHON_SOURCE_ROOTS:
-        for path in sorted((REPO_ROOT / source_root).rglob("*.py")):
-            if path.resolve() == this_file:
+        source_paths.extend((REPO_ROOT / source_root).rglob("*.py"))
+    for path in sorted(source_paths):
+        if path.resolve() == this_file:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                imported = [node.module or ""]
+            else:
                 continue
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Import):
-                    imported = [alias.name for alias in node.names]
-                elif isinstance(node, ast.ImportFrom):
-                    imported = [node.module or ""]
-                else:
-                    continue
-                if any(name == "cockpit" or name.startswith("cockpit.") for name in imported):
-                    offenders.append(path.relative_to(REPO_ROOT).as_posix())
-                    break
+            if any(name == "cockpit" or name.startswith("cockpit.") for name in imported):
+                offenders.append(path.relative_to(REPO_ROOT).as_posix())
+                break
 
     assert not offenders, f"Retired cockpit imports were reintroduced: {offenders}"

@@ -19,6 +19,12 @@ from datetime import datetime
 
 from omegaconf import OmegaConf
 
+from mci_gru.evaluation.backtest_engine import (
+    setup_backtest_logging,
+    setup_backtest_output_dir,
+)
+from run_experiment import setup_logging
+
 # Add project to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -56,8 +62,6 @@ def test_output_structure():
         print("  [PASS] Output structure created successfully")
 
         # Test backtest directory creation
-        from mci_gru.evaluation.backtest_engine import setup_backtest_output_dir
-
         predictions_dir = os.path.join(run_dir, "averaged_predictions")
         backtest_dir = setup_backtest_output_dir(predictions_dir, suffix="")
 
@@ -86,8 +90,6 @@ def test_logging_setup():
 
     try:
         # Test training logger
-        from run_experiment import setup_logging
-
         logger = setup_logging(temp_dir, "test_experiment")
         logger.info("Test log message")
 
@@ -111,8 +113,6 @@ def test_logging_setup():
         print("  [PASS] Training logger working")
 
         # Test backtest logger
-        from mci_gru.evaluation.backtest_engine import setup_backtest_logging
-
         backtest_logger = setup_backtest_logging(temp_dir)
         backtest_logger.info("Test backtest log")
 

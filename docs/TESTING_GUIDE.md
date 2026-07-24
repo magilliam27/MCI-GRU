@@ -65,11 +65,12 @@ checks before pushing shared pipeline, graph, model, or paper-trade changes.
 first-party modules each file exercises, and (when available) the last-run
 status and duration per test. It is auto-generated — do not edit by hand.
 
-To capture a viewable report of a run, add `--junitxml=test_reports/junit.xml`
-to any pytest command, then regenerate the registry to merge the results:
+To capture a viewable report on Windows, forward
+`--junitxml=test_reports/junit.xml` through the isolated launcher, then
+regenerate the registry to merge the results:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests/ -v --basetemp .tmp_pytest\pytest --junitxml=test_reports\junit.xml
+.\.venv\Scripts\python.exe scripts/run_pytest_isolated.py tests/ -v --junitxml=test_reports\junit.xml
 .\.venv\Scripts\python.exe scripts/generate_test_registry.py
 ```
 
