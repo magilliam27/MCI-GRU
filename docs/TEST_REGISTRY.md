@@ -5,38 +5,38 @@
 > `.\.venv\Scripts\python.exe scripts/generate_test_registry.py`
 
 Generated: 2026-07-23
-Test files: 70
-Test functions: 382 (parametrized cases collapsed)
-No junit results found. Run the suite with `--junitxml=test_reports/junit.xml` to include last-run status.
+Test files: 71
+Test functions: 384 (parametrized cases collapsed)
+Last-run results merged from `test_reports/junit.xml`.
 
 ## `tests/test_2022_weak_year_notebook_paths.py`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_2022_notebook_uses_discovered_drive_run_folder` |  |  |
-| `test_2022_notebook_setup_fails_before_loader_when_artifacts_missing` |  |  |
-| `test_2022_notebook_parses_mixed_drive_date_formats` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_2022_notebook_uses_discovered_drive_run_folder` |  |  | PASSED | 0.00 |
+| `test_2022_notebook_setup_fails_before_loader_when_artifacts_missing` |  |  | PASSED | 0.00 |
+| `test_2022_notebook_parses_mixed_drive_date_formats` |  |  | PASSED | 0.00 |
 
 ## `tests/test_ablation_notebook_gpu_preflight.py`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_ablation_colab_notebook_requires_gpu_before_loop` |  |  |
-| `test_ablation_colab_notebook_runs_child_python_unbuffered` |  |  |
-| `test_ablation_colab_notebook_requests_gpu_runtime_metadata` |  |  |
-| `test_ablation_colab_notebook_has_finalist_confirmation_section` |  |  |
-| `test_ablation_colab_notebook_has_final_confirmation_signal_check` |  |  |
-| `test_ablation_colab_notebook_has_2026_holdout_confirmation` |  |  |
-| `test_full_factorial_notebook_recovers_only_failed_regime_runs` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_ablation_colab_notebook_requires_gpu_before_loop` |  |  | PASSED | 0.00 |
+| `test_ablation_colab_notebook_runs_child_python_unbuffered` |  |  | PASSED | 0.00 |
+| `test_ablation_colab_notebook_requests_gpu_runtime_metadata` |  |  | PASSED | 0.00 |
+| `test_ablation_colab_notebook_has_finalist_confirmation_section` |  |  | PASSED | 0.00 |
+| `test_ablation_colab_notebook_has_final_confirmation_signal_check` |  |  | PASSED | 0.00 |
+| `test_ablation_colab_notebook_has_2026_holdout_confirmation` |  |  | PASSED | 0.00 |
+| `test_full_factorial_notebook_recovers_only_failed_regime_runs` |  |  | PASSED | 0.00 |
 
 ## `tests/test_backtest_engine_golden.py`
 
 Golden-output regression tests for legacy backtest CLIs (WS-N step 2).
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_backtest_engine_golden` |  | parametrize |
-| `test_backtest_engine_deterministic` |  | parametrize |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_backtest_engine_golden` |  | parametrize | PASSED | 31.93 |
+| `test_backtest_engine_deterministic` |  | parametrize | PASSED | 65.14 |
 
 ## `tests/test_backtest_fairness.py`
 
@@ -44,63 +44,63 @@ Test script to verify backtest fairness fixes.
 
 **Exercises:** `mci_gru.evaluation`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_return_calculation` | Test that calculate_forward_returns adds the correct columns. |  |
-| `test_simulation_timing` | Test that simulation uses correct timing (next-day open-to-open returns). |  |
-| `test_prediction_date_mapping` | Test that predictions on day t map to day t+1 entry open-to-open returns. |  |
-| `test_rank_drop_gate_eligible` | With rank-drop gate: stock that fell >= 10 ranks is eligible and can be selected. |  |
-| `test_rank_drop_gate_excluded` | With rank-drop gate: when no stock fell >= 10 ranks, holdings persist. |  |
-| `test_rank_drop_gate_disabled_regression` | With rank-drop gate disabled, behavior matches no-gate (same number of trading days as without gate). |  |
-| `test_portfolio_tracking_outputs_nonregression` | Validate additive portfolio tracking outputs and core output preservation. |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_return_calculation` | Test that calculate_forward_returns adds the correct columns. |  | PASSED | 0.02 |
+| `test_simulation_timing` | Test that simulation uses correct timing (next-day open-to-open returns). |  | PASSED | 0.03 |
+| `test_prediction_date_mapping` | Test that predictions on day t map to day t+1 entry open-to-open returns. |  | PASSED | 0.01 |
+| `test_rank_drop_gate_eligible` | With rank-drop gate: stock that fell >= 10 ranks is eligible and can be selected. |  | PASSED | 0.01 |
+| `test_rank_drop_gate_excluded` | With rank-drop gate: when no stock fell >= 10 ranks, holdings persist. |  | PASSED | 0.01 |
+| `test_rank_drop_gate_disabled_regression` | With rank-drop gate disabled, behavior matches no-gate (same number of trading days as without gate). |  | PASSED | 0.05 |
+| `test_portfolio_tracking_outputs_nonregression` | Validate additive portfolio tracking outputs and core output preservation. |  | PASSED | 0.07 |
 
 ## `tests/test_backtest_plotting.py`
 
 **Exercises:** `mci_gru.evaluation`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_plot_equity_curve_uses_agg_backend_when_saving` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_plot_equity_curve_uses_agg_backend_when_saving` |  |  | PASSED | 0.49 |
 
 ## `tests/test_capacity_replay.py`
 
 **Exercises:** `mci_gru.evaluation.capacity`, `scripts.run_saved_prediction_capacity_replay`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_capacity_replay_uses_lagged_dollar_volume_and_t_plus_one_open_timing` |  |  |
-| `test_capacity_replay_reports_lagged_volatility_gate_breaches` |  |  |
-| `test_capacity_replay_cli_writes_json_and_csv_with_force_guard` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_capacity_replay_uses_lagged_dollar_volume_and_t_plus_one_open_timing` |  |  | PASSED | 0.02 |
+| `test_capacity_replay_reports_lagged_volatility_gate_breaches` |  |  | PASSED | 0.01 |
+| `test_capacity_replay_cli_writes_json_and_csv_with_force_guard` |  |  | PASSED | 0.06 |
 
 ## `tests/test_check_docs_sot.py`
 
 **Exercises:** `scripts`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_new_offender_fails_but_allowlisted_file_passes` |  |  |
-| `test_clean_tree_passes` |  |  |
-| `test_subdirectory_reports_are_not_flagged` |  |  |
-| `test_real_docs_tree_is_clean` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_new_offender_fails_but_allowlisted_file_passes` |  |  | PASSED | 0.00 |
+| `test_clean_tree_passes` |  |  | PASSED | 0.01 |
+| `test_subdirectory_reports_are_not_flagged` |  |  | PASSED | 0.00 |
+| `test_real_docs_tree_is_clean` |  |  | PASSED | 0.00 |
 
 ## `tests/test_ci_smoke.py`
 
 **Exercises:** `scripts.ci_smoke`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_ci_smoke_uses_synthetic_csv_loader` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_ci_smoke_uses_synthetic_csv_loader` |  |  | PASSED | 0.00 |
 
 ## `tests/test_colab_recovery_upload_filter.py`
 
 **Exercises:** `scripts.colab_recovery_upload_filter`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_default_recovery_upload_excludes_per_model_csvs_and_broad_csvs` |  |  |
-| `test_per_model_and_checkpoint_uploads_are_explicit_opt_in` |  |  |
-| `test_count_averaged_prediction_csvs_counts_only_ensemble_predictions` |  |  |
-| `test_recovery_upload_files_are_sorted_by_relative_path` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_default_recovery_upload_excludes_per_model_csvs_and_broad_csvs` |  |  | PASSED | 0.01 |
+| `test_per_model_and_checkpoint_uploads_are_explicit_opt_in` |  |  | PASSED | 0.01 |
+| `test_count_averaged_prediction_csvs_counts_only_ensemble_predictions` |  |  | PASSED | 0.01 |
+| `test_recovery_upload_files_are_sorted_by_relative_path` |  |  | PASSED | 0.01 |
 
 ## `tests/test_data_loading_helpers.py`
 
@@ -108,24 +108,24 @@ Unit tests for pure data-loading helpers with no prior coverage.
 
 **Exercises:** `mci_gru.data.path_resolver`, `mci_gru.data.reshape`, `mci_gru.data.universes`, `mci_gru.graph.sector_edges`
 
-| Test | Description | Markers |
-|---|---|---|
-| `TestReshapeToStandard.test_reshapes_multiindex_to_standard_columns` |  |  |
-| `TestReshapeToStandard.test_drops_rows_with_missing_close` |  |  |
-| `TestReshapeToStandard.test_rejects_flat_columns` |  |  |
-| `TestReshapeToStandard.test_rejects_missing_required_fields` |  |  |
-| `TestUniverses.test_sp500_metadata` |  |  |
-| `TestUniverses.test_unknown_universe_raises_with_available_list` |  |  |
-| `TestUniverses.test_list_universes_matches_registry` |  |  |
-| `TestUniverses.test_multi_country_flag` |  |  |
-| `TestPathResolver.test_exact_path_wins` |  |  |
-| `TestPathResolver.test_missing_file_raises_filenotfound` |  |  |
-| `TestSectorEdges.test_load_sector_map_csv_parses_headers_case_insensitively` |  |  |
-| `TestSectorEdges.test_load_sector_map_csv_missing_file_raises` |  |  |
-| `TestSectorEdges.test_load_sector_map_csv_requires_expected_headers` |  |  |
-| `TestSectorEdges.test_build_sector_edges_links_same_sector_only` |  |  |
-| `TestSectorEdges.test_build_sector_edges_respects_top_k` |  |  |
-| `TestSectorEdges.test_build_sector_edges_empty_universe` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `TestReshapeToStandard.test_reshapes_multiindex_to_standard_columns` |  |  | PASSED | 0.01 |
+| `TestReshapeToStandard.test_drops_rows_with_missing_close` |  |  | PASSED | 0.01 |
+| `TestReshapeToStandard.test_rejects_flat_columns` |  |  | PASSED | 0.00 |
+| `TestReshapeToStandard.test_rejects_missing_required_fields` |  |  | PASSED | 0.00 |
+| `TestUniverses.test_sp500_metadata` |  |  | PASSED | 0.00 |
+| `TestUniverses.test_unknown_universe_raises_with_available_list` |  |  | PASSED | 0.00 |
+| `TestUniverses.test_list_universes_matches_registry` |  |  | PASSED | 0.00 |
+| `TestUniverses.test_multi_country_flag` |  |  | PASSED | 0.00 |
+| `TestPathResolver.test_exact_path_wins` |  |  | PASSED | 0.00 |
+| `TestPathResolver.test_missing_file_raises_filenotfound` |  |  | PASSED | 0.00 |
+| `TestSectorEdges.test_load_sector_map_csv_parses_headers_case_insensitively` |  |  | PASSED | 0.00 |
+| `TestSectorEdges.test_load_sector_map_csv_missing_file_raises` |  |  | PASSED | 0.00 |
+| `TestSectorEdges.test_load_sector_map_csv_requires_expected_headers` |  |  | PASSED | 0.00 |
+| `TestSectorEdges.test_build_sector_edges_links_same_sector_only` |  |  | PASSED | 0.00 |
+| `TestSectorEdges.test_build_sector_edges_respects_top_k` |  |  | PASSED | 0.00 |
+| `TestSectorEdges.test_build_sector_edges_empty_universe` |  |  | PASSED | 0.00 |
 
 ## `tests/test_dynamic_graph_updates.py`
 
@@ -133,48 +133,48 @@ Tests for dynamic correlation graph wiring.
 
 **Exercises:** `mci_gru.config`, `mci_gru.data.data_manager`, `mci_gru.graph.builder`, `mci_gru.models.mci_gru`
 
-| Test | Description | Markers |
-|---|---|---|
-| `TestStaticGraph.test_should_update_always_false` |  |  |
-| `TestStaticGraph.test_update_if_needed_returns_none` |  |  |
-| `TestStaticGraph.test_collate_dates_none_when_no_dates_in_dataset` |  |  |
-| `TestDynamicGraph.test_update_fires_after_enough_months` |  |  |
-| `TestDynamicGraph.test_get_current_graph_raises_before_build` |  |  |
-| `TestDynamicGraph.test_collate_returns_dates_when_dataset_has_dates` |  |  |
-| `TestDynamicGraph.test_vectorized_build_edges` | build_edges produces the same result as the old O(n^2) loop. |  |
-| `TestGraphSchedule.test_lookup_before_first_snapshot_returns_first` |  |  |
-| `TestGraphSchedule.test_lookup_in_first_period` |  |  |
-| `TestGraphSchedule.test_lookup_in_second_period` |  |  |
-| `TestGraphSchedule.test_lookup_on_boundary_returns_new_snapshot` |  |  |
-| `TestGraphSchedule.test_get_initial_graph` |  |  |
-| `TestGraphSchedule.test_num_snapshots` |  |  |
-| `TestGraphSchedule.test_empty_schedule_raises` |  |  |
-| `TestGraphSchedule.test_precompute_snapshots_no_lookahead` | Each snapshot must use only data before its valid-from date. |  |
-| `TestCollateWithSchedule.test_per_sample_graph_lookup` | Each sample in a batch gets its own graph from the schedule. |  |
-| `TestCreateDataLoaders.test_static_train_loader_shuffles` |  |  |
-| `TestCreateDataLoaders.test_dynamic_loader_preserves_batch_size` | With precomputed graphs, batch_size is no longer forced to 1. |  |
-| `TestCreateDataLoaders.test_dynamic_loader_no_shuffle` |  |  |
-| `TestCreateDataLoaders.test_dynamic_loader_can_shuffle_when_explicitly_enabled` |  |  |
-| `TestCreateDataLoaders.test_static_loader_can_disable_shuffle_when_explicitly_disabled` |  |  |
-| `TestCreateDataLoaders.test_batch_yields_9_tuple` |  |  |
-| `TestCreateDataLoaders.test_batch_dates_not_none_in_dynamic_mode` |  |  |
-| `TestNotebookLegacyBaselineGraphProfile.test_legacy_baseline_graph_config_disables_dynamic_gate` |  |  |
-| `TestNotebookLegacyBaselineGraphProfile.test_legacy_baseline_train_loader_is_static_mode` | Same loader contract as ``dynamic_graph=False`` with no per-day graph. |  |
-| `TestConfigNoConstraint.test_no_warning_with_dynamic_graph_and_large_batch` | batch_size != 1 is perfectly fine now with precomputed graphs. |  |
-| `TestTopKEdges.test_top_k_caps_outgoing_edges_per_row` |  |  |
-| `TestTopKEdges.test_top_k_with_few_valid_candidates` |  |  |
-| `TestMultiFeatureEdges.test_shape_and_columns` |  |  |
-| `TestMultiFeatureEdges.test_rank_pct_monotone_with_selection_metric` | Within each source row, higher selection-metric -> higher rank_pct. |  |
-| `TestMultiFeatureEdges.test_legacy_path_preserves_1d_shape` | use_multi_feature_edges=False (default) keeps the (E,) shape - backward compat. |  |
-| `TestSignedTopK.test_abs_corr_keeps_strong_negative_with_signed_value` |  |  |
-| `TestSignedTopK.test_corr_metric_excludes_strong_negative` |  |  |
-| `TestMultiFeatureSchedulePassthrough.test_collate_concats_2d_edge_features` |  |  |
-| `TestGATBlockEdgeDim.test_forward_with_4d_edge_attr` |  |  |
-| `TestGATBlockEdgeDim.test_forward_with_1d_edge_weight_default` | Default edge_feature_dim=1 keeps legacy scalar-weight behaviour. |  |
-| `TestGraphConfigValidation.test_top_k_negative_rejected` |  |  |
-| `TestGraphConfigValidation.test_top_k_metric_invalid_rejected` |  |  |
-| `TestGraphConfigValidation.test_default_flags_include_multi_feature_edges` |  |  |
-| `TestGraphConfigValidation.test_drop_edge_p_out_of_range_rejected` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `TestStaticGraph.test_should_update_always_false` |  |  | PASSED | 0.00 |
+| `TestStaticGraph.test_update_if_needed_returns_none` |  |  | PASSED | 0.01 |
+| `TestStaticGraph.test_collate_dates_none_when_no_dates_in_dataset` |  |  | PASSED | 0.00 |
+| `TestDynamicGraph.test_update_fires_after_enough_months` |  |  | PASSED | 0.02 |
+| `TestDynamicGraph.test_get_current_graph_raises_before_build` |  |  | PASSED | 0.00 |
+| `TestDynamicGraph.test_collate_returns_dates_when_dataset_has_dates` |  |  | PASSED | 0.00 |
+| `TestDynamicGraph.test_vectorized_build_edges` | build_edges produces the same result as the old O(n^2) loop. |  | PASSED | 0.01 |
+| `TestGraphSchedule.test_lookup_before_first_snapshot_returns_first` |  |  | PASSED | 0.00 |
+| `TestGraphSchedule.test_lookup_in_first_period` |  |  | PASSED | 0.00 |
+| `TestGraphSchedule.test_lookup_in_second_period` |  |  | PASSED | 0.00 |
+| `TestGraphSchedule.test_lookup_on_boundary_returns_new_snapshot` |  |  | PASSED | 0.00 |
+| `TestGraphSchedule.test_get_initial_graph` |  |  | PASSED | 0.00 |
+| `TestGraphSchedule.test_num_snapshots` |  |  | PASSED | 0.00 |
+| `TestGraphSchedule.test_empty_schedule_raises` |  |  | PASSED | 0.00 |
+| `TestGraphSchedule.test_precompute_snapshots_no_lookahead` | Each snapshot must use only data before its valid-from date. |  | PASSED | 0.04 |
+| `TestCollateWithSchedule.test_per_sample_graph_lookup` | Each sample in a batch gets its own graph from the schedule. |  | PASSED | 0.00 |
+| `TestCreateDataLoaders.test_static_train_loader_shuffles` |  |  | PASSED | 0.00 |
+| `TestCreateDataLoaders.test_dynamic_loader_preserves_batch_size` | With precomputed graphs, batch_size is no longer forced to 1. |  | PASSED | 0.00 |
+| `TestCreateDataLoaders.test_dynamic_loader_no_shuffle` |  |  | PASSED | 0.00 |
+| `TestCreateDataLoaders.test_dynamic_loader_can_shuffle_when_explicitly_enabled` |  |  | PASSED | 0.00 |
+| `TestCreateDataLoaders.test_static_loader_can_disable_shuffle_when_explicitly_disabled` |  |  | PASSED | 0.00 |
+| `TestCreateDataLoaders.test_batch_yields_9_tuple` |  |  | PASSED | 0.00 |
+| `TestCreateDataLoaders.test_batch_dates_not_none_in_dynamic_mode` |  |  | PASSED | 0.00 |
+| `TestNotebookLegacyBaselineGraphProfile.test_legacy_baseline_graph_config_disables_dynamic_gate` |  |  | PASSED | 0.00 |
+| `TestNotebookLegacyBaselineGraphProfile.test_legacy_baseline_train_loader_is_static_mode` | Same loader contract as ``dynamic_graph=False`` with no per-day graph. |  | PASSED | 0.00 |
+| `TestConfigNoConstraint.test_no_warning_with_dynamic_graph_and_large_batch` | batch_size != 1 is perfectly fine now with precomputed graphs. |  | PASSED | 0.00 |
+| `TestTopKEdges.test_top_k_caps_outgoing_edges_per_row` |  |  | PASSED | 0.00 |
+| `TestTopKEdges.test_top_k_with_few_valid_candidates` |  |  | PASSED | 0.00 |
+| `TestMultiFeatureEdges.test_shape_and_columns` |  |  | PASSED | 0.00 |
+| `TestMultiFeatureEdges.test_rank_pct_monotone_with_selection_metric` | Within each source row, higher selection-metric -> higher rank_pct. |  | PASSED | 0.00 |
+| `TestMultiFeatureEdges.test_legacy_path_preserves_1d_shape` | use_multi_feature_edges=False (default) keeps the (E,) shape - backward compat. |  | PASSED | 0.00 |
+| `TestSignedTopK.test_abs_corr_keeps_strong_negative_with_signed_value` |  |  | PASSED | 0.00 |
+| `TestSignedTopK.test_corr_metric_excludes_strong_negative` |  |  | PASSED | 0.00 |
+| `TestMultiFeatureSchedulePassthrough.test_collate_concats_2d_edge_features` |  |  | PASSED | 0.00 |
+| `TestGATBlockEdgeDim.test_forward_with_4d_edge_attr` |  |  | PASSED | 0.07 |
+| `TestGATBlockEdgeDim.test_forward_with_1d_edge_weight_default` | Default edge_feature_dim=1 keeps legacy scalar-weight behaviour. |  | PASSED | 0.00 |
+| `TestGraphConfigValidation.test_top_k_negative_rejected` |  |  | PASSED | 0.00 |
+| `TestGraphConfigValidation.test_top_k_metric_invalid_rejected` |  |  | PASSED | 0.00 |
+| `TestGraphConfigValidation.test_default_flags_include_multi_feature_edges` |  |  | PASSED | 0.00 |
+| `TestGraphConfigValidation.test_drop_edge_p_out_of_range_rejected` |  |  | PASSED | 0.00 |
 
 ## `tests/test_ensemble_averaging.py`
 
@@ -182,32 +182,32 @@ Ensemble invariant: prediction = mean of independently trained models.
 
 **Exercises:** `mci_gru.config`, `mci_gru.training.ensemble`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_ensemble_prediction_is_mean_of_member_predictions` |  |  |
-| `test_ensemble_writes_one_checkpoint_per_member` |  |  |
-| `test_ensemble_averaging_matches_numpy_mean` | avg_predictions returned in-memory equals the numpy mean of member outputs. |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_ensemble_prediction_is_mean_of_member_predictions` |  |  | PASSED | 0.05 |
+| `test_ensemble_writes_one_checkpoint_per_member` |  |  | PASSED | 0.03 |
+| `test_ensemble_averaging_matches_numpy_mean` | avg_predictions returned in-memory equals the numpy mean of member outputs. |  | PASSED | 0.05 |
 
 ## `tests/test_evaluation_portfolio.py`
 
 **Exercises:** `mci_gru.evaluation.portfolio`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_rank_drop_gate_matches_paper_trade_initial_and_survivor_behavior` |  |  |
-| `test_calculate_turnover_handles_empty_full_and_partial_replacements` |  |  |
-| `test_top_k_returns_uses_stable_descending_score_selection` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_rank_drop_gate_matches_paper_trade_initial_and_survivor_behavior` |  |  | PASSED | 0.00 |
+| `test_calculate_turnover_handles_empty_full_and_partial_replacements` |  |  | PASSED | 0.00 |
+| `test_top_k_returns_uses_stable_descending_score_selection` |  |  | PASSED | 0.00 |
 
 ## `tests/test_evaluation_statistics.py`
 
 **Exercises:** `mci_gru.evaluation.statistics`, `mci_gru.training.metrics`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_daily_ic_series_computes_per_day_correlations` |  |  |
-| `test_compute_metrics_reports_rank_ic_with_explicit_names` |  |  |
-| `test_newey_west_sharpe_differs_from_naive_on_autocorrelated_returns` |  |  |
-| `test_moving_block_bootstrap_ci_is_deterministic_and_contains_mean` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_daily_ic_series_computes_per_day_correlations` |  |  | PASSED | 0.00 |
+| `test_compute_metrics_reports_rank_ic_with_explicit_names` |  |  | PASSED | 0.00 |
+| `test_newey_west_sharpe_differs_from_naive_on_autocorrelated_returns` |  |  | PASSED | 0.00 |
+| `test_moving_block_bootstrap_ci_is_deterministic_and_contains_mean` |  |  | PASSED | 0.02 |
 
 ## `tests/test_experiment_summary.py`
 
@@ -215,35 +215,35 @@ Unit tests for mci_gru.evaluation.experiment_summary (WS-M M2 move).
 
 **Exercises:** `mci_gru.config`, `mci_gru.evaluation.experiment_summary`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_data_file_fingerprint_hashes_existing_file` |  |  |
-| `test_data_file_fingerprint_missing_file_returns_nulls` |  |  |
-| `test_resolved_evaluation_kwargs_derives_defaults_from_label_t` |  |  |
-| `test_resolved_evaluation_kwargs_label_t_one_floors` |  |  |
-| `test_resolved_evaluation_kwargs_explicit_values_win` |  |  |
-| `test_compute_evaluation_summary_shape_and_metrics` |  |  |
-| `test_select_training_objective_key_mapping_last_window` |  |  |
-| `test_select_training_objective_merged_summary_wins` |  |  |
-| `test_select_training_objective_no_summaries_returns_none` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_data_file_fingerprint_hashes_existing_file` |  |  | PASSED | 0.00 |
+| `test_data_file_fingerprint_missing_file_returns_nulls` |  |  | PASSED | 0.00 |
+| `test_resolved_evaluation_kwargs_derives_defaults_from_label_t` |  |  | PASSED | 0.00 |
+| `test_resolved_evaluation_kwargs_label_t_one_floors` |  |  | PASSED | 0.00 |
+| `test_resolved_evaluation_kwargs_explicit_values_win` |  |  | PASSED | 0.00 |
+| `test_compute_evaluation_summary_shape_and_metrics` |  |  | PASSED | 0.01 |
+| `test_select_training_objective_key_mapping_last_window` |  |  | PASSED | 0.00 |
+| `test_select_training_objective_merged_summary_wins` |  |  | PASSED | 0.00 |
+| `test_select_training_objective_no_summaries_returns_none` |  |  | PASSED | 0.00 |
 
 ## `tests/test_feature_config_yaml.py`
 
 **Exercises:** `mci_gru.config`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_feature_yaml_declares_regime_subsequent_return_keys` | Regime ablation overrides must target keys declared in feature YAML groups. |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_feature_yaml_declares_regime_subsequent_return_keys` | Regime ablation overrides must target keys declared in feature YAML groups. |  | PASSED | 0.02 |
 
 ## `tests/test_feature_drift.py`
 
 **Exercises:** `mci_gru.evaluation.drift`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_feature_drift_is_near_zero_for_matching_distribution` |  |  |
-| `test_feature_drift_flags_shifted_distribution` |  |  |
-| `test_missing_feature_reference_returns_not_available` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_feature_drift_is_near_zero_for_matching_distribution` |  |  | PASSED | 0.00 |
+| `test_feature_drift_flags_shifted_distribution` |  |  | PASSED | 0.00 |
+| `test_missing_feature_reference_returns_not_available` |  |  | PASSED | 0.00 |
 
 ## `tests/test_generate_test_registry.py`
 
@@ -251,12 +251,12 @@ Contract tests for scripts/generate_test_registry.py.
 
 **Exercises:** `scripts.generate_test_registry`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_parse_test_module_extracts_tests_docs_markers_and_imports` |  |  |
-| `test_load_junit_results_collapses_parametrized_cases_and_ranks_status` |  |  |
-| `test_build_registry_writes_markdown_with_and_without_junit` |  |  |
-| `test_registry_covers_every_real_test_file` | The committed registry generator must see every test file in tests/. |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_parse_test_module_extracts_tests_docs_markers_and_imports` |  |  | PASSED | 0.00 |
+| `test_load_junit_results_collapses_parametrized_cases_and_ranks_status` |  |  | PASSED | 0.00 |
+| `test_build_registry_writes_markdown_with_and_without_junit` |  |  | PASSED | 0.01 |
+| `test_registry_covers_every_real_test_file` | The committed registry generator must see every test file in tests/. |  | PASSED | 0.09 |
 
 ## `tests/test_index_level_mode.py`
 
@@ -264,95 +264,95 @@ Tests for index-level experiment mode (no stock-level survivorship bias).
 
 **Exercises:** `mci_gru.config`, `mci_gru.data.data_manager`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_index_level_config_valid` | experiment_mode must be 'stock_level' or 'index_level'; index_level accepts index_filename. |  |
-| `test_load_index_series_returns_single_series` | load_index_series with index_filename CSV returns kdcode=INDEX and OHLCV columns. |  |
-| `test_index_level_mode_separation` | Index-level and stock-level are distinct modes; only index-level uses load_index_series. |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_index_level_config_valid` | experiment_mode must be 'stock_level' or 'index_level'; index_level accepts index_filename. |  | PASSED | 0.00 |
+| `test_load_index_series_returns_single_series` | load_index_series with index_filename CSV returns kdcode=INDEX and OHLCV columns. |  | PASSED | 0.02 |
+| `test_index_level_mode_separation` | Index-level and stock-level are distinct modes; only index-level uses load_index_series. |  | PASSED | 0.00 |
 
 ## `tests/test_inference_edge_dim.py`
 
 **Exercises:** `mci_gru.config`, `mci_gru.graph.utils`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_shared_edge_dim_helper_covers_phase3_edge_widths` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_shared_edge_dim_helper_covers_phase3_edge_widths` |  |  | PASSED | 0.00 |
 
 ## `tests/test_lambdarank_ic_config.py`
 
 **Exercises:** `mci_gru.config`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_training_config_accepts_lambdarank_ic_loss_defaults` |  |  |
-| `test_lambdarank_ic_is_disabled_by_default` |  |  |
-| `test_create_config_from_dict_accepts_lambdarank_ic_overrides` |  |  |
-| `test_training_config_rejects_invalid_lambdarank_ic_knobs` |  | parametrize |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_training_config_accepts_lambdarank_ic_loss_defaults` |  |  | PASSED | 0.00 |
+| `test_lambdarank_ic_is_disabled_by_default` |  |  | PASSED | 0.00 |
+| `test_create_config_from_dict_accepts_lambdarank_ic_overrides` |  |  | PASSED | 0.00 |
+| `test_training_config_rejects_invalid_lambdarank_ic_knobs` |  | parametrize | PASSED | 0.00 |
 
 ## `tests/test_lambdarank_ic_loss.py`
 
 **Exercises:** `mci_gru.config`, `mci_gru.training.losses`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_lambdarank_ic_loss_prefers_correct_full_rank_order` |  |  |
-| `test_lambdarank_ic_loss_handles_nan_masks_and_backpropagates` |  |  |
-| `test_lambdarank_ic_loss_backpropagates_from_constant_rankable_scores` |  |  |
-| `test_lambdarank_ic_loss_caps_after_filtering_tied_label_pairs` |  |  |
-| `test_lambdarank_ic_loss_returns_zero_like_for_unrankable_rows` |  |  |
-| `test_lambdarank_ic_pair_sampling_is_deterministic` |  |  |
-| `test_lambdarank_ic_loss_reuses_cached_pair_indices` |  |  |
-| `test_lambdarank_ic_loss_matches_reference_triu_filter_cap` |  | parametrize |
-| `test_lambdarank_ic_loss_cpu_cuda_equivalence` |  | skipif |
-| `test_average_ranks_handles_ties_without_cpu_scalar_loop_regression` |  |  |
-| `test_lambdarank_ic_benchmark_script_is_checked_in` |  |  |
-| `test_mean_rank_information_coefficient_uses_spearman_ordering` |  |  |
-| `test_build_training_loss_constructs_lambdarank_ic_loss` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_lambdarank_ic_loss_prefers_correct_full_rank_order` |  |  | PASSED | 0.00 |
+| `test_lambdarank_ic_loss_handles_nan_masks_and_backpropagates` |  |  | PASSED | 0.00 |
+| `test_lambdarank_ic_loss_backpropagates_from_constant_rankable_scores` |  |  | PASSED | 0.00 |
+| `test_lambdarank_ic_loss_caps_after_filtering_tied_label_pairs` |  |  | PASSED | 0.00 |
+| `test_lambdarank_ic_loss_returns_zero_like_for_unrankable_rows` |  |  | PASSED | 0.00 |
+| `test_lambdarank_ic_pair_sampling_is_deterministic` |  |  | PASSED | 0.00 |
+| `test_lambdarank_ic_loss_reuses_cached_pair_indices` |  |  | PASSED | 0.00 |
+| `test_lambdarank_ic_loss_matches_reference_triu_filter_cap` |  | parametrize | PASSED | 0.02 |
+| `test_lambdarank_ic_loss_cpu_cuda_equivalence` |  | skipif | SKIPPED | 0.00 |
+| `test_average_ranks_handles_ties_without_cpu_scalar_loop_regression` |  |  | PASSED | 0.00 |
+| `test_lambdarank_ic_benchmark_script_is_checked_in` |  |  | PASSED | 0.00 |
+| `test_mean_rank_information_coefficient_uses_spearman_ordering` |  |  | PASSED | 0.00 |
+| `test_build_training_loss_constructs_lambdarank_ic_loss` |  |  | PASSED | 0.00 |
 
 ## `tests/test_lambdarank_ic_pit_notebook.py`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_lambdarank_ic_notebook_pins_branch_and_grid_contract` |  |  |
-| `test_lambdarank_ic_notebook_emits_three_objective_variants` |  |  |
-| `test_lambdarank_ic_notebook_has_lower_pair_screen_contract` |  |  |
-| `test_lambdarank_ic_notebook_has_colab_reliability_contract` |  |  |
-| `test_lambdarank_ic_notebook_preserves_pit_recipe_and_fails_fast` |  |  |
-| `test_lambdarank_ic_notebook_code_cells_parse` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_lambdarank_ic_notebook_pins_branch_and_grid_contract` |  |  | PASSED | 0.00 |
+| `test_lambdarank_ic_notebook_emits_three_objective_variants` |  |  | PASSED | 0.00 |
+| `test_lambdarank_ic_notebook_has_lower_pair_screen_contract` |  |  | PASSED | 0.00 |
+| `test_lambdarank_ic_notebook_has_colab_reliability_contract` |  |  | PASSED | 0.00 |
+| `test_lambdarank_ic_notebook_preserves_pit_recipe_and_fails_fast` |  |  | PASSED | 0.00 |
+| `test_lambdarank_ic_notebook_code_cells_parse` |  |  | PASSED | 0.00 |
 
 ## `tests/test_lambdarank_ic_trainer.py`
 
 **Exercises:** `mci_gru.config`, `mci_gru.evaluation.experiment_summary`, `mci_gru.training.trainer`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_trainer_can_select_checkpoint_by_val_rank_ic` |  |  |
-| `test_trainer_validation_rank_ic_averages_only_rankable_rows` |  |  |
-| `test_select_training_objective_respects_selection_metric` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_trainer_can_select_checkpoint_by_val_rank_ic` |  |  | PASSED | 0.01 |
+| `test_trainer_validation_rank_ic_averages_only_rankable_rows` |  |  | PASSED | 0.01 |
+| `test_select_training_objective_respects_selection_metric` |  |  | PASSED | 0.00 |
 
 ## `tests/test_lambdarankic_110_name_replay_notebook.py`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_replay_notebook_pins_diagnostics_only_contract` |  |  |
-| `test_replay_notebook_preserves_pit_and_base_seed_contract` |  |  |
-| `test_replay_notebook_contains_known_drive_prediction_rows` |  |  |
-| `test_replay_notebook_calls_daily_backtest_with_cost_and_gate_scenarios` |  |  |
-| `test_replay_notebook_declares_expected_artifacts` |  |  |
-| `test_replay_notebook_code_cells_parse` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_replay_notebook_pins_diagnostics_only_contract` |  |  | PASSED | 0.00 |
+| `test_replay_notebook_preserves_pit_and_base_seed_contract` |  |  | PASSED | 0.00 |
+| `test_replay_notebook_contains_known_drive_prediction_rows` |  |  | PASSED | 0.00 |
+| `test_replay_notebook_calls_daily_backtest_with_cost_and_gate_scenarios` |  |  | PASSED | 0.00 |
+| `test_replay_notebook_declares_expected_artifacts` |  |  | PASSED | 0.00 |
+| `test_replay_notebook_code_cells_parse` |  |  | PASSED | 0.01 |
 
 ## `tests/test_long_history_issue23.py`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_long_history_presets_pin_frozen_recipe_semantics` |  |  |
-| `test_long_history_presets_do_not_make_252_first_pass` |  |  |
-| `test_long_history_colab_notebook_is_generated_and_pit_scoped` |  |  |
-| `test_long_history_colab_writes_missing_pit_temporal_presets` |  |  |
-| `test_long_history_colab_setup_survives_existing_generated_presets` |  |  |
-| `test_long_history_colab_code_cells_parse` |  |  |
-| `test_training_metrics_import_is_not_blocked_by_prediction_report_cycle` |  |  |
-| `test_long_history_docs_use_temporal_universe_set_for_non_pit_smoke` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_long_history_presets_pin_frozen_recipe_semantics` |  |  | PASSED | 0.01 |
+| `test_long_history_presets_do_not_make_252_first_pass` |  |  | PASSED | 0.00 |
+| `test_long_history_colab_notebook_is_generated_and_pit_scoped` |  |  | PASSED | 0.00 |
+| `test_long_history_colab_writes_missing_pit_temporal_presets` |  |  | PASSED | 0.00 |
+| `test_long_history_colab_setup_survives_existing_generated_presets` |  |  | PASSED | 0.00 |
+| `test_long_history_colab_code_cells_parse` |  |  | PASSED | 0.01 |
+| `test_training_metrics_import_is_not_blocked_by_prediction_report_cycle` |  |  | PASSED | 0.00 |
+| `test_long_history_docs_use_temporal_universe_set_for_non_pit_smoke` |  |  | PASSED | 0.00 |
 
 ## `tests/test_mci_gru_phase2.py`
 
@@ -360,41 +360,41 @@ Phase 2 model flags: self-attention type embed, MHA path shapes, encoders.
 
 **Exercises:** `mci_gru.models`, `mci_gru.models.mci_gru`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_group_type_embed_on_has_embedding_params` |  |  |
-| `test_market_learner_legacy_and_mha_same_shape` |  |  |
-| `test_temporal_legacy_vs_gru_attn_shape_and_grad` |  |  |
-| `test_paper_faithful_create_model_no_mha_no_selfattn` |  |  |
-| `test_forward_smoke_with_drop_edge_p` |  |  |
-| `test_causal_transformer_d_model_10_does_not_crash` | Default gru last layer 10 with nhead=4 must not fail init (MHA needs d%h==0). |  |
-| `test_create_model_temporal_transformer_paper_default_hidden` |  |  |
-| `test_multiscale_temporal_transformer_paper_default_hidden` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_group_type_embed_on_has_embedding_params` |  |  | PASSED | 0.01 |
+| `test_market_learner_legacy_and_mha_same_shape` |  |  | PASSED | 0.01 |
+| `test_temporal_legacy_vs_gru_attn_shape_and_grad` |  |  | PASSED | 0.01 |
+| `test_paper_faithful_create_model_no_mha_no_selfattn` |  |  | PASSED | 0.01 |
+| `test_forward_smoke_with_drop_edge_p` |  |  | PASSED | 0.01 |
+| `test_causal_transformer_d_model_10_does_not_crash` | Default gru last layer 10 with nhead=4 must not fail init (MHA needs d%h==0). |  | PASSED | 0.00 |
+| `test_create_model_temporal_transformer_paper_default_hidden` |  |  | PASSED | 0.00 |
+| `test_multiscale_temporal_transformer_paper_default_hidden` |  |  | PASSED | 0.00 |
 
 ## `tests/test_mlflow_tracking.py`
 
 **Exercises:** `mci_gru.config`, `mci_gru.evaluation.backtest_engine`, `mci_gru.tracking`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_tracking_config_defaults_local_mlflow_on` |  |  |
-| `test_config_builders_include_tracking_settings` |  |  |
-| `test_hydra_ingestion_seed_fallback_is_1729` | Regression pin: config dicts without a `seed` key fall back to 1729. |  |
-| `test_mlflow_manager_round_trip_logs_params_metrics_and_artifacts` |  |  |
-| `test_backtest_tracking_links_child_run_to_saved_training_run` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_tracking_config_defaults_local_mlflow_on` |  |  | SKIPPED (collection) | 0.00 |
+| `test_config_builders_include_tracking_settings` |  |  | SKIPPED (collection) | 0.00 |
+| `test_hydra_ingestion_seed_fallback_is_1729` | Regression pin: config dicts without a `seed` key fall back to 1729. |  | SKIPPED (collection) | 0.00 |
+| `test_mlflow_manager_round_trip_logs_params_metrics_and_artifacts` |  |  | SKIPPED (collection) | 0.00 |
+| `test_backtest_tracking_links_child_run_to_saved_training_run` |  |  | SKIPPED (collection) | 0.00 |
 
 ## `tests/test_momentum_blend_modes.py`
 
 **Exercises:** `mci_gru.config`, `mci_gru.features.momentum`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_static_blend_supports_custom_intermediate_speed` |  |  |
-| `test_binary_momentum_keeps_warmup_rows_neutral` |  |  |
-| `test_dynamic_formula_matches_proposition_9` |  |  |
-| `test_dynamic_estimator_uses_only_prior_observations` |  |  |
-| `test_dynamic_estimator_activates_after_sufficient_history` |  |  |
-| `test_feature_config_validates_dynamic_controls_and_yaml_merge` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_static_blend_supports_custom_intermediate_speed` |  |  | PASSED | 0.01 |
+| `test_binary_momentum_keeps_warmup_rows_neutral` |  |  | PASSED | 0.01 |
+| `test_dynamic_formula_matches_proposition_9` |  |  | PASSED | 0.00 |
+| `test_dynamic_estimator_uses_only_prior_observations` |  |  | PASSED | 0.01 |
+| `test_dynamic_estimator_activates_after_sufficient_history` |  |  | PASSED | 0.01 |
+| `test_feature_config_validates_dynamic_controls_and_yaml_merge` |  |  | PASSED | 0.01 |
 
 ## `tests/test_output_management.py`
 
@@ -402,29 +402,29 @@ Test script to verify output management features.
 
 **Exercises:** `mci_gru.evaluation.backtest_engine`, `run_experiment`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_output_structure` | Test that output directories are created correctly. |  |
-| `test_logging_setup` | Test logging configuration. |  |
-| `test_config_hydra` | Test Hydra configuration. |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_output_structure` | Test that output directories are created correctly. |  | PASSED | 0.00 |
+| `test_logging_setup` | Test logging configuration. |  | PASSED | 0.11 |
+| `test_config_hydra` | Test Hydra configuration. |  | PASSED | 0.01 |
 
 ## `tests/test_paper_trade_infer.py`
 
 **Exercises:** `paper_trade.scripts`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_load_frozen_model_and_graph_reads_graph_data_pt` |  |  |
-| `test_paper_trade_infer_does_not_rebuild_graph_from_training_code` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_load_frozen_model_and_graph_reads_graph_data_pt` |  |  | PASSED | 0.01 |
+| `test_paper_trade_infer_does_not_rebuild_graph_from_training_code` |  |  | PASSED | 0.00 |
 
 ## `tests/test_paper_trade_monitor.py`
 
 **Exercises:** `paper_trade.scripts.monitor`, `paper_trade.scripts.report`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_monitor_writes_feature_drift_outputs` |  |  |
-| `test_report_includes_feature_drift_section` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_monitor_writes_feature_drift_outputs` |  |  | PASSED | 0.02 |
+| `test_report_includes_feature_drift_section` |  |  | PASSED | 0.00 |
 
 ## `tests/test_phase3_graph_and_walkforward.py`
 
@@ -432,175 +432,175 @@ Phase 3: lead-lag toy, snapshot valid_from, walk-forward config, cross-attn smok
 
 **Exercises:** `mci_gru.config`, `mci_gru.data.data_manager`, `mci_gru.graph.builder`, `mci_gru.models`, `mci_gru.walkforward`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_graph_schedule_snapshot_valid_from` |  |  |
-| `test_lead_lag_prefers_aligned_lag_on_toy` | Stock B is two-day lag of A → best cross-corr at lag 2 vs contemporaneous. |  |
-| `test_walkforward_generates_at_least_one_window` |  |  |
-| `test_cross_attention_forward_runs_and_grad` |  |  |
-| `test_collate_appends_snapshot_age_column` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_graph_schedule_snapshot_valid_from` |  |  | PASSED | 0.00 |
+| `test_lead_lag_prefers_aligned_lag_on_toy` | Stock B is two-day lag of A → best cross-corr at lag 2 vs contemporaneous. |  | PASSED | 0.01 |
+| `test_walkforward_generates_at_least_one_window` |  |  | PASSED | 0.00 |
+| `test_cross_attention_forward_runs_and_grad` |  |  | PASSED | 0.02 |
+| `test_collate_appends_snapshot_age_column` |  |  | PASSED | 0.00 |
 
 ## `tests/test_pit_alias_coverage_audit.py`
 
 **Exercises:** `scripts`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_alias_audit_finds_suffixed_candidates_with_market_rows` |  |  |
-| `test_alias_audit_quantifies_daily_active_and_scoreable_impact` |  |  |
-| `test_alias_audit_markdown_summarizes_candidate_coverage` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_alias_audit_finds_suffixed_candidates_with_market_rows` |  |  | PASSED | 0.02 |
+| `test_alias_audit_quantifies_daily_active_and_scoreable_impact` |  |  | PASSED | 0.02 |
+| `test_alias_audit_markdown_summarizes_candidate_coverage` |  |  | PASSED | 0.00 |
 
 ## `tests/test_pit_availability_report.py`
 
 **Exercises:** `mci_gru.data.pit_audit`, `scripts.write_pit_availability_report`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_pit_availability_report_keeps_masked_panel_and_reports_tradability` |  |  |
-| `test_pit_availability_report_explicit_calendar_counts_full_day_outage` |  |  |
-| `test_write_pit_availability_report_cli_writes_json` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_pit_availability_report_keeps_masked_panel_and_reports_tradability` |  |  | PASSED | 0.01 |
+| `test_pit_availability_report_explicit_calendar_counts_full_day_outage` |  |  | PASSED | 0.01 |
+| `test_write_pit_availability_report_cli_writes_json` |  |  | PASSED | 0.01 |
 
 ## `tests/test_pit_masked_panel.py`
 
 **Exercises:** `mci_gru.config`, `mci_gru.data.data_manager`, `mci_gru.data.pit`, `mci_gru.evaluation.portfolio`, `mci_gru.models.mci_gru`, `mci_gru.pipeline`, `mci_gru.training.losses`, `mci_gru.training.trainer`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_future_joiner_uses_price_history_but_enters_masks_on_valid_from` |  |  |
-| `test_leaver_rejoiner_masks_turn_off_and_back_on` |  |  |
-| `test_apply_label_mask_preserves_invalid_targets_as_nan` |  |  |
-| `test_candidate_breadth_reports_scoreable_counts` |  |  |
-| `test_filter_edges_by_stock_mask_removes_inactive_nodes` |  |  |
-| `test_collate_keeps_9_tuple_and_carries_stock_mask_in_batch_meta` |  |  |
-| `test_masked_losses_ignore_nan_targets` |  |  |
-| `test_top_k_returns_ignores_invalid_candidates` |  |  |
-| `test_self_attention_mask_prevents_inactive_node_influence` |  |  |
-| `test_prediction_rows_for_date_filters_to_tradable_mask` |  |  |
-| `test_prepare_data_masked_panel_keeps_union_axis_without_complete_stock_filter` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_future_joiner_uses_price_history_but_enters_masks_on_valid_from` |  |  | PASSED | 0.01 |
+| `test_leaver_rejoiner_masks_turn_off_and_back_on` |  |  | PASSED | 0.01 |
+| `test_apply_label_mask_preserves_invalid_targets_as_nan` |  |  | PASSED | 0.00 |
+| `test_candidate_breadth_reports_scoreable_counts` |  |  | PASSED | 0.00 |
+| `test_filter_edges_by_stock_mask_removes_inactive_nodes` |  |  | PASSED | 0.00 |
+| `test_collate_keeps_9_tuple_and_carries_stock_mask_in_batch_meta` |  |  | PASSED | 0.00 |
+| `test_masked_losses_ignore_nan_targets` |  |  | PASSED | 0.00 |
+| `test_top_k_returns_ignores_invalid_candidates` |  |  | PASSED | 0.00 |
+| `test_self_attention_mask_prevents_inactive_node_influence` |  |  | PASSED | 0.00 |
+| `test_prediction_rows_for_date_filters_to_tradable_mask` |  |  | PASSED | 0.00 |
+| `test_prepare_data_masked_panel_keeps_union_axis_without_complete_stock_filter` |  |  | PASSED | 0.35 |
 
 ## `tests/test_pit_masked_panel_notebook.py`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_pit_masked_panel_notebook_uses_frozen_default_recipe` |  |  |
-| `test_pit_masked_panel_summary_text_reports_full_run_budget` |  |  |
-| `test_pit_masked_panel_summary_text_keeps_smoke_caveat` |  |  |
-| `test_pit_masked_panel_notebook_code_cells_parse` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_pit_masked_panel_notebook_uses_frozen_default_recipe` |  |  | PASSED | 0.00 |
+| `test_pit_masked_panel_summary_text_reports_full_run_budget` |  |  | PASSED | 0.01 |
+| `test_pit_masked_panel_summary_text_keeps_smoke_caveat` |  |  | PASSED | 0.00 |
+| `test_pit_masked_panel_notebook_code_cells_parse` |  |  | PASSED | 0.01 |
 
 ## `tests/test_pit_membership_progression_audit.py`
 
 **Exercises:** `scripts`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_audit_outputs_change_summary_snapshot_progression_and_market_evidence` |  |  |
-| `test_validation_period_guard_fails_when_snapshot_membership_never_changes` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_audit_outputs_change_summary_snapshot_progression_and_market_evidence` |  |  | PASSED | 0.05 |
+| `test_validation_period_guard_fails_when_snapshot_membership_never_changes` |  |  | PASSED | 0.00 |
 
 ## `tests/test_pit_repeated_seed_backtest_sensitivity.py`
 
 **Exercises:** `scripts.run_pit_repeated_seed_backtest_sensitivity`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_default_scenarios_include_spread_only_and_label21_diagnostic` |  |  |
-| `test_repeated_seed_training_rows_are_not_collapsed_by_year` |  |  |
-| `test_build_backtest_command_uses_scenario_cost_and_label_settings` |  |  |
-| `test_write_sensitivity_outputs_emits_cross_tabs_and_baseline_deltas` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_default_scenarios_include_spread_only_and_label21_diagnostic` |  |  | PASSED | 0.00 |
+| `test_repeated_seed_training_rows_are_not_collapsed_by_year` |  |  | PASSED | 0.02 |
+| `test_build_backtest_command_uses_scenario_cost_and_label_settings` |  |  | PASSED | 0.01 |
+| `test_write_sensitivity_outputs_emits_cross_tabs_and_baseline_deltas` |  |  | PASSED | 0.07 |
 
 ## `tests/test_pit_repeated_seed_replication_notebook.py`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_issue31_notebook_pins_repeated_seed_full_pit_replication` |  |  |
-| `test_issue31_notebook_writes_required_decision_artifacts` |  |  |
-| `test_issue31_notebook_can_resume_and_retry_transient_regime_fetch_failures` |  |  |
-| `test_issue31_notebook_uses_cost_rank_gate_promotion_path` |  |  |
-| `test_issue31_notebook_pastes_known_drive_locations_and_branch` |  |  |
-| `test_issue31_notebook_hardwires_colab_inputs_and_runtime_key` |  |  |
-| `test_issue31_notebook_includes_pooled_significance_for_issue29` |  |  |
-| `test_issue31_notebook_summarizes_three_seed_closeout_evidence` |  |  |
-| `test_issue31_notebook_runs_backtest_sensitivity_replay` |  |  |
-| `test_issue31_notebook_code_cells_parse` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_issue31_notebook_pins_repeated_seed_full_pit_replication` |  |  | PASSED | 0.00 |
+| `test_issue31_notebook_writes_required_decision_artifacts` |  |  | PASSED | 0.00 |
+| `test_issue31_notebook_can_resume_and_retry_transient_regime_fetch_failures` |  |  | PASSED | 0.00 |
+| `test_issue31_notebook_uses_cost_rank_gate_promotion_path` |  |  | PASSED | 0.00 |
+| `test_issue31_notebook_pastes_known_drive_locations_and_branch` |  |  | PASSED | 0.00 |
+| `test_issue31_notebook_hardwires_colab_inputs_and_runtime_key` |  |  | PASSED | 0.00 |
+| `test_issue31_notebook_includes_pooled_significance_for_issue29` |  |  | PASSED | 0.00 |
+| `test_issue31_notebook_summarizes_three_seed_closeout_evidence` |  |  | PASSED | 0.00 |
+| `test_issue31_notebook_runs_backtest_sensitivity_replay` |  |  | PASSED | 0.00 |
+| `test_issue31_notebook_code_cells_parse` |  |  | PASSED | 0.01 |
 
 ## `tests/test_pit_saved_prediction_backtests.py`
 
 **Exercises:** `scripts.run_pit_saved_prediction_backtests`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_build_backtest_command_enables_costs_and_rank_gate` |  |  |
-| `test_resolve_year_jobs_remaps_stale_colab_paths_to_current_run_root` |  |  |
-| `test_write_summary_outputs_compares_cost_aware_rows_to_reviewed_artifact` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_build_backtest_command_enables_costs_and_rank_gate` |  |  | PASSED | 0.00 |
+| `test_resolve_year_jobs_remaps_stale_colab_paths_to_current_run_root` |  |  | PASSED | 0.01 |
+| `test_write_summary_outputs_compares_cost_aware_rows_to_reviewed_artifact` |  |  | PASSED | 0.01 |
 
 ## `tests/test_pit_universe_validation_notebook.py`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_pit_notebook_includes_survivorship_controls` |  |  |
-| `test_pit_notebook_writes_comparison_artifacts` |  |  |
-| `test_pit_notebook_preserves_frozen_recipe_scope` |  |  |
-| `test_pit_notebook_code_cells_parse` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_pit_notebook_includes_survivorship_controls` |  |  | PASSED | 0.00 |
+| `test_pit_notebook_writes_comparison_artifacts` |  |  | PASSED | 0.00 |
+| `test_pit_notebook_preserves_frozen_recipe_scope` |  |  | PASSED | 0.00 |
+| `test_pit_notebook_code_cells_parse` |  |  | PASSED | 0.01 |
 
 ## `tests/test_portfolio_ic_config.py`
 
 **Exercises:** `mci_gru.config`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_training_config_accepts_portfolio_ic_loss_defaults` |  |  |
-| `test_create_config_from_dict_accepts_portfolio_ic_overrides` |  |  |
-| `test_training_config_rejects_invalid_portfolio_ic_knobs` |  | parametrize |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_training_config_accepts_portfolio_ic_loss_defaults` |  |  | PASSED | 0.00 |
+| `test_create_config_from_dict_accepts_portfolio_ic_overrides` |  |  | PASSED | 0.00 |
+| `test_training_config_rejects_invalid_portfolio_ic_knobs` |  | parametrize | PASSED | 0.00 |
 
 ## `tests/test_portfolio_ic_loss.py`
 
 **Exercises:** `mci_gru.config`, `mci_gru.training.losses`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_portfolio_ic_loss_backpropagates_through_predictions` |  |  |
-| `test_soft_topk_loss_ignores_nan_pairs_and_degrades_when_topk_exceeds_valid_count` |  |  |
-| `test_portfolio_ic_loss_handles_constant_predictions_and_labels_without_nan` |  |  |
-| `test_soft_topk_loss_prefers_better_top10_forward_return_ordering` |  |  |
-| `test_build_training_loss_keeps_trainer_free_of_loss_specific_branches` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_portfolio_ic_loss_backpropagates_through_predictions` |  |  | PASSED | 0.00 |
+| `test_soft_topk_loss_ignores_nan_pairs_and_degrades_when_topk_exceeds_valid_count` |  |  | PASSED | 0.00 |
+| `test_portfolio_ic_loss_handles_constant_predictions_and_labels_without_nan` |  |  | PASSED | 0.00 |
+| `test_soft_topk_loss_prefers_better_top10_forward_return_ordering` |  |  | PASSED | 0.00 |
+| `test_build_training_loss_keeps_trainer_free_of_loss_specific_branches` |  |  | PASSED | 0.00 |
 
 ## `tests/test_portfolio_ic_pit_notebook.py`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_portfolio_ic_notebook_pins_smoke_and_full_grid_contract` |  |  |
-| `test_portfolio_ic_notebook_has_non_t4_gpu_gate_and_sampler` |  |  |
-| `test_portfolio_ic_notebook_emits_expected_loss_overrides` |  |  |
-| `test_portfolio_ic_notebook_code_cells_parse` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_portfolio_ic_notebook_pins_smoke_and_full_grid_contract` |  |  | PASSED | 0.00 |
+| `test_portfolio_ic_notebook_has_non_t4_gpu_gate_and_sampler` |  |  | PASSED | 0.00 |
+| `test_portfolio_ic_notebook_emits_expected_loss_overrides` |  |  | PASSED | 0.00 |
+| `test_portfolio_ic_notebook_code_cells_parse` |  |  | PASSED | 0.00 |
 
 ## `tests/test_portfolio_ic_trainer.py`
 
 **Exercises:** `mci_gru.config`, `mci_gru.training.trainer`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_trainer_can_run_one_cpu_step_with_portfolio_ic` |  |  |
-| `test_trainer_moves_criterion_to_device` |  |  |
-| `test_trainer_writes_first_batch_profile_when_enabled` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_trainer_can_run_one_cpu_step_with_portfolio_ic` |  |  | PASSED | 0.01 |
+| `test_trainer_moves_criterion_to_device` |  |  | PASSED | 0.01 |
+| `test_trainer_writes_first_batch_profile_when_enabled` |  |  | PASSED | 0.02 |
 
 ## `tests/test_portfolio_ic_upward_sweep_notebook.py`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_upward_sweep_has_generator_runner_and_branch_pin` |  |  |
-| `test_upward_sweep_rejects_t4_and_records_gpu_evidence` |  |  |
-| `test_upward_sweep_code_cells_parse` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_upward_sweep_has_generator_runner_and_branch_pin` |  |  | PASSED | 0.00 |
+| `test_upward_sweep_rejects_t4_and_records_gpu_evidence` |  |  | PASSED | 0.00 |
+| `test_upward_sweep_code_cells_parse` |  |  | PASSED | 0.00 |
 
 ## `tests/test_prediction_report.py`
 
 **Exercises:** `mci_gru.evaluation.prediction_report`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_oos_r2_uses_zero_return_benchmark` |  |  |
-| `test_sign_metrics_include_positive_negative_and_zero_returns` |  |  |
-| `test_alignment_intersects_dates_universe_and_optional_baselines` |  |  |
-| `test_prediction_report_includes_yearly_decay_for_each_model` |  |  |
-| `test_saved_prediction_report_runs_without_training` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_oos_r2_uses_zero_return_benchmark` |  |  | PASSED | 0.00 |
+| `test_sign_metrics_include_positive_negative_and_zero_returns` |  |  | PASSED | 0.00 |
+| `test_alignment_intersects_dates_universe_and_optional_baselines` |  |  | PASSED | 0.01 |
+| `test_prediction_report_includes_yearly_decay_for_each_model` |  |  | PASSED | 0.01 |
+| `test_saved_prediction_report_runs_without_training` |  |  | PASSED | 0.04 |
 
 ## `tests/test_preprocessing_vectorised.py`
 
@@ -608,50 +608,59 @@ Regression tests for vectorised preprocessing (matches legacy semantics).
 
 **Exercises:** `mci_gru.data.preprocessing`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_generate_time_series_features_matches_legacy_small_grid` | Vectorised path must match iterrows reference on a tiny panel. |  |
-| `test_generate_time_series_features_duplicate_dt_kdcode_last_wins` | When duplicate (dt, kdcode) rows exist, last row wins (legacy iterrows behaviour). |  |
-| `test_generate_time_series_features_shape` | Output shape matches (num_dates - his_t, n_stocks, his_t, n_features). | parametrize |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_generate_time_series_features_matches_legacy_small_grid` | Vectorised path must match iterrows reference on a tiny panel. |  | PASSED | 0.01 |
+| `test_generate_time_series_features_duplicate_dt_kdcode_last_wins` | When duplicate (dt, kdcode) rows exist, last row wins (legacy iterrows behaviour). |  | PASSED | 0.01 |
+| `test_generate_time_series_features_shape` | Output shape matches (num_dates - his_t, n_stocks, his_t, n_features). | parametrize | PASSED | 0.02 |
 
 ## `tests/test_regime_features.py`
 
 **Exercises:** `mci_gru.config`, `mci_gru.data.data_manager`, `mci_gru.features`, `mci_gru.features.regime`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_compute_regime_monthly_features_outputs_expected_columns` |  |  |
-| `test_compute_regime_monthly_features_adds_subsequent_return_signals` |  |  |
-| `test_compute_regime_monthly_features_no_lookahead_exclusion_effect` |  |  |
-| `test_regime_subsequent_return_horizon_excludes_future_window` |  |  |
-| `test_add_regime_features_broadcasts_without_row_change` |  |  |
-| `test_regime_input_contract_columns_present` |  |  |
-| `test_regime_csv_contract_is_deprecated_and_requires_full_seven_variable_surface` | Deprecated CSV override must not silently drop paper-guided variables. |  |
-| `test_regime_csv_loader_forward_fills_without_backfill` | Raw CSV gaps may use prior values only; leading gaps remain unavailable. |  |
-| `test_live_regime_stock_bond_corr_uses_three_year_window` |  |  |
-| `test_live_regime_stock_bond_corr_handles_sparse_merged_panel` |  |  |
-| `test_live_regime_fetch_retries_transient_series_failure` |  |  |
-| `test_transform_with_regime_df_produces_nonzero_regime_columns` | Regime columns must be non-constant when a real regime_df is passed to transform. |  |
-| `test_regime_csv_lag_safety` | Lagged CSV regime inputs must not backfill the leading unavailable row. |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_compute_regime_monthly_features_outputs_expected_columns` |  |  | PASSED | 1.50 |
+| `test_compute_regime_monthly_features_adds_subsequent_return_signals` |  |  | PASSED | 0.02 |
+| `test_compute_regime_monthly_features_no_lookahead_exclusion_effect` |  |  | PASSED | 2.99 |
+| `test_regime_subsequent_return_horizon_excludes_future_window` |  |  | PASSED | 1.23 |
+| `test_add_regime_features_broadcasts_without_row_change` |  |  | PASSED | 3.97 |
+| `test_regime_input_contract_columns_present` |  |  | PASSED | 0.00 |
+| `test_regime_csv_contract_is_deprecated_and_requires_full_seven_variable_surface` | Deprecated CSV override must not silently drop paper-guided variables. |  | PASSED | 0.02 |
+| `test_regime_csv_loader_forward_fills_without_backfill` | Raw CSV gaps may use prior values only; leading gaps remain unavailable. |  | PASSED | 0.01 |
+| `test_live_regime_stock_bond_corr_uses_three_year_window` |  |  | PASSED | 0.01 |
+| `test_live_regime_stock_bond_corr_handles_sparse_merged_panel` |  |  | PASSED | 0.01 |
+| `test_live_regime_fetch_retries_transient_series_failure` |  |  | PASSED | 0.01 |
+| `test_transform_with_regime_df_produces_nonzero_regime_columns` | Regime columns must be non-constant when a real regime_df is passed to transform. |  | PASSED | 0.95 |
+| `test_regime_csv_lag_safety` | Lagged CSV regime inputs must not backfill the leading unavailable row. |  | PASSED | 0.01 |
+
+## `tests/test_repository_retirement_guard.py`
+
+Prevent retired repository cockpit surfaces from being reintroduced.
+
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_retired_repository_surfaces_stay_absent` |  |  | PASSED | 0.00 |
+| `test_retired_package_stays_out_of_packaging_and_imports` |  |  | PASSED | 0.44 |
 
 ## `tests/test_research_paper_to_mci_gru_skill.py`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_infers_title_authors_and_abstract_from_first_page_text` |  |  |
-| `test_builds_markdown_intake_artifact_with_warnings_and_full_text` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_infers_title_authors_and_abstract_from_first_page_text` |  |  | PASSED | 0.00 |
+| `test_builds_markdown_intake_artifact_with_warnings_and_full_text` |  |  | PASSED | 0.00 |
 
 ## `tests/test_run_bundle_manifest.py`
 
 **Exercises:** `mci_gru.evaluation.run_bundle`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_build_run_manifest_hashes_core_artifacts_and_provenance` |  |  |
-| `test_build_run_manifest_uses_repo_dir_for_external_run_git_provenance` |  |  |
-| `test_validate_run_bundle_reports_missing_artifacts` |  |  |
-| `test_validate_run_bundle_rejects_empty_prediction_directory` |  |  |
-| `test_write_run_manifest_refuses_overwrite_without_force` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_build_run_manifest_hashes_core_artifacts_and_provenance` |  |  | PASSED | 0.16 |
+| `test_build_run_manifest_uses_repo_dir_for_external_run_git_provenance` |  |  | PASSED | 0.12 |
+| `test_validate_run_bundle_reports_missing_artifacts` |  |  | PASSED | 0.00 |
+| `test_validate_run_bundle_rejects_empty_prediction_directory` |  |  | PASSED | 0.01 |
+| `test_write_run_manifest_refuses_overwrite_without_force` |  |  | PASSED | 0.27 |
 
 ## `tests/test_run_pytest_isolated.py`
 
@@ -659,160 +668,160 @@ Regression tests for the isolated pytest launcher.
 
 **Exercises:** `scripts`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_default_temp_parent_honors_explicit_environment_override` |  |  |
-| `test_create_run_root_is_unique_and_directly_below_parent` |  |  |
-| `test_cleanup_refuses_a_directory_outside_the_runner_namespace` |  |  |
-| `test_cleanup_refuses_a_prefixed_directory_outside_expected_parent` |  |  |
-| `test_cleanup_refuses_a_reparse_point_instead_of_following_it` |  |  |
-| `test_cleanup_removes_read_only_files_created_by_git` |  |  |
-| `test_build_pytest_command_injects_isolation_before_user_arguments` |  |  |
-| `test_build_pytest_command_places_managed_options_before_double_dash` |  |  |
-| `test_build_subprocess_environment_routes_all_temp_apis` |  |  |
-| `test_validate_pytest_args_rejects_acl_unsafe_overrides` |  | parametrize |
-| `test_validate_pytest_args_preserves_unrelated_options` |  | parametrize |
-| `test_validate_pytest_environment_rejects_acl_unsafe_overrides` |  | parametrize |
-| `test_main_rejects_unsafe_environment_before_creating_temp_root` |  | parametrize |
-| `test_response_file_cannot_override_the_managed_basetemp` |  |  |
-| `test_main_reports_runner_option_conflicts_as_pytest_usage_errors` |  |  |
-| `test_run_pytest_cleans_unique_root_after_success` |  |  |
-| `test_run_pytest_preserves_failure_exit_and_cleans_root` |  |  |
-| `test_run_pytest_places_managed_paths_before_double_dash` |  |  |
-| `test_run_pytest_can_keep_temp_for_explicit_diagnostics` |  |  |
-| `test_run_pytest_contains_active_cache_and_removes_it` |  |  |
-| `test_run_pytest_rejects_config_addopts_that_hide_managed_paths` |  | parametrize |
-| `test_run_pytest_preserves_safe_config_addopts_and_overrides_cache_dir` |  |  |
-| `test_cleanup_failure_warns_without_masking_pytest_exit` |  | parametrize |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_default_temp_parent_honors_explicit_environment_override` |  |  | PASSED | 0.00 |
+| `test_create_run_root_is_unique_and_directly_below_parent` |  |  | PASSED | 0.01 |
+| `test_cleanup_refuses_a_directory_outside_the_runner_namespace` |  |  | PASSED | 0.00 |
+| `test_cleanup_refuses_a_prefixed_directory_outside_expected_parent` |  |  | PASSED | 0.00 |
+| `test_cleanup_refuses_a_reparse_point_instead_of_following_it` |  |  | SKIPPED | 0.00 |
+| `test_cleanup_removes_read_only_files_created_by_git` |  |  | PASSED | 0.01 |
+| `test_build_pytest_command_injects_isolation_before_user_arguments` |  |  | PASSED | 0.00 |
+| `test_build_pytest_command_places_managed_options_before_double_dash` |  |  | PASSED | 0.00 |
+| `test_build_subprocess_environment_routes_all_temp_apis` |  |  | PASSED | 0.00 |
+| `test_validate_pytest_args_rejects_acl_unsafe_overrides` |  | parametrize | PASSED | 0.00 |
+| `test_validate_pytest_args_preserves_unrelated_options` |  | parametrize | PASSED | 0.00 |
+| `test_validate_pytest_environment_rejects_acl_unsafe_overrides` |  | parametrize | PASSED | 0.00 |
+| `test_main_rejects_unsafe_environment_before_creating_temp_root` |  | parametrize | PASSED | 0.01 |
+| `test_response_file_cannot_override_the_managed_basetemp` |  |  | PASSED | 0.00 |
+| `test_main_reports_runner_option_conflicts_as_pytest_usage_errors` |  |  | PASSED | 0.00 |
+| `test_run_pytest_cleans_unique_root_after_success` |  |  | PASSED | 0.60 |
+| `test_run_pytest_preserves_failure_exit_and_cleans_root` |  |  | PASSED | 0.63 |
+| `test_run_pytest_places_managed_paths_before_double_dash` |  |  | PASSED | 0.61 |
+| `test_run_pytest_can_keep_temp_for_explicit_diagnostics` |  |  | PASSED | 0.68 |
+| `test_run_pytest_contains_active_cache_and_removes_it` |  |  | PASSED | 0.59 |
+| `test_run_pytest_rejects_config_addopts_that_hide_managed_paths` |  | parametrize | PASSED | 1.10 |
+| `test_run_pytest_preserves_safe_config_addopts_and_overrides_cache_dir` |  |  | PASSED | 0.59 |
+| `test_cleanup_failure_warns_without_masking_pytest_exit` |  | parametrize | PASSED | 0.01 |
 
 ## `tests/test_saved_prediction_selection_audit.py`
 
 **Exercises:** `mci_gru.evaluation.selection_audit`, `scripts.run_saved_prediction_selection_audit`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_selection_audit_computes_ic_topk_multiple_testing_and_deflated_sharpe` |  |  |
-| `test_selection_audit_flags_insufficient_evidence_when_alignment_is_empty` |  |  |
-| `test_selection_audit_cli_uses_requested_top_k_without_default_duplicates` |  |  |
-| `test_write_selection_audit_strict_json_and_overwrite_guard` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_selection_audit_computes_ic_topk_multiple_testing_and_deflated_sharpe` |  |  | PASSED | 0.02 |
+| `test_selection_audit_flags_insufficient_evidence_when_alignment_is_empty` |  |  | PASSED | 0.02 |
+| `test_selection_audit_cli_uses_requested_top_k_without_default_duplicates` |  |  | PASSED | 0.04 |
+| `test_write_selection_audit_strict_json_and_overwrite_guard` |  |  | PASSED | 0.01 |
 
 ## `tests/test_selection_research_artifacts.py`
 
 **Exercises:** `mci_gru.evaluation.artifacts`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_write_selection_research_bundle_is_canonical_and_manifested` |  |  |
-| `test_cross_root_semantic_inputs_produce_identical_ids_and_bytes` |  |  |
-| `test_study_id_changes_for_each_semantic_identity_component` |  | parametrize |
-| `test_bundle_verifies_identical_rerun_and_rejects_conflicting_bytes` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_write_selection_research_bundle_is_canonical_and_manifested` |  |  | PASSED | 0.03 |
+| `test_cross_root_semantic_inputs_produce_identical_ids_and_bytes` |  |  | PASSED | 0.02 |
+| `test_study_id_changes_for_each_semantic_identity_component` |  | parametrize | PASSED | 0.01 |
+| `test_bundle_verifies_identical_rerun_and_rejects_conflicting_bytes` |  |  | PASSED | 0.01 |
 
 ## `tests/test_selection_research_claims.py`
 
 **Exercises:** `mci_gru.evaluation.selection_audit`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_positive_complete_60_date_fixture_can_claim_preliminary_but_not_confirmatory` |  |  |
-| `test_negative_60_date_fixture_reports_no_detectable_signal` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_positive_complete_60_date_fixture_can_claim_preliminary_but_not_confirmatory` |  |  | PASSED | 1.38 |
+| `test_negative_60_date_fixture_reports_no_detectable_signal` |  |  | PASSED | 1.30 |
 
 ## `tests/test_selection_research_integration.py`
 
 **Exercises:** `mci_gru.evaluation.selection_audit`, `scripts.run_saved_prediction_selection_audit`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_saved_prediction_selection_research_never_invokes_training` |  |  |
-| `test_research_evidence_uses_canonical_sessions_and_keeps_invalid_dates` |  |  |
-| `test_future_market_rows_do_not_change_prior_dated_evidence` |  |  |
-| `test_missing_middle_session_is_not_replaced_by_later_stock_row` |  |  |
-| `test_unmatured_tail_outcome_is_reported_and_never_zeroed` |  |  |
-| `test_top_k_spread_uses_the_same_expected_set_denominator` |  |  |
-| `test_pit_knowledge_after_signal_close_invalidates_the_date` |  |  |
-| `test_explicit_signal_close_must_belong_to_its_local_session_date` |  |  |
-| `test_expected_denominator_covers_every_active_member_with_exclusion_reason` |  |  |
-| `test_pit_entry_and_exit_boundaries_change_only_the_declared_daily_denominator` |  |  |
-| `test_invalid_price_provenance_nulls_headline_and_report_claim` |  |  |
-| `test_complete_trial_ledger_declaration_requires_a_hashed_ledger` |  |  |
-| `test_end_to_end_bundle_is_byte_identical_across_output_roots` |  |  |
-| `test_cli_research_mode_writes_only_the_five_file_bundle` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_saved_prediction_selection_research_never_invokes_training` |  |  | PASSED | 2.75 |
+| `test_research_evidence_uses_canonical_sessions_and_keeps_invalid_dates` |  |  | PASSED | 0.17 |
+| `test_future_market_rows_do_not_change_prior_dated_evidence` |  |  | PASSED | 0.29 |
+| `test_missing_middle_session_is_not_replaced_by_later_stock_row` |  |  | PASSED | 0.13 |
+| `test_unmatured_tail_outcome_is_reported_and_never_zeroed` |  |  | PASSED | 0.16 |
+| `test_top_k_spread_uses_the_same_expected_set_denominator` |  |  | PASSED | 0.15 |
+| `test_pit_knowledge_after_signal_close_invalidates_the_date` |  |  | PASSED | 0.13 |
+| `test_explicit_signal_close_must_belong_to_its_local_session_date` |  |  | PASSED | 0.03 |
+| `test_expected_denominator_covers_every_active_member_with_exclusion_reason` |  |  | PASSED | 0.25 |
+| `test_pit_entry_and_exit_boundaries_change_only_the_declared_daily_denominator` |  |  | PASSED | 0.28 |
+| `test_invalid_price_provenance_nulls_headline_and_report_claim` |  |  | PASSED | 0.16 |
+| `test_complete_trial_ledger_declaration_requires_a_hashed_ledger` |  |  | PASSED | 0.01 |
+| `test_end_to_end_bundle_is_byte_identical_across_output_roots` |  |  | PASSED | 0.30 |
+| `test_cli_research_mode_writes_only_the_five_file_bundle` |  |  | PASSED | 0.29 |
 
 ## `tests/test_selection_research_pit.py`
 
 **Exercises:** `mci_gru.data.pit`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_optional_known_from_survives_normalization_and_is_checked_at_signal_close` |  |  |
-| `test_legacy_intervals_without_known_from_remain_effective_only` |  |  |
-| `test_future_known_from_is_not_treated_as_known_at_signal_close` |  |  |
-| `test_naive_known_from_uses_the_declared_timezone` |  |  |
-| `test_known_from_is_never_inferred_from_valid_from` |  |  |
-| `test_missing_supplied_known_from_is_unknown_not_effective_only` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_optional_known_from_survives_normalization_and_is_checked_at_signal_close` |  |  | PASSED | 0.01 |
+| `test_legacy_intervals_without_known_from_remain_effective_only` |  |  | PASSED | 0.01 |
+| `test_future_known_from_is_not_treated_as_known_at_signal_close` |  |  | PASSED | 0.00 |
+| `test_naive_known_from_uses_the_declared_timezone` |  |  | PASSED | 0.01 |
+| `test_known_from_is_never_inferred_from_valid_from` |  |  | PASSED | 0.00 |
+| `test_missing_supplied_known_from_is_unknown_not_effective_only` |  |  | PASSED | 0.00 |
 
 ## `tests/test_selection_research_statistics.py`
 
 **Exercises:** `mci_gru.evaluation.selection_nulls`, `mci_gru.evaluation.statistics`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_daily_spearman_is_dated_and_preserves_invalid_statuses` |  |  |
-| `test_overlap_aware_hac_lag_is_enforced_for_mean_inference` |  |  |
-| `test_overlap_aware_moving_block_mean_interval_is_enforced_and_deterministic` |  |  |
-| `test_empirical_one_sided_p_value_uses_plus_one_correction` |  |  |
-| `test_permutation_preserves_daily_set_score_multiset_and_ties` |  |  |
-| `test_permutation_is_deterministic_and_assignment_is_outcome_independent` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_daily_spearman_is_dated_and_preserves_invalid_statuses` |  |  | PASSED | 0.00 |
+| `test_overlap_aware_hac_lag_is_enforced_for_mean_inference` |  |  | PASSED | 0.00 |
+| `test_overlap_aware_moving_block_mean_interval_is_enforced_and_deterministic` |  |  | PASSED | 0.01 |
+| `test_empirical_one_sided_p_value_uses_plus_one_correction` |  |  | PASSED | 0.00 |
+| `test_permutation_preserves_daily_set_score_multiset_and_ties` |  |  | PASSED | 0.00 |
+| `test_permutation_is_deterministic_and_assignment_is_outcome_independent` |  |  | PASSED | 0.13 |
 
 ## `tests/test_sp500_gics_top10_mcap_export.py`
 
 **Exercises:** `scripts.data.export_sp500_gics_top10_mcap`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_select_top_by_sector_keeps_top_n_per_gics_sector` |  |  |
-| `test_normalise_metadata_accepts_current_constituent_columns` |  |  |
-| `test_normalise_metadata_rejects_missing_constituent_ric_values` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_select_top_by_sector_keeps_top_n_per_gics_sector` |  |  | PASSED | 0.00 |
+| `test_normalise_metadata_accepts_current_constituent_columns` |  |  | PASSED | 0.00 |
+| `test_normalise_metadata_rejects_missing_constituent_ric_values` |  |  | PASSED | 0.01 |
 
 ## `tests/test_sp500_joiner_leaver_pit_export.py`
 
 **Exercises:** `scripts.data`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_joiner_leaver_export_builds_pipeline_pit_universe_schema` |  |  |
-| `test_joiner_leaver_export_merges_duplicate_pipeline_intervals` |  |  |
-| `test_joiner_leaver_export_adds_unsuffixed_aliases_and_coalesces_overlaps` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_joiner_leaver_export_builds_pipeline_pit_universe_schema` |  |  | PASSED | 0.01 |
+| `test_joiner_leaver_export_merges_duplicate_pipeline_intervals` |  |  | PASSED | 0.01 |
+| `test_joiner_leaver_export_adds_unsuffixed_aliases_and_coalesces_overlaps` |  |  | PASSED | 0.01 |
 
 ## `tests/test_sp500_pit_gics_top10_baseline_notebook.py`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_reduced_pit_baseline_notebook_pins_multiyear_windows_and_data_gate` |  |  |
-| `test_reduced_pit_baseline_notebook_uses_extended_selector_bundle` |  |  |
-| `test_reduced_pit_baseline_notebook_preserves_frozen_recipe_and_pit_contract` |  |  |
-| `test_reduced_pit_baseline_notebook_code_cells_parse` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_reduced_pit_baseline_notebook_pins_multiyear_windows_and_data_gate` |  |  | PASSED | 0.00 |
+| `test_reduced_pit_baseline_notebook_uses_extended_selector_bundle` |  |  | PASSED | 0.00 |
+| `test_reduced_pit_baseline_notebook_preserves_frozen_recipe_and_pit_contract` |  |  | PASSED | 0.00 |
+| `test_reduced_pit_baseline_notebook_code_cells_parse` |  |  | PASSED | 0.00 |
 
 ## `tests/test_sp500_pit_gics_top10_mcap_export.py`
 
 **Exercises:** `scripts.data.export_sp500_pit_gics_top10_mcap`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_build_asof_dates_includes_first_business_day_month_ends_and_end` |  |  |
-| `test_active_constituents_on_date_uses_validity_intervals` |  |  |
-| `test_build_selection_intervals_coalesces_adjacent_monthly_snapshots` |  |  |
-| `test_validate_snapshot_selection_rejects_missing_sector_breadth` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_build_asof_dates_includes_first_business_day_month_ends_and_end` |  |  | PASSED | 0.00 |
+| `test_active_constituents_on_date_uses_validity_intervals` |  |  | PASSED | 0.01 |
+| `test_build_selection_intervals_coalesces_adjacent_monthly_snapshots` |  |  | PASSED | 0.01 |
+| `test_validate_snapshot_selection_rejects_missing_sector_breadth` |  |  | PASSED | 0.00 |
 
 ## `tests/test_training_efficiency_config.py`
 
 **Exercises:** `mci_gru.config`, `mci_gru.data.data_manager`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_training_config_exposes_dataloader_and_profile_defaults` |  |  |
-| `test_create_config_from_dict_accepts_efficiency_overrides` |  |  |
-| `test_create_data_loaders_preserves_default_loader_behavior` |  |  |
-| `test_create_data_loaders_accepts_efficiency_overrides` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_training_config_exposes_dataloader_and_profile_defaults` |  |  | PASSED | 0.00 |
+| `test_create_config_from_dict_accepts_efficiency_overrides` |  |  | PASSED | 0.00 |
+| `test_create_data_loaders_preserves_default_loader_behavior` |  |  | PASSED | 0.00 |
+| `test_create_data_loaders_accepts_efficiency_overrides` |  |  | PASSED | 0.00 |
 
 ## `tests/test_transforms.py`
 
@@ -820,59 +829,59 @@ Unit tests for mci_gru.data.transforms.
 
 **Exercises:** `mci_gru.data.transforms`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_impute_feature_nans_by_day_mean_then_zero_fill` |  |  |
-| `test_compute_zscore_norm_stats_train_period_only` |  |  |
-| `test_normalize_features_zscore_clip_and_scale` |  |  |
-| `test_normalize_features_zscore_default_fallback_vs_keyerror` |  |  |
-| `test_build_single_date_tensors_shapes` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_impute_feature_nans_by_day_mean_then_zero_fill` |  |  | PASSED | 0.00 |
+| `test_compute_zscore_norm_stats_train_period_only` |  |  | PASSED | 0.00 |
+| `test_normalize_features_zscore_clip_and_scale` |  |  | PASSED | 0.00 |
+| `test_normalize_features_zscore_default_fallback_vs_keyerror` |  |  | PASSED | 0.00 |
+| `test_build_single_date_tensors_shapes` |  |  | PASSED | 0.00 |
 
 ## `tests/test_trial_ledger.py`
 
 **Exercises:** `mci_gru.evaluation.trial_ledger`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_build_trial_record_flattens_existing_summary_files` |  |  |
-| `test_write_trial_ledger_writes_csv_and_jsonl` |  |  |
-| `test_write_trial_ledger_strict_jsonl_and_force_guard` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_build_trial_record_flattens_existing_summary_files` |  |  | PASSED | 0.01 |
+| `test_write_trial_ledger_writes_csv_and_jsonl` |  |  | PASSED | 0.01 |
+| `test_write_trial_ledger_strict_jsonl_and_force_guard` |  |  | PASSED | 0.01 |
 
 ## `tests/test_volatility_targeting_ablation_notebook.py`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_issue8_ablation_notebook_defines_stage1_component_sweep` |  |  |
-| `test_issue8_ablation_notebook_uses_current_pit_recipe_and_g4_preflight` |  |  |
-| `test_issue8_ablation_notebook_runs_cost_rank_gate_backtests_and_writes_deltas` |  |  |
-| `test_issue8_ablation_notebook_code_cells_parse` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_issue8_ablation_notebook_defines_stage1_component_sweep` |  |  | PASSED | 0.00 |
+| `test_issue8_ablation_notebook_uses_current_pit_recipe_and_g4_preflight` |  |  | PASSED | 0.00 |
+| `test_issue8_ablation_notebook_runs_cost_rank_gate_backtests_and_writes_deltas` |  |  | PASSED | 0.00 |
+| `test_issue8_ablation_notebook_code_cells_parse` |  |  | PASSED | 0.00 |
 
 ## `tests/test_volatility_targeting_features.py`
 
 **Exercises:** `mci_gru.config`, `mci_gru.features.registry`, `mci_gru.features.volatility`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_harvey_style_volatility_targeting_feature_values` |  |  |
-| `test_volatility_targeting_uses_harvey_ex_ante_lag` |  |  |
-| `test_volatility_targeting_is_per_stock_isolated` |  |  |
-| `test_volatility_targeting_registry_and_config_wiring` |  |  |
-| `test_volatility_targeting_component_selection_controls_model_feature_list` |  |  |
-| `test_volatility_targeting_config_rejects_invalid_controls` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_harvey_style_volatility_targeting_feature_values` |  |  | PASSED | 0.01 |
+| `test_volatility_targeting_uses_harvey_ex_ante_lag` |  |  | PASSED | 0.02 |
+| `test_volatility_targeting_is_per_stock_isolated` |  |  | PASSED | 0.02 |
+| `test_volatility_targeting_registry_and_config_wiring` |  |  | PASSED | 0.02 |
+| `test_volatility_targeting_component_selection_controls_model_feature_list` |  |  | PASSED | 0.01 |
+| `test_volatility_targeting_config_rejects_invalid_controls` |  |  | PASSED | 0.00 |
 
 ## `tests/test_volatility_targeting_pit_notebooks.py`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_volatility_pit_notebooks_have_real_gpu_gate` |  |  |
-| `test_volatility_pit_code_cells_parse` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_volatility_pit_notebooks_have_real_gpu_gate` |  |  | PASSED | 0.00 |
+| `test_volatility_pit_code_cells_parse` |  |  | PASSED | 0.00 |
 
 ## `tests/test_volatility_targeting_repeated_seed_notebook.py`
 
-| Test | Description | Markers |
-|---|---|---|
-| `test_issue8_repeated_seed_notebook_pins_candidate_grid` |  |  |
-| `test_issue8_repeated_seed_notebook_uses_current_pit_recipe_and_candidate_overrides` |  |  |
-| `test_issue8_repeated_seed_notebook_writes_matched_delta_artifacts` |  |  |
-| `test_issue8_repeated_seed_notebook_runs_cost_rank_gate_backtests` |  |  |
-| `test_issue8_repeated_seed_notebook_code_cells_parse` |  |  |
+| Test | Description | Markers | Last run | Time (s) |
+|---|---|---|---|---|
+| `test_issue8_repeated_seed_notebook_pins_candidate_grid` |  |  | PASSED | 0.00 |
+| `test_issue8_repeated_seed_notebook_uses_current_pit_recipe_and_candidate_overrides` |  |  | PASSED | 0.00 |
+| `test_issue8_repeated_seed_notebook_writes_matched_delta_artifacts` |  |  | PASSED | 0.00 |
+| `test_issue8_repeated_seed_notebook_runs_cost_rank_gate_backtests` |  |  | PASSED | 0.00 |
+| `test_issue8_repeated_seed_notebook_code_cells_parse` |  |  | PASSED | 0.01 |

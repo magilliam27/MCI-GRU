@@ -215,9 +215,13 @@ def render_registry(
             row = f"| `{test.name}` | {test.doc} | {markers} |"
             if junit is not None:
                 key = (module.path.stem, test.name)
-                default = ("SKIPPED (collection)", 0.0) if module_collection_skipped else (
-                    "not run",
-                    0.0,
+                default = (
+                    ("SKIPPED (collection)", 0.0)
+                    if module_collection_skipped
+                    else (
+                        "not run",
+                        0.0,
+                    )
                 )
                 status, seconds = junit.get(key, default)
                 row += f" {status} | {seconds:.2f} |"
