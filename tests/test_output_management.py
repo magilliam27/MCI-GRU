@@ -8,14 +8,27 @@ This script tests:
 3. Backtest output organization
 """
 
+import logging
 import os
 import shutil
 import sys
 import tempfile
+import time
+import traceback
 from datetime import datetime
+
+from omegaconf import OmegaConf
+
+from mci_gru.evaluation.backtest_engine import (
+    setup_backtest_logging,
+    setup_backtest_output_dir,
+)
+from run_experiment import setup_logging
 
 # Add project to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def test_output_structure():
@@ -49,8 +62,6 @@ def test_output_structure():
         print("  [PASS] Output structure created successfully")
 
         # Test backtest directory creation
-        from evaluate_sp500 import setup_backtest_output_dir
-
         predictions_dir = os.path.join(run_dir, "averaged_predictions")
         backtest_dir = setup_backtest_output_dir(predictions_dir, suffix="")
 
@@ -64,14 +75,6 @@ def test_output_structure():
         print("  [PASS] Backtest directory with suffix created successfully")
 
         print("\n[SUCCESS] All output structure tests passed!\n")
-        return True
-
-    except Exception as e:
-        print(f"\n[FAIL] Test failed: {e}\n")
-        import traceback
-
-        traceback.print_exc()
-        return False
     finally:
         # Cleanup
         if os.path.exists(temp_dir):
@@ -87,8 +90,6 @@ def test_logging_setup():
 
     try:
         # Test training logger
-        from run_experiment import setup_logging
-
         logger = setup_logging(temp_dir, "test_experiment")
         logger.info("Test log message")
 
@@ -112,8 +113,6 @@ def test_logging_setup():
         print("  [PASS] Training logger working")
 
         # Test backtest logger
-        from evaluate_sp500 import setup_backtest_logging
-
         backtest_logger = setup_backtest_logging(temp_dir)
         backtest_logger.info("Test backtest log")
 
@@ -131,25 +130,13 @@ def test_logging_setup():
         print("  [PASS] Backtest logger working")
 
         print("\n[SUCCESS] All logging tests passed!\n")
-        return True
-
-    except Exception as e:
-        print(f"\n[FAIL] Test failed: {e}\n")
-        import traceback
-
-        traceback.print_exc()
-        return False
     finally:
         # Clean up logging handlers
-        import logging
-
         for handler in logging.root.handlers[:]:
             handler.close()
             logging.root.removeHandler(handler)
 
         # Give Windows a moment to release file handles
-        import time
-
         time.sleep(0.1)
 
         # Clean up temp directory
@@ -161,45 +148,35 @@ def test_logging_setup():
                 print(
                     f"  [WARNING] Could not remove temp directory: {temp_dir} (files still locked)"
                 )
-                pass
 
 
 def test_config_hydra():
     """Test Hydra configuration."""
     print("Testing Hydra configuration...")
 
-    try:
-        from omegaconf import OmegaConf
+    # Load base config from the repo root (not tests/)
+    config_path = os.path.join(REPO_ROOT, "configs", "config.yaml")
+    assert os.path.exists(config_path), f"Base config not found at {config_path}"
 
-        # Load base config
-        config_path = os.path.join(os.path.dirname(__file__), "configs", "config.yaml")
-        if not os.path.exists(config_path):
-            print("  [SKIP] Config file not found, skipping Hydra test")
-            return True
+    cfg = OmegaConf.load(config_path)
 
-        cfg = OmegaConf.load(config_path)
+    # Check Hydra section exists
+    assert "hydra" in cfg, "Hydra configuration not found"
+    assert "run" in cfg.hydra, "Hydra run configuration not found"
+    assert "dir" in cfg.hydra.run, "Hydra output directory not configured"
 
-        # Check Hydra section exists
-        assert "hydra" in cfg, "Hydra configuration not found"
-        assert "run" in cfg.hydra, "Hydra run configuration not found"
-        assert "dir" in cfg.hydra.run, "Hydra output directory not configured"
+    print("  [PASS] Hydra configuration valid")
+    # Read raw (unresolved) value: the ${now:...} resolver only exists inside a
+    # live Hydra app, so resolving here would raise UnsupportedInterpolationType.
+    raw_run = OmegaConf.to_container(cfg.hydra.run, resolve=False)
+    assert raw_run["dir"], "Hydra run dir must be non-empty"
+    print(f"  [PASS] Output pattern: {raw_run['dir']}")
 
-        print("  [PASS] Hydra configuration valid")
-        print(f"  [PASS] Output pattern: {cfg.hydra.run.dir}")
-
-        print("\n[SUCCESS] Hydra configuration test passed!\n")
-        return True
-
-    except Exception as e:
-        print(f"\n[FAIL] Test failed: {e}\n")
-        import traceback
-
-        traceback.print_exc()
-        return False
+    print("\n[SUCCESS] Hydra configuration test passed!\n")
 
 
 def main():
-    """Run all tests."""
+    """Run all tests as a standalone script (pytest is the primary runner)."""
     print("=" * 80)
     print("MCI-GRU Output Management Tests")
     print("=" * 80)
@@ -216,8 +193,13 @@ def main():
         print(f"\n{'=' * 80}")
         print(f"Running: {name}")
         print("=" * 80)
-        result = test_func()
-        results.append((name, result))
+        try:
+            test_func()
+            results.append((name, True))
+        except Exception as e:
+            print(f"\n[FAIL] {name} failed: {e}\n")
+            traceback.print_exc()
+            results.append((name, False))
 
     # Summary
     print("\n" + "=" * 80)

@@ -30,7 +30,7 @@
 
 ## Phase 0 — Housekeeping (parallelizable, zero behavior risk)
 
-These five workstreams don't touch training/inference math and can be done
+These four workstreams don't touch training/inference math and can be done
 in any order, in parallel, by different people.
 
 ### WS-A: Dependency manifest consolidation + lockfile
@@ -67,58 +67,6 @@ documented `pip install -e ".[dev]"` workflow.
 5. Update `AGENTS.md`/`README.md` install instructions.
 
 **Risk:** low. Verification: CI green, `pip install -e ".[dev,fred]"` still works locally on Windows venv.
-
----
-
-### WS-B: Relocate `mci_gru/cockpit/` to top-level `cockpit/`
-
-**Current state:** ~1,504 lines of agent/GitHub-ops tooling (`gh` CLI
-subprocess automation, git topology evidence, markdown rendering) living
-inside the ML research package namespace. Verified **zero coupling** in
-either direction with `pipeline.py`/`training/` — this is a pure move, not a
-decoupling exercise.
-
-**Target layout:**
-```
-cockpit/
-├── __init__.py       (same 8 re-exports: CockpitReport, Decision, GitHubAction, RunColor, Workstream, WorkstreamStatus, render_cockpit_packet, render_workstream_register)
-├── _compat.py
-├── models.py
-├── git.py
-├── evidence.py
-├── github.py
-├── render.py
-└── runner.py
-```
-
-**Exact call sites requiring an import-line change (23 lines, 11 files):**
-
-| File:Line | Change |
-|---|---|
-| `mci_gru/cockpit/__init__.py:1,9` | → `cockpit/__init__.py`, imports become intra-package (`from cockpit.models import ...`) |
-| `mci_gru/cockpit/models.py:6` | `from mci_gru.cockpit._compat import StrEnum` → `from cockpit._compat import StrEnum` |
-| `mci_gru/cockpit/evidence.py:8-9` | `mci_gru.cockpit.git`/`.models` → `cockpit.git`/`.models` |
-| `mci_gru/cockpit/github.py:7` | `mci_gru.cockpit.git` → `cockpit.git` |
-| `mci_gru/cockpit/render.py:8` | `mci_gru.cockpit.models` (TYPE_CHECKING) → `cockpit.models` |
-| `mci_gru/cockpit/runner.py:7-10,21,27` | 5 internal cockpit imports → `cockpit.*` |
-| `scripts/refresh_cockpit.py:12` | `from mci_gru.cockpit.runner import ...` → `from cockpit.runner import ...` |
-| `tests/test_cockpit_models.py:7` | same pattern |
-| `tests/test_cockpit_render.py:5,13` | same pattern |
-| `tests/test_cockpit_runner.py:8-9,171,195` | import lines + 2 `monkeypatch.setattr("mci_gru.cockpit.*")` strings → `cockpit.*` |
-| `tests/test_cockpit_github.py:9,100` | import + 1 `monkeypatch.setattr` string |
-
-**`pyproject.toml` changes required:**
-```toml
-[tool.setuptools.packages.find]
-include = ["mci_gru*", "cockpit*"]
-
-[tool.ruff.lint.isort]
-known-first-party = ["mci_gru", "cockpit"]
-```
-
-**Docs to update (Python import paths, not just CLI refs):** `docs/superpowers/plans/2026-06-20-mci-gru-cockpit-agent-implementation-plan.md` (18 lines) and `...-github-sync-implementation-plan.md` (4 lines). CLI-only docs (`docs/agents/cockpit/RUNBOOK.md`, `docs/index.md`) need no change — they invoke `scripts/refresh_cockpit.py`, unaffected.
-
-**Risk:** low, purely mechanical. Verification: `tests/test_cockpit_*.py` (5 files) green, `scripts/refresh_cockpit.py --help` runs.
 
 ---
 
@@ -590,10 +538,10 @@ change (it will, since `transforms.py` has no graph dependency).
 Phase 0 (parallel, any order)          Phase 1 (parallel, after Phase 0)     Phase 2 (sequential, after Phase 1)
 ────────────────────────────────       ──────────────────────────────       ─────────────────────────────────
 WS-A  deps/lockfile                    WS-F  models split                   WS-I  transforms.py extraction
-WS-B  cockpit relocation               WS-G  graph/builder split                    ↓
-WS-C  backtest relocation              WS-H  trainer/ensemble split          WS-J  pipeline.py staging
-WS-D  pytest markers                                                                ↓
-WS-E  docs SOT check                                                         WS-K  infer.py adopts transforms.py
+WS-C  backtest relocation              WS-G  graph/builder split                    ↓
+WS-D  pytest markers                   WS-H  trainer/ensemble split          WS-J  pipeline.py staging
+WS-E  docs SOT check                                                                ↓
+                                                                            WS-K  infer.py adopts transforms.py
 ```
 
 Each phase requires: `ruff check .` clean, full `.\.venv\Scripts\python.exe scripts\run_pytest_isolated.py tests/ -v` green, and (Phase 2 only) the before/after artifact diff protocol in WS-J passing, before the next phase starts.
