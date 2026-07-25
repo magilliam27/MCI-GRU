@@ -569,6 +569,7 @@ class TrainingConfig:
     lr_scheduler: str = "cosine"
     use_amp: bool = True
     selection_metric: str = "val_ic"
+    minimum_selection_rows: int = 1
     shuffle_train: bool | None = None
     dataloader_num_workers: int = 0
     dataloader_pin_memory: bool = False
@@ -644,6 +645,8 @@ class TrainingConfig:
                 f"selection_metric must be one of {self._VALID_SELECTION_METRICS}, "
                 f"got {self.selection_metric!r}"
             )
+        if self.minimum_selection_rows <= 0:
+            raise ValueError("minimum_selection_rows must be > 0")
         if self.shuffle_train is not None and not isinstance(self.shuffle_train, bool):
             raise ValueError("shuffle_train must be true, false, or null")
         if self.warmup_steps < 0:

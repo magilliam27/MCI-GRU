@@ -69,6 +69,7 @@ training:
   lr_scheduler: cosine         # cosine | none
   use_amp: true                # CUDA autocast + GradScaler (no-op on CPU)
   selection_metric: val_ic     # val_ic | val_rank_ic | val_loss — early stopping / checkpoint
+  minimum_selection_rows: 1    # Minimum eligible cross-sectional dates for IC-based selection
   shuffle_train: null          # null = legacy default (static shuffles, dynamic sequential); true/false overrides
   dataloader_num_workers: 0     # Keep legacy single-process DataLoader by default
   dataloader_pin_memory: false  # Pin CPU batches for faster CUDA transfer when enabled
