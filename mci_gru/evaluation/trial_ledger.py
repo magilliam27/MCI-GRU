@@ -2,11 +2,51 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
 from mci_gru.evaluation.artifacts import to_jsonable
+
+if TYPE_CHECKING:
+    from collections.abc import Collection
+
+
+def validate_trial_family(
+    records: pd.DataFrame,
+    *,
+    family_id: str,
+    expected_trial_ids: Collection[str],
+) -> None:
+    """Require exact, unique, successful membership for one declared trial family."""
+    required = {"trial_id", "family_id", "status"}
+    missing_columns = required - set(records.columns)
+    if missing_columns:
+        raise ValueError(f"Trial ledger missing columns: {sorted(missing_columns)}")
+
+    expected = {str(trial_id) for trial_id in expected_trial_ids}
+    if not expected:
+        raise ValueError("expected_trial_ids must not be empty")
+    family = records[records["family_id"].astype(str) == str(family_id)].copy()
+    duplicates = sorted(
+        family.loc[family["trial_id"].astype(str).duplicated(), "trial_id"].astype(str).unique()
+    )
+    actual = set(family["trial_id"].astype(str))
+    missing = sorted(expected - actual)
+    extra = sorted(actual - expected)
+    incomplete = sorted(
+        family.loc[
+            ~family["status"].astype(str).str.upper().isin({"OK", "COMPLETE"}),
+            "trial_id",
+        ]
+        .astype(str)
+        .unique()
+    )
+    if duplicates or missing or extra or incomplete:
+        raise ValueError(
+            f"Trial family {family_id!r} is incomplete: duplicates={duplicates}, "
+            f"missing={missing}, extra={extra}, incomplete={incomplete}"
+        )
 
 
 def flatten_mapping(payload: dict[str, Any], prefix: str = "") -> dict[str, Any]:

@@ -4,7 +4,11 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from mci_gru.evaluation.trial_ledger import build_trial_record, write_trial_ledger
+from mci_gru.evaluation.trial_ledger import (
+    build_trial_record,
+    validate_trial_family,
+    write_trial_ledger,
+)
 
 
 def test_build_trial_record_flattens_existing_summary_files(tmp_path: Path) -> None:
@@ -63,3 +67,14 @@ def test_write_trial_ledger_strict_jsonl_and_force_guard(tmp_path: Path) -> None
         write_trial_ledger(records, output_dir)
     forced_paths = write_trial_ledger(records, output_dir, force=True)
     assert forced_paths["csv"].is_file()
+
+
+def test_validate_trial_family_rejects_missing_expected_member() -> None:
+    records = pd.DataFrame([{"trial_id": "seed-1", "family_id": "study-a", "status": "OK"}])
+
+    with pytest.raises(ValueError, match=r"missing=\['seed-2'\]"):
+        validate_trial_family(
+            records,
+            family_id="study-a",
+            expected_trial_ids=["seed-1", "seed-2"],
+        )
