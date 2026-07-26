@@ -86,7 +86,9 @@ def _build_smoke_command(csv_path: Path, run_dir: Path) -> list[str]:
         "data.test_start=2020-03-03",
         "data.test_end=2020-03-20",
         "model.his_t=3",
-        "model.label_t=1",
+        # label_t must be >= 2: the label is close[t + label_t] / close[t + 1] - 1,
+        # so label_t=1 is identically zero for every stock and date.
+        "model.label_t=2",
         "model.gru_hidden_sizes=[8,4]",
         "model.hidden_size_gat1=8",
         "model.output_gat1=4",
