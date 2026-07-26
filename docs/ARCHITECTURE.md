@@ -3,204 +3,657 @@
 > This document is the deep architectural reference for the MCI-GRU system.
 > Start here when you need to understand how data flows, how the model works,
 > or how components connect.
+>
+> Every statement here is written from the current code, executable configuration,
+> and tests. When this document disagrees with them, they win. Historical plans and
+> research reports are not implementation evidence.
 
 ## Data Flow (end to end)
 
 ```
-CSV / LSEG / FRED
- → DataManager          (mci_gru/data/data_manager.py)
- → FeatureEngineer      (mci_gru/features/registry.py)
- → prepare_data()       (mci_gru/pipeline.py)   ← normalization, windowing, graph build
- → create_data_loaders  (data_manager.py)        ← CombinedDataset + combined_collate_fn
- → Trainer / train_multiple_models               ← ensemble of N independent models
+CSV / LSEG (+ FRED, VIX, credit, regime auxiliaries)
+ → DataManager.load()          (mci_gru/data/data_manager.py)
+ → FeatureEngineer.transform() (mci_gru/features/registry.py)
+ → prepare_data()              (mci_gru/pipeline.py)   ← impute, PIT, normalize, window, graph
+ → create_data_loaders()       (mci_gru/data/data_manager.py)  ← CombinedDataset + combined_collate_fn
+ → train_multiple_models()     (mci_gru/training/ensemble.py)  ← N independently seeded models
  → averaged_predictions/
 ```
 
+`run_experiment.py` is the composition root. It resolves Hydra config into an
+`ExperimentConfig`, generates one or more walk-forward windows, and runs the
+preparation → training → prediction → evaluation sequence once per window.
+
 ### Step-by-step
 
-1. **Raw data loading** — `DataManager.load_data()` reads OHLCV from CSV or LSEG API.
-   Output: a pandas DataFrame with columns `kdcode, dt, open, high, low, close, volume`.
+1. **Raw data loading** — `DataManager.load()` dispatches on `data.source`:
+   `csv` reads the configured file, `lseg` fetches the universe through
+   `mci_gru/data/lseg_loader.py`. Downstream stock-level code expects
+   `kdcode, dt, open, high, low, close, volume` columns. VIX, credit-spread, and
+   global-regime series are loaded separately by `load_vix()`,
+   `load_credit_spreads()`, and `load_regime_inputs()`; FRED
+   (`mci_gru/data/fred_loader.py`) is an auxiliary and index source, not a third
+   stock-panel mode.
 
-2. **Feature engineering** — `FeatureEngineer.add_features()` iterates the feature registry
-   (momentum, volatility, VIX, credit spreads, regime) and appends columns.
-   Each feature module lives in `mci_gru/features/` and follows a common interface.
+2. **Feature engineering** — `FeatureEngineer.transform()` composes feature
+   functions imported from `mci_gru/features/`: base OHLCV/turnover always,
+   then momentum, volatility, volatility targeting, VIX, credit, regime, RSI,
+   moving-average, price, and volume features as configured.
+   `get_feature_columns()` declares the resulting column list. Feature modules
+   are functions called in a fixed order, not classes registered through a
+   plugin interface.
 
-3. **Normalization** — `pipeline.py` computes per-feature z-score stats using **training dates
-   only**, then applies 3-sigma clipping + standardization across all splits.
-   Stats (plus **`data_file_sha256`** / size / mtime for `data.filename` when the file exists) are persisted in `run_metadata.json` for inference reuse and data provenance.
+3. **Imputation** — `impute_feature_nans_by_day()` (`mci_gru/data/transforms.py`)
+   fills each feature from its same-day cross-sectional mean, then zero-fills
+   whatever remains.
 
-4. **Windowing** — Sliding windows of shape `(days, stocks, his_t, features)` are constructed.
-   Labels are `label_t`-day forward returns (or rank percentiles if `label_type=rank`).
+4. **PIT mode resolution** — with `data.use_pit_universe=true`, membership
+   intervals are loaded from `data.pit_universe_csv`. `row_filter` (the default
+   mode) drops rows outside `[valid_from, valid_to]`. `masked_panel` keeps every
+   row and defers eligibility to daily masks (step 8).
 
-   In true PIT mode (`data.use_pit_universe=true`, `data.pit_universe_mode=masked_panel`),
-   `prepare_data()` keeps a fixed union `kdcode_list` for every ticker with a PIT
-   membership interval overlapping the experiment. It does not require complete
-   coverage across all dates. Instead it emits date-specific masks:
-   `active_member_mask`, `feature_ready_mask`, `loss_mask`, and `tradable_mask`.
-   New S&P entrants can use pre-membership OHLCV for lookback features, become
-   tradable on `valid_from`, and disappear after `valid_to`. Rank labels and losses
-   operate only over same-day valid PIT-active names.
+5. **Normalization** — `data.normalisation=zscore` fits per-feature mean and
+   standard deviation on rows with `dt <= data.train_end` only, then applies a
+   3-sigma clip followed by standardization to the whole panel.
+   `rank_gauss` instead fits sorted train-period values per feature and maps all
+   rows through empirical ranks to Gaussian quantiles. In masked-panel mode the
+   fitting source is restricted to rows inside valid PIT membership intervals
+   while the fitted transform is still applied to the full panel. The z-score
+   statistics, plus `data_file_sha256` / size / mtime for `data.filename` when
+   the file exists, are persisted in `run_metadata.json`.
 
-5. **Graph construction** — `GraphBuilder` computes Pearson correlation over trailing returns.
-   Pairs with `|corr| > judge_value` get edges (or top-K selection when `top_k > 0`).
-   By default **`use_multi_feature_edges=true`**: edge attributes are `(E, 4)` `[corr, |corr|, corr², rank_pct]`; legacy `(E,)` scalars when `false`.
-   Static mode builds once; dynamic mode rebuilds every N months per batch date.
+6. **Stock axis and splits** — masked-panel runs take every ticker whose
+   membership interval overlaps `[train_start, test_end]`
+   (`active_kdcodes_in_period()` in `mci_gru/data/pit.py`) and do not require
+   complete coverage. Other runs require completeness: `filter_complete_stocks()`
+   across the whole experiment calendar, or `filter_complete_stocks_per_split()`
+   followed by an intersection when `data.filter_stocks_per_split=true`.
+   `split_by_period()` then cuts train, validation, and test frames.
 
-6. **DataLoaders** — `create_data_loaders` wraps tensors in `CombinedDataset`.
-   The `combined_collate_fn` returns a 9-tuple:
-   `(time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates, edge_index_sector, edge_weight_sector)`.
-   In masked PIT mode, `batch_dates` is a metadata dict containing `dates` and
-   `stock_mask`; otherwise it remains the historical date list or `None`. Collate
-   filters graph and sector edges so inactive union nodes do not send messages.
+7. **Windowing and labels** — `mci_gru/data/preprocessing.py` builds:
+   - time-series input of shape `(days, stocks, his_t, features)`, where each
+     row's window covers the `his_t` dates strictly **before** its sample date;
+   - graph node input of shape `(days, stocks, features)` taken from the sample
+     date itself;
+   - labels of shape `(days, stocks)` using the implemented formula
+     `close[t + label_t] / close[t + 1] - 1`.
 
-7. **Training** — `Trainer.train()` uses **AdamW**, optional **cosine LR schedule** with linear warmup (`TrainingConfig.lr_scheduler`, `warmup_steps`), **CUDA AMP** when `use_amp` and a GPU are available, and early stopping / checkpoint selection by **`selection_metric`** (`val_ic` or `val_loss`). The frozen production-style recipe is **pure IC** (`training.loss_type=ic`), **raw 5-day return labels** (`training.label_type=returns`, `model.label_t=5`), **`selection_metric=val_ic`**, and a **20-model ensemble**; see `docs/DEFAULT_EXPERIMENT_RECIPE.md`. `train_multiple_models` treats `config.seed` as a base seed, repeats training **N** times with **`set_seed(config.seed + model_id)`** per member, then averages predictions.
+   The first `his_t` training dates are consumed as lookback, so training labels
+   start at `train_dates[his_t]`. Non-masked runs fill missing labels with the
+   same-day cross-sectional mean and then zero; masked-panel runs pass
+   `fill_missing=False` so unobservable labels stay `NaN` and cannot enter loss
+   or evaluation. `training.label_type=rank` converts same-day returns to
+   cross-sectional percentiles, which uses only same-day information.
 
-8. **Inference** — Each model produces per-stock scalar scores. The ensemble mean is the
-   final prediction, saved as CSV files in `averaged_predictions/`. In masked PIT
-   mode, prediction CSVs contain only `tradable_mask` candidates for that date.
+   The formula makes `model.label_t=1` degenerate: the label becomes
+   `close[t+1] / close[t+1] - 1`, identically zero for every stock and date.
+   Nothing in the config layer rejects that value; `scripts/ci_smoke.py` sets
+   `model.label_t=2` for this reason.
 
-9. **Evaluation trust layer** — `mci_gru/evaluation/` provides shared IC,
-   Newey-West Sharpe, moving-block bootstrap CIs, top-k returns, rank-drop
-   decisions, and feature-drift metrics. `run_experiment.py` writes
-   `evaluation_summary.json` and train-only `feature_reference.json`.
+8. **Masked-panel eligibility** — `mci_gru/data/pit.py` defines the mask algebra:
 
-   The no-retraining research-ledger path is separate from economic replay:
-   `scripts/run_saved_prediction_selection_audit.py --research-evidence` loads
-   one frozen saved-prediction set, an adjusted-close market panel, PIT
-   intervals, a complete expected-scorable manifest, and a canonical session
-   calendar. `selection_audit.py` validates every requested date before metrics;
-   `selection_nulls.py` runs the deterministic matched within-date score null;
-   and `artifacts.py` writes one versioned five-file bundle (`protocol.json`,
-   `date_evidence.csv`, `result.json`, `report.md`, `manifest.json`). This path
-   measures dated stock-selection information only. It does not model capital,
-   orders, fills, costs, leverage, or paper trading.
+   ```text
+   tradable = active_member & feature_ready
+   loss     = tradable & label_available
+   ```
 
-## Model Architecture (mci_gru/models/mci_gru.py)
+   Pre-membership price history can satisfy the lookback requirement, so a new
+   entrant can be feature-ready before it is tradable, but it becomes tradable
+   only inside its inclusive membership interval. Rank labels are recomputed over
+   the same-day `loss` set. Daily `tradable` breadth is audited against
+   `data.pit_min_scoreable_stocks` under `data.pit_breadth_policy`
+   (`error`, `warn`, or `off`), and the per-date counts are written into
+   `run_metadata.json` as `pit_breadth`.
 
-Four parallel streams whose outputs are concatenated before the final predictor:
+9. **Graph construction** — the correlation graph and the optional static sector
+   graph are built last, from the engineered raw frame (before normalization and
+   before PIT row filtering) restricted to the selected stock axis. The graph
+   section below describes selection, edge features, and scheduling.
+
+10. **Index-level branch** — `data.experiment_mode=index_level` dispatches to
+    `prepare_data_index_level()`, which reads a configured index CSV or a
+    one-day-lagged FRED S&P 500 series, assigns the single stock code `INDEX`,
+    and reuses the feature and tensor path with a one-node, zero-edge graph.
+    This is a separate implementation branch, not stock-level mode with a
+    one-name universe.
+
+## Dataset and Batch Contract
+
+`CombinedDataset` keeps time-series inputs, same-day graph inputs, labels,
+sample dates, and optional per-date stock masks aligned.
+
+`combined_collate_fn` stacks the dense tensors, concatenates graph nodes across
+samples, offsets each sample's edge indices by `i * num_stocks`, and returns a
+**9-tuple**:
+
+```text
+(
+  time_series,
+  labels,
+  graph_features,
+  edge_index,
+  edge_weight,
+  n_stocks,
+  batch_dates,
+  edge_index_sector,
+  edge_weight_sector,
+)
+```
+
+The first seven entries match the historical contract. The sector entries are
+`None` unless `graph.use_sector_relation=true`. `edge_weight` is `(E,)`,
+`(E, 4)`, or wider when lead-lag or snapshot-age columns are enabled; collate
+concatenates along dim 0. `Trainer._unpack_loader_batch` still accepts a 7-tuple
+for backward compatibility.
+
+Additional collate behavior:
+
+- **Dynamic graphs.** When a `GraphSchedule` is supplied and samples carry dates,
+  each sample resolves its own snapshot, so one batch may mix snapshots and any
+  batch size works.
+- **Stock masks.** When masks are present, `batch_dates` becomes a dict with
+  `dates` and `stock_mask`; otherwise it stays a date list or `None`.
+  Masked nodes have their time-series and graph features zeroed, and
+  `filter_edges_by_stock_mask()` removes correlation and sector edges touching
+  them.
+- **Snapshot age.** With `graph.append_snapshot_age_days=true`, one column of
+  calendar days from the active snapshot's `valid_from` to the sample date is
+  appended to 2-D edge attributes at collate time.
+
+`create_data_loaders()` shuffles training data for static graphs and keeps it
+sequential for dynamic graphs unless `training.shuffle_train` overrides that.
+Train and validation loaders use `training.batch_size`; the test loader uses
+batch size 1 with dummy zero labels, because the real test labels are kept
+separately for post-prediction evaluation.
+
+## Model Architecture (mci_gru/models/)
+
+The model is defined in `mci_gru/models/trunk.py` and built by
+`create_model()` in `mci_gru/models/factory.py`. `mci_gru/models/mci_gru.py` is
+a compatibility re-export shim for legacy imports and contains no model logic.
+
+Four parallel streams are concatenated before the final predictor:
 
 ```
-Input: (batch, stocks, his_t, features)
-         │
-    ┌────┴────┐
+Input: time_series (B, N, T, F)        graph_features (B*N, F)
+         │                                     │
+    ┌────┴────┐                                │
+    ▼         ▼                                ▼
+   A1        (optional A2→A1 cross-attn)   correlation GAT
+ Temporal                                  (+ sector GAT + fuse)
+ encoder                                         │
+    │                                            ▼
+    │                                           A2
     ▼         ▼
-   A1        A2
- Temporal   Cross-sectional
- (GRU)      (GAT on graph)
-    │         │
-    ▼         ▼
-   B1        B2
- CrossAttn  CrossAttn
- (A1 × R1)  (A2 × R2)
+   B1        B2          B1 = CrossAttn(query=A1, kv=R1)
+ latent R1   latent R2   B2 = CrossAttn(query=A2, kv=R2)
     │         │
     └────┬────┘
          ▼
   Z = [A1, A2, B1, B2]
          │
-   SelfAttention (optional)
+   optional LayerNorm + Dropout
          │
-   Final GATBlock → scalar score per stock
+   optional cross-stock SelfAttention
+         │
+   prediction GATBlock → output activation → score per stock (B, N)
 ```
 
-### A1: Temporal stream
+### A1: temporal stream
 
-- **MultiScaleTemporalEncoder** (default): parallel fast-path (full-seq GRU) and
-  slow-path (Conv1d → GRU). Outputs concatenated and projected.
-- **ImprovedGRU** (fallback): multi-layer GRU with AttentionResetGRUCell replacing the
-  standard reset gate with scaled dot-product attention.
+`mci_gru/models/temporal.py` provides three backbones selected by
+`model.temporal_encoder`:
 
-### A2: Cross-sectional stream
+- `legacy` — `ImprovedGRU`, built from `AttentionResetGRUCell`, which replaces
+  the GRU reset gate with a scaled dot-product attention term;
+- `gru_attn` — stacked `nn.GRU` plus a single post-hoc attention readout;
+- `transformer` — a causal `nn.TransformerEncoder` stack.
 
-- 2-layer GATBlock over the correlation graph using the most recent day's features.
-- Layer 1: multi-head GAT (concat). Layer 2: single-head GAT.
+With `model.use_multi_scale=true`, `MultiScaleTemporalEncoder` runs a fast branch
+on the raw sequence and a slow branch on a `Conv1d`-downsampled sequence, then
+projects the concatenation back to one representation. In transformer mode the
+fast branch is the causal Transformer and the slow branch is GRU-with-attention.
+The executable base config selects multi-scale `gru_attn`.
 
-### B1/B2: Market latent state
+### A2: cross-sectional stream
 
-- `MarketLatentStateLearner` maintains learned vectors R1, R2 of shape `(num_states, D)`.
-- Multi-head cross-attention: B1 = CrossAttn(query=A1, kv=R1), B2 = CrossAttn(query=A2, kv=R2).
+`mci_gru/models/graph.py` implements `GATBlock`: a multi-head concatenating
+`GATConv`, an activation, optional inter-layer dropout, then a single-head
+`GATConv`. The primary A2 branch consumes the correlation graph over the sample
+date's node features.
+
+When `graph.use_sector_relation=true`, a second `GATBlock` consumes the sector
+edges with a scalar edge dimension and a `nn.Linear` fuses the two branch
+outputs. This is dual GAT plus fusion; there is no `RGATConv` and no true
+multi-relation message passing in the code.
+
+With `model.use_a1_a2_cross_attention=true`, A2 additionally queries A1's fast
+temporal sequence through `nn.MultiheadAttention` before the latent stage.
+
+### B1/B2: market latent state
+
+`MarketLatentStateLearner` (`mci_gru/models/latent.py`) holds learned state
+matrices `R1` and `R2` of shape `(num_hidden_states, D)`. A1 and A2 query them
+independently. `model.use_nn_multihead_attention` switches between the legacy
+eight-`Linear` implementation and `nn.MultiheadAttention`.
 
 ### Prediction head
 
-- Concatenate `[A1, A2, B1, B2]` → optional cross-stock SelfAttention → final GATBlock → activation.
+`[A1, A2, B1, B2]` are concatenated in that order (the order `SelfAttention`'s
+stream-type embedding depends on), optionally LayerNormed and dropped out,
+optionally mixed across stocks by `SelfAttention`
+(`mci_gru/models/attention.py`), then passed through a final `GATBlock` to one
+score per stock. `model.output_activation` selects identity, ELU, ReLU, or
+sigmoid.
 
-## Graph (mci_gru/graph/builder.py)
+During training, `graph.drop_edge_p` drops correlation and sector edges through
+`torch_geometric.utils.dropout_edge`. When a stock mask is supplied, masked nodes
+are zeroed before and after each major stage so they neither contribute features
+nor emit nonzero scores.
 
-| Mode | Config | Behavior |
-|------|--------|----------|
-| Static | `update_frequency_months=0` | Built once before training. Fixed tensors. |
-| Dynamic | `update_frequency_months>0` | `GraphSchedule` precomputes snapshots every N months; collate does O(log n) lookup per sample. Any batch size works. |
+## Graph (mci_gru/graph/)
 
-The graph is a Pearson-correlation adjacency: trailing `corr_lookback_days` (default 252)
-returns are used. When `graph.top_k == 0`, edges connect pairs with `|corr| > judge_value` (default 0.8); when `top_k > 0`, each node keeps its top-K neighbours by `top_k_metric`.
+Graph responsibilities are split across the package:
 
-**`GraphSchedule`** (introduced in commit `f873f84`): when `update_frequency_months > 0`,
-`GraphBuilder.precompute_snapshots()` builds all graph snapshots up-front during
-`prepare_data()`. Each snapshot uses only data **before** its valid-from date (no lookahead).
-The `combined_collate_fn` resolves the correct snapshot per sample via `bisect`, eliminating
-the previous `batch_size=1` constraint.
+| Module | Responsibility |
+|---|---|
+| `mci_gru/graph/correlation.py` | Return pivot, Pearson correlation, edge selection, edge-feature math |
+| `mci_gru/graph/schedule.py` | `GraphSchedule` and O(log n) date lookup |
+| `mci_gru/graph/builder.py` | `GraphBuilder` construction facade and snapshot precomputation |
+| `mci_gru/graph/sector_edges.py` | Optional static same-sector relation |
+| `mci_gru/graph/utils.py` | `edge_feature_dim()` width calculation |
+
+### Correlation graph
+
+The return panel is built from `close / prev_close - 1` (or a per-stock
+`pct_change` when `prev_close` is absent), truncated to observations strictly
+**before** the graph's valid-from date, limited to the last
+`graph.corr_lookback_days` dates (default 252), reindexed to the stock axis, and
+zero-filled before `DataFrame.corr()`.
+
+| Mode | Configuration | Implemented selection |
+|---|---|---|
+| Positive threshold | `top_k == 0` | Off-diagonal directed edges where **`corr > judge_value`** |
+| Positive top-K | `top_k > 0`, `top_k_metric=corr` | Each node keeps up to K most-positive valid neighbours |
+| Signed top-K | `top_k > 0`, `top_k_metric=abs_corr` | Each node keeps up to K largest by absolute correlation, storing the signed value |
+
+The threshold path compares the **signed** correlation, so strong negative
+correlations are excluded from threshold mode entirely; they are reachable only
+through `abs_corr` top-K selection. Top-K edges are directed and need not be
+reciprocal.
+
+### Edge attributes
+
+- Scalar mode (`graph.use_multi_feature_edges=false`) returns the signed
+  correlation with shape `(E,)`.
+- Multi-feature mode (the base-config default) returns `(E, 4)` with columns
+  `[corr, |corr|, corr², rank_pct]`. `rank_pct` is zero in threshold mode
+  because it is only computed by the top-K path.
+- `graph.use_lead_lag_features` appends two columns: the best lag among
+  `0` and `graph.lead_lag_days` normalized by the largest candidate lag, and the
+  signed correlation at that lag.
+- `graph.append_snapshot_age_days` appends one column during collate.
+
+`edge_feature_dim()` derives the final width from `GraphConfig`, and
+`run_experiment.py` passes it into `create_model()`, so the model's
+`edge_feature_dim` always matches the tensors the loaders emit.
+
+### Static, dynamic, and sector graphs
+
+| Graph | Behavior |
+|---|---|
+| Static correlation | `graph.update_frequency_months == 0`: built once with `valid_from = data.train_start` and reused for every batch |
+| Dynamic correlation | `graph.update_frequency_months > 0`: `GraphBuilder.precompute_snapshots()` builds one snapshot per interval from `train_start` through `test_end`; `combined_collate_fn` resolves each sample by date through `GraphSchedule` |
+| Static sector | Each node links to up to `graph.sector_top_k` peers sharing its bucket, with scalar weight `1.0`; consumed by the separate sector GAT branch |
+
+Every snapshot uses only observations before its own valid-from date, which is
+what keeps the dynamic graph free of lookahead. It also means a meaningful first
+or static graph requires price history before `train_start`.
+
+`GraphSchedule.get_graph_for_date()` bisects the snapshot dates as strings and
+clamps to the first snapshot for any date earlier than the first `valid_from`.
+Date strings are not format-validated.
+
+Sector buckets come from `graph.sector_map_csv` via `load_sector_map_csv()`.
+`build_sector_edges()` assigns any `kdcode` missing from that CSV to a literal
+`"UNKNOWN"` bucket, so unmapped names are linked to each other rather than left
+isolated, and neighbours within a bucket are taken in ascending node-index order
+rather than by any similarity measure.
+
+## Training and Ensembles
+
+`mci_gru/training/losses.py` centralizes the objectives selected by
+`training.loss_type`:
+
+| `loss_type` | Objective |
+|---|---|
+| `mse` | Mean squared error over finite prediction/target pairs |
+| `ic` | Negative mean same-day Pearson information coefficient |
+| `combined` | Weighted blend of masked MSE and IC (`training.ic_loss_alpha`) |
+| `portfolio_ic` | IC plus a differentiable soft top-K forward-return utility |
+| `lambdarank_ic` | Deterministically capped same-day pairwise LambdaRankIC-style surrogate |
+
+`Trainer` (`mci_gru/training/trainer.py`) uses **AdamW**, an optional per-step
+linear warmup followed by cosine decay (`training.lr_scheduler`,
+`training.warmup_steps`), CUDA autocast and gradient scaling when
+`training.use_amp` is set and the device is CUDA, gradient clipping, and
+optional first-N-batch step profiling.
+
+Validation returns a `ValidationObservation` carrying loss, Pearson IC, Spearman
+rank IC, and the number of eligible rows behind each IC. **Checkpoint selection
+fails closed**: IC metrics are `None` rather than `0.0` when no rows are
+eligible, and `ValidationObservation.selection_value()` raises `ValueError` when
+the configured `training.selection_metric` has fewer than
+`training.minimum_selection_rows` eligible rows. Early stopping and checkpointing
+both use that single metric; the co-metrics recorded in `TrainingResult` come
+from the selected epoch whenever they are available on it.
+
+`mci_gru/training/ensemble.py` implements the ensemble contract.
+`train_multiple_models()` builds `training.num_models` independent models; member
+`model_id` is seeded with `config.seed + model_id`, writes its own checkpoint at
+`checkpoints/model_<id>_best.pth` and its own dated CSVs under
+`predictions_model_<id>/`, and the final prediction is the unweighted arithmetic
+mean across members. Prediction CSVs have `kdcode,dt,score` rows, round scores to
+five decimal places, and omit masked or non-finite names — so in masked PIT mode
+a date's CSV contains only that date's tradable candidates.
+
+## Walk-Forward Windows
+
+`mci_gru/walkforward.py` turns one base config into a list of window configs when
+`training.walkforward.enabled` is true, and returns `[base]` otherwise. Rolling
+mode advances `train_start`; expanding mode holds it fixed and advances
+`train_end`. Each window inserts a `label_t + 1` day gap between train and
+validation and between validation and test, and any window whose dates fail
+`ExperimentConfig._validate_embargo` is silently skipped; if no window survives,
+generation raises.
+
+Each generated window is a full `ExperimentConfig` that carries the base
+`features`, `graph`, `model`, `training`, **`evaluation`**, and `tracking`
+sections with only `data.*` dates rewritten, so per-window evaluation uses the
+configured `EvaluationConfig` rather than defaults
+(`tests/test_walkforward_config_propagation.py`).
+
+`merge_walkforward_summary()` aggregates per-window training summaries and the
+mean of each numeric evaluation metric across windows;
+`select_training_objective_value()` returns the aggregate matching
+`training.selection_metric`.
+
+## Run Artifacts
+
+A single-window run writes this artifact set into the Hydra output directory:
+
+```text
+output/
+├── config.yaml                             # the composed Hydra config
+├── training_<timestamp>.log
+├── mlflow_run.json                         # when tracking is enabled
+├── resolved_config.json                    # fully resolved ExperimentConfig for this window
+├── run_metadata.json                       # stock list, features, z-score stats, PIT breadth, provenance
+├── feature_reference.json                  # train-only normalized feature histograms
+├── graph_data.pt                           # train-start correlation graph + optional sector edges
+├── checkpoints/model_<id>_best.pth
+├── predictions_model_<id>/<date>.csv
+├── averaged_predictions/<date>.csv
+├── training_summary.json
+├── evaluation_summary.json
+├── timing_summary.json
+└── training_step_profile_model_<id>.jsonl  # when training.profile_batches > 0
+```
+
+With walk-forward enabled, the per-window artifacts move under
+`walkforward/w###/`, while `config.yaml`, the training log, and `mlflow_run.json`
+stay at the run root next to `walkforward_summary.json`.
+
+`write_resolved_config()` (`mci_gru/evaluation/experiment_summary.py`) serializes
+the complete resolved `ExperimentConfig` for **every** window and returns both
+the file name and a SHA-256 taken from the bytes on disk;
+`run_metadata.json` carries them as `resolved_config_path` and
+`resolved_config_sha256`. Absolute paths are replaced with the literal marker
+`<ABSOLUTE_PATH>` rather than deleted, so a reader can still distinguish a
+redacted setting from an unset one. The writer refuses to overwrite an existing
+artifact by default; `run_experiment.py` passes `force=True` because its sibling
+artifacts all overwrite unconditionally.
+`mci_gru/evaluation/run_bundle.py` accepts both `resolved_config.json` and the
+legacy `resolved_config.yaml` in its `CONFIG_CANDIDATES`.
+
+MLflow logging (`mci_gru/tracking/mlflow_manager.py`) is optional and mirrors
+parameters, metrics, and selected artifacts according to `TrackingConfig`, with a
+child run per ensemble member and, in walk-forward mode, a child run per window.
+
+## Evaluation Surfaces
+
+Evaluation has distinct trust boundaries: a metric summary is not an economic
+backtest, and neither is paper trading.
+
+### In-run prediction evaluation
+
+`mci_gru/evaluation/metrics.py` computes regression errors, Pearson and Spearman
+IC, hit rate, prediction quantiles, top-K returns, naive and Newey-West Sharpe,
+and optional moving-block bootstrap intervals
+(`mci_gru/evaluation/statistics.py`). The headline `sharpe_ratio` is the
+Newey-West value when `label_t > 1` and the naive value otherwise.
+`resolved_evaluation_kwargs()` derives defaults from `EvaluationConfig`:
+Newey-West lags default to `label_t - 1` and the bootstrap block size defaults to
+`max(1, label_t)`. `run_experiment.py` writes the result as
+`evaluation_summary.json`. `mci_gru/training/metrics.py` is a compatibility
+re-export of the evaluation module.
+
+### Economic saved-prediction replay
+
+`scripts/backtest_sp500.py` is a thin CLI over
+`mci_gru/evaluation/backtest_engine.py`. The engine consumes dated prediction
+files plus market data, models T-close scoring with T+1-open entry and
+open-to-open returns, supports daily, staggered, and block rebalancing, and can
+apply costs and a rank-drop gate.
+
+### Selection-research evidence
+
+`scripts/run_saved_prediction_selection_audit.py --research-evidence` measures the
+information content of one frozen prediction set without training or capital
+simulation. `mci_gru/evaluation/selection_audit.py` validates alignment and
+protocol requirements before any metric is computed,
+`mci_gru/evaluation/selection_nulls.py` runs a deterministic matched within-date
+score null, and `mci_gru/evaluation/artifacts.py` writes one versioned five-file
+bundle:
+
+```text
+protocol.json
+date_evidence.csv
+result.json
+report.md
+manifest.json
+```
+
+`validate_trial_family()` in `mci_gru/evaluation/trial_ledger.py` enforces exact,
+unique, successful membership against a declared `expected_trial_ids` set, and
+the research protocol requires that set whenever a complete trial ledger is
+claimed. This surface measures dated stock-selection information only; it does
+not model capital, orders, fills, costs, leverage, or paper trading.
+
+### Supporting surfaces
+
+- `mci_gru/evaluation/capacity.py` — saved-prediction capacity diagnostics across
+  AUM, top-K, costs, rank-drop, and lagged ADV/volatility thresholds.
+- `mci_gru/evaluation/prediction_report.py` — aligned prediction/baseline
+  comparison with JSON, Markdown, and CSV output.
+- `mci_gru/evaluation/run_bundle.py` — opt-in run provenance manifests and
+  core-artifact validation.
+- `mci_gru/evaluation/portfolio.py` — ranking, top-K selection, turnover, and the
+  shared rank-drop gate.
+- `mci_gru/evaluation/drift.py` — PSI / KS-style feature-drift metrics used by
+  paper trading.
 
 ## Config System (Hydra)
 
 ```
 configs/
-├── config.yaml          ← base defaults
+├── config.yaml          ← executable base composition and defaults
 ├── data/                ← DataConfig overrides (sp500, russell1000, temporal_2019, ...)
 ├── features/            ← FeatureConfig overrides (base, with_momentum, full, ...)
-└── experiment/          ← full experiment presets (paper_faithful, hybrid, ...)
+└── experiment/          ← multi-section experiment presets (paper_faithful, hybrid, ...)
 ```
 
-All configs map to typed dataclasses in `mci_gru/config.py`. `ExperimentConfig` is the
-root, containing `DataConfig`, `FeatureConfig`, `GraphConfig`, `ModelConfig`,
-`TrainingConfig`, and `TrackingConfig`. On construction, **`ExperimentConfig` validates calendar gaps** between train/val and val/test are **strictly greater than `model.label_t`** days unless `data.skip_embargo_check=true` (discouraged). **`pipeline._build_tensors`** aligns `stock_features_*` rows to label dates so embargo gaps do not desynchronize time-series tensors from graph features.
+`create_config_from_dict()` in `mci_gru/config.py` is the single plain-dict
+ingestion path. `ExperimentConfig` owns `DataConfig`, `FeatureConfig`,
+`GraphConfig`, `ModelConfig`, `TrainingConfig` (which nests
+`WalkforwardConfig`), `EvaluationConfig`, and `TrackingConfig`, plus
+`experiment_name`, `output_dir`, and `seed`.
 
-Override from CLI: `python run_experiment.py model.his_t=20 training.loss_type=ic`
+Construction validates chronological dates and requires calendar gaps
+**strictly greater than `model.label_t`** between train/validation and
+validation/test, unless `data.skip_embargo_check=true`, which downgrades the
+failure to a warning and is discouraged. `pipeline._stock_feature_row_slice()`
+maps label dates back to the correct time-series rows so embargo gaps do not
+desynchronize the temporal tensors from the graph features.
+
+Base-config defaults worth knowing (`configs/config.yaml`): `his_t=10`,
+`label_t=5`, multi-scale `gru_attn` temporal encoder, static graph with
+`top_k=0`, `use_multi_feature_edges=true`, `drop_edge_p=0.1`, `num_models=10`,
+`loss_type=combined`, `selection_metric=val_ic`, and `minimum_selection_rows=1`.
+The frozen production recipe in `docs/DEFAULT_EXPERIMENT_RECIPE.md` overrides
+several of these (20 members, pure IC loss, patience 15); presets are
+configuration, not architectural constants.
+
+`create_model()` keeps legacy defaults so old partial checkpoint configs still
+load. New runs receive explicit values from typed config plus the graph-derived
+`edge_feature_dim`, `drop_edge_p`, and `use_sector_relation` injected by
+`run_experiment.py`.
+
+Override from the CLI:
+`python run_experiment.py model.his_t=20 training.loss_type=ic`
 
 ## Paper Trading (paper_trade/)
 
-Uses **frozen** checkpoints from `paper_trade/Model/`. The inference path:
+Paper trading is frozen-checkpoint inference, not a continuation of training.
 
-1. `infer.py` loads `run_metadata.json` (norm stats, feature list, stock list)
-   and `graph_data.pt` (precomputed static graph). It does **not** call `GraphBuilder`.
-2. `portfolio.py` applies the rank-drop gate: only sell if rank drops ≥ 30 places.
-3. `track.py` records fills and computes open-to-open returns.
-4. `monitor.py` compares latest normalized inference features to the train-window
-   feature reference and writes `feature_drift.json` / `feature_drift.csv`.
-5. `report.py` generates daily markdown reports, including feature drift when available.
-6. `run_nightly.py` orchestrates all steps in order.
+`paper_trade/scripts/infer.py` loads the frozen `config.yaml`,
+`run_metadata.json`, every `model_*_best.pth` under the model directory, and
+`graph_data.pt`. It reconstructs the feature engineer, optionally fetches regime
+inputs through the inference date, reuses the shared imputation, z-score, and
+single-date tensor helpers from `mci_gru/data/transforms.py`, runs every
+checkpoint, and averages their scores. It does **not** instantiate or call
+`GraphBuilder`.
+
+`paper_trade/scripts/run_nightly.py` runs the steps in this order, because
+execution tracking needs the new day's open before a new target portfolio is
+formed:
+
+1. `refresh_data.py` — append incremental LSEG bars to the master CSV.
+2. `track.py` — simulate prior orders at the next open and update open-to-open
+   position returns, costs, trades, and persistent fill state. Its benchmark is
+   `SPY.P`.
+3. `infer.py` — write dated scores plus the normalized feature matrix used for
+   monitoring.
+4. `portfolio.py` — rank scores, apply the rank-drop policy, and write target
+   holdings, orders, and persisted rank/holding state.
+5. `monitor.py` — compare normalized inference features against the frozen
+   train-window `feature_reference.json` and write `feature_drift.json` /
+   `feature_drift.csv`.
+6. `report.py` — write Markdown and JSON reports plus equity and drawdown charts.
+
+The default policy exits a scored holding when its rank worsens by at least 30
+places (`DEFAULT_MIN_RANK_DROP` in `paper_trade/scripts/portfolio.py`, applied
+through the shared gate in `mci_gru/evaluation/portfolio.py`).
+
+`paper_trade/scripts/catchup.py` replays missed dates sequentially and
+`paper_trade/scripts/compare_regime.py` compares frozen regime and no-regime
+model outputs. Neither path trains a model.
 
 ## Package Layout
 
 ```
+run_experiment.py                 ← training/prediction composition root
 mci_gru/
-├── __init__.py          ← version, public exports
-├── config.py            ← ExperimentConfig and sub-configs (dataclasses)
-├── pipeline.py          ← prepare_data(): load → features → normalize → window → graph
-├── models/
-│   ├── __init__.py      ← create_model(), StockPredictionModel
-│   └── mci_gru.py       ← StockPredictionModel, GATBlock, ImprovedGRU, MarketLatentStateLearner
+├── config.py                     ← typed configuration dataclasses and validation
+├── pipeline.py                   ← staged stock/index data preparation
+├── walkforward.py                ← rolling / expanding window generation
+├── regime_contract.py            ← regime input column contract
 ├── data/
-│   ├── data_manager.py  ← DataManager, CombinedDataset, combined_collate_fn, create_data_loaders
-│   ├── preprocessing.py ← generate_time_series_features, generate_graph_features, compute_labels
-│   ├── lseg_loader.py   ← LSEG/Refinitiv API data fetching
-│   ├── fred_loader.py   ← FRED API data fetching (credit, macro)
-│   ├── reshape.py       ← LSEG data reshape utilities
-│   ├── path_resolver.py ← project-aware path resolution
-│   └── universes.py     ← stock universe definitions (SP500, R1000, MSCI)
+│   ├── data_manager.py           ← DataManager, CombinedDataset, combined_collate_fn, create_data_loaders
+│   ├── preprocessing.py          ← windows, graph-node features, labels, rank transforms
+│   ├── transforms.py             ← shared imputation, z-score, single-date tensors
+│   ├── pit.py                    ← membership / readiness / loss / tradable masks
+│   ├── pit_audit.py              ← PIT audit helpers
+│   ├── lseg_loader.py            ← LSEG/Refinitiv API access
+│   ├── fred_loader.py            ← FRED auxiliary and index series
+│   ├── reshape.py                ← vendor-frame reshape helpers
+│   ├── path_resolver.py          ← project-aware data paths
+│   └── universes.py              ← named universe definitions
 ├── features/
-│   ├── registry.py      ← FeatureEngineer (orchestrates feature modules)
-│   ├── base.py          ← base OHLCV features (turnover)
-│   ├── momentum.py      ← MTP momentum (binary/continuous/buffered, static/dynamic blend)
-│   ├── volatility.py    ← realized vol, VIX, RSI, MA features
-│   ├── credit.py        ← credit spread features from FRED
-│   └── regime.py        ← global regime similarity features
+│   ├── registry.py               ← FeatureEngineer composition
+│   ├── base.py                   ← base OHLCV features (turnover), price and volume features
+│   ├── momentum.py               ← MTP momentum (binary/continuous/buffered, static/dynamic blend)
+│   ├── volatility.py             ← realized vol, VIX, RSI, MA, volatility targeting
+│   ├── credit.py                 ← credit spread features from FRED
+│   └── regime.py                 ← global regime similarity features
 ├── graph/
-│   └── builder.py       ← GraphBuilder + GraphSchedule (Pearson correlation, static/dynamic)
+│   ├── builder.py                ← GraphBuilder construction facade
+│   ├── correlation.py            ← correlation and edge-selection math
+│   ├── schedule.py               ← GraphSchedule
+│   ├── sector_edges.py           ← static sector relation
+│   └── utils.py                  ← edge_feature_dim()
+├── models/
+│   ├── factory.py                ← create_model()
+│   ├── trunk.py                  ← StockPredictionModel
+│   ├── temporal.py               ← ImprovedGRU, GRUWithAttention, CausalTransformerEncoder, MultiScaleTemporalEncoder
+│   ├── graph.py                  ← GATBlock
+│   ├── latent.py                 ← MarketLatentStateLearner
+│   ├── attention.py              ← cross-stock SelfAttention
+│   └── mci_gru.py                ← compatibility re-export shim
+├── training/
+│   ├── trainer.py                ← Trainer, ValidationObservation, early stopping, inference
+│   ├── ensemble.py               ← train_multiple_models(), prediction averaging
+│   ├── losses.py                 ← loss implementations and factory
+│   └── metrics.py                ← compatibility shim to evaluation.metrics
 ├── evaluation/
-│   ├── statistics.py    ← IC, Newey-West Sharpe, moving-block bootstrap CIs
-│   ├── portfolio.py     ← top-k returns, turnover, rank-drop gate
-│   └── drift.py         ← PSI / KS-style feature drift metrics
-└── training/
-    ├── trainer.py       ← Trainer, train_multiple_models, early stopping
-    ├── losses.py        ← ICLoss, CombinedMSEICLoss
-    └── metrics.py       ← evaluation metrics (IC, Sharpe, hit rate)
+│   ├── metrics.py                ← prediction metrics
+│   ├── statistics.py             ← IC, Newey-West, bootstrap primitives
+│   ├── experiment_summary.py     ← in-run evaluation policy, resolved-config provenance
+│   ├── backtest_engine.py        ← economic saved-prediction replay
+│   ├── portfolio.py              ← ranking, top-K, turnover, rank-drop gate
+│   ├── capacity.py               ← capacity diagnostics
+│   ├── selection_audit.py        ← selection-evidence protocol and decisions
+│   ├── selection_nulls.py        ← deterministic matched null
+│   ├── artifacts.py              ← canonical bundles and JSON artifact writer
+│   ├── prediction_report.py      ← comparative prediction reports
+│   ├── run_bundle.py             ← provenance manifests
+│   ├── trial_ledger.py           ← cross-run trial ledger
+│   └── drift.py                  ← feature drift
+├── tracking/
+│   └── mlflow_manager.py         ← optional MLflow integration
+└── utils/
+    └── seeding.py                ← set_seed()
+paper_trade/
+├── Model/                        ← frozen configs, metadata, and checkpoints
+├── scripts/                      ← refresh, track, infer, portfolio, monitor, report, nightly
+└── state/                        ← persistent holdings, ranks, fills, run manifest
+                                     (dated scores, orders, monitoring, and reports are
+                                      written at runtime under paper_trade/results/,
+                                      which is not tracked in git)
+scripts/                          ← supported CLIs for backtest, research, and reporting
+tests/                            ← pytest suite (run via scripts/run_pytest_isolated.py)
 ```
+
+## Current Implementation Boundaries
+
+These are properties of the code as written, not intended guarantees:
+
+- Correlation construction needs observations before `train_start`. CSV inputs
+  can supply that buffer, but `DataManager._load_from_lseg()` requests only
+  `train_start` through `test_end`, so an LSEG-sourced first or static graph has
+  no pre-train observations.
+- `graph_data.pt` stores only the `train_start` correlation graph and the
+  optional sector edges. A dynamic `GraphSchedule` lives in memory and is not
+  exported, so frozen paper-trade inference uses the static saved graph even
+  after dynamic-graph training.
+- `run_metadata.json` serializes z-score means and standard deviations but not a
+  fitted rank-Gaussian reference, so the frozen paper-trade path is not
+  self-contained for a `rank_gauss` training run.
+- `EvaluationConfig.sharpe_method` is validated but is not passed by
+  `resolved_evaluation_kwargs()`; headline Sharpe selection follows `label_t` as
+  described above.
+- Index-level mode always uses z-score normalization regardless of
+  `data.normalisation`, and builds labels from the normalized frame, whereas
+  stock-level labels come from the raw engineered price frame.
+- `build_sector_edges()` has no coverage check: names missing from
+  `graph.sector_map_csv` silently share the `"UNKNOWN"` bucket.
