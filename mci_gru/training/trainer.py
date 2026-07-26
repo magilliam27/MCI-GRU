@@ -99,6 +99,34 @@ class TrainingResult:
     predictions: np.ndarray | None = None
 
 
+@dataclass(frozen=True)
+class ValidationObservation:
+    """Validation values plus the eligible-row counts that make them meaningful."""
+
+    loss: float
+    ic: float | None
+    ic_rows: int
+    rank_ic: float | None
+    rank_ic_rows: int
+
+    def selection_value(self, metric: str, minimum_rows: int) -> float:
+        if metric == "val_loss":
+            return self.loss
+        if metric == "val_ic" and self.ic is not None and self.ic_rows >= minimum_rows:
+            return self.ic
+        if (
+            metric == "val_rank_ic"
+            and self.rank_ic is not None
+            and self.rank_ic_rows >= minimum_rows
+        ):
+            return self.rank_ic
+        raise ValueError(
+            f"{metric} has insufficient validation coverage: "
+            f"ic_rows={self.ic_rows}, rank_ic_rows={self.rank_ic_rows}, "
+            f"minimum_selection_rows={minimum_rows}"
+        )
+
+
 def prediction_rows_for_date(
     predictions: np.ndarray,
     kdcode_list: list[str],
@@ -273,7 +301,14 @@ class Trainer:
             )
             final_train_loss = train_loss
 
-            val_loss, val_ic, val_rank_ic = self._validate(val_loader, criterion, use_amp)
+            validation = self._validate(val_loader, criterion, use_amp)
+            val_loss = validation.loss
+            val_ic = validation.ic if validation.ic is not None else float("nan")
+            val_rank_ic = validation.rank_ic if validation.rank_ic is not None else float("nan")
+            selection_value = validation.selection_value(
+                training_cfg.selection_metric,
+                training_cfg.minimum_selection_rows,
+            )
 
             logger.info(
                 f"Epoch [{epoch + 1}/{training_cfg.num_epochs}] - Train Loss: {train_loss:.6f}, "
@@ -283,19 +318,21 @@ class Trainer:
 
             improved = False
             if training_cfg.selection_metric == "val_ic":
-                if val_ic > self.best_val_ic:
+                if selection_value > self.best_val_ic:
                     improved = True
             elif training_cfg.selection_metric == "val_rank_ic":
-                if val_rank_ic > self.best_val_rank_ic:
+                if selection_value > self.best_val_rank_ic:
                     improved = True
             else:
-                if val_loss < self.best_val_loss:
+                if selection_value < self.best_val_loss:
                     improved = True
 
             if improved:
                 self.best_val_loss = val_loss
-                self.best_val_ic = val_ic
-                self.best_val_rank_ic = val_rank_ic
+                if validation.ic is not None:
+                    self.best_val_ic = validation.ic
+                if validation.rank_ic is not None:
+                    self.best_val_rank_ic = validation.rank_ic
                 self.patience_counter = 0
                 torch.save(self.model.state_dict(), best_model_path)
                 logger.info(
@@ -452,7 +489,7 @@ class Trainer:
 
         return total_loss / num_samples if num_samples > 0 else 0.0
 
-    def _validate(self, val_loader, criterion, use_amp) -> tuple[float, float, float]:
+    def _validate(self, val_loader, criterion, use_amp) -> ValidationObservation:
         self.model.eval()
         total_loss = 0.0
         total_ic = 0.0
@@ -503,9 +540,15 @@ class Trainer:
                 num_samples += batch_size
 
         mean_loss = total_loss / num_samples if num_samples > 0 else 0.0
-        mean_ic = total_ic / total_ic_rows if total_ic_rows > 0 else 0.0
-        mean_rank_ic = total_rank_ic / total_rank_ic_rows if total_rank_ic_rows > 0 else 0.0
-        return mean_loss, mean_ic, mean_rank_ic
+        mean_ic = total_ic / total_ic_rows if total_ic_rows > 0 else None
+        mean_rank_ic = total_rank_ic / total_rank_ic_rows if total_rank_ic_rows > 0 else None
+        return ValidationObservation(
+            loss=mean_loss,
+            ic=mean_ic,
+            ic_rows=total_ic_rows,
+            rank_ic=mean_rank_ic,
+            rank_ic_rows=total_rank_ic_rows,
+        )
 
     def predict(self, test_loader, kdcode_list: list[str], test_dates: list[str]) -> np.ndarray:
         """

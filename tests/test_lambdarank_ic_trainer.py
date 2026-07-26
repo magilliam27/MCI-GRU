@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 import torch
 import torch.nn as nn
 
@@ -115,6 +116,49 @@ def test_trainer_validation_rank_ic_averages_only_rankable_rows(tmp_path: Path) 
     ).train([rankable_batch], [rankable_batch, unrankable_batch])
 
     assert result.best_val_rank_ic == 1.0
+
+
+def test_trainer_rejects_checkpoint_selection_without_eligible_rank_rows(
+    tmp_path: Path,
+) -> None:
+    n_stocks = 4
+    train_batch = (
+        torch.zeros((1, n_stocks, 3, 2)),
+        torch.tensor([[0.00, 0.10, 0.20, 0.30]]),
+        torch.zeros((1, n_stocks, 2)),
+        torch.zeros((2, 0), dtype=torch.long),
+        torch.zeros((0,)),
+        n_stocks,
+        ["2025-01-10"],
+    )
+    invalid_val_batch = (
+        torch.zeros((1, n_stocks, 3, 2)),
+        torch.full((1, n_stocks), float("nan")),
+        torch.zeros((1, n_stocks, 2)),
+        torch.zeros((2, 0), dtype=torch.long),
+        torch.zeros((0,)),
+        n_stocks,
+        ["2025-01-13"],
+    )
+    config = ExperimentConfig(
+        training=TrainingConfig(
+            loss_type="lambdarank_ic",
+            selection_metric="val_rank_ic",
+            num_epochs=1,
+            num_models=1,
+            lr_scheduler="none",
+            use_amp=False,
+        ),
+        output_dir=str(tmp_path),
+    )
+
+    with pytest.raises(ValueError, match="insufficient validation coverage"):
+        Trainer(
+            model=TinyRankModel(n_stocks=n_stocks),
+            config=config,
+            device=torch.device("cpu"),
+            output_path=str(tmp_path),
+        ).train([train_batch], [invalid_val_batch])
 
 
 def test_select_training_objective_respects_selection_metric() -> None:
