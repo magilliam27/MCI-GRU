@@ -47,6 +47,7 @@ from mci_gru.evaluation.experiment_summary import (
     compute_evaluation_summary,
     data_file_fingerprint,
     select_training_objective_value,
+    write_resolved_config,
 )
 from mci_gru.features import FeatureEngineer
 from mci_gru.graph.utils import edge_feature_dim
@@ -155,6 +156,7 @@ def main(cfg: DictConfig):
                 wpath,
             )
             logger.info("=" * 80)
+            resolved_config_identity = write_resolved_config(cfg_w, wpath, force=True)
 
             window_started = perf_counter()
             timing_summary: dict[str, Any] = {
@@ -184,6 +186,7 @@ def main(cfg: DictConfig):
                 "train_end": cfg_w.data.train_end,
                 "data_file": cfg_w.data.filename,
                 "walkforward_window": wi,
+                **resolved_config_identity,
                 "graph_static_valid_from": data.get("graph_static_valid_from"),
                 "feature_reference_path": "feature_reference.json",
                 "pit_universe_mode": data.get("pit_universe_mode"),

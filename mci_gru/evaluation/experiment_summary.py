@@ -7,14 +7,67 @@ key mapping) lives in the package where it is importable and unit-testable.
 
 import hashlib
 import logging
+from dataclasses import asdict
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 import numpy as np
 
 from mci_gru.config import ExperimentConfig
+from mci_gru.evaluation.artifacts import write_json_artifact
 from mci_gru.training import evaluate_predictions
+
+RESOLVED_CONFIG_FILENAME = "resolved_config.json"
+REDACTED_ABSOLUTE_PATH = "<ABSOLUTE_PATH>"
+
+
+def _is_absolute_path_text(value: str) -> bool:
+    if not value:
+        return False
+    return PureWindowsPath(value).is_absolute() or PurePosixPath(value).is_absolute()
+
+
+def _redact_absolute_paths(value: Any) -> Any:
+    """Replace absolute paths with a marker, keeping every key present.
+
+    Absolute paths carry the operator's local layout, but dropping the keys
+    outright would leave a reader unable to tell a redacted setting from an
+    unset one, which is exactly what this artifact exists to answer.
+    """
+    if isinstance(value, Path):
+        return REDACTED_ABSOLUTE_PATH if value.is_absolute() else value.as_posix()
+    if isinstance(value, str):
+        return REDACTED_ABSOLUTE_PATH if _is_absolute_path_text(value) else value
+    if isinstance(value, dict):
+        return {str(key): _redact_absolute_paths(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_redact_absolute_paths(item) for item in value]
+    return value
+
+
+def write_resolved_config(
+    config: ExperimentConfig,
+    output_dir: str | Path,
+    *,
+    force: bool = False,
+) -> dict[str, str]:
+    """Persist one window's complete resolved configuration and content identity.
+
+    Refuses to overwrite an existing artifact unless *force*, matching the
+    evidence-preservation contract of :func:`write_json_artifact`. The returned
+    digest is taken from the bytes actually on disk, so it always describes the
+    stored file rather than an in-memory approximation of it.
+    """
+    path = write_json_artifact(
+        Path(output_dir) / RESOLVED_CONFIG_FILENAME,
+        _redact_absolute_paths(asdict(config)),
+        force=force,
+    )
+    return {
+        "resolved_config_path": path.name,
+        "resolved_config_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    }
 
 
 def data_file_fingerprint(relative_path: str, logger: logging.Logger) -> dict[str, Any]:
