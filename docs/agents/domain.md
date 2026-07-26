@@ -21,7 +21,7 @@ When sources disagree, prefer them in this order:
 
 1. Current code and tests for implemented behavior.
 2. Repository invariants in `AGENTS.md`.
-3. Canonical docs such as `docs/ARCHITECTURE.md`,
+3. Canonical docs such as `docs/agents/guide.md`, `docs/ARCHITECTURE.md`,
    `docs/CONFIGURATION_GUIDE.md`, `docs/DEFAULT_EXPERIMENT_RECIPE.md`,
    `docs/TESTING_GUIDE.md`, and focused data contracts.
 4. Current research evidence listed from `docs/research/README.md`.
@@ -52,6 +52,9 @@ reopening it may be warranted.
 ## Agent Working Rules
 
 - Keep `AGENTS.md` short; put durable agent policy in this directory.
+- Use `guide.md` for current-state repository navigation and engineering
+  constraints. Use `target-architecture.md` only for explicit, human-reviewed
+  future-state decisions; it is never evidence of current behaviour.
 - Use `docs/index.md` for the doc map and `docs/research/README.md` for
   research evidence status.
 - Treat handoffs as operational continuity, not research evidence, unless a

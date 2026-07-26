@@ -51,7 +51,7 @@ docs/
 ├── CONFIGURATION_GUIDE.md
 ├── DEFAULT_EXPERIMENT_RECIPE.md
 ├── TESTING_GUIDE.md
-├── agents/          ← issue tracker, triage labels, source-of-truth policy
+├── agents/          ← current-state guide, target architecture, issue tracker, triage labels, source-of-truth policy
 ├── research/        ← current/archive research evidence lifecycle
 ├── QUICK_REFERENCE.md
 ├── REGIME_DATA_CONTRACT.md
@@ -66,10 +66,10 @@ docs/agent_references/
 mci_gru/             ← core Python package
 ├── config.py        ← typed dataclass configs (ExperimentConfig)
 ├── pipeline.py      ← central orchestrator: load → features → normalize → window → graph
-├── models/mci_gru.py   ← four-stream architecture (A1, A2, B1, B2)
+├── models/factory.py + trunk.py ← model construction and four-stream architecture (A1, A2, B1, B2); models/mci_gru.py is a compatibility shim
 ├── data/            ← DataManager, preprocessing, loaders (LSEG, FRED, CSV)
 ├── features/        ← FeatureEngineer + registry (momentum, vol, credit, regime)
-├── graph/builder.py ← Pearson-correlation graph (static or dynamic)
+├── graph/           ← Pearson-correlation graph (static or dynamic): builder, correlation math, schedule, sector, edge width
 └── training/        ← Trainer, losses (MSE/IC/combined), metrics
 paper_trade/         ← frozen-checkpoint inference + portfolio pipeline
 skills/              ← versioned Codex skills for GitHub review/upload
@@ -103,12 +103,17 @@ tests/               ← pytest suite + backtest scripts
 ## How to Work in This Repo
 
 - **Before editing**, read `docs/ARCHITECTURE.md` for the data flow and model structure.
+- **For nontrivial work**, use `docs/agents/guide.md` to locate the owning
+  modules, adjacent contracts, focused tests, and engineering constraints.
+- **For future-state design**, work with the project owner in
+  `docs/agents/target-architecture.md`; it is human-led and is not a description
+  of current behaviour.
 - **When docs disagree**, current code and the invariants in this file win; see `docs/agents/domain.md`.
 - **For automated Colab work**, default to `chrome:control-chrome` and the runbook in `docs/workflows/COLAB_CHROME_CONTROL_GUIDE.md`; use Playwright MCP only as a documented legacy fallback.
 - **For Colab evidence**, notebook contract tests are not live-run proof; live Colab claims need visible Chrome/Colab execution plus Drive artifacts (heartbeat/results), per `docs/workflows/COLAB_CHROME_CONTROL_GUIDE.md`.
 - **Before translating finance papers into implementation work**, use `skills/research-paper-to-mci-gru/` to produce an MCI-GRU-aware brief and GitHub-ready issue drafts.
 - **Before adding features**, read `mci_gru/features/registry.py` for the plugin pattern.
-- **Before changing the graph**, read `mci_gru/graph/builder.py`, `docs/ARCHITECTURE.md` (Graph section), and `docs/agent_references/cursor/plans/graph_signal_upgrades_c28cf640.plan.md` (audit + roadmap).
+- **Before changing the graph**, read `mci_gru/graph/builder.py` and `mci_gru/graph/correlation.py`, `docs/ARCHITECTURE.md` (Graph section), and `docs/agent_references/cursor/plans/graph_signal_upgrades_c28cf640.plan.md` (audit + roadmap).
 - **Before touching paper_trade/**, understand that it uses frozen checkpoints — do not import `GraphBuilder`.
 - **Run tests** after every change with the repo venv and isolated pytest launcher
   on Windows: `.\.venv\Scripts\python.exe scripts/run_pytest_isolated.py tests/ -v`.
@@ -139,9 +144,9 @@ The file `docs/agent_references/cursor/plans/graph_signal_upgrades_c28cf640.plan
 
 **Implemented today (code, not the whole roadmap)**
 
-- **Dynamic schedule**: If `graph.update_frequency_months > 0`, `prepare_data` in `mci_gru/pipeline.py` calls `GraphBuilder.precompute_snapshots(...)` and passes `graph_schedule` into `create_data_loaders(..., dynamic_graph=True)`. Each batch resolves edges for the sample date via the schedule (see `mci_gru/data/data_manager.py` `combined_collate_fn`).
-- **Lever 1a (partial)**: `GraphConfig.top_k` and `GraphConfig.top_k_metric` (`"corr"` or `"abs_corr"`). `top_k == 0` keeps the legacy global threshold `corr > judge_value`. `top_k > 0` selects per-node top-K neighbours (`mci_gru/graph/builder.py` `build_edges` / `_select_edges_topk`).
-- **Lever 1c + Phase 3**: `GraphConfig.use_multi_feature_edges` makes `build_edges` return at least **4** channels `[corr, |corr|, corr^2, rank_pct]`, optionally **+2** lead–lag columns (`use_lead_lag_features`). `append_snapshot_age_days` adds **one** column at collate time. `run_experiment._edge_feature_dim` must match the final width passed to `create_model`.
+- **Dynamic schedule**: If `graph.update_frequency_months > 0`, `build_correlation_graph` in `mci_gru/pipeline.py` calls `GraphBuilder.precompute_snapshots(...)` and returns the schedule through `prepare_data`. `run_experiment.py` then sets `dynamic_graph` from the same flag and passes `graph_schedule` into `create_data_loaders(...)`. Each batch resolves edges for the sample date via the schedule (see `mci_gru/data/data_manager.py` `combined_collate_fn`).
+- **Lever 1a (partial)**: `GraphConfig.top_k` and `GraphConfig.top_k_metric` (`"corr"` or `"abs_corr"`). `top_k == 0` keeps the legacy global threshold `corr > judge_value` (signed, off-diagonal). `top_k > 0` selects per-node top-K neighbours. Both selection paths and the correlation math live in `mci_gru/graph/correlation.py` (`compute_correlation_matrix`, `build_edges`, `_select_edges_threshold`, `_select_edges_topk`, `_lead_lag_columns`); `mci_gru/graph/builder.py` holds only `GraphBuilder`, which orchestrates them.
+- **Lever 1c + Phase 3**: `GraphConfig.use_multi_feature_edges` makes `build_edges` return at least **4** channels `[corr, |corr|, corr^2, rank_pct]` (`rank_pct` is zero in threshold mode; it is only populated by top-K selection), optionally **+2** lead–lag columns (`use_lead_lag_features`). `append_snapshot_age_days` adds **one** column at collate time. `edge_feature_dim(graph_cfg)` in `mci_gru/graph/utils.py` is the single source of that final width: `run_experiment.py` calls it before `create_model`, and `paper_trade/scripts/infer.py` calls the same helper so frozen inference agrees.
 - **Experiments**: Use Hydra includes such as `configs/experiment/correlation_dynamic.yaml` (6-month updates) or `correlation_dynamic_topk20_pos.yaml` (top-K + multi-feature + updates) for dynamic-graph presets. Base `configs/config.yaml` defaults: static graph, `top_k=0`, `use_multi_feature_edges=true`.
 
 **Still roadmap / not implemented as described in that plan**
@@ -150,7 +155,7 @@ The file `docs/agent_references/cursor/plans/graph_signal_upgrades_c28cf640.plan
 
 **Diagnostic**
 
-- `scripts/diagnose_dynamic_graph.py` — reproduces snapshot edge-count / Jaccard style statistics from the audit.
+- The snapshot edge-count / Jaccard diagnostic script described in that plan is **not in this repository**; do not route to it. Snapshot timing and edge behaviour are covered by `tests/test_dynamic_graph_updates.py`.
 
 ## Code Style
 

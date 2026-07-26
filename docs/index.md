@@ -54,6 +54,8 @@ them as provenance.
 
 | Document | Purpose |
 | --- | --- |
+| [agents/guide.md](agents/guide.md) | Current-state routing for nontrivial work: owning modules, adjacent contracts, focused tests, and engineering constraints. |
+| [agents/target-architecture.md](agents/target-architecture.md) | Human-led workspace for future-state architecture decisions; intentionally undecided and not current-state authority. |
 | [agents/domain.md](agents/domain.md) | Source-of-truth hierarchy and stale-doc policy. |
 | [agents/issue-tracker.md](agents/issue-tracker.md) | GitHub issue tracker policy. |
 | [agents/triage-labels.md](agents/triage-labels.md) | Default triage label vocabulary. |
