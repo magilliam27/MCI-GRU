@@ -54,6 +54,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--trial-ledger-path")
     parser.add_argument("--trial-ledger-complete", action="store_true")
     parser.add_argument(
+        "--expected-trial-id",
+        action="append",
+        default=None,
+        help="Expected trial identifier; repeat once per declared family member.",
+    )
+    parser.add_argument(
         "--oos-not-previously-accessed",
         action="store_true",
         help="Declare that the study period was untouched before this frozen test.",
@@ -126,6 +132,7 @@ def _run_research_evidence(args: argparse.Namespace) -> None:
         alpha=args.alpha,
         trial_ledger_path=args.trial_ledger_path,
         trial_ledger_complete=args.trial_ledger_complete,
+        expected_trial_ids=tuple(args.expected_trial_id or ()),
         oos_previously_accessed=not args.oos_not_previously_accessed,
         exchange_timezone=args.exchange_timezone,
         signal_close_local_time=args.signal_close_local_time,

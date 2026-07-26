@@ -304,6 +304,41 @@ def test_complete_trial_ledger_declaration_requires_a_hashed_ledger(tmp_path: Pa
         )
 
 
+def test_complete_trial_ledger_declaration_requires_expected_members(tmp_path: Path) -> None:
+    paths = _write_research_fixture(tmp_path)
+    ledger = tmp_path / "trial_ledger.csv"
+    pd.DataFrame([{"trial_id": "seed-1", "family_id": "fixture-family", "status": "OK"}]).to_csv(
+        ledger, index=False
+    )
+
+    with pytest.raises(ValueError, match="requires expected_trial_ids"):
+        replace(
+            _protocol(paths, test_end="2024-01-02", null_draws=1000),
+            trial_ledger_path=ledger,
+            trial_ledger_complete=True,
+        )
+
+
+def test_complete_trial_ledger_rejects_missing_declared_member(tmp_path: Path) -> None:
+    paths = _write_research_fixture(tmp_path)
+    ledger = tmp_path / "trial_ledger.csv"
+    pd.DataFrame([{"trial_id": "seed-1", "family_id": "fixture-family", "status": "OK"}]).to_csv(
+        ledger, index=False
+    )
+    protocol = replace(
+        _protocol(paths, test_end="2024-01-02", null_draws=1000),
+        trial_ledger_path=ledger,
+        trial_ledger_complete=True,
+        expected_trial_ids=("seed-1", "seed-2"),
+    )
+
+    evidence = build_selection_research_evidence(protocol)
+
+    assert evidence.protocol["multiplicity"]["expected_trial_ids"] == ["seed-1", "seed-2"]
+    assert "TRIAL_LEDGER_FAMILY_MISMATCH" in evidence.result["failed_guards"]
+    assert evidence.result["claim_status"] == "INVALID_EVIDENCE"
+
+
 def test_end_to_end_bundle_is_byte_identical_across_output_roots(tmp_path: Path) -> None:
     paths = _write_research_fixture(tmp_path)
     evidence = build_selection_research_evidence(

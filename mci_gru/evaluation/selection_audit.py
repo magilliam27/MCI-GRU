@@ -46,6 +46,7 @@ from mci_gru.evaluation.statistics import (
     newey_west_mean_inference,
     newey_west_std,
 )
+from mci_gru.evaluation.trial_ledger import validate_trial_family
 
 MIN_RESEARCH_NULL_DRAWS = 1_000
 MIN_PRELIMINARY_DATES = 60
@@ -99,6 +100,7 @@ class SelectionResearchProtocol:
     null_family: str = RESEARCH_NULL_FAMILY
     trial_ledger_path: str | Path | None = None
     trial_ledger_complete: bool = False
+    expected_trial_ids: tuple[str, ...] = ()
     oos_previously_accessed: bool = True
     exchange_timezone: str = "America/New_York"
     signal_close_local_time: str = "16:00:00"
@@ -148,6 +150,8 @@ class SelectionResearchProtocol:
             raise ValueError("alpha must be in (0, 1)")
         if self.trial_ledger_complete and self.trial_ledger_path is None:
             raise ValueError("trial_ledger_complete requires a hashed trial_ledger_path")
+        if self.trial_ledger_complete and not self.expected_trial_ids:
+            raise ValueError("trial_ledger_complete requires expected_trial_ids")
         try:
             pd.Timestamp(f"2000-01-03T{self.signal_close_local_time}").tz_localize(
                 self.exchange_timezone
@@ -657,6 +661,7 @@ def _canonical_research_protocol(
         },
         "multiplicity": {
             "trial_ledger_complete": bool(protocol.trial_ledger_complete),
+            "expected_trial_ids": sorted(protocol.expected_trial_ids),
             "oos_previously_accessed": bool(protocol.oos_previously_accessed),
         },
         "inputs": input_hashes,
@@ -870,9 +875,10 @@ def _build_research_result(
         hard_invalid_guards.append("PIT_KNOWLEDGE_UNKNOWN")
     if score_denominator == "UNKNOWN":
         hard_invalid_guards.append("SCORE_DENOMINATOR_UNKNOWN")
-    if protocol.trial_ledger_complete and not _trial_ledger_contains_family(
+    if protocol.trial_ledger_complete and not _trial_ledger_matches_family(
         protocol.trial_ledger_path,
         protocol.trial_family_id,
+        protocol.expected_trial_ids,
     ):
         hard_invalid_guards.append("TRIAL_LEDGER_FAMILY_MISMATCH")
     failed_guards.extend(hard_invalid_guards)
@@ -1124,9 +1130,10 @@ def _date_text(value: str) -> str:
     return pd.Timestamp(value).strftime("%Y-%m-%d")
 
 
-def _trial_ledger_contains_family(
+def _trial_ledger_matches_family(
     path: str | Path | None,
     family_id: str,
+    expected_trial_ids: tuple[str, ...],
 ) -> bool:
     if path is None:
         return False
@@ -1141,9 +1148,14 @@ def _trial_ledger_contains_family(
             frame = pd.DataFrame(records)
         else:
             frame = pd.read_csv(ledger_path)
+        validate_trial_family(
+            frame,
+            family_id=family_id,
+            expected_trial_ids=expected_trial_ids,
+        )
     except (OSError, ValueError):
         return False
-    return "family_id" in frame and family_id in set(frame["family_id"].astype(str))
+    return True
 
 
 def _sha256_file(path: Path) -> str:
