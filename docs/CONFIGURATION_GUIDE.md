@@ -166,6 +166,7 @@ Values below reflect **`configs/config.yaml`** merged with **`configs/data/sp500
 | Training | num_models | 10 |
 | Training | loss_type | `combined` (MSE + IC; `ic_loss_alpha` 0.5) |
 | Training | selection_metric | `val_ic` (checkpoint / early stopping; use `val_loss` to mirror loss only) |
+| Training | minimum_selection_rows | `1` (eligible validation dates the selection metric needs; a run whose `selection_metric` has fewer raises instead of selecting a checkpoint from an empty metric) |
 | Training | lr_scheduler | `cosine` (linear warmup `warmup_steps` then cosine decay; `none` disables) |
 | Training | use_amp | `true` on CUDA (no-op on CPU) |
 | Tracking | enabled | `true` (local `./mlruns`; set `tracking.enabled=false` to disable) |
