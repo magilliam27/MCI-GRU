@@ -21,6 +21,7 @@ CONFIG_CANDIDATES = [
     "config.yaml",
     "config.yml",
     "config.json",
+    "resolved_config.json",
     "resolved_config.yaml",
     ".hydra/config.yaml",
 ]

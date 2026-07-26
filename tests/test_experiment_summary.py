@@ -1,24 +1,105 @@
 """Unit tests for mci_gru.evaluation.experiment_summary (WS-M M2 move)."""
 
 import hashlib
+import json
 import logging
 import os
 import sys
 from datetime import datetime
 
 import numpy as np
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from mci_gru.config import create_config_from_dict
 from mci_gru.evaluation.experiment_summary import (
+    REDACTED_ABSOLUTE_PATH,
     compute_evaluation_summary,
     data_file_fingerprint,
     resolved_evaluation_kwargs,
     select_training_objective_value,
+    write_resolved_config,
 )
+from mci_gru.evaluation.run_bundle import CONFIG_CANDIDATES
 
 logger = logging.getLogger(__name__)
+
+
+def test_write_resolved_config_persists_complete_window_identity(tmp_path):
+    config = create_config_from_dict(
+        {
+            "data": {"train_end": "2023-12-31"},
+            "evaluation": {"bootstrap_resamples": 17, "sharpe_method": "naive"},
+            "seed": 314159,
+        }
+    )
+
+    identity = write_resolved_config(config, tmp_path)
+
+    path = tmp_path / "resolved_config.json"
+    payload = path.read_bytes()
+    parsed = json.loads(payload)
+    assert parsed["data"]["train_end"] == "2023-12-31"
+    assert parsed["evaluation"]["bootstrap_resamples"] == 17
+    assert parsed["evaluation"]["sharpe_method"] == "naive"
+    assert parsed["seed"] == 314159
+    assert identity == {
+        "resolved_config_path": "resolved_config.json",
+        "resolved_config_sha256": hashlib.sha256(payload).hexdigest(),
+    }
+
+
+def test_write_resolved_config_digest_matches_the_stored_bytes(tmp_path):
+    config = create_config_from_dict({"seed": 271828})
+
+    identity = write_resolved_config(config, tmp_path)
+
+    stored = (tmp_path / identity["resolved_config_path"]).read_bytes()
+    assert identity["resolved_config_sha256"] == hashlib.sha256(stored).hexdigest()
+
+
+def test_write_resolved_config_redacts_absolute_paths_without_dropping_keys(tmp_path):
+    absolute_csv = tmp_path / "market.csv"
+    config = create_config_from_dict({"data": {"filename": str(absolute_csv)}})
+
+    write_resolved_config(config, tmp_path)
+
+    parsed = json.loads((tmp_path / "resolved_config.json").read_bytes())
+    assert "filename" in parsed["data"], "a redacted setting must stay distinguishable from unset"
+    assert parsed["data"]["filename"] == REDACTED_ABSOLUTE_PATH
+    assert str(tmp_path) not in json.dumps(parsed)
+
+
+def test_write_resolved_config_keeps_relative_paths_readable(tmp_path):
+    config = create_config_from_dict({"data": {"filename": "data/raw/market/sp500_data.csv"}})
+
+    write_resolved_config(config, tmp_path)
+
+    parsed = json.loads((tmp_path / "resolved_config.json").read_bytes())
+    assert parsed["data"]["filename"] == "data/raw/market/sp500_data.csv"
+
+
+def test_write_resolved_config_refuses_to_overwrite_existing_evidence(tmp_path):
+    config = create_config_from_dict({"seed": 1})
+    write_resolved_config(config, tmp_path)
+
+    with pytest.raises(FileExistsError):
+        write_resolved_config(create_config_from_dict({"seed": 2}), tmp_path)
+
+    reread = json.loads((tmp_path / "resolved_config.json").read_bytes())
+    assert reread["seed"] == 1
+
+    identity = write_resolved_config(create_config_from_dict({"seed": 2}), tmp_path, force=True)
+    assert json.loads((tmp_path / "resolved_config.json").read_bytes())["seed"] == 2
+    assert (
+        identity["resolved_config_sha256"]
+        != hashlib.sha256(json.dumps(reread).encode()).hexdigest()
+    )
+
+
+def test_resolved_config_artifact_is_discoverable_by_run_bundle():
+    assert "resolved_config.json" in CONFIG_CANDIDATES
 
 
 def test_data_file_fingerprint_hashes_existing_file(tmp_path):
