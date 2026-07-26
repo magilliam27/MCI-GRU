@@ -101,6 +101,7 @@ def _one_window_from_train_end(
             graph=base.graph,
             model=base.model,
             training=base.training,
+            evaluation=base.evaluation,
             tracking=base.tracking,
             experiment_name=base.experiment_name,
             output_dir=base.output_dir,
