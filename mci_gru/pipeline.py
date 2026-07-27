@@ -29,10 +29,12 @@ from mci_gru.data.pit import (
 from mci_gru.data.preprocessing import (
     apply_rank_gaussian,
     apply_rank_labels,
+    assert_training_labels_respect_embargo,
     compute_labels,
     fit_rank_gaussian_reference,
     generate_graph_features,
     generate_time_series_features,
+    purge_training_sessions_for_embargo,
 )
 from mci_gru.data.transforms import (
     compute_zscore_norm_stats,
@@ -309,6 +311,35 @@ def _stock_feature_row_slice(
     start = all_dates.index(label_dates[0]) - his_t
     end = start + len(label_dates)
     return start, end
+
+
+def _embargo_training_sessions(
+    train_dates: list[str],
+    df_for_labels: pd.DataFrame,
+    kdcode_list: list[str],
+    val_start: str,
+    his_t: int,
+    label_t: int,
+) -> list[str]:
+    """Purge the training tail for the embargo, then verify it on the real session axis.
+
+    The purge keeps the configured split dates untouched, so no YAML needs editing. The
+    verification is unconditional -- ``data.skip_embargo_check`` governs the cheap
+    calendar-day check in ``ExperimentConfig`` only, not this data-backed one.
+    """
+    purged = purge_training_sessions_for_embargo(train_dates, his_t, label_t)
+    dropped = len(train_dates) - len(purged)
+    if dropped:
+        logger.info(
+            f"Embargo purge: dropped the last {dropped} training session(s) "
+            f"({train_dates[len(purged)]}..{train_dates[-1]}) so training labels mature "
+            f"before val_start={val_start} (label_t={label_t} sessions)"
+        )
+    summary = assert_training_labels_respect_embargo(
+        df_for_labels, kdcode_list, purged[his_t:], val_start, label_t
+    )
+    logger.info(f"Session-level train/val embargo verified: {summary}")
+    return purged
 
 
 def _build_tensors(
@@ -733,6 +764,15 @@ def prepare_data(
     val_dates = sorted(val_df["dt"].unique())
     test_dates = sorted(test_df["dt"].unique())
 
+    train_dates = _embargo_training_sessions(
+        train_dates,
+        frames.raw,
+        kdcode_list,
+        config.data.val_start,
+        config.model.his_t,
+        config.model.label_t,
+    )
+
     tensor_bundle = build_tensors(
         frames,
         kdcode_list,
@@ -853,6 +893,15 @@ def prepare_data_index_level(
     train_dates = sorted(train_df["dt"].unique())
     val_dates = sorted(val_df["dt"].unique())
     test_dates = sorted(test_df["dt"].unique())
+
+    train_dates = _embargo_training_sessions(
+        train_dates,
+        df_filtered,
+        kdcode_list,
+        config.data.val_start,
+        config.model.his_t,
+        config.model.label_t,
+    )
 
     tensors = _build_tensors(
         df_filtered,
