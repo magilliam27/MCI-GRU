@@ -286,7 +286,8 @@ def test_prepare_data_masked_panel_keeps_union_axis_without_complete_stock_filte
     assert data["kdcode_list"] == ["AAA", "DROP", "NEW"]
     assert data["stock_features_train"].shape[1] == 3
     new_idx = data["kdcode_list"].index("NEW")
-    assert data["train_dates"] == ["2020-01-03", "2020-01-04", "2020-01-05", "2020-01-06"]
-    assert data["train_feature_ready_mask"][:, new_idx].tolist() == [True, True, True, True]
-    assert data["train_tradable_mask"][:, new_idx].tolist() == [False, False, True, True]
+    # 2020-01-06 is purged: with label_t=1 its label reads the 2020-01-07 close, which is val_start.
+    assert data["train_dates"] == ["2020-01-03", "2020-01-04", "2020-01-05"]
+    assert data["train_feature_ready_mask"][:, new_idx].tolist() == [True, True, True]
+    assert data["train_tradable_mask"][:, new_idx].tolist() == [False, False, True]
     assert data["pit_breadth"]["train"][2]["scoreable_count"] == 2

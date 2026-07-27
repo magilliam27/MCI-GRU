@@ -75,12 +75,15 @@ Usage:
 """
 
 import argparse
+import inspect
 import logging
 import os
 import warnings
+from collections.abc import Callable
 from datetime import datetime
 from glob import glob
 from pathlib import Path
+from typing import Any
 
 import matplotlib
 import numpy as np
@@ -789,6 +792,23 @@ def _pit_active_kdcodes_on_date(pit_universe_df: pd.DataFrame | None, date: str)
     return set(pit_universe_df.loc[mask, "kdcode"].astype(str))
 
 
+def admit_pit_candidates(
+    day_preds: pd.DataFrame,
+    pit_universe_df: pd.DataFrame | None,
+    pred_date: str,
+) -> pd.DataFrame:
+    """Restrict one prediction day's candidates to the PIT-active universe.
+
+    Every simulator admits candidates through this helper so the portfolio is built on
+    the same basis as the benchmark, which is always PIT-filtered via
+    ``equal_weight_benchmark_daily_series``.  With no PIT universe this is a no-op.
+    """
+    active_kdcodes = _pit_active_kdcodes_on_date(pit_universe_df, pred_date)
+    if active_kdcodes is None:
+        return day_preds
+    return day_preds[day_preds["kdcode"].astype(str).isin(active_kdcodes)]
+
+
 def equal_weight_benchmark_daily_series(
     stock_data_df: pd.DataFrame,
     pit_universe_df: pd.DataFrame | None = None,
@@ -1153,9 +1173,7 @@ def simulate_trading_strategy(
     for _i, pred_date in enumerate(pred_dates):
         # Day t: Get predictions made at close
         day_preds = predictions_df[predictions_df["dt"] == pred_date].copy()
-        active_kdcodes = _pit_active_kdcodes_on_date(pit_universe_df, pred_date)
-        if active_kdcodes is not None:
-            day_preds = day_preds[day_preds["kdcode"].astype(str).isin(active_kdcodes)]
+        day_preds = admit_pit_candidates(day_preds, pit_universe_df, pred_date)
 
         if len(day_preds) < top_k:
             prev_date_ranks = None
@@ -1425,6 +1443,7 @@ def simulate_trading_strategy_staggered(
     holding_period=21,
     transaction_costs=None,
     rank_drop_gate=None,
+    pit_universe_df: pd.DataFrame | None = None,
 ):
     """
     Simulate trading strategy with staggered multi-day tranche rebalancing.
@@ -1449,6 +1468,13 @@ def simulate_trading_strategy_staggered(
         holding_period: Number of days each tranche holds before rebalancing
         transaction_costs: Dict with 'enabled', 'bid_ask_spread', 'slippage'
         rank_drop_gate: Dict with 'enabled' and 'min_rank_drop'
+        pit_universe_df: Optional PIT intervals restricting both candidates and benchmark
+
+    Note:
+        A tranche whose prediction day has fewer than top_k admitted candidates does not
+        rebalance and keeps its existing holdings; its tranche state is not reset. PIT
+        admission makes short candidate days more likely, so results with a PIT universe
+        differ from a full-universe run.
 
     Returns:
         Dictionary with same schema as simulate_trading_strategy()
@@ -1501,7 +1527,7 @@ def simulate_trading_strategy_staggered(
             "stock_data_df must have 'daily_return' column. Run calculate_forward_returns() first!"
         )
 
-    bm_by_date = equal_weight_benchmark_daily_series(stock_data_df)
+    bm_by_date = equal_weight_benchmark_daily_series(stock_data_df, pit_universe_df)
 
     # Per-tranche state: each tranche tracks its own holdings and rank history
     tranches = {
@@ -1539,6 +1565,7 @@ def simulate_trading_strategy_staggered(
 
         # Get predictions for this date and rank them
         day_preds = predictions_df[predictions_df["dt"] == pred_date].copy()
+        day_preds = admit_pit_candidates(day_preds, pit_universe_df, pred_date)
         if len(day_preds) < top_k:
             continue
 
@@ -1791,6 +1818,7 @@ def simulate_trading_strategy_block(
     holding_period=21,
     transaction_costs=None,
     rank_drop_gate=None,
+    pit_universe_df: pd.DataFrame | None = None,
 ):
     """
     Simulate trading strategy with block rebalancing (retail-realistic).
@@ -1808,6 +1836,13 @@ def simulate_trading_strategy_block(
         holding_period: Rebalance whole portfolio every this many prediction days
         transaction_costs: Dict with 'enabled', 'bid_ask_spread', 'slippage'
         rank_drop_gate: Dict with 'enabled' and 'min_rank_drop'
+        pit_universe_df: Optional PIT intervals restricting both candidates and benchmark
+
+    Note:
+        A day with fewer than top_k admitted candidates still books the return of the
+        existing holdings (and still resolves entry_date for the benchmark) instead of
+        being skipped. PIT admission makes short candidate days more likely, so results
+        with a PIT universe differ from a full-universe run.
 
     Returns:
         Dictionary with same schema as simulate_trading_strategy()
@@ -1856,7 +1891,7 @@ def simulate_trading_strategy_block(
             "stock_data_df must have 'daily_return' column. Run calculate_forward_returns() first!"
         )
 
-    bm_by_date = equal_weight_benchmark_daily_series(stock_data_df)
+    bm_by_date = equal_weight_benchmark_daily_series(stock_data_df, pit_universe_df)
 
     # Single portfolio state
     current_holdings = set()
@@ -1877,6 +1912,7 @@ def simulate_trading_strategy_block(
 
     for i, pred_date in enumerate(pred_dates):
         day_preds = predictions_df[predictions_df["dt"] == pred_date].copy()
+        day_preds = admit_pit_candidates(day_preds, pit_universe_df, pred_date)
         if len(day_preds) < top_k:
             # Still need entry_date for benchmark / skip day
             try:
@@ -2137,6 +2173,84 @@ def simulate_trading_strategy_block(
 
 
 # ============================================================================
+# SIMULATOR DISPATCH (single admission basis for every replay path)
+# ============================================================================
+
+PIT_UNIVERSE_PARAM = "pit_universe_df"
+
+
+def _simulator_accepts_pit_universe(simulator: Callable[..., Any]) -> bool:
+    """True when ``simulator`` declares the PIT universe parameter explicitly.
+
+    A bare ``**kwargs`` does not count: it would absorb the PIT universe without
+    admitting candidates on it, which is the silent failure this guard exists to stop.
+    """
+    return PIT_UNIVERSE_PARAM in inspect.signature(simulator).parameters
+
+
+def _select_simulator(
+    holding_period: int,
+    rebalance_style: str,
+) -> tuple[Callable[..., Any], dict[str, Any]]:
+    """Resolve the one simulator implied by holding period and rebalance style."""
+    if holding_period == 1:
+        return simulate_trading_strategy, {}
+    if rebalance_style == "block":
+        return simulate_trading_strategy_block, {"holding_period": holding_period}
+    return simulate_trading_strategy_staggered, {"holding_period": holding_period}
+
+
+def dispatch_trading_simulation(
+    predictions_df: pd.DataFrame,
+    stock_data_df: pd.DataFrame,
+    *,
+    top_k: int,
+    label_t: int,
+    holding_period: int = 1,
+    rebalance_style: str = "staggered",
+    transaction_costs: dict | None = None,
+    rank_drop_gate: dict | None = None,
+    pit_universe_df: pd.DataFrame | None = None,
+) -> dict[str, Any]:
+    """Run the simulator selected by ``holding_period`` / ``rebalance_style``.
+
+    Every replay path (``evaluate``, ``plot_equity_curve``, the ``--auto_save`` rerun)
+    goes through here, so the PIT universe cannot be threaded into one path and
+    forgotten in another.  Because the benchmark is always PIT-filtered, a portfolio
+    built on the full universe would make the reported excess return a mixed-basis
+    artefact; if the selected simulator cannot accept the PIT universe, the run is
+    refused rather than producing that number.
+
+    The three paths react differently to a day with fewer than ``top_k`` admitted
+    candidates -- daily skips the day and drops its rank history, staggered leaves the
+    tranche holding with its state intact, block still books the held return -- so
+    enabling PIT admission changes results as well as removing the bias.
+    """
+    simulator, kwargs = _select_simulator(holding_period, rebalance_style)
+    if _simulator_accepts_pit_universe(simulator):
+        kwargs[PIT_UNIVERSE_PARAM] = pit_universe_df
+    elif pit_universe_df is not None:
+        raise ValueError(
+            "Refusing to run a PIT-restricted backtest through a simulator that does not "
+            f"accept '{PIT_UNIVERSE_PARAM}': "
+            f"simulator={getattr(simulator, '__name__', simulator)!r}, "
+            f"holding_period={holding_period}, rebalance_style={rebalance_style!r}. "
+            "The benchmark is always PIT-filtered, so the portfolio must be admitted on "
+            "the same basis; restore PIT support in that simulator, or clear "
+            "pit_universe_csv (or use holding_period=1) to run without a PIT universe."
+        )
+    return simulator(
+        predictions_df=predictions_df,
+        stock_data_df=stock_data_df,
+        top_k=top_k,
+        label_t=label_t,
+        transaction_costs=transaction_costs,
+        rank_drop_gate=rank_drop_gate,
+        **kwargs,
+    )
+
+
+# ============================================================================
 # MAIN EVALUATION
 # ============================================================================
 
@@ -2179,36 +2293,17 @@ def evaluate(predictions_dir, config=None):
     # Simulate trading strategy (dispatch based on holding period and rebalance style)
     holding_period = config.get("holding_period", 1)
     rebalance_style = config.get("rebalance_style", "staggered")
-    if holding_period == 1:
-        sim_results = simulate_trading_strategy(
-            predictions_df=predictions_df,
-            stock_data_df=stock_data,
-            top_k=config["top_k"],
-            label_t=config["label_t"],
-            transaction_costs=tc_config,
-            rank_drop_gate=rank_drop_config,
-            pit_universe_df=pit_universe_df,
-        )
-    elif rebalance_style == "block":
-        sim_results = simulate_trading_strategy_block(
-            predictions_df=predictions_df,
-            stock_data_df=stock_data,
-            top_k=config["top_k"],
-            label_t=config["label_t"],
-            holding_period=holding_period,
-            transaction_costs=tc_config,
-            rank_drop_gate=rank_drop_config,
-        )
-    else:
-        sim_results = simulate_trading_strategy_staggered(
-            predictions_df=predictions_df,
-            stock_data_df=stock_data,
-            top_k=config["top_k"],
-            label_t=config["label_t"],
-            holding_period=holding_period,
-            transaction_costs=tc_config,
-            rank_drop_gate=rank_drop_config,
-        )
+    sim_results = dispatch_trading_simulation(
+        predictions_df=predictions_df,
+        stock_data_df=stock_data,
+        top_k=config["top_k"],
+        label_t=config["label_t"],
+        holding_period=holding_period,
+        rebalance_style=rebalance_style,
+        transaction_costs=tc_config,
+        rank_drop_gate=rank_drop_config,
+        pit_universe_df=pit_universe_df,
+    )
 
     portfolio_returns = sim_results["portfolio_returns"]
     benchmark_returns = sim_results["benchmark_returns"]
@@ -3018,36 +3113,17 @@ def plot_equity_curve(predictions_dir, stock_data, config, output_path=None):
     rank_drop_config = config.get("rank_drop_gate", DEFAULT_CONFIG["rank_drop_gate"])
     holding_period = config.get("holding_period", 1)
     rebalance_style = config.get("rebalance_style", "staggered")
-    if holding_period == 1:
-        sim_results = simulate_trading_strategy(
-            predictions_df=predictions_df,
-            stock_data_df=stock_data,
-            top_k=config["top_k"],
-            label_t=config["label_t"],
-            transaction_costs=tc_config,
-            rank_drop_gate=rank_drop_config,
-            pit_universe_df=pit_universe_df,
-        )
-    elif rebalance_style == "block":
-        sim_results = simulate_trading_strategy_block(
-            predictions_df=predictions_df,
-            stock_data_df=stock_data,
-            top_k=config["top_k"],
-            label_t=config["label_t"],
-            holding_period=holding_period,
-            transaction_costs=tc_config,
-            rank_drop_gate=rank_drop_config,
-        )
-    else:
-        sim_results = simulate_trading_strategy_staggered(
-            predictions_df=predictions_df,
-            stock_data_df=stock_data,
-            top_k=config["top_k"],
-            label_t=config["label_t"],
-            holding_period=holding_period,
-            transaction_costs=tc_config,
-            rank_drop_gate=rank_drop_config,
-        )
+    sim_results = dispatch_trading_simulation(
+        predictions_df=predictions_df,
+        stock_data_df=stock_data,
+        top_k=config["top_k"],
+        label_t=config["label_t"],
+        holding_period=holding_period,
+        rebalance_style=rebalance_style,
+        transaction_costs=tc_config,
+        rank_drop_gate=rank_drop_config,
+        pit_universe_df=pit_universe_df,
+    )
 
     cal_d, port_cal, bm_cal = calendar_returns_for_evaluation_window(
         stock_data,
@@ -3489,36 +3565,17 @@ def main(argv: list[str] | None = None):
                 # Get full simulation results
                 holding_period = config.get("holding_period", 1)
                 rebalance_style = config.get("rebalance_style", "staggered")
-                if holding_period == 1:
-                    sim_results = simulate_trading_strategy(
-                        predictions_df=predictions_df,
-                        stock_data_df=stock_data,
-                        top_k=config["top_k"],
-                        label_t=config["label_t"],
-                        transaction_costs=config["transaction_costs"],
-                        rank_drop_gate=config["rank_drop_gate"],
-                        pit_universe_df=pit_universe_df,
-                    )
-                elif rebalance_style == "block":
-                    sim_results = simulate_trading_strategy_block(
-                        predictions_df=predictions_df,
-                        stock_data_df=stock_data,
-                        top_k=config["top_k"],
-                        label_t=config["label_t"],
-                        holding_period=holding_period,
-                        transaction_costs=config["transaction_costs"],
-                        rank_drop_gate=config["rank_drop_gate"],
-                    )
-                else:
-                    sim_results = simulate_trading_strategy_staggered(
-                        predictions_df=predictions_df,
-                        stock_data_df=stock_data,
-                        top_k=config["top_k"],
-                        label_t=config["label_t"],
-                        holding_period=holding_period,
-                        transaction_costs=config["transaction_costs"],
-                        rank_drop_gate=config["rank_drop_gate"],
-                    )
+                sim_results = dispatch_trading_simulation(
+                    predictions_df=predictions_df,
+                    stock_data_df=stock_data,
+                    top_k=config["top_k"],
+                    label_t=config["label_t"],
+                    holding_period=holding_period,
+                    rebalance_style=rebalance_style,
+                    transaction_costs=config["transaction_costs"],
+                    rank_drop_gate=config["rank_drop_gate"],
+                    pit_universe_df=pit_universe_df,
+                )
 
                 # Save comprehensive results
                 save_backtest_results(

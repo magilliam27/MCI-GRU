@@ -6,6 +6,8 @@ Contains pure data-transformation functions extracted from run_experiment.py:
 - generate_graph_features: per-day graph node features
 - compute_labels: forward-return label computation
 - apply_rank_labels: cross-sectional rank percentile conversion
+- purge_training_sessions_for_embargo / assert_training_labels_respect_embargo:
+  session-level train/val embargo (labels are row shifts, not calendar offsets)
 """
 
 import numpy as np
@@ -203,3 +205,144 @@ def compute_labels(
         pivot = pivot.fillna(0)
 
     return pivot.values.astype(np.float32)
+
+
+def purge_training_sessions_for_embargo(
+    train_dates: list[str],
+    his_t: int,
+    label_t: int,
+) -> list[str]:
+    """Drop the final ``label_t`` trading sessions from the training session axis.
+
+    ``compute_labels`` builds the label for signal date ``D`` as
+    ``close[D + label_t] / close[D + 1] - 1`` where the offsets are per-stock **row**
+    shifts over a session-indexed panel.  The label for the last training session
+    therefore matures ``label_t`` sessions later, which lands inside the validation
+    window whenever the configured gap spans fewer than ``label_t`` sessions -- a
+    calendar-day gap check cannot see this because weekends and holidays are absent
+    from the panel.
+
+    Purging the last ``label_t`` sessions of training *signal* leaves the configured
+    split dates untouched and guarantees the final training label matures no later
+    than the last training session, for any gap width.
+    """
+    if label_t <= 0:
+        return list(train_dates)
+
+    kept = list(train_dates[: max(0, len(train_dates) - label_t)])
+    if len(kept) <= his_t:
+        raise ValueError(
+            f"Embargo purge of {label_t} session(s) leaves no training labels: "
+            f"{len(train_dates)} training sessions, his_t={his_t}, label_t={label_t}. "
+            "Widen data.train_start..train_end or reduce model.his_t / model.label_t."
+        )
+    return kept
+
+
+def assert_training_labels_respect_embargo(
+    df_for_labels: pd.DataFrame,
+    kdcode_list: list[str],
+    train_label_dates: list[str],
+    val_start: str,
+    label_t: int,
+) -> dict[str, object]:
+    """Fail closed if any training label would mature on or after ``val_start``.
+
+    This is the authoritative, data-backed counterpart to the cheap calendar-day check
+    in ``ExperimentConfig._validate_embargo``: it runs on the real session axis, so it
+    measures sessions rather than calendar days.  It is deliberately unconditional and
+    takes no ``skip_embargo_check`` flag -- that flag governs the calendar check only.
+
+    Two bases are checked, both vectorised over the panel:
+
+    * **per-stock outcome dates** -- ``groupby('kdcode')['dt'].shift(-label_t)``, exactly
+      the rows ``compute_labels`` consumes, including stocks whose own panel has gaps;
+    * **union-session outcome dates** -- the label-date position on the panel's union
+      session axis plus ``label_t``.  A stock's rows are a subsequence of the union axis,
+      so this is a lower bound on its true outcome date, and unlike the per-stock basis
+      it stays defined when a stock's rows stop before its label matures.  Without it,
+      truncated stocks would look compliant and the check's strictness would depend on
+      how much future data happened to be loaded.
+
+    Returns a summary dict for logging.  Raises ``ValueError`` on any violation, on a
+    training label date missing from the panel, or when the panel is too short to prove
+    compliance.
+    """
+    summary: dict[str, object] = {
+        "label_t": label_t,
+        "val_start": val_start,
+        "train_label_dates": len(train_label_dates),
+    }
+    if label_t <= 0 or not train_label_dates:
+        return summary
+
+    panel = df_for_labels.loc[df_for_labels["kdcode"].isin(kdcode_list), ["kdcode", "dt"]]
+    if panel.empty:
+        raise ValueError(
+            "Cannot verify the train/val embargo: no label panel rows for the selected "
+            f"universe of {len(kdcode_list)} stock(s)."
+        )
+    panel = panel.sort_values(["kdcode", "dt"], kind="mergesort")
+
+    sessions = np.asarray(sorted(panel["dt"].unique()))
+    label_dates = np.asarray(sorted(set(train_label_dates)))
+    positions = np.searchsorted(sessions, label_dates)
+    clipped = np.minimum(positions, len(sessions) - 1)
+    missing = label_dates[(positions >= len(sessions)) | (sessions[clipped] != label_dates)]
+    if missing.size:
+        raise ValueError(
+            f"Cannot verify the train/val embargo: {missing.size} training label date(s) "
+            f"are absent from the label panel (first: {missing[0]})."
+        )
+
+    outcome_positions = positions + label_t
+    if int(outcome_positions.max()) >= len(sessions):
+        raise ValueError(
+            "Cannot verify the train/val embargo: the label panel ends before the last "
+            f"training label matures ({label_dates[-1]} + {label_t} sessions, panel ends "
+            f"{sessions[-1]}). Refusing to treat unverifiable labels as compliant."
+        )
+    union_outcomes = sessions[outcome_positions]
+    union_violations = label_dates[union_outcomes >= val_start]
+
+    panel = panel.copy()
+    panel["outcome_dt"] = panel.groupby("kdcode", sort=False)["dt"].shift(-label_t)
+    train_rows = panel[panel["dt"].isin(set(label_dates.tolist()))]
+    matured = train_rows["outcome_dt"].notna()
+    per_stock_violations = train_rows[matured & (train_rows["outcome_dt"] >= val_start)]
+
+    summary.update(
+        {
+            "last_train_label_date": str(label_dates[-1]),
+            # label_dates is sorted ascending, so the last outcome is the latest.
+            "last_union_outcome_date": str(union_outcomes[-1]),
+            "last_per_stock_outcome_date": (
+                str(train_rows.loc[matured, "outcome_dt"].max()) if bool(matured.any()) else None
+            ),
+            "rows_without_matured_label": int((~matured).sum()),
+        }
+    )
+
+    if union_violations.size or len(per_stock_violations):
+        detail = []
+        if union_violations.size:
+            detail.append(
+                f"{union_violations.size} training label date(s) mature at or after "
+                f"{val_start} on the union session axis (first: {union_violations[0]} "
+                f"-> {sessions[np.searchsorted(sessions, union_violations[0]) + label_t]})"
+            )
+        if len(per_stock_violations):
+            worst = per_stock_violations.iloc[0]
+            detail.append(
+                f"{len(per_stock_violations)} (stock, date) label(s) mature at or after "
+                f"{val_start} on their own session axis (first: {worst['kdcode']} "
+                f"{worst['dt']} -> {worst['outcome_dt']})"
+            )
+        raise ValueError(
+            "Train/val embargo violated on the session axis: "
+            + "; ".join(detail)
+            + f". label_t={label_t} is a session count, not a calendar-day count; the "
+            "training signal must be purged so labels mature before val_start."
+        )
+
+    return summary
