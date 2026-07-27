@@ -7,8 +7,16 @@ markers, and every test function. When test_reports/junit.xml exists (written
 by running pytest with --junitxml=test_reports/junit.xml), the last-run status
 and duration of each test are merged in.
 
+The registry also records a deterministic digest of the test inventory (files,
+module docstrings, exercised modules, test names, markers). ``--check`` recomputes
+that digest and fails when the committed registry no longer matches the tests on
+disk, so CI can enforce freshness without needing a junit report. The digest
+deliberately excludes the generation date and the per-test last-run status and
+duration, because those vary per run and per machine while the inventory does not.
+
 Usage:
     python scripts/generate_test_registry.py
+    python scripts/generate_test_registry.py --check
     python scripts/generate_test_registry.py --junit test_reports/junit.xml --out docs/TEST_REGISTRY.md
 """
 
@@ -17,12 +25,17 @@ from __future__ import annotations
 import argparse
 import ast
 import datetime as dt
+import hashlib
+import json
+import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIRST_PARTY_PREFIXES = ("mci_gru", "paper_trade", "scripts", "run_experiment")
+INVENTORY_DIGEST_PREFIX = "<!-- test-inventory-sha256: "
+INVENTORY_DIGEST_SUFFIX = " -->"
 
 
 @dataclass
@@ -155,6 +168,46 @@ def load_junit_results(
     return results, module_skips
 
 
+def inventory_digest(modules: list[TestModule]) -> str:
+    """Return a stable sha256 over the test inventory only.
+
+    File names are used instead of full paths, modules are ordered by name rather
+    than by directory enumeration, and no run metadata is included, so the digest
+    is identical on every machine that has the same tests checked out.
+    """
+    payload = [
+        {
+            "file": module.path.name,
+            "doc": module.doc,
+            "covers": module.covers,
+            "tests": [
+                {"name": test.name, "doc": test.doc, "markers": test.markers}
+                for test in module.tests
+            ],
+        }
+        for module in sorted(modules, key=lambda item: item.path.name)
+    ]
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def recorded_inventory_digest(content: str) -> str | None:
+    """Return the digest recorded in a rendered registry, or None when absent."""
+    for line in content.splitlines():
+        if line.startswith(INVENTORY_DIGEST_PREFIX) and line.endswith(INVENTORY_DIGEST_SUFFIX):
+            return line[len(INVENTORY_DIGEST_PREFIX) : -len(INVENTORY_DIGEST_SUFFIX)]
+    return None
+
+
+def registry_is_current(tests_dir: Path, out_path: Path) -> bool:
+    """Return whether out_path records the digest of the tests now on disk."""
+    if not out_path.is_file():
+        return False
+    modules = [parse_test_module(path) for path in sorted(tests_dir.glob("test_*.py"))]
+    recorded = recorded_inventory_digest(out_path.read_text(encoding="utf-8"))
+    return recorded is not None and recorded == inventory_digest(modules)
+
+
 def _display_junit_path(junit_path: Path) -> str:
     """Repo-relative path when possible, to keep the committed doc stable."""
     try:
@@ -182,6 +235,7 @@ def render_registry(
     lines.append(f"Generated: {stamp}")
     lines.append(f"Test files: {len(modules)}")
     lines.append(f"Test functions: {total_tests} (parametrized cases collapsed)")
+    lines.append(f"{INVENTORY_DIGEST_PREFIX}{inventory_digest(modules)}{INVENTORY_DIGEST_SUFFIX}")
     if junit is not None and junit_path is not None:
         lines.append(f"Last-run results merged from `{_display_junit_path(junit_path)}`.")
     else:
@@ -231,7 +285,14 @@ def render_registry(
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
-def build_registry(tests_dir: Path, junit_path: Path | None, out_path: Path) -> str:
+def build_registry(
+    tests_dir: Path,
+    junit_path: Path | None,
+    out_path: Path,
+    *,
+    write: bool = True,
+) -> str:
+    """Render the registry, writing it to out_path unless write is False."""
     modules = [parse_test_module(p) for p in sorted(tests_dir.glob("test_*.py"))]
     junit = None
     module_skips: set[str] = set()
@@ -246,17 +307,35 @@ def build_registry(tests_dir: Path, junit_path: Path | None, out_path: Path) -> 
         display_root=tests_dir.parent,
         module_skips=module_skips,
     )
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(content, encoding="utf-8")
+    if write:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        # newline="\n" keeps the committed bytes identical on Windows and Linux.
+        out_path.write_text(content, encoding="utf-8", newline="\n")
     return content
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tests-dir", type=Path, default=REPO_ROOT / "tests")
     parser.add_argument("--junit", type=Path, default=REPO_ROOT / "test_reports" / "junit.xml")
     parser.add_argument("--out", type=Path, default=REPO_ROOT / "docs" / "TEST_REGISTRY.md")
-    args = parser.parse_args()
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Fail without writing when the recorded test inventory is stale.",
+    )
+    args = parser.parse_args(argv)
+
+    if args.check:
+        if registry_is_current(args.tests_dir, args.out):
+            print(f"Test registry inventory is current: {args.out}")
+            return 0
+        print(
+            f"Test registry inventory is stale: {args.out}. "
+            "Regenerate with scripts/generate_test_registry.py.",
+            file=sys.stderr,
+        )
+        return 1
 
     build_registry(args.tests_dir, args.junit, args.out)
     print(f"Wrote {args.out}")

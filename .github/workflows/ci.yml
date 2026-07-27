@@ -19,6 +19,8 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       - run: python scripts/check_docs_sot.py
+      - name: Check test registry freshness
+        run: python scripts/generate_test_registry.py --check
 
   test:
     name: Test
@@ -43,7 +45,10 @@ jobs:
       - name: Install package with dev extras
         run: pip install -e ".[dev,fred]"
 
-      - name: Run tests (skip data-dependent)
+      - name: Run capability-independent tests
+        # Selection is marker-only: tests/conftest.py no longer infers external
+        # capabilities from test names. Capabilities unavailable to this runner
+        # (real market data files, LSEG Workspace) must carry their marker.
         run: python -m pytest tests/ -v -m "not requires_data and not requires_lseg" --timeout=120
 
       - name: Run end-to-end smoke

@@ -1,20 +1,12 @@
-"""Shared pytest fixtures and configuration for MCI-GRU tests."""
+"""Shared pytest fixtures for MCI-GRU tests.
 
-import os
+External capabilities are declared with the explicit `requires_data`,
+`requires_fred`, and `requires_lseg` markers registered in `pyproject.toml` and
+selected with `-m`. Test and file names never imply vendor access, so nothing
+here infers a capability from a node id.
+"""
 
 import pytest
-
-
-def pytest_collection_modifyitems(config, items):
-    """Auto-mark tests that need external resources."""
-    for item in items:
-        if (
-            "fred" in item.nodeid.lower() or "credit" in item.nodeid.lower()
-        ) and not os.environ.get("FRED_API_KEY"):
-            item.add_marker(pytest.mark.skip(reason="FRED_API_KEY not set"))
-
-        if "lseg" in item.nodeid.lower() or "refinitiv" in item.nodeid.lower():
-            item.add_marker(pytest.mark.skip(reason="LSEG/Refinitiv requires desktop app"))
 
 
 @pytest.fixture
