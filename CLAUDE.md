@@ -71,3 +71,10 @@ being in context. Brief yourself from the tracker every time:
   archive to a file first.
 - `gh auth status --hostname github.com` must be run standalone. A sandboxed
   result is not authoritative on this machine.
+- The connected GitHub app is not usable from Claude Code. In CLI sessions no
+  GitHub connector tools are registered at all; in desktop sessions the
+  connector is present but unauthorized. Either case is a **connector gap**
+  under `docs/agents/issue-tracker.md`'s routing rule, so host-routed `gh` is
+  the compliant path here rather than an override of policy. Do not attempt to
+  authorize a connector or start a new GitHub login; `gh` is already
+  authenticated.
