@@ -131,12 +131,17 @@ class GraphBuilder:
         kdcode_list: list[str],
         start_date: str,
         end_date: str,
+        first_sample_date: str | None = None,
     ) -> GraphSchedule:
         """Build all graph snapshots up-front and return a ``GraphSchedule``.
 
         The schedule covers *start_date* through *end_date*, with one snapshot
         per update interval.  Each snapshot uses only data **before** its
         valid-from date (no lookahead).
+
+        *first_sample_date* is the earliest date the schedule will be asked
+        about; supplying it lets ``GraphSchedule`` assert its readiness contract
+        (mandatory warm-up plus first-sample coverage) at construction.
         """
         update_dates = self.get_update_dates(start_date, end_date)
         snapshots: list[tuple[str, torch.Tensor, torch.Tensor]] = []
@@ -150,8 +155,18 @@ class GraphBuilder:
             ei, ew = self.build_graph(df, kdcode_list, date, show_progress=False)
             snapshots.append((date, ei, ew))
 
-        schedule = GraphSchedule(snapshots)
-        logger.info(f"  GraphSchedule ready: {schedule.num_snapshots} snapshots")
+        warmup_sessions = int(df.loc[df["dt"] < update_dates[0], "dt"].nunique())
+        schedule = GraphSchedule(
+            snapshots,
+            corr_lookback_days=self.corr_lookback_days,
+            sessions_before_first_snapshot=warmup_sessions,
+            first_sample_date=first_sample_date,
+        )
+        logger.info(
+            f"  GraphSchedule ready: {schedule.num_snapshots} snapshots, "
+            f"{warmup_sessions} warm-up session(s) before {update_dates[0]} "
+            f"(readiness verified: {schedule.is_ready})"
+        )
         return schedule
 
     # ------------------------------------------------------------------

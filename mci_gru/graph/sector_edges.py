@@ -3,40 +3,94 @@
 from __future__ import annotations
 
 import csv
+import logging
 from pathlib import Path
 
 import torch
 
+logger = logging.getLogger(__name__)
+
+# Values that state "no sector is known" rather than naming one.
+_MISSING_SECTOR_VALUES = frozenset({"", "nan", "none", "null", "na", "n/a", "unknown"})
+
+# Legacy curated map first, then the universe metadata export.
+_SECTOR_COLUMNS = ("sector", "gics_sector")
+
+
+def _is_missing(value: str) -> bool:
+    return value.strip().lower() in _MISSING_SECTOR_VALUES
+
 
 def load_sector_map_csv(path: str) -> dict[str, str]:
-    """Load ``kdcode -> sector`` from a CSV with headers ``kdcode`` and ``sector``."""
+    """Load ``kdcode -> sector`` from a curated map or a universe metadata export.
+
+    Two schemas are accepted:
+
+    * the legacy curated map, with columns ``kdcode`` and ``sector``;
+    * the universe metadata export (``as_of_date, kdcode, company_name,
+      company_market_cap, gics_sector, gics_sector_field``), from which the map is
+      **derived** rather than hand-maintained. The export carries one row per
+      ``(as_of_date, kdcode)``; sector assignment is stable across snapshots, so
+      the newest non-missing value wins and any disagreement is logged.
+
+    Names whose sector is blank or a "no sector known" placeholder are omitted
+    from the map entirely, so :func:`build_sector_edges` isolates them.
+    """
     p = Path(path)
     if not p.is_file():
         raise FileNotFoundError(f"sector_map_csv not found: {path}")
-    out: dict[str, str] = {}
     with p.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         if reader.fieldnames is None:
             raise ValueError(f"Empty CSV: {path}")
         fields = {h.strip().lower(): h for h in reader.fieldnames}
-        if "kdcode" not in fields or "sector" not in fields:
+        if "kdcode" not in fields:
             raise ValueError("sector_map_csv must have columns kdcode, sector")
-        kc_col = fields["kdcode"]
-        sec_col = fields["sector"]
+        sector_col = next((fields[name] for name in _SECTOR_COLUMNS if name in fields), None)
+        if sector_col is None:
+            raise ValueError("sector_map_csv must have columns kdcode, sector")
+        kdcode_col = fields["kdcode"]
+        as_of_col = fields.get("as_of_date")
+
+        out: dict[str, str] = {}
+        seen_as_of: dict[str, str] = {}
+        conflicts: set[str] = set()
         for row in reader:
-            k = str(row[kc_col]).strip()
-            s = str(row[sec_col]).strip()
-            if k:
-                out[k] = s
+            kdcode = str(row[kdcode_col]).strip()
+            sector = str(row[sector_col] or "").strip()
+            if not kdcode or _is_missing(sector):
+                continue
+            as_of = str(row[as_of_col] or "").strip() if as_of_col else ""
+            previous = out.get(kdcode)
+            if previous is not None and previous != sector:
+                conflicts.add(kdcode)
+            if previous is None or as_of >= seen_as_of.get(kdcode, ""):
+                out[kdcode] = sector
+                seen_as_of[kdcode] = as_of
+
+    if conflicts:
+        logger.warning(
+            f"Sector map: {len(conflicts)} kdcode(s) carry more than one sector across "
+            f"snapshots (newest wins), e.g. {sorted(conflicts)[:5]}"
+        )
+    logger.info(f"Sector map: {len(out)} kdcode(s) with a known sector from {p.name}")
     return out
 
 
 def build_sector_edges(
     kdcode_list: list[str],
     sector_by_kdcode: dict[str, str],
-    top_k: int,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Directed sector edges: each node links to up to ``top_k`` peers sharing sector.
+    """Directed sector edges: every ordered pair of distinct names sharing a sector.
+
+    Sectors are fully connected internally. The previous ``sector_top_k`` cap kept
+    the first K peers by ascending node index, which on an alphabetically ordered
+    panel encodes ticker spelling rather than any economic ranking; full connection
+    is order-independent and the edge count stays modest at realistic sector sizes.
+
+    Names with no sector assignment are **isolated** — they get no sector edges at
+    all. Bucketing them together under a shared ``UNKNOWN`` label would wire every
+    unmapped name to every other one, which is pure noise.
 
     Returns ``(edge_index (2, E), edge_weight (E,))`` with scalar weight 1.0.
     """
@@ -45,25 +99,29 @@ def build_sector_edges(
         z = torch.zeros((2, 0), dtype=torch.long)
         return z, torch.zeros(0, dtype=torch.float)
 
-    sectors = [sector_by_kdcode.get(k, "UNKNOWN") for k in kdcode_list]
     buckets: dict[str, list[int]] = {}
-    for idx, sec in enumerate(sectors):
-        buckets.setdefault(sec, []).append(idx)
+    isolated = 0
+    for idx, kdcode in enumerate(kdcode_list):
+        sector = str(sector_by_kdcode.get(kdcode, "") or "").strip()
+        if _is_missing(sector):
+            isolated += 1
+            continue
+        buckets.setdefault(sector, []).append(idx)
 
     rows: list[int] = []
     cols: list[int] = []
     for group in buckets.values():
-        if len(group) <= 1:
-            continue
-        g_sorted = sorted(group)
-        for src in g_sorted:
-            others = [x for x in g_sorted if x != src]
-            if not others:
-                continue
-            take = others[:top_k]
-            for dst in take:
-                rows.append(src)
-                cols.append(dst)
+        for src in group:
+            for dst in group:
+                if src != dst:
+                    rows.append(src)
+                    cols.append(dst)
+
+    logger.info(
+        f"Sector edges: {n - isolated}/{n} name(s) mapped "
+        f"({100.0 * (n - isolated) / n:.1f}% coverage) across {len(buckets)} sector(s); "
+        f"{isolated} name(s) isolated with no sector edges; {len(rows)} directed edge(s)"
+    )
 
     if not rows:
         z = torch.zeros((2, 0), dtype=torch.long)

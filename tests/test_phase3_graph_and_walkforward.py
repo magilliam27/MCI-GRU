@@ -4,18 +4,21 @@ from functools import partial
 
 import numpy as np
 import pandas as pd
+import pytest
 import torch
 from torch.utils.data import DataLoader
 
 from mci_gru.config import (
     DataConfig,
     ExperimentConfig,
+    GraphConfig,
     ModelConfig,
     TrainingConfig,
     WalkforwardConfig,
 )
 from mci_gru.data.data_manager import CombinedDataset, combined_collate_fn
 from mci_gru.graph.builder import GraphBuilder, GraphSchedule
+from mci_gru.graph.sector_edges import build_sector_edges, load_sector_map_csv
 from mci_gru.models import create_model
 from mci_gru.walkforward import generate_walkforward_configs
 
@@ -123,6 +126,79 @@ def test_cross_attention_forward_runs_and_grad():
     assert y.shape == (b, n)
     y.sum().backward()
     assert x.grad is not None
+
+
+def test_sector_edges_fully_connect_within_sector():
+    """Full connection is order-independent, unlike the removed ascending-index top_k."""
+    kdcodes = ["AAA", "BBB", "CCC", "DDD"]
+    sectors = {"AAA": "Tech", "BBB": "Tech", "CCC": "Tech", "DDD": "Energy"}
+
+    edge_index, edge_weight = build_sector_edges(kdcodes, sectors)
+
+    pairs = set(zip(edge_index[0].tolist(), edge_index[1].tolist(), strict=True))
+    assert pairs == {(0, 1), (0, 2), (1, 0), (1, 2), (2, 0), (2, 1)}
+    assert edge_weight.shape == (6,)
+    assert torch.all(edge_weight == 1.0)
+
+    # Relabelling the panel order must not change the edge set, only its indexing.
+    reordered = ["CCC", "AAA", "BBB", "DDD"]
+    ei_reordered, _ = build_sector_edges(reordered, sectors)
+    named = {
+        (reordered[src], reordered[dst])
+        for src, dst in zip(ei_reordered[0].tolist(), ei_reordered[1].tolist(), strict=True)
+    }
+    assert named == {
+        (kdcodes[src], kdcodes[dst])
+        for src, dst in zip(edge_index[0].tolist(), edge_index[1].tolist(), strict=True)
+    }
+
+
+@pytest.mark.parametrize("unmapped_sector", [None, "", "UNKNOWN"])
+def test_sector_edges_isolate_unmapped_names(unmapped_sector):
+    """Unmapped names get no sector edges — never a shared UNKNOWN bucket."""
+    kdcodes = ["AAA", "BBB", "XXX", "YYY"]
+    sectors = {"AAA": "Tech", "BBB": "Tech"}
+    if unmapped_sector is not None:
+        sectors["XXX"] = unmapped_sector
+        sectors["YYY"] = unmapped_sector
+
+    edge_index, _ = build_sector_edges(kdcodes, sectors)
+
+    pairs = set(zip(edge_index[0].tolist(), edge_index[1].tolist(), strict=True))
+    assert pairs == {(0, 1), (1, 0)}
+    assert 2 not in edge_index.flatten().tolist()
+    assert 3 not in edge_index.flatten().tolist()
+
+
+def test_sector_map_derived_from_universe_metadata_export(tmp_path):
+    """Sectors are derived from the universe export, not a hand-maintained CSV."""
+    csv_path = tmp_path / "metadata_snapshots.csv"
+    csv_path.write_text(
+        "as_of_date,kdcode,company_name,company_market_cap,gics_sector,gics_sector_field\n"
+        "2018-01-02,AAA.OQ,Aaa Inc,1.0,Information Technology,TR.GICSSector\n"
+        "2018-01-02,BBB.N,Bbb Inc,2.0,Energy,TR.GICSSector\n"
+        "2026-06-22,AAA.OQ,Aaa Inc,3.0,Information Technology,TR.GICSSector\n"
+        "2026-06-22,CCC.N,Ccc Inc,4.0,,TR.GICSSector\n",
+        encoding="utf-8",
+    )
+
+    sector_map = load_sector_map_csv(str(csv_path))
+
+    assert sector_map == {"AAA.OQ": "Information Technology", "BBB.N": "Energy"}
+    # CCC.N has no sector in the export, so it is isolated rather than bucketed.
+    edge_index, _ = build_sector_edges(["AAA.OQ", "BBB.N", "CCC.N"], sector_map)
+    assert edge_index.shape == (2, 0)
+
+
+def test_index_level_mode_rejects_sector_relation(tmp_path):
+    """Index-level runs build no sector edges, so the sector branch must be refused."""
+    sector_csv = tmp_path / "sectors.csv"
+    sector_csv.write_text("kdcode,sector\nINDEX,Tech\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="index_level"):
+        ExperimentConfig(
+            data=DataConfig(experiment_mode="index_level"),
+            graph=GraphConfig(use_sector_relation=True, sector_map_csv=str(sector_csv)),
+        )
 
 
 def test_collate_appends_snapshot_age_column():

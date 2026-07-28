@@ -674,6 +674,7 @@ def build_correlation_graph(
     graph_config: GraphConfig,
     train_start: str,
     test_end: str,
+    first_sample_date: str | None = None,
 ) -> GraphArtifacts:
     logger.info("Building correlation graph...")
     graph_builder = GraphBuilder(
@@ -691,18 +692,14 @@ def build_correlation_graph(
     graph_schedule = None
     if graph_config.update_frequency_months > 0:
         graph_schedule = graph_builder.precompute_snapshots(
-            frames.raw, kdcode_list, train_start, test_end
+            frames.raw, kdcode_list, train_start, test_end, first_sample_date
         )
 
     edge_index_sector = None
     edge_weight_sector = None
     if graph_config.use_sector_relation and graph_config.sector_map_csv:
         sector_map = load_sector_map_csv(graph_config.sector_map_csv)
-        edge_index_sector, edge_weight_sector = build_sector_edges(
-            kdcode_list,
-            sector_map,
-            graph_config.sector_top_k,
-        )
+        edge_index_sector, edge_weight_sector = build_sector_edges(kdcode_list, sector_map)
 
     return GraphArtifacts(
         edge_index=edge_index,
@@ -810,6 +807,8 @@ def prepare_data(
         config.graph,
         config.data.train_start,
         config.data.test_end,
+        # Earliest date the schedule will be asked about, so it can assert readiness.
+        first_sample_date=tensor_bundle.train_dates[0] if len(tensor_bundle.train_dates) else None,
     )
 
     return {

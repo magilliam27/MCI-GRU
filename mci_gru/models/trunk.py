@@ -225,6 +225,10 @@ class StockPredictionModel(nn.Module):
         e_idx, e_wt = _apply_edge_dropout(
             edge_index, edge_weight, self.drop_edge_p, training=training
         )
+        # Sector fusion falls back to correlation-only when the sector tensors are
+        # absent. That fallback is deliberate and no reachable training config hits
+        # it: prepare_data always builds the tensors, and index-level runs (which
+        # cannot build them) are rejected in ExperimentConfig validation.
         if (
             self.use_sector_relation
             and self.gat_layer_sector is not None

@@ -21,6 +21,7 @@ from torch.utils.data import Dataset
 
 from mci_gru.data.path_resolver import resolve_project_data_path
 from mci_gru.data.pit import filter_edges_by_stock_mask
+from mci_gru.graph.schedule import canonical_date
 
 logger = logging.getLogger(__name__)
 
@@ -552,6 +553,10 @@ class CombinedDataset(Dataset):
     Combined dataset for synchronized time series, graph features, and labels.
 
     This ensures time series and graph data stay aligned when shuffling.
+
+    ``sample_dates`` are normalised to canonical ``YYYY-MM-DD`` here — the single
+    dataset boundary — so that every per-batch ``GraphSchedule`` lookup only pays
+    for the cheap canonical-shape check instead of a full parse.
     """
 
     def __init__(
@@ -565,7 +570,11 @@ class CombinedDataset(Dataset):
         self.X_time_series = X_time_series
         self.X_graph = X_graph
         self.y = y
-        self.sample_dates = sample_dates
+        self.sample_dates = (
+            [canonical_date(d, "CombinedDataset sample_dates") for d in sample_dates]
+            if sample_dates is not None
+            else None
+        )
         self.stock_masks = stock_masks
 
     def __len__(self):
