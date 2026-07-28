@@ -174,10 +174,13 @@ class TestGraphSchedule:
             ]
         )
 
-    def test_lookup_before_first_snapshot_returns_first(self):
+    def test_lookup_before_first_snapshot_is_rejected(self):
+        """Prehistory must fail closed: a snapshot built later must never serve it."""
         sched = self._make_schedule()
-        ei, ew = sched.get_graph_for_date("2019-06-01")
-        assert torch.equal(ei, torch.tensor([[0, 1], [1, 0]]))
+        with pytest.raises(ValueError, match="No graph snapshot is valid"):
+            sched.get_graph_for_date("2019-06-01")
+        with pytest.raises(ValueError, match="No graph snapshot is valid"):
+            sched.snapshot_valid_from_for_date("2019-06-01")
 
     def test_lookup_in_first_period(self):
         sched = self._make_schedule()
@@ -207,18 +210,146 @@ class TestGraphSchedule:
         with pytest.raises(ValueError, match="at least one"):
             GraphSchedule([])
 
-    def test_precompute_snapshots_no_lookahead(self):
-        """Each snapshot must use only data before its valid-from date."""
+    @pytest.mark.parametrize(
+        ("dates", "message"),
+        [
+            (["2020-07-01", "2020-01-01"], "must be sorted"),
+            (["2020-01-01", "2020-01-01"], "must be unique"),
+        ],
+    )
+    def test_invalid_snapshot_date_order_is_rejected(self, dates, message):
+        """bisect assumes sorted, unique dates; violating it silently mis-resolves lookups."""
+        ei = torch.zeros((2, 0), dtype=torch.long)
+        ew = torch.zeros(0)
+        with pytest.raises(ValueError, match=message):
+            GraphSchedule([(d, ei, ew) for d in dates])
+
+    def test_non_canonical_snapshot_date_is_rejected(self):
+        ei = torch.zeros((2, 0), dtype=torch.long)
+        ew = torch.zeros(0)
+        with pytest.raises(ValueError, match="canonical YYYY-MM-DD"):
+            GraphSchedule([("2020-1-1", ei, ew)])
+
+    @pytest.mark.parametrize("bad_date", ["2020-1-5", "2020/01/05", "20200105", "01/05/2020"])
+    def test_non_canonical_lookup_date_is_rejected(self, bad_date):
+        """Lexicographic bisect on a non-canonical string resolves to a FUTURE snapshot."""
+        sched = self._make_schedule()
+        with pytest.raises(ValueError, match="canonical YYYY-MM-DD"):
+            sched.get_graph_for_date(bad_date)
+
+    def test_readiness_requires_snapshot_before_first_sample(self):
+        ei = torch.zeros((2, 0), dtype=torch.long)
+        ew = torch.zeros(0)
+        with pytest.raises(ValueError, match="after the first sample"):
+            GraphSchedule(
+                [("2020-01-01", ei, ew)],
+                corr_lookback_days=120,
+                sessions_before_first_snapshot=250,
+                first_sample_date="2019-12-31",
+            )
+
+    def test_readiness_requires_full_warmup_window(self):
+        ei = torch.zeros((2, 0), dtype=torch.long)
+        ew = torch.zeros(0)
+        with pytest.raises(ValueError, match="session\\(s\\) of history"):
+            GraphSchedule(
+                [("2020-01-01", ei, ew)],
+                corr_lookback_days=120,
+                sessions_before_first_snapshot=119,
+                first_sample_date="2020-01-02",
+            )
+
+    def test_is_ready_only_when_both_halves_are_verified(self):
+        ei = torch.zeros((2, 0), dtype=torch.long)
+        ew = torch.zeros(0)
+        ready = GraphSchedule(
+            [("2020-01-01", ei, ew)],
+            corr_lookback_days=120,
+            sessions_before_first_snapshot=120,
+            first_sample_date="2020-01-01",
+        )
+        assert ready.is_ready is True
+        # No evidence supplied -> the contract was never verified, so not ready.
+        assert GraphSchedule([("2020-01-01", ei, ew)]).is_ready is False
+
+    def test_precompute_snapshots_refuses_an_unwarmed_panel(self):
+        """A panel starting on the schedule's own start date has no correlation window."""
+        kdcodes = ["A", "B", "C"]
+        df = _make_price_df(kdcodes, start="2020-01-01", periods=400)
+        gb = GraphBuilder(judge_value=0.3, update_frequency_months=6, corr_lookback_days=120)
+        with pytest.raises(ValueError, match=r"session\(s\) of history"):
+            gb.precompute_snapshots(df, kdcodes, "2020-01-01", "2021-01-01")
+
+    def test_precompute_snapshots_checks_readiness_against_first_sample(self):
         kdcodes = ["A", "B", "C"]
         df = _make_price_df(kdcodes, start="2019-01-01", periods=600)
         gb = GraphBuilder(judge_value=0.3, update_frequency_months=6, corr_lookback_days=120)
-        schedule = gb.precompute_snapshots(df, kdcodes, "2020-01-01", "2021-01-01")
 
-        assert schedule.num_snapshots >= 2
-        for date in schedule.snapshot_dates:
-            gb.compute_correlation_matrix(df, kdcodes, date)
-            used_dates = df[df["dt"] < date]["dt"].unique()
-            assert len(used_dates) > 0 or date <= df["dt"].min()
+        with pytest.raises(ValueError, match="after the first sample"):
+            gb.precompute_snapshots(df, kdcodes, "2020-01-01", "2021-01-01", "2019-12-31")
+
+        schedule = gb.precompute_snapshots(df, kdcodes, "2020-01-01", "2021-01-01", "2020-01-02")
+        assert schedule.is_ready is True
+
+    def test_precompute_snapshots_ignores_future_rows(self):
+        """Mutation oracle: corrupting rows after a snapshot's valid_from cannot move its edges.
+
+        Replaces a vacuous predecessor that discarded the builder's output and only
+        asserted a property of its own fixture.
+        """
+        kdcodes = ["A", "B", "C", "D"]
+        df = _make_price_df(kdcodes, start="2019-01-01", periods=600)
+        gb = GraphBuilder(judge_value=0.3, update_frequency_months=6, corr_lookback_days=120)
+        baseline = gb.precompute_snapshots(df, kdcodes, "2020-01-01", "2021-01-01")
+        assert baseline.num_snapshots >= 2
+
+        for valid_from in baseline.snapshot_dates:
+            future = df["dt"] > valid_from
+            assert future.any(), f"fixture has no rows after {valid_from}"
+            corrupted = df.copy()
+            corrupted.loc[future, "close"] = 1000.0 - 3.0 * corrupted.loc[future, "close"]
+
+            mutated = gb.precompute_snapshots(corrupted, kdcodes, "2020-01-01", "2021-01-01")
+            ei_base, ew_base = baseline.get_graph_for_date(valid_from)
+            ei_mut, ew_mut = mutated.get_graph_for_date(valid_from)
+            assert torch.equal(ei_base, ei_mut), f"edges for {valid_from} depend on future rows"
+            assert torch.equal(ew_base, ew_mut), f"weights for {valid_from} depend on future rows"
+
+
+# ---------------------------------------------------------------------------
+# Dataset boundary: sample_dates normalisation
+# ---------------------------------------------------------------------------
+
+
+class TestSampleDateNormalisation:
+    """``CombinedDataset`` is the one place sample dates are normalised (D2)."""
+
+    def _dataset(self, dates):
+        ts, graph, labels = _make_small_arrays(n_days=len(dates), n_stocks=2)
+        return CombinedDataset(
+            torch.from_numpy(ts),
+            torch.from_numpy(graph),
+            torch.from_numpy(labels),
+            sample_dates=dates,
+        )
+
+    def test_timestamps_are_normalised_to_canonical_strings(self):
+        ds = self._dataset([pd.Timestamp("2020-03-01"), "2020-03-02 00:00:00"])
+        assert ds.sample_dates == ["2020-03-01", "2020-03-02"]
+        assert ds[0]["date"] == "2020-03-01"
+
+    def test_normalised_dates_resolve_through_the_schedule(self):
+        ei = torch.zeros((2, 0), dtype=torch.long)
+        ew = torch.zeros(0)
+        sched = GraphSchedule([("2020-01-01", ei, ew), ("2020-07-01", ei, ew)])
+        ds = self._dataset([pd.Timestamp("2020-01-05")])
+        # The raw pandas repr would bisect after "2020-07-01" and pick a future snapshot.
+        assert sched.snapshot_valid_from_for_date(ds[0]["date"]) == "2020-01-01"
+
+    @pytest.mark.parametrize("bad_date", ["2020-1-5", "20200105", "2021-001"])
+    def test_ambiguous_sample_dates_are_rejected(self, bad_date):
+        with pytest.raises(ValueError, match="unambiguous YYYY-MM-DD"):
+            self._dataset([bad_date])
 
 
 # ---------------------------------------------------------------------------
@@ -285,7 +416,7 @@ class TestCreateDataLoaders:
         ts, graph, labels = _make_small_arrays(n_days, n_stocks, seq_len, n_features)
         ei = torch.zeros((2, 0), dtype=torch.long)
         ew = torch.zeros(0)
-        dates = [f"2021-{i + 1:03d}" for i in range(n_days)]
+        dates = pd.bdate_range("2021-01-04", periods=n_days).strftime("%Y-%m-%d").tolist()
         return create_data_loaders(
             stock_features_train=ts,
             x_graph_train=graph,

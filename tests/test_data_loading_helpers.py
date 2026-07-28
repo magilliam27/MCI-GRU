@@ -129,25 +129,25 @@ class TestSectorEdges:
         kdcodes = ["AAA", "BBB", "CCC"]
         sectors = {"AAA": "Tech", "BBB": "Tech", "CCC": "Energy"}
 
-        edge_index, edge_weight = build_sector_edges(kdcodes, sectors, top_k=5)
+        edge_index, edge_weight = build_sector_edges(kdcodes, sectors)
 
         pairs = set(zip(edge_index[0].tolist(), edge_index[1].tolist(), strict=True))
         # AAA (0) <-> BBB (1) share Tech; CCC (2) is alone in Energy.
         assert pairs == {(0, 1), (1, 0)}
         assert torch.all(edge_weight == 1.0)
 
-    def test_build_sector_edges_respects_top_k(self):
+    def test_build_sector_edges_connects_every_pair_in_a_sector(self):
         kdcodes = ["A", "B", "C", "D"]
         sectors = dict.fromkeys(kdcodes, "Tech")
 
-        edge_index, _ = build_sector_edges(kdcodes, sectors, top_k=1)
+        edge_index, _ = build_sector_edges(kdcodes, sectors)
 
-        # Each node links to at most 1 same-sector peer.
+        # Every node links to all three of its same-sector peers.
         out_degree = pd.Series(edge_index[0].tolist()).value_counts()
-        assert (out_degree <= 1).all()
-        assert edge_index.shape[1] == 4
+        assert (out_degree == 3).all()
+        assert edge_index.shape[1] == 12
 
     def test_build_sector_edges_empty_universe(self):
-        edge_index, edge_weight = build_sector_edges([], {}, top_k=3)
+        edge_index, edge_weight = build_sector_edges([], {})
         assert edge_index.shape == (2, 0)
         assert edge_weight.shape == (0,)

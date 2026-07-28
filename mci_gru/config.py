@@ -325,8 +325,10 @@ class GraphConfig:
         use_lead_lag_features: Add best-lag normalised index and signed corr at that lag.
         lead_lag_days: Candidate lags in days for lead–lag edge features.
         use_sector_relation: Enable static sector branch (dual GAT + fuse in the model).
-        sector_map_csv: CSV with kdcode, sector when ``use_sector_relation``.
-        sector_top_k: Cap on sector neighbours per node.
+            Not supported with ``data.experiment_mode='index_level'``.
+        sector_map_csv: Curated ``kdcode, sector`` map or a universe metadata export
+            carrying ``gics_sector``, required when ``use_sector_relation``. Sectors
+            are fully connected internally; unmapped names get no sector edges.
     """
 
     judge_value: float = 0.8
@@ -342,7 +344,6 @@ class GraphConfig:
     lead_lag_days: list[int] = field(default_factory=lambda: [1, 2, 3, 5])
     use_sector_relation: bool = False
     sector_map_csv: str | None = None
-    sector_top_k: int = 10
 
     _VALID_TOP_K_METRICS = ("corr", "abs_corr")
 
@@ -370,8 +371,6 @@ class GraphConfig:
             raise ValueError("lead_lag_days must contain only positive integers")
         if self.use_sector_relation and not self.sector_map_csv:
             raise ValueError("use_sector_relation=True requires graph.sector_map_csv")
-        if self.sector_top_k <= 0:
-            raise ValueError("sector_top_k must be > 0")
 
 
 @dataclass
@@ -744,6 +743,17 @@ class ExperimentConfig:
         if isinstance(self.evaluation, dict):
             self.evaluation = EvaluationConfig(**self.evaluation)
         self._validate_embargo()
+        self._validate_sector_relation()
+
+    def _validate_sector_relation(self) -> None:
+        """Reject the sector branch in index-level mode, where it has nothing to connect."""
+        if self.data.experiment_mode == "index_level" and self.graph.use_sector_relation:
+            raise ValueError(
+                "graph.use_sector_relation=true is not supported with "
+                "data.experiment_mode='index_level'. The index-level panel is a single "
+                "synthetic INDEX node, so no sector edges exist to feed the sector branch; "
+                "it would train as dead weight. Set graph.use_sector_relation=false."
+            )
 
     def _validate_embargo(self) -> None:
         """Require calendar gaps > label_t between train/val and val/test to avoid label leakage."""
