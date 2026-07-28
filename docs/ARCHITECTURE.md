@@ -304,21 +304,38 @@ reciprocal.
 |---|---|
 | Static correlation | `graph.update_frequency_months == 0`: built once with `valid_from = data.train_start` and reused for every batch |
 | Dynamic correlation | `graph.update_frequency_months > 0`: `GraphBuilder.precompute_snapshots()` builds one snapshot per interval from `train_start` through `test_end`; `combined_collate_fn` resolves each sample by date through `GraphSchedule` |
-| Static sector | Each node links to up to `graph.sector_top_k` peers sharing its bucket, with scalar weight `1.0`; consumed by the separate sector GAT branch |
+| Static sector | Each node links to every other node sharing its sector, with scalar weight `1.0`; consumed by the separate sector GAT branch |
 
 Every snapshot uses only observations before its own valid-from date, which is
 what keeps the dynamic graph free of lookahead. It also means a meaningful first
 or static graph requires price history before `train_start`.
 
-`GraphSchedule.get_graph_for_date()` bisects the snapshot dates as strings and
-clamps to the first snapshot for any date earlier than the first `valid_from`.
-Date strings are not format-validated.
+That requirement is enforced for the dynamic path rather than assumed. A
+`GraphSchedule` is built with the warm-up sessions the panel actually provides
+and the first sample date, and refuses construction when the first snapshot has
+fewer than `graph.corr_lookback_days` sessions behind it, or when a sample
+precedes the first snapshot. `GraphSchedule.is_ready` reports whether the
+contract was verified, and is `False` when the caller supplied no evidence.
+The guard matters because `_daily_returns_pivot()` trims to the lookback window
+only when enough sessions exist, and otherwise builds from whatever is present —
+including nothing — without complaint.
 
-Sector buckets come from `graph.sector_map_csv` via `load_sector_map_csv()`.
-`build_sector_edges()` assigns any `kdcode` missing from that CSV to a literal
-`"UNKNOWN"` bucket, so unmapped names are linked to each other rather than left
-isolated, and neighbours within a bucket are taken in ascending node-index order
-rather than by any similarity measure.
+`get_graph_for_date()` raises for any date earlier than the first `valid_from`
+instead of clamping to it, since a snapshot built after a sample must never
+serve it. Snapshot and lookup dates must be canonical `YYYY-MM-DD`: string
+bisection places `2020-1-5` after `2020-07-01`, so a non-canonical date would
+otherwise resolve to a future snapshot. Snapshots must also be sorted and
+unique, which is the precondition `bisect` assumes. `CombinedDataset`
+normalizes `sample_dates` once at the dataset boundary.
+
+Sector buckets come from `graph.sector_map_csv` via `load_sector_map_csv()`,
+which accepts either schema: a `gics_sector` column derives the mapping from a
+universe metadata export, and a `sector` column reads a curated map. Deriving
+from the export keeps coverage in step with the universe instead of depending on
+a hand-maintained file. Any `kdcode` with no sector — including blank and
+placeholder values such as `UNKNOWN` — is **isolated** with no sector edges at
+all, rather than sharing a bucket that would wire every unmapped name to every
+other. Coverage is logged, as is any disagreement between snapshots.
 
 ## Training and Ensembles
 
@@ -655,5 +672,12 @@ These are properties of the code as written, not intended guarantees:
 - Index-level mode always uses z-score normalization regardless of
   `data.normalisation`, and builds labels from the normalized frame, whereas
   stock-level labels come from the raw engineered price frame.
-- `build_sector_edges()` has no coverage check: names missing from
-  `graph.sector_map_csv` silently share the `"UNKNOWN"` bucket.
+- `StockPredictionModel.forward()` fails open: a model built with
+  `graph.use_sector_relation=true` whose sector tensors arrive as `None` skips
+  sector fusion silently rather than raising. This is deliberate and documented
+  in `trunk.py` — `prepare_data()` always builds the tensors, and the only path
+  that hard-codes them to `None`, `prepare_data_index_level()`, is now rejected
+  at config validation, so no reachable configuration reaches the fail-open.
+- The correlation graph is point-in-time blind: snapshots are built over the
+  full panel axis, so they connect names that had not yet entered the universe
+  or had already left it. Tracked in issue #123.

@@ -117,7 +117,6 @@ graph:
   lead_lag_days: [1, 2, 3, 5]
   use_sector_relation: false
   sector_map_csv: null
-  sector_top_k: 10
 
 training:
   batch_size: 32
