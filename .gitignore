@@ -66,3 +66,7 @@ multirun/
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code per-user local scope; never shared.
+# .claude/settings.json IS tracked: it selects the repository's skill set.
+.claude/settings.local.json
