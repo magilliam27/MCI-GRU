@@ -46,6 +46,7 @@ decisions under `docs/adr/` when created. See `docs/agents/domain.md`.
 
 ```
 AGENTS.md            ← you are here (start point for all agents)
+CLAUDE.md            ← Claude Code entrypoint; imports AGENTS.md
 docs/
 ├── ARCHITECTURE.md  ← model, pipeline, graph, data flow (READ THIS FIRST)
 ├── CONFIGURATION_GUIDE.md
