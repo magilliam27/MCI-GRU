@@ -28,8 +28,8 @@ run explicitly disables global regime.
 
 Implementation work and PRDs are tracked in GitHub Issues for
 `magilliam27/MCI-GRU`. Write-oriented workflows may autonomously manage their
-issue and PR lifecycle through scoped `codex/*` branches, never directly on
-`main`. See `docs/agents/issue-tracker.md`.
+issue and PR lifecycle through scoped `codex/*` or `claude/*` branches, never
+directly on `main`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

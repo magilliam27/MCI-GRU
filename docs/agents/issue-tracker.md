@@ -47,7 +47,7 @@ Normal in-scope operations include:
   relationships.
 - Creating missing labels using the exact configured vocabulary.
 - Closing eligible non-code tickets after recording their resolution.
-- Creating an isolated worktree and scoped `codex/<task>` branch.
+- Creating an isolated worktree and scoped `<harness>/<task>` branch.
 - Committing only the files owned by the requested work and pushing that
   confined branch.
 - Creating and updating a draft pull request.
@@ -65,7 +65,10 @@ user also requests implementation or publication.
 - Never commit or push directly to `main` or another protected branch.
 - Start write-oriented work from the current remote base, normally
   `origin/main`.
-- Use a scoped `codex/<task>` branch.
+- Use a scoped `<harness>/<task>` branch. The prefix records which harness
+  produced the work: `claude/*` is reserved for Claude Code sessions, and all
+  other work continues to use `codex/*`. The prefix is provenance only. Every
+  scoped branch carries identical obligations regardless of prefix.
 - When the active checkout is dirty or contains unrelated work, use an
   isolated worktree instead of modifying, stashing, cleaning, or absorbing
   that work.
