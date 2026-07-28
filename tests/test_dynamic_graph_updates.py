@@ -272,6 +272,25 @@ class TestGraphSchedule:
         # No evidence supplied -> the contract was never verified, so not ready.
         assert GraphSchedule([("2020-01-01", ei, ew)]).is_ready is False
 
+    def test_precompute_snapshots_refuses_an_unwarmed_panel(self):
+        """A panel starting on the schedule's own start date has no correlation window."""
+        kdcodes = ["A", "B", "C"]
+        df = _make_price_df(kdcodes, start="2020-01-01", periods=400)
+        gb = GraphBuilder(judge_value=0.3, update_frequency_months=6, corr_lookback_days=120)
+        with pytest.raises(ValueError, match=r"session\(s\) of history"):
+            gb.precompute_snapshots(df, kdcodes, "2020-01-01", "2021-01-01")
+
+    def test_precompute_snapshots_checks_readiness_against_first_sample(self):
+        kdcodes = ["A", "B", "C"]
+        df = _make_price_df(kdcodes, start="2019-01-01", periods=600)
+        gb = GraphBuilder(judge_value=0.3, update_frequency_months=6, corr_lookback_days=120)
+
+        with pytest.raises(ValueError, match="after the first sample"):
+            gb.precompute_snapshots(df, kdcodes, "2020-01-01", "2021-01-01", "2019-12-31")
+
+        schedule = gb.precompute_snapshots(df, kdcodes, "2020-01-01", "2021-01-01", "2020-01-02")
+        assert schedule.is_ready is True
+
     def test_precompute_snapshots_ignores_future_rows(self):
         """Mutation oracle: corrupting rows after a snapshot's valid_from cannot move its edges.
 
