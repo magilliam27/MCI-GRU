@@ -106,9 +106,10 @@ def train_multiple_models(
             all_results.append(result)
 
             logger.info(
-                f"Model {model_id + 1} training complete. Best val loss: {result.best_val_loss:.6f}, "
-                f"best val IC: {result.best_val_ic:.6f}, "
-                f"best val Rank IC: {result.best_val_rank_ic:.6f}"
+                f"Model {model_id + 1} training complete. "
+                f"Selected-checkpoint val loss: {result.best_val_loss:.6f}, "
+                f"val IC: {result.best_val_ic:.6f}, "
+                f"val Rank IC: {result.best_val_rank_ic:.6f}"
             )
 
             trainer.last_best_model_path = result.best_model_path
