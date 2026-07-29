@@ -1,0 +1,37 @@
+# GICS sector top-10 by market cap, monthly rebalance (~110 names).
+#
+# Point-in-time universe: 191 distinct names appear across 2021-01-04..2026-07-13,
+# of which 110 are admissible on a typical session (11 GICS sectors x 10 names).
+# Measured over the 1255 sessions in train..test: min 109, max 110, mean 110.0.
+#
+# The market panel starts 2019-01-02, roughly two years before the universe opens,
+# so correlation graph construction has real history before train_start rather
+# than a zero-session window.
+#
+# PIT filtering is REQUIRED here, not optional: without pit_universe_csv the panel
+# resolves to all 191 names and the universe is survivorship-biased by construction.
+universe: sp500
+source: csv
+filename: data/raw/market/sp500_pit_gics_top10_mcap_monthly_20210104_20260713_lseg_20190101_20260713.csv
+
+use_pit_universe: true
+pit_universe_csv: data/raw/constituents/sp500_pit_gics_top10_mcap_monthly_20210104_20260713_pit_universe.csv
+pit_universe_mode: masked_panel
+
+# 450 is the S&P-500-scale default and would fail every session on a 110-name
+# universe. 105 sits below the measured minimum of 109 while still catching a
+# genuine breadth collapse; a threshold of 110 would trip on 31 real sessions
+# in October 2023.
+pit_min_scoreable_stocks: 105
+pit_breadth_policy: error
+
+# Split boundaries are embargo-safe for label_t=5, counted in sessions rather
+# than calendar days. The conventional 8-day gap used by the S&P configs leaves
+# only 4 clear sessions here, so the last training label would consume the close
+# of val_start itself - the defect recorded in #115.
+train_start: "2021-01-04"
+train_end: "2023-12-31"
+val_start: "2024-01-22"
+val_end: "2024-12-31"
+test_start: "2025-01-22"
+test_end: "2025-12-31"
