@@ -49,6 +49,7 @@ def build_edges(
     use_multi_feature_edges: bool,
     use_lead_lag_features: bool,
     lead_lag_days: list[int],
+    admissible_mask: np.ndarray | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Build edge tensors from a correlation matrix using vectorised numpy ops.
 
@@ -66,8 +67,34 @@ def build_edges(
     - ``True``: returns ``(edge_index (2,E), edge_attr (E,4+))`` with columns
       ``[corr, |corr|, corr^2, rank_pct]`` plus optional lead–lag columns when
       ``use_lead_lag_features`` and *returns_pivot* are set.
+
+    *admissible_mask* is an optional boolean array over *kdcode_list* marking
+    the names in the investable universe at this graph's date (issue #123).
+    When supplied, inadmissible entries are excluded **before** selection
+    rather than after: both their rows and their columns are set to NaN, which
+    the threshold path skips via its ``~isnan`` guard and the top-K path maps
+    to ``-inf`` so they are never counted as valid candidates.
+
+    Filtering before selection is the point. ``combined_collate_fn`` already
+    drops edges touching inactive nodes per sample date, so filtering *output*
+    changes nothing. On the top-K path, however, an inadmissible name that wins
+    a slot spends that slot and is then discarded, leaving the node with fewer
+    neighbours than configured and a ``rank_pct`` ranked against a contaminated
+    candidate set. Excluding candidates up front is the only place that is
+    repairable.
     """
     corr = corr_matrix.values
+
+    if admissible_mask is not None:
+        admissible_mask = np.asarray(admissible_mask, dtype=bool)
+        if admissible_mask.shape != (corr.shape[0],):
+            raise ValueError(
+                f"admissible_mask has shape {admissible_mask.shape}, expected "
+                f"({corr.shape[0]},) to match the correlation matrix axis"
+            )
+        corr = corr.astype(float, copy=True)
+        corr[~admissible_mask, :] = np.nan
+        corr[:, ~admissible_mask] = np.nan
 
     if top_k > 0:
         rows, cols, kept_corr, rank_pct = _select_edges_topk(corr, top_k, top_k_metric)

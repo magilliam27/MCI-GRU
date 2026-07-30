@@ -42,6 +42,7 @@ from mci_gru.data.transforms import (
     normalize_features_zscore,
 )
 from mci_gru.graph import GraphBuilder
+from mci_gru.graph.builder import admissible_mask_for_date
 from mci_gru.graph.sector_edges import build_sector_edges, load_sector_map_csv
 
 if TYPE_CHECKING:
@@ -675,6 +676,7 @@ def build_correlation_graph(
     train_start: str,
     test_end: str,
     first_sample_date: str | None = None,
+    pit_intervals: pd.DataFrame | None = None,
 ) -> GraphArtifacts:
     logger.info("Building correlation graph...")
     graph_builder = GraphBuilder(
@@ -687,12 +689,27 @@ def build_correlation_graph(
         use_lead_lag_features=graph_config.use_lead_lag_features,
         lead_lag_days=graph_config.lead_lag_days,
     )
-    edge_index, edge_weight = graph_builder.build_graph(frames.raw, kdcode_list, train_start)
+    # Static graph: PIT-restrict selection at its single build date. This is a
+    # coarser guarantee than the dynamic path gets - one graph built at
+    # train_start is applied to every later sample - so the per-sample collate
+    # filter remains the real protection. Do not describe the result as
+    # "PIT-aware": it is PIT-filtered at one date and masked thereafter.
+    edge_index, edge_weight = graph_builder.build_graph(
+        frames.raw,
+        kdcode_list,
+        train_start,
+        admissible_mask=admissible_mask_for_date(kdcode_list, train_start, pit_intervals),
+    )
 
     graph_schedule = None
     if graph_config.update_frequency_months > 0:
         graph_schedule = graph_builder.precompute_snapshots(
-            frames.raw, kdcode_list, train_start, test_end, first_sample_date
+            frames.raw,
+            kdcode_list,
+            train_start,
+            test_end,
+            first_sample_date,
+            pit_intervals=pit_intervals,
         )
 
     edge_index_sector = None
@@ -809,6 +826,12 @@ def prepare_data(
         config.data.test_end,
         # Earliest date the schedule will be asked about, so it can assert readiness.
         first_sample_date=tensor_bundle.train_dates[0] if len(tensor_bundle.train_dates) else None,
+        # Only masked_panel gets PIT-restricted selection. row_filter is dead
+        # configuration - every config setting it also sets
+        # use_pit_universe: false - and it could not protect the graph anyway,
+        # because the graph reads frames.raw, which the row filter never
+        # touches. See #123 decision D6.
+        pit_intervals=pit.intervals if pit.masked_panel else None,
     )
 
     return {

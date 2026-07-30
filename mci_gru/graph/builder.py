@@ -8,10 +8,12 @@ no longer requires batch_size=1 during training.
 import logging
 from datetime import datetime
 
+import numpy as np
 import pandas as pd
 import torch
 from dateutil.relativedelta import relativedelta
 
+from mci_gru.data.pit import active_membership_mask
 from mci_gru.graph.correlation import (
     _daily_returns_pivot as _daily_returns_pivot_impl,
 )
@@ -22,6 +24,23 @@ from mci_gru.graph.correlation import (
     compute_correlation_matrix as compute_correlation_matrix_impl,
 )
 from mci_gru.graph.schedule import GraphSchedule
+
+
+def admissible_mask_for_date(
+    kdcode_list: list[str],
+    date: str,
+    pit_intervals: pd.DataFrame | None,
+) -> np.ndarray | None:
+    """Boolean mask over *kdcode_list* of names admissible on *date*.
+
+    Returns ``None`` when *pit_intervals* is ``None``, so callers can pass the
+    result straight through and keep the no-PIT path byte-identical to its
+    behaviour before issue #123.
+    """
+    if pit_intervals is None:
+        return None
+    return active_membership_mask(kdcode_list, [date], pit_intervals)[0]
+
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +97,7 @@ class GraphBuilder:
         kdcode_list: list[str],
         show_progress: bool = True,
         returns_pivot: pd.DataFrame | None = None,
+        admissible_mask: np.ndarray | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         return build_edges_impl(
             corr_matrix,
@@ -90,10 +110,16 @@ class GraphBuilder:
             self.use_multi_feature_edges,
             self.use_lead_lag_features,
             self.lead_lag_days,
+            admissible_mask,
         )
 
     def build_graph(
-        self, df: pd.DataFrame, kdcode_list: list[str], end_date: str, show_progress: bool = True
+        self,
+        df: pd.DataFrame,
+        kdcode_list: list[str],
+        end_date: str,
+        show_progress: bool = True,
+        admissible_mask: np.ndarray | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         if self.top_k > 0:
             mode = f"top_k={self.top_k} ({self.top_k_metric})"
@@ -111,7 +137,11 @@ class GraphBuilder:
         self.correlation_matrix = pivot.corr()
         rp = pivot if self.use_lead_lag_features else None
         edge_index, edge_weight = self.build_edges(
-            self.correlation_matrix, kdcode_list, show_progress, returns_pivot=rp
+            self.correlation_matrix,
+            kdcode_list,
+            show_progress,
+            returns_pivot=rp,
+            admissible_mask=admissible_mask,
         )
         self.last_update_date = end_date
         self.current_edge_index = edge_index
@@ -132,6 +162,7 @@ class GraphBuilder:
         start_date: str,
         end_date: str,
         first_sample_date: str | None = None,
+        pit_intervals: pd.DataFrame | None = None,
     ) -> GraphSchedule:
         """Build all graph snapshots up-front and return a ``GraphSchedule``.
 
@@ -142,17 +173,32 @@ class GraphBuilder:
         *first_sample_date* is the earliest date the schedule will be asked
         about; supplying it lets ``GraphSchedule`` assert its readiness contract
         (mandatory warm-up plus first-sample coverage) at construction.
+
+        *pit_intervals* is an optional point-in-time membership table
+        (``kdcode``, ``valid_from``, ``valid_to``).  When supplied, each
+        snapshot restricts edge **selection** to the names admissible at that
+        snapshot's own date, which is the only place per-snapshot admissibility
+        can be applied -- the caller supplies one ``kdcode_list`` for the whole
+        schedule and cannot vary it per date.  See issue #123.
+
+        The node axis is never narrowed: inadmissible names keep their index so
+        the fixed-axis contract every downstream tensor depends on is preserved.
+        Only their edges are withheld.
         """
         update_dates = self.get_update_dates(start_date, end_date)
         snapshots: list[tuple[str, torch.Tensor, torch.Tensor]] = []
 
         logger.info(
             f"Precomputing {len(update_dates)} graph snapshot(s) "
-            f"({start_date} to {end_date}, every {self.update_frequency_months} months)..."
+            f"({start_date} to {end_date}, every {self.update_frequency_months} months)"
+            f"{', PIT-restricted selection' if pit_intervals is not None else ''}..."
         )
 
         for date in update_dates:
-            ei, ew = self.build_graph(df, kdcode_list, date, show_progress=False)
+            mask = admissible_mask_for_date(kdcode_list, date, pit_intervals)
+            ei, ew = self.build_graph(
+                df, kdcode_list, date, show_progress=False, admissible_mask=mask
+            )
             snapshots.append((date, ei, ew))
 
         warmup_sessions = int(df.loc[df["dt"] < update_dates[0], "dt"].nunique())
