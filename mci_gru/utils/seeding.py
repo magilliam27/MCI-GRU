@@ -1,4 +1,8 @@
-"""Deterministic RNG seeding for experiments and ensemble members."""
+"""RNG seeding reproducibility aid for experiments and ensemble members.
+
+This module does not enable deterministic algorithms or promise bitwise
+repeatability across devices, library versions, or execution environments.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +13,10 @@ import torch
 
 
 def set_seed(seed: int) -> None:
-    """Set seeds for ``random``, NumPy, and PyTorch (CPU and CUDA if available)."""
+    """Seed default ``random``, NumPy, and PyTorch CPU/CUDA RNG streams.
+
+    This does not configure PyTorch deterministic algorithms or backend flags.
+    """
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)

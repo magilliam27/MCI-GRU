@@ -381,7 +381,11 @@ class ModelConfig:
     Attributes:
         his_t: Historical lookback period (days)
         label_t: Forward return period (days)
-        gru_hidden_sizes: Hidden sizes for GRU layers
+        gru_hidden_sizes: Encoder-dependent recurrent shape. ``legacy`` uses each
+            entry as that layer's width; ``gru_attn`` uses the list length as
+            the layer count and the final entry as the shared width. With
+            ``transformer``, the final entry is the fast-path ``d_model`` and
+            the slow multi-scale branch keeps the ``gru_attn`` semantics.
         hidden_size_gat1: Hidden size for first GAT layer
         output_gat1: Output size for first GAT layer
         gat_heads: Number of attention heads in GAT
@@ -390,7 +394,9 @@ class ModelConfig:
         cross_attn_heads: Number of heads in cross-attention
         slow_kernel: Kernel size for slow temporal aggregation
         slow_stride: Stride for slow temporal downsampling
-        use_multi_scale: Use MultiScaleTemporalEncoder (True) or plain ImprovedGRU (False)
+        use_multi_scale: Temporal topology switch. True adds fast and slow
+            branches; False uses the backbone selected by ``temporal_encoder``
+            directly.
         use_self_attention: Apply self-attention before final prediction GAT
         activation: Activation function for GAT internals ("elu" or "relu")
         output_activation: Final head activation — none, elu, relu, sigmoid
@@ -401,9 +407,10 @@ class ModelConfig:
         trunk_dropout: Dropout probability (used when use_trunk_regularisation)
         use_nn_multihead_attention: If True, use ``nn.MultiheadAttention`` in
             MarketLatentStateLearner instead of the legacy 8-Linear MHA
-        temporal_encoder: "legacy" = AttentionResetGRUCell + Python loop; "gru_attn" =
-            CuDNN-fused ``nn.GRU`` + per-step post-hoc attention; "transformer" =
-            causal ``nn.TransformerEncoder`` stack (Phase 3).
+        temporal_encoder: Backbone selector. "legacy" = AttentionResetGRUCell +
+            Python loop; "gru_attn" = CuDNN-fused ``nn.GRU`` + per-step post-hoc
+            attention; "transformer" = causal ``nn.TransformerEncoder`` on the
+            fast path (with a ``gru_attn`` slow branch in multi-scale mode).
         use_a1_a2_cross_attention: Fuse graph stream with temporal sequence via MHA (Q=A2, KV=A1).
         cross_a2_num_heads: Heads for A1–A2 cross-attention (must divide ``hidden_size_gat1``).
     """
