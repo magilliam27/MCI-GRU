@@ -60,6 +60,13 @@ being in context. Brief yourself from the tracker every time:
   the corruption compounds across successive edits.
 - `gh issue close` takes `--comment`, not `--body-file`. Post the comment first,
   then close.
+- **GitHub's closing-keyword parser is lexical and ignores negation.** A pull
+  request body containing "does not fix #123" **closes #123**. So do "this is
+  not a fix for #N" and "unrelated to fixes #N" — only the keyword and the
+  reference are read. When naming an issue a change does *not* resolve, keep
+  the keyword away from the reference: write "#123 is unaffected by this
+  change" or "#123 remains open", never "does not fix #123". This has already
+  closed an open issue once.
 - Retargeting a pull request's base fires an `edited` event, which is not in the
   default `pull_request` trigger set, so CI will not run. Close and reopen the
   pull request to trigger it. Never merge on "no checks reported".
