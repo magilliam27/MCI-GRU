@@ -37,11 +37,20 @@ being in context. Brief yourself from the tracker every time:
   exact-target approval. See issue #99.
 - Merge `main` **into** a published branch. Never rebase one; that requires a
   force-push, which is forbidden.
-- `C:\Users\magil\MCI-GRU` is read-only. Use `git -C` reads only. It stays on
-  `codex/paper_trade_scrape` at `e286649` with 40 dirty entries. Fingerprint
-  before and after every session and report both. A
+- `C:\Users\magil\MCI-GRU` is read-only for code. Use `git -C` reads only. It
+  stays on `codex/paper_trade_scrape` at `e286649`; **HEAD and branch are the
+  invariant and must not move.** Fingerprint before and after every session and
+  report both. A
   `warning: could not open directory '.pytest-tmp/': Permission denied` is
   expected and is not a change.
+- **The dirty-entry count is not a constant, so do not treat a change in it as
+  damage.** Data pulls land under `data/raw/`, and the owner may approve those;
+  `*.csv` is gitignored so bulk data is invisible to `git status`, but each
+  `*meta.json` sidecar adds one untracked entry. Compare your own start-of-session
+  and end-of-session counts against each other, not against a number written
+  here. Waypoint: 40 entries before 2026-07-31, 42 after the approved
+  `sp500_pit_gics_top10_mcap_monthly_20160104_20260731` pull added its two
+  sidecars. An unexplained change is still worth stopping for.
 - Load-bearing tests are mutation-checked: break the behaviour, confirm the test
   fails, restore, confirm it passes, and report the table. Three shipped defects
   in this repository survived because their guarding tests were vacuous.

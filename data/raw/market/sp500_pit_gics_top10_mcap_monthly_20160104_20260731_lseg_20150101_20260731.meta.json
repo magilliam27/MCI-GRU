@@ -1,0 +1,17 @@
+{
+  "created_at_utc": "2026-07-31T18:10:11.383699+00:00",
+  "source": "refinitiv.data.get_history",
+  "selected_pit_universe": "C:\\Users\\magil\\MCI-GRU\\.claude\\worktrees\\elegant-mendeleev-12bad9\\data\\raw\\constituents\\sp500_pit_gics_top10_mcap_monthly_20160104_20260731_pit_universe.csv",
+  "start": "2015-01-01",
+  "end": "2026-07-31",
+  "requested_identifiers": 206,
+  "resolved_identifiers_with_rows": 206,
+  "missing_identifiers": [],
+  "rows": 573403,
+  "date_min": "2015-01-02",
+  "date_max": "2026-07-30",
+  "outputs": {
+    "prices": "C:\\Users\\magil\\MCI-GRU\\.claude\\worktrees\\elegant-mendeleev-12bad9\\data\\raw\\market\\sp500_pit_gics_top10_mcap_monthly_20160104_20260731_lseg_20150101_20260731.csv",
+    "coverage": "C:\\Users\\magil\\MCI-GRU\\.claude\\worktrees\\elegant-mendeleev-12bad9\\data\\raw\\market\\sp500_pit_gics_top10_mcap_monthly_20160104_20260731_lseg_20150101_20260731_coverage.csv"
+  }
+}
