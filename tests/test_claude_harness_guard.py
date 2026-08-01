@@ -47,3 +47,29 @@ def test_claude_settings_select_the_pocock_skill_set():
         "directs agents to its own overlapping skills, which would diverge "
         "Claude sessions from the workflow the rest of the repository runs."
     )
+
+
+def test_gitignore_covers_session_worktrees():
+    """Session worktrees must not be able to dirty the protected checkout.
+
+    Claude Code resolves a repository root from ``--git-common-dir``, which is
+    the protected checkout for every linked worktree, so a session-created
+    worktree lands under ``<protected checkout>/.claude/worktrees/`` regardless
+    of where the session started. That directory is a full checkout. Unless the
+    path is ignored it appears as an untracked entry and moves the 40-entry
+    dirty fingerprint that every session is required to verify.
+
+    This was previously suppressed only by a ``.git/info/exclude`` entry, which
+    is untracked, machine-local, and inherited by no clone.
+    """
+    entries = {
+        line.strip()
+        for line in (REPO_ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+
+    assert ".claude/worktrees/" in entries, (
+        "'.claude/worktrees/' must stay in the tracked .gitignore. Without it a "
+        "session-created worktree shows as untracked in the protected checkout "
+        "and breaks the dirty-count fingerprint, with no error to signal why."
+    )
