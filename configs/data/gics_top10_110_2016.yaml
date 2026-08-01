@@ -1,0 +1,58 @@
+# GICS sector top-10 by market cap, monthly rebalance (~110 names), 2016 start.
+#
+# Longer-history companion to gics_top10_110.yaml. Same selector
+# (monthly_sp500_gics_top10_by_market_cap), universe opening 2016-01-04 instead
+# of 2021-01-04.
+#
+# Point-in-time universe: 206 distinct names appear across 2016-01-04..2026-07-30
+# in 545 validity intervals, of which 110 are selected on every one of the 128
+# monthly snapshots (11 GICS sectors x 10 names; zero snapshots came up short).
+#
+# Admissible names per session, measured over the 2658 sessions from 2016-01-04:
+# min 108, max 110, mean 110.0, 1st percentile 109. The floor of 108 is a
+# pricing gap rather than a selection gap - on 2017-09-01..09-13 all 110 names
+# were PIT-live but two carried no close.
+#
+# The market panel starts 2015-01-02, which is exactly 252 sessions before the
+# universe opens. That matches graph.corr_lookback_days=252 with zero margin, so
+# raising the lookback requires re-pulling with an earlier --history-start.
+#
+# PIT filtering is REQUIRED here, not optional: without pit_universe_csv the
+# panel resolves to all 206 names and the universe is survivorship-biased by
+# construction. The panel is not survivorship-filtered at source: 5 of the 125
+# names selected during 2016 have since left the index and are carried with LSEG
+# delisted suffixes (ATVI.OQ^J23, DD.N^I17, DOW.N^I17, PXD.N^E24, WBA.OQ^H25).
+#
+# If graph.use_sector_relation is enabled, set graph.sector_map_csv to
+#   data/raw/constituents/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_all_metadata_snapshots.csv
+# load_sector_map_csv consumes that export directly and derives the map rather
+# than needing a curated one. Measured against this vintage: 206 of 206 universe
+# names mapped (100%), 0 isolated, 11 sectors, 3706 directed edges. Deriving from
+# the universe export is what keeps coverage complete as the union grows at each
+# rebalance - the failure mode recorded in #124. No config enables sector
+# relation today; this records the correct path rather than turning it on.
+universe: sp500
+source: csv
+filename: data/raw/market/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_lseg_20150101_20260731.csv
+
+use_pit_universe: true
+pit_universe_csv: data/raw/constituents/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_pit_universe.csv
+pit_universe_mode: masked_panel
+
+# Measured floor is 108, so 104 sits four below it - the same margin
+# gics_top10_110.yaml uses against its own floor of 109. The S&P-scale default of
+# 450 would reject every session on a 110-name universe.
+pit_min_scoreable_stocks: 104
+pit_breadth_policy: error
+
+# Split boundaries are embargo-safe for label_t=5, counted in sessions rather
+# than calendar days. Both gaps are 22 calendar days, which clears the 8-day
+# minimum that 5 sessions of clearance requires. The conventional 8-day gap used
+# by the S&P configs would leave only 4 clear sessions and the last training
+# label would consume the close of val_start itself - the defect recorded in #115.
+train_start: "2016-01-04"
+train_end: "2023-12-31"
+val_start: "2024-01-22"
+val_end: "2024-12-31"
+test_start: "2025-01-22"
+test_end: "2025-12-31"
