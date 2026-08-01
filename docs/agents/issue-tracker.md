@@ -60,9 +60,41 @@ This authority is limited to the requested workflow and repository. An
 explanation, review, status report, or diagnosis remains read-only unless the
 user also requests implementation or publication.
 
+## Claim Before Branching
+
+**A session's first tracker write is a claim, and it precedes the branch.**
+
+This applies to *any* work that will produce a branch, not only to Wayfinder map
+children. Work that arrives without a ticket gets an issue filed first, then
+assigned, then branched. One issue, assigned, before the first edit.
+
+More than one session can run against this repository at once. They share a
+single object store, so each can already read the others' branches, worktrees,
+and staged files — visibility has never been the problem. What collides is work
+nobody announced. The tracker is the only surface every session reads, so a
+claim there is what makes concurrent work safe. Two sessions collided on
+2026-07-31 for exactly this reason: both were doing work that had no ticket.
+
+**Declare owned paths in the ticket body at claim time.** A bounded owned-file
+set is already required of every slice, but until the pull request exists it
+lives only in the author's head — which is after a collision has happened.
+Publishing it at claim time lets another session check before choosing its own
+files. Use a single line near the top of the body:
+
+```
+**Owned paths:** path/one.md, path/two.py. Nothing else.
+```
+
+Widening later is allowed under the existing exception rule, recorded in the
+commit message.
+
+Before starting, read the open assigned tickets and their owned paths. If a path
+you need is claimed, coordinate rather than proceed.
+
 ## Branch and Pull Request Policy
 
 - Never commit or push directly to `main` or another protected branch.
+- Claim the work on the tracker first; see **Claim Before Branching** above.
 - Start write-oriented work from the current remote base, normally
   `origin/main`.
 - Use a scoped `<harness>/<task>` branch. The prefix records which harness
@@ -131,7 +163,8 @@ Wayfinder uses one map issue and linked child issues as tickets.
 - **Frontier:** Read the map's open children in map order, exclude tickets with
   any open blocker or any assignee, and select the first remaining ticket.
 - **Claim:** Assign the selected ticket to the driving developer; this is the
-  session's first tracker write.
+  session's first tracker write. See **Claim Before Branching**, which extends
+  this step to work that has no ticket yet.
 - **Resolve:** Record the answer or outcome in a durable ticket comment. Close
   an eligible non-code ticket, then add a concise pointer to the map's
   `Decisions-so-far`. Implementation tickets remain open for merge-driven

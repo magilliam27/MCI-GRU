@@ -25,9 +25,18 @@ being in context. Brief yourself from the tracker every time:
    map. **The map's current state lives in its newest comments, not its body.**
    Body edits raise no timeline entry, so the body alone reads as frozen.
 3. The active child ticket and its evidence comments.
-4. Pick the next unstarted item, then create a worktree off then-live
-   `origin/main` under `C:\Users\magil\.claude\worktrees\`, never under
-   `.codex\worktrees\`.
+4. Claim the work on the tracker before branching — file an issue first if it
+   has none, assign it, and declare its owned paths. See
+   `docs/agents/issue-tracker.md`, **Claim Before Branching**. More than one
+   session runs here at a time; the tracker is the only surface all of them
+   read.
+5. Then create a worktree off then-live `origin/main` under
+   `C:\Users\magil\.claude\worktrees\`, never under `.codex\worktrees\`.
+   **Name the directory after the work, not after nothing.** The `claude/*`
+   branch prefix already records which harness produced it; the directory should
+   record *what* it is — `mci-gru-<ticket>-<slug>`. Harness-generated names such
+   as `elegant-mendeleev-12bad9` identify nothing to the next session reading
+   `git worktree list`.
 
 The standing default workspace is
 `C:\Users\magil\.claude\worktrees\mci-gru-workspace`, a linked worktree detached
@@ -53,11 +62,21 @@ as expected rather than as a violation.
   exact-target approval. See issue #99.
 - Merge `main` **into** a published branch. Never rebase one; that requires a
   force-push, which is forbidden.
-- `C:\Users\magil\MCI-GRU` is read-only. Use `git -C` reads only. It stays on
-  `codex/paper_trade_scrape` at `e286649` with 40 dirty entries. Fingerprint
-  before and after every session and report both. A
-  `warning: could not open directory '.pytest-tmp/': Permission denied` is
-  expected and is not a change.
+- `C:\Users\magil\MCI-GRU` is read-only. Use `git -C` reads only. **The hard
+  invariant is branch and HEAD: `codex/paper_trade_scrape` at `e286649`.** Those
+  never move. If either has changed, stop and report before doing anything else.
+- Fingerprint at session start and again at session end, and report both. The
+  dirty count is **not** a fixed number — it moves whenever anyone exports data
+  or writes an untracked artifact, and a rule that is routinely wrong stops
+  being read. Compare against *your own* start value:
+  - A delta inside your session is yours to explain. You caused it.
+  - A delta across sessions should be explained by an open, assigned ticket
+    whose owned paths cover it. Concurrent sessions are normal here; see
+    `docs/agents/issue-tracker.md`, **Claim Before Branching**.
+  - **A delta with no matching claim is the alarm.** Establish provenance
+    before proceeding — do not adopt it as the new baseline.
+  A `warning: could not open directory '.pytest-tmp/': Permission denied` is
+  expected and is not a change. Count porcelain lines excluding it.
 - **That directory is never removable, and "retired" never means "delete".** It
   is no longer the default working surface, but its `.git` is the only object
   store on this machine: every linked worktree resolves through it, and it holds
