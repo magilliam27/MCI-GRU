@@ -70,3 +70,16 @@ Thumbs.db
 # Claude Code per-user local scope; never shared.
 # .claude/settings.json IS tracked: it selects the repository's skill set.
 .claude/settings.local.json
+
+# Claude Code resolves a repository root from --git-common-dir, which is the
+# protected checkout for every linked worktree, so session worktrees land here
+# no matter where the session started. Ignoring the path keeps the protected
+# checkout's 40-entry dirty fingerprint stable. Previously this was suppressed
+# only by a local-only .git/info/exclude entry that no clone would inherit.
+.claude/worktrees/
+
+# Isolated pytest temp root (scripts/run_pytest_isolated.py). On Windows these
+# directories acquire ACLs that deny enumeration, so git status reports
+# "could not open directory" unless the path is ignored.
+.pytest-tmp/
+.test-tmp/

@@ -29,6 +29,22 @@ being in context. Brief yourself from the tracker every time:
    `origin/main` under `C:\Users\magil\.claude\worktrees\`, never under
    `.codex\worktrees\`.
 
+The standing default workspace is
+`C:\Users\magil\.claude\worktrees\mci-gru-workspace`, a linked worktree detached
+at `origin/main`. Start sessions there rather than in the protected checkout,
+which is pinned before this file existed and therefore carries none of this
+policy. Refresh it with `git checkout --detach origin/main` after a fetch. It is
+a reading surface, not a work surface: scoped task worktrees still get their own
+directory and branch.
+
+Note that this harness resolves a repository root from `--git-common-dir`, which
+is the protected checkout for **every** linked worktree, so a session-created
+worktree lands at `C:\Users\magil\MCI-GRU\.claude\worktrees\<name>` regardless of
+where the session started. That path is ignored (see `.gitignore`) so it cannot
+disturb the fingerprint, and it shares the one object store, so nothing is lost
+by it. It is a third worktree location the policy above does not name; treat it
+as expected rather than as a violation.
+
 ## Hard rules
 
 - Draft pull request only. Never push to `main`. `main` carries no branch
@@ -42,6 +58,22 @@ being in context. Brief yourself from the tracker every time:
   before and after every session and report both. A
   `warning: could not open directory '.pytest-tmp/': Permission denied` is
   expected and is not a change.
+- **That directory is never removable, and "retired" never means "delete".** It
+  is no longer the default working surface, but its `.git` is the only object
+  store on this machine: every linked worktree resolves through it, and it holds
+  roughly 68 ref entries and 6 stashes that exist on no remote — `refs/codex/*`
+  backups, snapshots, and turn-diffs. `git ls-remote origin` advertises only
+  `refs/heads/*` and `refs/pull/*`, so a fresh clone inherits none of them and
+  does not warn. Prefer `git worktree add` over any clone.
+- **Never run `git gc`, `git gc --prune=now`, `git prune`, `git repack -ad`, or
+  `git stash clear` there.** Unreachable objects in that repository are
+  load-bearing. `gc.pruneExpire=never` and `gc.auto=0` are set as a backstop, but
+  an explicit `--prune=now` still overrides them.
+- **Project settings resolve from the session's working directory and do not
+  walk up; `CLAUDE.md` does.** A session started one directory below a workspace
+  root quotes the correct policy while running the wrong skill set, with no
+  warning. Start at the workspace root. `claude --setting-sources user` and SDK
+  entrypoints load neither file regardless of directory.
 - Load-bearing tests are mutation-checked: break the behaviour, confirm the test
   fails, restore, confirm it passes, and report the table. Three shipped defects
   in this repository survived because their guarding tests were vacuous.
@@ -61,12 +93,22 @@ being in context. Brief yourself from the tracker every time:
 - `gh issue close` takes `--comment`, not `--body-file`. Post the comment first,
   then close.
 - **GitHub's closing-keyword parser is lexical and ignores negation.** A pull
-  request body containing "does not fix #123" **closes #123**. So do "this is
-  not a fix for #N" and "unrelated to fixes #N" — only the keyword and the
-  reference are read. When naming an issue a change does *not* resolve, keep
-  the keyword away from the reference: write "#123 is unaffected by this
-  change" or "#123 remains open", never "does not fix #123". This has already
-  closed an open issue once.
+  request body or a commit message containing `does not fix #<N>` will close
+  issue N. So will `this is not a fix for #<N>` and `unrelated to fixes #<N>` —
+  only the keyword and the reference are read, never the words between them.
+  When naming an issue a change does *not* resolve, keep the keyword away from
+  the reference: write `#<N> is unaffected by this change` or `#<N> remains
+  open`.
+- **Documentation of that trap must not contain a live instance of it.** Write
+  every example with the number symbolic — `#<N>`, never a real issue number —
+  so the parser has nothing to match. This rule is here because the commit that
+  first documented the trap quoted a real issue number in its own message, and
+  on merge it closed that issue. That was the second occurrence; the first was
+  the pull request the note had been written about. Both times the end state was
+  correct by accident and the tracker recorded the wrong cause. The same applies
+  to comments you post and to scripts that echo these strings: scan your own
+  text for a closing keyword within a few words of a `#`-prefixed number before
+  publishing it.
 - Retargeting a pull request's base fires an `edited` event, which is not in the
   default `pull_request` trigger set, so CI will not run. Close and reopen the
   pull request to trigger it. Never merge on "no checks reported".
