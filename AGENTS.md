@@ -110,6 +110,11 @@ tests/               ← pytest suite + backtest scripts
   `docs/agents/target-architecture.md`; it is human-led and is not a description
   of current behaviour.
 - **When docs disagree**, current code and the invariants in this file win; see `docs/agents/domain.md`.
+- **`paper_trade/` is not under active development.** Note findings there in
+  passing; do not file issues for them, propose fixes, or treat a paper-trade
+  gap as a blocker on otherwise-ready work. The code stays in the tree — this
+  is a scoping decision, not a retirement like the cockpit surfaces that
+  `tests/test_repository_retirement_guard.py` forbids reintroducing.
 - **For automated Colab work**, default to `chrome:control-chrome` and the runbook in `docs/workflows/COLAB_CHROME_CONTROL_GUIDE.md`; use Playwright MCP only as a documented legacy fallback.
 - **For Colab evidence**, notebook contract tests are not live-run proof; live Colab claims need visible Chrome/Colab execution plus Drive artifacts (heartbeat/results), per `docs/workflows/COLAB_CHROME_CONTROL_GUIDE.md`.
 - **Before translating finance papers into implementation work**, use `skills/research-paper-to-mci-gru/` to produce an MCI-GRU-aware brief and GitHub-ready issue drafts.
