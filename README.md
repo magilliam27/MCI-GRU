@@ -437,8 +437,11 @@ python run_experiment.py +data=csv_sp500
 Requires Refinitiv Workspace desktop app to be running.
 
 ```bash
-python run_experiment.py  # Uses LSEG by default via configs/data/sp500.yaml
+python run_experiment.py data=lseg_sp500  # LSEG must be selected explicitly
 ```
+
+The base default is **no longer** an LSEG config: `configs/config.yaml` composes
+`data: gics_top10_110_2016`, which is `source: csv`.
 
 The LSEG loader fetches historical OHLCV data for index constituents in batches with retry logic.
 
@@ -465,7 +468,9 @@ Uses FRED SP500 index or a custom CSV with `dt`, `close` columns.
 
 | Universe | Stocks | Config |
 |----------|--------|--------|
-| S&P 500 | ~500 | `+data=sp500` (default) |
+| GICS top-10 PIT, 2016 start | ~110 | `data=gics_top10_110_2016` (**default**) |
+| GICS top-10 PIT, 2021 start | ~110 | `data=gics_top10_110` |
+| S&P 500 | ~500 | `data=sp500` |
 | Russell 1000 | ~1000 | `+data=russell1000` |
 | MSCI World | ~1500 | `+data=msci_world` |
 | NASDAQ 100 | ~100 | Available via LSEG |

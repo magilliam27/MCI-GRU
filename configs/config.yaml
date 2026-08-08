@@ -2,7 +2,11 @@
 # Override values via command line or by including experiment configs
 
 defaults:
-  - data: sp500
+  # The 110-name GICS top-10 PIT universe is the working default. It is a CSV
+  # source, so the base experiment no longer selects an LSEG config.
+  # Note it sets use_pit_universe=true; overrides that supply their own panel
+  # (scripts/ci_smoke.py, smoke runs) must set data.use_pit_universe=false.
+  - data: gics_top10_110_2016
   - features: with_momentum
   - _self_
 

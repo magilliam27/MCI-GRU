@@ -104,6 +104,27 @@ def test_repository_default_config_resolves_to_a_data_config_that_exists():
     assert (REPO_ROOT / selected_data_config(cfg)).exists()
 
 
+def test_fallback_data_group_names_a_config_that_exists():
+    """The fallback fires only when defaults name no data group, so a typo in it
+    would otherwise sit unnoticed until exactly that edge case."""
+    assert (REPO_ROOT / f"configs/data/{FALLBACK_DATA_GROUP}.yaml").exists()
+
+
+def test_the_base_default_is_a_csv_source_not_lseg():
+    """The base experiment must not select an LSEG config.
+
+    `configs/data/sp500.yaml` was the default and is `source: lseg`, so a bare
+    run selected a live-LSEG config for a data path this project does not use.
+    """
+    cfg = OmegaConf.load(REPO_ROOT / "configs" / "config.yaml")
+    data_cfg = OmegaConf.load(REPO_ROOT / selected_data_config(cfg))
+    assert data_cfg.source == "csv", f"base default is source={data_cfg.source}"
+
+    # Control: the config this replaced really is the lseg one, so the
+    # assertion above is discriminating rather than trivially true.
+    assert OmegaConf.load(REPO_ROOT / "configs/data/sp500.yaml").source == "lseg"
+
+
 # --- CSV presence is answered against the configured filename ----------------
 
 

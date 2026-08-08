@@ -20,8 +20,9 @@ from omegaconf import OmegaConf
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # Fallback used only when the main config carries no `data:` entry in its
-# Hydra defaults list.
-FALLBACK_DATA_GROUP = "sp500"
+# Hydra defaults list. It tracks the base default in `configs/config.yaml`;
+# `test_fallback_data_group_names_a_config_that_exists` pins that it resolves.
+FALLBACK_DATA_GROUP = "gics_top10_110_2016"
 
 
 def selected_data_config(cfg) -> str:
