@@ -9,14 +9,50 @@ Usage:
     python check_config.py
 """
 
+import importlib.util
+import io
 import os
 import sys
+from pathlib import Path
 
-# Fix Windows console encoding issues
-if sys.platform == "win32":
-    import io
+from omegaconf import OmegaConf
 
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+# Fallback used only when the main config carries no `data:` entry in its
+# Hydra defaults list.
+FALLBACK_DATA_GROUP = "sp500"
+
+
+def selected_data_config(cfg) -> str:
+    """Return the data config path the main config's Hydra defaults list selects.
+
+    `check_config.py` must validate the config an experiment would actually
+    compose, not a hard-coded guess. Hydra defaults entries are either the
+    literal string ``_self_`` or a single ``{group: option}`` mapping.
+    """
+    group = FALLBACK_DATA_GROUP
+    raw = cfg.get("defaults")
+    # `or []` would be wrong here: an empty ListConfig is falsy, and passing a
+    # plain list to to_container raises.
+    for entry in OmegaConf.to_container(raw) if raw is not None else []:
+        if isinstance(entry, dict) and isinstance(entry.get("data"), str):
+            group = entry["data"]
+    return f"configs/data/{group}.yaml"
+
+
+def find_configured_csv(filename: str) -> str | None:
+    """Return the location of a configured CSV, or None if it is not present.
+
+    Checks the path as given and relative to the project root. The runtime
+    loader resolves through `mci_gru.data.path_resolver`, which also searches
+    the project data directories; importing it here would pull in torch and
+    pandas, so a miss is reported as a hint rather than as a verdict.
+    """
+    for candidate in (Path(filename), PROJECT_ROOT / filename):
+        if candidate.exists():
+            return str(candidate)
+    return None
 
 
 def check_config():
@@ -32,9 +68,10 @@ def check_config():
 
     # 1. Check config files exist
     print("1. Checking configuration files...")
+    # The data config is not listed here: which one is selected is only known
+    # after the main config's defaults list is read, so section 3 checks it.
     config_files = {
         "Main config": "configs/config.yaml",
-        "Data config": "configs/data/sp500.yaml",
         "Features config": "configs/features/with_momentum.yaml",
     }
 
@@ -48,8 +85,6 @@ def check_config():
     print("\n2. Validating main configuration...")
     try:
         # Load without resolving interpolations (to avoid Hydra context issues)
-        from omegaconf import OmegaConf
-
         OmegaConf.register_new_resolver("now", lambda x: "TIMESTAMP")
         cfg = OmegaConf.load("configs/config.yaml")
         checks.append("  ✓ Main config loaded successfully")
@@ -73,8 +108,14 @@ def check_config():
 
     # 3. Check data configuration
     print("\n3. Validating data configuration...")
+    data_config_path = selected_data_config(cfg)
     try:
-        data_cfg = OmegaConf.load("configs/data/sp500.yaml")
+        if os.path.exists(data_config_path):
+            checks.append(f"  ✓ Data config selected by defaults: {data_config_path}")
+        else:
+            errors.append(f"  ✗ Data config: {data_config_path} NOT FOUND")
+
+        data_cfg = OmegaConf.load(data_config_path)
         checks.append("  ✓ Data config loaded successfully")
 
         # Check dates are in order
@@ -94,18 +135,23 @@ def check_config():
         # Check data source
         if data_cfg.source == "csv":
             checks.append(f"  ✓ Data source: CSV ({data_cfg.filename})")
-            if os.path.exists(data_cfg.filename):
-                checks.append(f"  ✓ CSV file found: {data_cfg.filename}")
+            located = find_configured_csv(data_cfg.filename)
+            if located:
+                checks.append(f"  ✓ CSV file found: {located}")
             else:
-                warnings.append(f"  ⚠  CSV file not found: {data_cfg.filename}")
-                warnings.append("     Make sure to upload or generate this file before training")
+                warnings.append(f"  ⚠  CSV file not found at configured path: {data_cfg.filename}")
+                warnings.append("     Checked the path as given and relative to the project root.")
+                warnings.append("     The loader also searches the project data directories.")
         elif data_cfg.source == "lseg":
             checks.append("  ✓ Data source: LSEG API")
-            if "LSEG_API_KEY" in os.environ:
-                checks.append("  ✓ LSEG API key found in environment")
+            # LSEGLoader.connect() imports refinitiv.data, so that package -- not
+            # any environment variable -- is what actually gates this source.
+            if importlib.util.find_spec("refinitiv.data") is not None:
+                checks.append("  ✓ refinitiv-data package is importable")
             else:
-                warnings.append("  ⚠  LSEG API key not set in environment")
-                warnings.append("     Set LSEG_API_KEY environment variable or use CSV source")
+                warnings.append("  ⚠  refinitiv-data package not installed")
+                warnings.append("     Install it with `pip install refinitiv-data`, or use a")
+                warnings.append("     CSV data config such as configs/data/csv_sp500.yaml.")
         else:
             warnings.append(f"  ⚠  Unknown data source: {data_cfg.source}")
 
@@ -115,54 +161,12 @@ def check_config():
 
         print(traceback.format_exc())
 
-    # 4. Check evaluate_sp500.py defaults
-    print("\n4. Checking backtest defaults alignment...")
-    try:
-        # Read evaluate_sp500.py to check DEFAULT_CONFIG
-        with open("evaluate_sp500.py", encoding="utf-8") as f:
-            content = f.read()
-
-        # Check for updated defaults
-        if "'test_start': '2025-01-01'" in content:
-            checks.append("  ✓ Backtest test_start matches training config (2025-01-01)")
-        elif "'test_start': '2023-01-01'" in content:
-            errors.append("  ✗ Backtest test_start outdated (2023 instead of 2025)")
-        else:
-            warnings.append("  ⚠  Could not verify backtest test_start")
-
-        if "'data_file': 'data/raw/market/sp500_data.csv'" in content:
-            checks.append(
-                "  ✓ Backtest data_file matches reorganized path (data/raw/market/sp500_data.csv)"
-            )
-        elif "'data_file': 'sp500_data.csv'" in content:
-            checks.append("  ✓ Backtest data_file uses legacy root path (still supported)")
-        elif "'data_file': 'sp500_yf_download.csv'" in content:
-            errors.append("  ✗ Backtest data_file outdated (sp500_yf_download.csv)")
-        else:
-            warnings.append("  ⚠  Could not verify backtest data_file")
-
-    except Exception as e:
-        warnings.append(f"  ⚠  Could not check evaluate_sp500.py: {e}")
-
-    # 5. Check for common data files
-    print("\n5. Checking for data files...")
-    data_files = [
-        "data/raw/market/sp500_data.csv",
-        "data/raw/market/sp500_yf_download.csv",
-        "data/raw/market/russell1000_data.csv",
-        "sp500_data.csv",
-        "sp500_yf_download.csv",
-        "russell1000_data.csv",
-    ]
-    found_data = False
-    for df in data_files:
-        if os.path.exists(df):
-            checks.append(f"  ✓ Found data file: {df}")
-            found_data = True
-
-    if not found_data:
-        warnings.append("  ⚠  No known data files found in reorganized or legacy locations")
-        warnings.append("     Upload data files before running experiments")
+    # The former section 4 read `evaluate_sp500.py`, which is not in the tree, so
+    # it always fell into its except branch and emitted a bogus warning. A former
+    # section 5 scanned a hard-coded list of legacy CSV names that no current data
+    # config points at, so it reported "no data files" even when the configured
+    # file was present. Whether the configured CSV exists is now answered once,
+    # in section 3, against the config actually selected. See issue 146.
 
     # Print summary
     print("\n" + "=" * 80)
@@ -201,8 +205,20 @@ def check_config():
         return 0
 
 
+def _force_utf8_console() -> None:
+    """Fix Windows console encoding for the tick and warning glyphs.
+
+    Done here rather than at import time: rebinding `sys.stdout` as an import
+    side effect would clobber pytest's capture when this module is imported by
+    a test.
+    """
+    if sys.platform == "win32" and hasattr(sys.stdout, "buffer"):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
+
 def main():
     """Main entry point."""
+    _force_utf8_console()
     try:
         return check_config()
     except KeyboardInterrupt:
