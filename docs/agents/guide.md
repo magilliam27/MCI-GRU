@@ -167,9 +167,10 @@ existing stage over widening `run_experiment.py`:
 
 ### Base defaults versus the frozen recipe
 
-`configs/config.yaml` composes `data: sp500` and `features: with_momentum`. Its
-base values are not the frozen confirmation recipe, and confusing the two is a
-recurring documentation error. Verified base values include:
+`configs/config.yaml` composes `data: gics_top10_110_2016` and
+`features: with_momentum`. Its base values are not the frozen confirmation
+recipe, and confusing the two is a recurring documentation error. Verified base
+values include:
 
 | Key | Base value |
 | --- | --- |
@@ -190,7 +191,9 @@ recurring documentation error. Verified base values include:
 | `training.minimum_selection_rows` | `1` |
 | `training.walkforward.enabled` | `false` |
 | `evaluation.sharpe_method` | `newey_west` |
-| `data.pit_universe_mode` (via `configs/data/sp500.yaml`) | `row_filter` |
+| `data.source` (via `configs/data/gics_top10_110_2016.yaml`) | `csv` |
+| `data.use_pit_universe` / `data.pit_universe_mode` | `true` / `masked_panel` |
+| `data.pit_min_scoreable_stocks` / `data.pit_breadth_policy` | `104` / `error` |
 | `seed` / `output_dir` | `1729` / `results` |
 
 The frozen recipe in [../DEFAULT_EXPERIMENT_RECIPE.md](../DEFAULT_EXPERIMENT_RECIPE.md)
@@ -199,9 +202,19 @@ differs on purpose — it specifies `training.num_models=20`,
 recipe document rather than restating its values from memory, and do not
 describe recipe values as base defaults.
 
-`pit_universe_mode=masked_panel` is selected by the `configs/experiment/pit_temporal_*.yaml`
-presets, not by the base config. When it is selected, the masked-panel breadth
-invariant in `AGENTS.md` applies.
+`pit_universe_mode=masked_panel` is now selected by the **base config**, via
+`configs/data/gics_top10_110_2016.yaml`, as well as by the
+`configs/experiment/pit_temporal_*.yaml` presets. The masked-panel breadth
+invariant in `AGENTS.md` therefore applies to a bare run, not only to a preset.
+
+Two consequences worth knowing before you run anything:
+
+- The base default is `source: csv` and points at a gitignored panel, so a bare
+  `run_experiment.py` in a fresh clone fails on a missing data file rather than
+  on missing LSEG credentials.
+- It sets `use_pit_universe: true` with a `pit_universe_csv` that is not in the
+  repository. Any run supplying its own panel must pass
+  `data.use_pit_universe=false`; `scripts/ci_smoke.py` does exactly that.
 
 ## 2. Semantic Navigation
 

@@ -145,17 +145,23 @@ disables global regime features.
 
 ## Hydra Base Defaults
 
-Values below reflect **`configs/config.yaml`** merged with **`configs/data/sp500.yaml`** (Hydra `defaults`). Python dataclass defaults in `mci_gru/config.py` match these where duplicated.
+Values below reflect **`configs/config.yaml`** merged with **`configs/data/gics_top10_110_2016.yaml`** (Hydra `defaults`). Python dataclass defaults in `mci_gru/config.py` do **not** all match these: the data-group values below come from the YAML and override the dataclass.
 
 | Category | Setting | Default |
 |----------|---------|---------|
-| Data | source | `lseg` in `sp500.yaml` (use `data.source=csv` or `+data=csv_sp500` if Refinitiv is not installed) |
-| Data | train | 2019-01-01 to 2023-12-31 |
-| Data | val | 2024-01-08 to 2024-12-31 (gap after `train_end` **>** `label_t` days — label embargo) |
-| Data | test | 2025-01-08 to 2025-12-31 (gap after `val_end` **>** `label_t` days) |
+| Data | source | `csv` (the base default is no longer an LSEG config; use `data=lseg_sp500` for the live path) |
+| Data | filename | `data/raw/market/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_lseg_20150101_20260731.csv` (gitignored) |
+| Data | train | 2016-01-04 to 2023-12-31 |
+| Data | val | 2024-01-22 to 2024-12-31 (gap after `train_end` **>** `label_t` days — label embargo) |
+| Data | test | 2025-01-22 to 2025-12-31 (gap after `val_end` **>** `label_t` days) |
 | Data | skip_embargo_check | `false` (`ExperimentConfig` raises if gaps are too small; set `true` only for legacy repro) |
-| Data | pit_universe_mode | `row_filter` by default; use `masked_panel` for true rolling PIT candidates |
-| Data | pit_min_scoreable_stocks | `450` when PIT masked-panel mode is active |
+| Data | use_pit_universe | `true` — PIT filtering is required for this universe, not optional |
+| Data | pit_universe_csv | `data/raw/constituents/..._pit_universe.csv` (**not in the repository**) |
+| Data | pit_universe_mode | `masked_panel` |
+| Data | pit_min_scoreable_stocks | `104` (measured session minimum is 108) |
+| Data | pit_breadth_policy | `error` |
+
+Because the base default sets `use_pit_universe: true` against a PIT CSV that is not committed, any run supplying its own panel must pass `data.use_pit_universe=false`. `scripts/ci_smoke.py` does this.
 | Model | his_t | 10 |
 | Model | label_t | 5 |
 | Model | gru_hidden_sizes | [32, 10] |

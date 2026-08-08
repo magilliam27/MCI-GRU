@@ -79,6 +79,11 @@ def _build_smoke_command(csv_path: Path, run_dir: Path) -> list[str]:
         "features=base",
         "data.source=csv",
         f"data.filename={_normalise_cli_path(csv_path)}",
+        # The base config defaults to the 110-name PIT universe, whose
+        # pit_universe_csv is not in the repository and whose breadth floor
+        # (104 scoreable names, breadth_policy=error) a synthetic smoke panel
+        # cannot meet. The smoke proves wiring on its own generated CSV.
+        "data.use_pit_universe=false",
         "data.train_start=2020-01-01",
         "data.train_end=2020-02-14",
         "data.val_start=2020-02-18",
