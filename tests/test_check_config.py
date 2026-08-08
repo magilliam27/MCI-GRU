@@ -18,6 +18,7 @@ from pathlib import Path
 
 from omegaconf import OmegaConf
 
+import scripts.check_config as check_config_module
 from scripts.check_config import (
     FALLBACK_DATA_GROUP,
     check_config,
@@ -162,6 +163,25 @@ def test_the_lseg_branch_probes_the_import_rather_than_an_env_var():
     # LSEG_API_KEY gates nothing; LSEGLoader.connect() imports refinitiv.data.
     assert "LSEG_API_KEY" not in source
     assert 'find_spec("refinitiv.data")' in source
+
+
+def test_absent_refinitiv_package_is_a_warning_not_a_validation_error(monkeypatch):
+    """`find_spec` on a dotted name imports the parent and raises when it is absent.
+
+    Letting that escape turned "the optional LSEG SDK is not installed" into a
+    hard error. CI has no `refinitiv` package and caught this; a developer
+    machine that has it installed never reaches this path, so it is forced.
+    """
+
+    def raise_missing_parent(name):
+        raise ModuleNotFoundError(f"No module named 'refinitiv' (probing {name})")
+
+    monkeypatch.setattr(check_config_module.importlib.util, "find_spec", raise_missing_parent)
+    assert check_config_module.refinitiv_data_available() is False
+
+    # Control: the same helper must still report True when the spec resolves.
+    monkeypatch.setattr(check_config_module.importlib.util, "find_spec", lambda name: object())
+    assert check_config_module.refinitiv_data_available() is True
 
 
 def test_run_emits_no_unreadable_file_warning_for_any_data_source(tmp_path):

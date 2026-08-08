@@ -41,6 +41,20 @@ def selected_data_config(cfg) -> str:
     return f"configs/data/{group}.yaml"
 
 
+def refinitiv_data_available() -> bool:
+    """True when `import refinitiv.data` would succeed.
+
+    `find_spec` on a dotted name imports the parent package first, so when
+    `refinitiv` is absent entirely it raises ModuleNotFoundError rather than
+    returning None. Letting that escape would turn "the optional LSEG SDK is
+    not installed" into a hard validation error.
+    """
+    try:
+        return importlib.util.find_spec("refinitiv.data") is not None
+    except ModuleNotFoundError:
+        return False
+
+
 def find_configured_csv(filename: str) -> str | None:
     """Return the location of a configured CSV, or None if it is not present.
 
@@ -146,7 +160,7 @@ def check_config():
             checks.append("  ✓ Data source: LSEG API")
             # LSEGLoader.connect() imports refinitiv.data, so that package -- not
             # any environment variable -- is what actually gates this source.
-            if importlib.util.find_spec("refinitiv.data") is not None:
+            if refinitiv_data_available():
                 checks.append("  ✓ refinitiv-data package is importable")
             else:
                 warnings.append("  ⚠  refinitiv-data package not installed")
