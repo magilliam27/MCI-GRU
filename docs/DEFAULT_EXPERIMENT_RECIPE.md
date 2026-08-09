@@ -1,9 +1,28 @@
 # Default Frozen Experiment Recipe
 
-Last updated: 2026-05-14
+Last updated: 2026-08-08
 
 Use this recipe for production-style confirmation notebooks and PIT validation
 runs unless an experiment is explicitly testing one of these factors.
+
+> **The universe changed on 2026-08-08. Recipe-labelled evidence produced before
+> and after that date is not directly comparable.**
+>
+> Until then this document named no data config, so it silently inherited
+> whatever `configs/config.yaml` composed. When that base default moved from
+> `data: sp500` to `data: gics_top10_110_2016`, the recipe's effective universe
+> moved with it and this document did not change. It now pins its data config
+> explicitly, so its meaning no longer depends on a mutable default.
+>
+> | | before 2026-08-08 | from 2026-08-08 |
+> |---|---|---|
+> | data config | `configs/data/sp500.yaml` (inherited) | `configs/data/gics_top10_110_2016.yaml` (pinned) |
+> | source / universe | `lseg`, ~500 names | `csv`, ~110 names |
+> | train start | 2019-01-01 | 2016-01-04 |
+> | `use_pit_universe` / mode | `false` / `row_filter` | `true` / `masked_panel` |
+>
+> Existing `seed_results/` were produced under the inherited S&P 500 universe.
+> Do not compare them with new recipe-labelled runs without saying so.
 
 Recipe slug:
 
@@ -14,6 +33,8 @@ static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemb
 ## Hydra Overrides
 
 ```text
+data=gics_top10_110_2016
+
 seed=1729
 training.num_models=20
 training.num_epochs=100
@@ -55,6 +76,15 @@ features.regime_min_history_months=24
 
 ## Notes
 
+- `data=gics_top10_110_2016` is pinned deliberately. The recipe must not inherit
+  its universe from `configs/config.yaml`; a recipe whose data moves when a
+  default moves is not frozen. `tests/test_default_experiment_recipe.py` pins
+  that the selector is present and names a config that exists.
+- That config sets `use_pit_universe: true` against a `pit_universe_csv` that is
+  **not committed**, with `pit_min_scoreable_stocks: 104` and
+  `pit_breadth_policy: error`. Confirmation runs must supply that CSV. Runs that
+  bring their own panel instead must pass `data.use_pit_universe=false`, as
+  `scripts/ci_smoke.py` does.
 - `FRED_API_KEY` is required when `features.include_global_regime=true` and
   `features.regime_strict=true`.
 - The graph is the static threshold graph, not top-K and not dynamic schedule.
