@@ -164,12 +164,23 @@ GitHub issues and pull requests share one number space. Resolve an ambiguous
 
 Wayfinder uses one map issue and linked child issues as tickets.
 
-**No session can invoke `/mattpocock-skills:wayfinder`.** It carries
-`disable-model-invocation: true`, so only a human typing its name reaches it and
-no skill can chain to it. This section is therefore not a pointer to the skill —
-it is the operative substitute, and it is what an agent actually follows. Where
-it and `wayfinder/SKILL.md` disagree, the `SKILL.md` wins unless the divergence
-is recorded here as deliberate, with its reason.
+**`/mattpocock-skills:wayfinder` is human-gated, not unavailable.** It carries
+`disable-model-invocation: true`, which means an agent cannot reach for it on
+its own and no skill can chain to it — but when **you type it**, the skill loads
+and the session follows it in full. That is deliberate upstream design: charting
+a map is workflow-defining, and the plugin's test is *"could the model usefully
+reach for this autonomously?"*
+
+So there are two paths, and they are not equivalent:
+
+- **You typed it.** The real skill is in play. Follow it, and prefer it over
+  this section wherever the two differ.
+- **You did not.** This section is the operative substitute and is what the
+  session actually follows. It is deliberately kept close to the skill for that
+  reason.
+
+Where this section and `wayfinder/SKILL.md` disagree, the `SKILL.md` wins unless
+the divergence is recorded here as deliberate, with its reason.
 
 - **Map:** Maintain a single issue labelled `wayfinder:map`. Its body tracks
   `Destination`, `Notes`, `Decisions so far`, `Not yet specified` (this

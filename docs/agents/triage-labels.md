@@ -52,10 +52,13 @@ that one predates the plugin install.
 
 ## What a session can and cannot invoke
 
-**No session can invoke `/mattpocock-skills:triage`** — it carries
-`disable-model-invocation: true`, so only a human typing its name reaches it.
-This file is therefore the operative substitute for the label vocabulary, but it
-is *not* a substitute for the skill's state machine: the attention query, the
+**`/mattpocock-skills:triage` is human-gated, not unavailable.** It carries
+`disable-model-invocation: true`, so an agent cannot reach for it on its own —
+but when **you type it**, the full state machine runs. Prefer that over this
+file whenever you actually want a triage pass.
+
+This file is the operative substitute for the label *vocabulary* when you have
+not. It is **not** a substitute for the state machine: the attention query, the
 redundancy and prior-rejection checks, and the agent-brief and needs-info
 templates all live in the skill and have no equivalent here.
 

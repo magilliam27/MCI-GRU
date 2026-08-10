@@ -14,18 +14,31 @@ so that every harness working this repository produces identically shaped
 tickets, specs, and evidence. Under the plugin install these skills are
 namespaced: `/mattpocock-skills:implement`, not `/implement`.
 
-**Only nine of the plugin's twenty-two skills are reachable by a session:**
-`tdd`, `code-review`, `research`, `prototype`, `domain-modeling`,
-`codebase-design`, `diagnosing-bugs`, `resolving-merge-conflicts`, `grilling`.
+The plugin's twenty-two skills split on **who may start them**, which is not the
+same as who may use them.
 
-The rest carry `disable-model-invocation: true` — **only a human typing the name
-can invoke them, and no skill can chain to them.** That includes `implement`,
-`wayfinder`, `triage`, `to-spec`, and `to-tickets`, all of which this
-repository's documented workflow depends on. So `docs/agents/issue-tracker.md`
-and `docs/agents/triage-labels.md` are not pointers to those skills; they are
-the operative substitutes, and they are what you actually follow. When a
-substitute and a `SKILL.md` disagree, the `SKILL.md` wins unless the divergence
-is recorded as deliberate with its reason.
+**Nine are model-invoked** — an agent may reach for these on its own: `tdd`,
+`code-review`, `research`, `prototype`, `domain-modeling`, `codebase-design`,
+`diagnosing-bugs`, `resolving-merge-conflicts`, `grilling`.
+
+**Thirteen are user-invoked**, carrying `disable-model-invocation: true`. That
+includes `implement`, `wayfinder`, `triage`, `to-spec`, and `to-tickets` — the
+five this repository's documented workflow leans on. It means an agent cannot
+*start* them and no skill can chain to them. **It does not mean they are
+unavailable: type the name and the skill loads, and the session then follows it
+in full.** The gating is deliberate — these are workflow-defining, and the
+plugin's own test is *"could the model usefully reach for this autonomously?"*
+
+The practical consequence, which is the part worth remembering:
+
+- **Type the skill when you want its protocol.** `/mattpocock-skills:wayfinder`
+  before map work, `/mattpocock-skills:triage` before a triage pass. That gets
+  the real thing, and it is better than the substitute.
+- **When you have not typed it,** `docs/agents/issue-tracker.md` and
+  `docs/agents/triage-labels.md` are the operative substitutes and are what the
+  session actually follows. They are kept deliberately close to the skills.
+- When a substitute and a `SKILL.md` disagree, the `SKILL.md` wins unless the
+  divergence is recorded as deliberate with its reason.
 
 Two traps in that arrangement:
 
@@ -33,10 +46,11 @@ Two traps in that arrangement:
   `engineering:code-review` from a different enabled plugin. Always namespace
   it; the wrong one firing produces differently shaped evidence, which is the
   exact failure this setup exists to prevent.
-- `implement` is the one CLAUDE.md used to single out, and it is the *least*
-  costly gap — `AGENTS.md` Testing plus the mutation-check rule below are
-  stricter than it, and the two steps it delegates (`tdd`, `code-review`) are
-  both reachable. The costly gaps are `wayfinder` and `triage`.
+- `implement` is the one this file used to single out, and it is the *least*
+  consequential of the five to leave untyped — `AGENTS.md` Testing plus the
+  mutation-check rule below are stricter than it, and the two steps it delegates
+  (`tdd`, `code-review`) are both model-invoked anyway. The ones worth typing
+  are `wayfinder` and `triage`, whose protocols have no real substitute.
 
 ## Cold start
 
