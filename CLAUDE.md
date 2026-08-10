@@ -109,6 +109,27 @@ as expected rather than as a violation.
   `.\.venv\Scripts\python.exe scripts/run_pytest_isolated.py tests/ -v`. Use the
   isolated launcher rather than bare pytest; it avoids Windows ACL reuse
   problems.
+- **The venv's editable install points `import mci_gru` at the protected
+  checkout, not at your worktree.**
+  `site-packages/__editable___mci_gru_0_1_0_finder.py` hard-codes
+  `MAPPING = {'mci_gru': 'C:\\Users\\magil\\MCI-GRU\\mci_gru'}`, an absolute
+  path that does not follow the worktree you are in. So an ad-hoc script run
+  with that interpreter measures `codex/paper_trade_scrape` @ `e286649` and
+  tells you nothing about the code you are reviewing. **Nothing errors — the
+  wrong tree is simply measured.** This produced two wrong scratchpad results
+  during the #114 investigation, and only surfaced because the stale tree
+  happened to have an older function signature; a behaviour-only difference
+  would have returned plausible, wrong numbers silently.
+  - The isolated launcher is **unaffected**: it prepends `REPOSITORY_ROOT` to
+    the child's `PYTHONPATH` (`scripts/run_pytest_isolated.py:220`, `:231`), and
+    that is guarded by `tests/test_run_pytest_isolated.py:151`.
+  - For an ad-hoc script, either run it through the launcher, or pin the
+    worktree yourself with `sys.path.insert(0, <worktree root>)` or
+    `PYTHONPATH`. When the answer matters, have the script print
+    `mci_gru.__file__` and check it before trusting any number it produces.
+  - Do not "fix" this by reinstalling the editable package. That writes to the
+    protected checkout's venv, and the shared mapping is what lets every
+    worktree use one environment.
 - Any branch that adds or renames a test must regenerate `docs/TEST_REGISTRY.md`
   or CI lint fails. Run the suite with `--junitxml=test_reports\junit.xml` first
   so statuses are recorded rather than blank.
