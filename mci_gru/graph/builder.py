@@ -133,6 +133,22 @@ class GraphBuilder:
             f"Building graph ({mode}, lookback={self.corr_lookback_days} days, "
             f"edges={feat_mode})..."
         )
+        if self.use_multi_feature_edges and self.top_k == 0:
+            # Issue #114. rank_pct is populated only by top-K selection, so on the
+            # threshold path column 3 is a constant zero. GATConv.lin_edge has no
+            # bias, so that column is bitwise inert: it receives zero gradient and
+            # cannot change the output. |corr| is a bit-identical copy of corr here
+            # too, because GraphConfig rejects judge_value <= 0 and the threshold
+            # path can therefore only admit positive correlations.
+            logger.warning(
+                "graph.use_multi_feature_edges=true with graph.top_k=0: of the 4 edge "
+                "channels [corr, |corr|, corr^2, rank_pct], rank_pct is identically "
+                "zero and |corr| duplicates corr, so the tensor has numerical rank 2. "
+                "The model is still sized for %d channels. Set graph.top_k>0 to "
+                "populate rank_pct, or graph.use_multi_feature_edges=false for a "
+                "scalar edge weight.",
+                n_feat,
+            )
         pivot = self._daily_returns_pivot(df, kdcode_list, end_date)
         self.correlation_matrix = pivot.corr()
         rp = pivot if self.use_lead_lag_features else None
