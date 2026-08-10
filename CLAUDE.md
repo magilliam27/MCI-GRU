@@ -40,6 +40,35 @@ The practical consequence, which is the part worth remembering:
 - When a substitute and a `SKILL.md` disagree, the `SKILL.md` wins unless the
   divergence is recorded as deliberate with its reason.
 
+### Repo-owned skills, reachable without you
+
+`.claude/skills/` holds two project skills that **are** model-invoked, so the
+workstyle holds on a cold start without anyone typing a command:
+
+- **`work-the-map`** — the AFK half of `wayfinder`: load a map, recompute the
+  frontier, claim, resolve, record, fold state back into the body. It refuses
+  to chart, refuses to resolve more than one ticket, and **stops at any HITL
+  ticket** rather than answering its own grilling questions.
+- **`implement-ticket`** — the implementation loop: claim before branching with
+  owned paths declared, `/tdd` at seams confirmed with you, mutation-checking,
+  `/code-review`, draft pull request.
+
+They are deliberately **not** copies of the plugin's versions. Upstream
+`implement` ends "commit to the current branch", which contradicts the rules
+below; and its testing guidance is weaker than the mutation-check standard here.
+Their names differ from the plugin's so there is never a question about which
+fired.
+
+What stays human-gated, and why: **charting** a map, `triage`, `to-spec`, and
+`to-tickets`. Each creates or restructures work, and `wayfinder/SKILL.md:75`
+carries a rule that had to be patched in upstream because agents were grilling
+themselves. The gate is doing real work there; `work-the-map` deliberately
+covers only the half where it is not.
+
+Edit these in `.claude/skills/`, never in the plugin marketplace — that is a
+clean git checkout of `mattpocock/skills` and an update reverts local edits
+silently.
+
 Two traps in that arrangement:
 
 - `mattpocock-skills:code-review` **collides by name** with
