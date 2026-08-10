@@ -14,6 +14,30 @@ so that every harness working this repository produces identically shaped
 tickets, specs, and evidence. Under the plugin install these skills are
 namespaced: `/mattpocock-skills:implement`, not `/implement`.
 
+**Only nine of the plugin's twenty-two skills are reachable by a session:**
+`tdd`, `code-review`, `research`, `prototype`, `domain-modeling`,
+`codebase-design`, `diagnosing-bugs`, `resolving-merge-conflicts`, `grilling`.
+
+The rest carry `disable-model-invocation: true` — **only a human typing the name
+can invoke them, and no skill can chain to them.** That includes `implement`,
+`wayfinder`, `triage`, `to-spec`, and `to-tickets`, all of which this
+repository's documented workflow depends on. So `docs/agents/issue-tracker.md`
+and `docs/agents/triage-labels.md` are not pointers to those skills; they are
+the operative substitutes, and they are what you actually follow. When a
+substitute and a `SKILL.md` disagree, the `SKILL.md` wins unless the divergence
+is recorded as deliberate with its reason.
+
+Two traps in that arrangement:
+
+- `mattpocock-skills:code-review` **collides by name** with
+  `engineering:code-review` from a different enabled plugin. Always namespace
+  it; the wrong one firing produces differently shaped evidence, which is the
+  exact failure this setup exists to prevent.
+- `implement` is the one CLAUDE.md used to single out, and it is the *least*
+  costly gap — `AGENTS.md` Testing plus the mutation-check rule below are
+  stricter than it, and the two steps it delegates (`tdd`, `code-review`) are
+  both reachable. The costly gaps are `wayfinder` and `triage`.
+
 ## Cold start
 
 Work may arrive here from any harness, or from a previous session of this one.
@@ -22,8 +46,13 @@ being in context. Brief yourself from the tracker every time:
 
 1. `docs/agents/issue-tracker.md` and `docs/agents/guide.md`.
 2. `gh issue view 97 --repo magilliam27/MCI-GRU --comments` for the Wayfinder
-   map. **The map's current state lives in its newest comments, not its body.**
-   Body edits raise no timeline entry, so the body alone reads as frozen.
+   map. **Read the body and the newest comments, and trust neither alone.**
+   Body edits raise no timeline entry, so a body can sit stale for weeks; but a
+   comment can also be overtaken and never corrected. Both have happened here —
+   see `docs/agents/issue-tracker.md`, **Deliberate divergence: map state lives
+   in the newest comments**, which is where the rule now lives so that every
+   harness reads it. Where they disagree, recompute from the tracker: a
+   frontier is open children in map order, minus anything blocked or assigned.
 3. The active child ticket and its evidence comments.
 4. Claim the work on the tracker before branching — file an issue first if it
    has none, assign it, and declare its owned paths. See
