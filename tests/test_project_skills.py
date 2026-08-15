@@ -90,9 +90,16 @@ def test_the_frontmatter_parser_rejects_what_it_should():
 def test_work_the_map_refuses_charting_and_hitl():
     """The three hard stops are the reason this skill is safe to make reachable.
 
-    Guarded as content because their absence is the whole risk: a version of
-    this skill without them would silently authorise an agent to chart a map and
-    answer its own grilling questions.
+    This is a wording assertion, which is normally the vacuous-guard pattern this
+    repository has been bitten by. It is justified here for a specific, checked
+    reason: a line-by-line comparison against `docs/agents/issue-tracker.md` and
+    `CLAUDE.md` found that "never chart" exists in **neither** — and that the
+    tracker doc actively teaches charting mechanics with no counterweight. So
+    this skill is the unique home of that prohibition, and the assertion defends
+    a real invariant rather than pinning phrasing.
+
+    If the prohibition is ever moved into the tracker doc, delete this test
+    rather than loosening it -- at that point it would be pinning phrasing.
     """
     text = (SKILLS_DIR / "work-the-map" / "SKILL.md").read_text(encoding="utf-8")
     assert "Never chart" in text

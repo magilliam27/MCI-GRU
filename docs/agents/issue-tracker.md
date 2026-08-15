@@ -211,12 +211,28 @@ the divergence is recorded here as deliberate, with its reason.
   `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling`, or
   `wayfinder:task`. If native sub-issues are unavailable, add the child to a
   task list in the map and put `Part of #<map>` at the top of the child body.
+  - Creating the link takes the child's **numeric database id**, not its issue
+    number, and a capital `-F` so the value is sent as an integer. Lowercase
+    `-f` sends a string and the API returns 422.
+
+    ```
+    gh api repos/<owner>/<repo>/issues/<map>/sub_issues -F sub_issue_id=<db-id>
+    ```
+
+    Get the id from `gh api repos/<owner>/<repo>/issues/<child>` and read `.id`,
+    which is not the same field as `.number`.
 - **Dependency:** Prefer GitHub's native issue dependency relation. Host-side
   `gh api` may create the edge using the blocker's numeric database ID, not its
   issue number or node ID. If native dependencies are unavailable, put
   `Blocked by: #<number>, #<number>` at the top of the dependent ticket.
 - **Frontier:** Read the map's open children in map order, exclude tickets with
   any open blocker or any assignee, and select the first remaining ticket.
+  - **Recompute this from the tracker every session. Never substitute a
+    comment's claim about the frontier for computing it.** A map comment here
+    named the wrong ticket for eight days: it was written expecting a pull
+    request to close its child, the child was then deliberately left open, and
+    the comment was never corrected. Reading it instead of recomputing sends you
+    to the wrong work. The same applies to the map body.
 - **Claim:** Assign the selected ticket to the driving developer; this is the
   session's first tracker write. See **Claim Before Branching**, which extends
   this step to work that has no ticket yet.
