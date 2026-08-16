@@ -23,12 +23,13 @@ refusals below and the routing under them.
    work needs charting, say so and stop.
 
 2. **Never resolve more than one ticket in a session**, research tickets
-   excepted (`wayfinder/SKILL.md:105`).
+   excepted — `wayfinder/SKILL.md` § *Invocation*: *"never resolve more than one
+   ticket per session — with the exception of research tickets."*
 
 3. **Stop at any HITL ticket.** `wayfinder:grilling` and `wayfinder:prototype`
-   resolve only through live exchange: *"the agent never stands in for the
-   human's side of it — a grilling agent that answers its own questions has
-   broken this"* (`wayfinder/SKILL.md:75`).
+   resolve only through live exchange — `wayfinder/SKILL.md` § *Ticket Types*:
+   *"the agent never stands in for the human's side of it (a grilling agent that
+   answers its own questions has broken this)."*
 
    Claim it if you like, then **hand back with the question stated**. Do not
    answer it yourself, and do not treat your own reasoning as the exchange.
