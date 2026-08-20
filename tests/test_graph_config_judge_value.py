@@ -4,9 +4,10 @@
 `top_k` and `top_k_metric` but never `judge_value` (`mci_gru/graph/builder.py:64-69`),
 and `build_correlation_graph` constructs the builder straight from the config
 (`mci_gru/pipeline.py:682-691`). So the config is where the constraint lives, and
-the behavioural tests below construct their builder the same way production does
-rather than calling `GraphBuilder(judge_value=...)` directly -- that shortcut
-passes with or without this change and would prove nothing.
+the behavioural tests below reach the builder *through* `GraphConfig` rather than
+calling `GraphBuilder(judge_value=...)` directly -- that shortcut passes with or
+without this change and would prove nothing. See `_edge_attr_through_config` for
+where the mirror of production stops.
 """
 
 import numpy as np
@@ -16,7 +17,7 @@ import pytest
 from mci_gru.config import GraphConfig
 from mci_gru.graph.builder import GraphBuilder
 
-SHIPPED_JUDGE_VALUE = 0.8
+DEFAULT_JUDGE_VALUE = 0.8
 END_DATE = "2021-01-01"
 
 
@@ -40,11 +41,17 @@ def _two_block_panel(n: int = 12, periods: int = 300, seed: int = 1729) -> pd.Da
 
 
 def _edge_attr_through_config(judge_value: float) -> np.ndarray:
-    """Build edges the way production does: config first, then builder.
+    """Construct the builder from a validated config, as `build_correlation_graph` does.
 
-    Mirrors `build_correlation_graph` at `mci_gru/pipeline.py:682-691`. Calling
-    `GraphBuilder(judge_value=...)` directly would bypass the only validation
-    there is, so it would pass identically before and after this change.
+    The *construction* mirrors `mci_gru/pipeline.py:682-691`. The *call* is
+    deliberately narrower than production's: no `admissible_mask`, because PIT
+    admissibility is not what these tests are about, and a shorter lookback than
+    the shipped 252 so the fixture stays small.
+
+    What matters is that judge_value reaches the selection path *through*
+    `GraphConfig`. Calling `GraphBuilder(judge_value=...)` directly would bypass
+    the only validation there is, so it would pass identically before and after
+    this change.
     """
     cfg = GraphConfig(
         judge_value=judge_value,
@@ -76,15 +83,17 @@ def test_negative_judge_value_is_accepted():
 def test_judge_value_below_the_correlation_domain_is_rejected():
     """Pearson correlation cannot be under -1, so a threshold under -1 means nothing.
 
-    It is not harmlessly equivalent to -1 either: it reads as a deliberate choice
-    the selection path cannot express, since every value at or below -1 selects the
-    same edge set.
+    It is not harmlessly equivalent to -1 either: every value strictly below -1
+    selects the same edge set, so it reads as a deliberate choice the selection
+    path cannot express. Note the asymmetry -- -1 itself is *not* in that group,
+    because a strict `corr > judge_value` drops an exact -1.0 pair at -1.0 and
+    keeps it at -1.5.
     """
     with pytest.raises(ValueError):
         GraphConfig(judge_value=-1.5)
 
 
-@pytest.mark.parametrize("value", [-1.0, -0.5, 0.0, 0.5, SHIPPED_JUDGE_VALUE, 0.9999])
+@pytest.mark.parametrize("value", [-1.0, -0.5, 0.0, 0.5, DEFAULT_JUDGE_VALUE, 0.9999])
 def test_accepted_values_span_the_correlation_domain(value):
     """`-1.0` is inclusive; `0.0` is a legal threshold meaning "all positive correlations".
 
@@ -114,12 +123,21 @@ def test_negative_threshold_admits_negative_correlations():
     assert np.any(attr[:, 0] < 0), "a threshold of -1 must keep negatively correlated pairs"
 
 
-def test_negative_threshold_admits_strictly_more_edges_than_the_shipped_default():
-    shipped = _edge_attr_through_config(SHIPPED_JUDGE_VALUE)
+def test_the_extreme_threshold_produces_a_complete_directed_graph():
+    """`judge_value = -1` admits every non-NaN off-diagonal pair: `n(n-1)` edges.
+
+    Asserting merely "more edges than 0.8" would not pin the extreme. This
+    fixture's correlations are bimodal, so 0.8, 0.0 and -0.5 all select the same
+    60 edges; a strict-inequality check would pass for any of them. Only -1
+    reaches 132.
+    """
+    n = _two_block_panel()["kdcode"].nunique()
+    shipped = _edge_attr_through_config(DEFAULT_JUDGE_VALUE)
     opened = _edge_attr_through_config(-1.0)
 
-    assert shipped.shape[0] > 0, "fixture produced no edges at 0.8; the comparison would be vacuous"
-    assert opened.shape[0] > shipped.shape[0]
+    assert shipped.shape[0] > 0, "fixture produced no edges at 0.8; the comparison is vacuous"
+    assert shipped.shape[0] < n * (n - 1), "fixture is already complete at 0.8; nothing to open"
+    assert opened.shape[0] == n * (n - 1)
 
 
 def test_negative_threshold_makes_the_abs_corr_channel_informative():
@@ -137,6 +155,6 @@ def test_negative_threshold_makes_the_abs_corr_channel_informative():
 
 def test_the_shipped_default_still_duplicates_the_abs_corr_channel():
     """Control. Without this, the test above could pass for reasons unrelated to sign."""
-    shipped = _edge_attr_through_config(SHIPPED_JUDGE_VALUE)
+    shipped = _edge_attr_through_config(DEFAULT_JUDGE_VALUE)
     assert np.array_equal(shipped[:, 1], shipped[:, 0])
     assert np.all(shipped[:, 0] > 0)

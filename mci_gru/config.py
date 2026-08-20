@@ -314,11 +314,15 @@ class GraphConfig:
             A negative threshold also makes the ``|corr|`` edge channel informative
             again (issue 114), but only on arms that set one: at ``0.8`` it is still
             a bit-identical copy of ``corr``.
-            ``-1`` is a floor, not a literal "every pair". The comparison is strict,
+            At ``-1`` the result is a complete directed graph: every non-NaN
+            off-diagonal pair, ``n(n-1)`` edges -- roughly 11,990 on a 110-name
+            universe, against the tens of edges ``0.8`` yields. That is a materially
+            different model, and it compounds with ``drop_edge_p``.
+            ``-1`` is a floor, not a literal "every pair": the comparison is strict,
             so a pair at exactly ``-1.0`` is still dropped -- measure-zero on real
-            return panels, reachable in synthetic fixtures. Values below ``-1`` are
-            rejected rather than clamped, because every one of them selects the same
-            edge set and accepting them would let a meaningless number read as a
+            return panels, reachable in synthetic fixtures. Values *strictly* below
+            ``-1`` are rejected rather than clamped; they would all select the same
+            edge set, so accepting one would let a meaningless number read as a
             deliberate choice. ``>= 1`` is rejected because ``corr <= 1`` under a
             strict ``>`` makes it a guaranteed-empty graph.
         update_frequency_months: How often to update graph (0 = never)
