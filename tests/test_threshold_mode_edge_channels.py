@@ -21,7 +21,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mci_gru.config import GraphConfig
 from mci_gru.graph.builder import GraphBuilder
 
 DEFAULT_JUDGE_VALUE = 0.8
@@ -78,14 +77,16 @@ def test_threshold_mode_column_semantics():
     np.testing.assert_allclose(attr[:, 2], corr.astype(np.float64) ** 2, rtol=1e-6, atol=1e-7)
 
 
-def test_threshold_mode_admits_only_positive_correlations():
-    """GraphConfig forbids judge_value <= 0, so the threshold path cannot keep negatives."""
+def test_the_shipped_default_admits_only_positive_correlations():
+    """At judge_value=0.8 every kept correlation is positive.
+
+    This is a property of the shipped *threshold*, not of the validator. Issue 162
+    relaxed the bound to [-1, 1), so the threshold path can now keep negatives --
+    just not at this default. The bound itself, and what a negative threshold does
+    to the graph, are covered by tests/test_graph_config_judge_value.py.
+    """
     attr = _edge_attr(_builder(), _correlated_panel())
     assert np.all(attr[:, 0] > 0)
-
-    for bad in (-0.5, 0.0):
-        with pytest.raises(ValueError):
-            GraphConfig(judge_value=bad)
 
 
 # --- The defect, isolated so it can be deleted when resolved ------------------
@@ -103,8 +104,10 @@ def test_rank_pct_is_inert_in_threshold_mode():
 def test_abs_corr_duplicates_corr_in_threshold_mode():
     """DEFECT (issue 114): column 1 is a bit-identical copy of column 0.
 
-    Structural, not incidental: the threshold path keeps `corr > judge_value` and
-    judge_value must be positive, so every kept correlation is positive.
+    Structural at this threshold, not incidental: the path keeps `corr > judge_value`
+    and this fixture builds at 0.8, so every kept correlation is positive. Since issue
+    162 that is no longer true of threshold mode in general -- a negative judge_value
+    makes column 1 informative. The shipped default is still 0.8, so the defect stands.
     Delete this test when the defect is resolved.
     """
     attr = _edge_attr(_builder(), _correlated_panel())
