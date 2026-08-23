@@ -14,6 +14,44 @@ so that every harness working this repository produces identically shaped
 tickets, specs, and evidence. Under the plugin install these skills are
 namespaced: `/mattpocock-skills:implement`, not `/implement`.
 
+The plugin's twenty-two skills split on **who may start them**, which is not the
+same as who may use them.
+
+**Nine are model-invoked** — an agent may reach for these on its own: `tdd`,
+`code-review`, `research`, `prototype`, `domain-modeling`, `codebase-design`,
+`diagnosing-bugs`, `resolving-merge-conflicts`, `grilling`.
+
+**Thirteen are user-invoked**, carrying `disable-model-invocation: true`. That
+includes `implement`, `wayfinder`, `triage`, `to-spec`, and `to-tickets` — the
+five this repository's documented workflow leans on. It means an agent cannot
+*start* them and no skill can chain to them. **It does not mean they are
+unavailable: type the name and the skill loads, and the session then follows it
+in full.** The gating is deliberate — these are workflow-defining, and the
+plugin's own test is *"could the model usefully reach for this autonomously?"*
+
+The practical consequence, which is the part worth remembering:
+
+- **Type the skill when you want its protocol.** `/mattpocock-skills:wayfinder`
+  before map work, `/mattpocock-skills:triage` before a triage pass. That gets
+  the real thing, and it is better than the substitute.
+- **When you have not typed it,** `docs/agents/issue-tracker.md` and
+  `docs/agents/triage-labels.md` are the operative substitutes and are what the
+  session actually follows. They are kept deliberately close to the skills.
+- When a substitute and a `SKILL.md` disagree, the `SKILL.md` wins unless the
+  divergence is recorded as deliberate with its reason.
+
+Two traps in that arrangement:
+
+- `mattpocock-skills:code-review` **collides by name** with
+  `engineering:code-review` from a different enabled plugin. Always namespace
+  it; the wrong one firing produces differently shaped evidence, which is the
+  exact failure this setup exists to prevent.
+- `implement` is the one this file used to single out, and it is the *least*
+  consequential of the five to leave untyped — `AGENTS.md` Testing plus the
+  mutation-check rule below are stricter than it, and the two steps it delegates
+  (`tdd`, `code-review`) are both model-invoked anyway. The ones worth typing
+  are `wayfinder` and `triage`, whose protocols have no real substitute.
+
 ## Cold start
 
 Work may arrive here from any harness, or from a previous session of this one.
@@ -22,8 +60,13 @@ being in context. Brief yourself from the tracker every time:
 
 1. `docs/agents/issue-tracker.md` and `docs/agents/guide.md`.
 2. `gh issue view 97 --repo magilliam27/MCI-GRU --comments` for the Wayfinder
-   map. **The map's current state lives in its newest comments, not its body.**
-   Body edits raise no timeline entry, so the body alone reads as frozen.
+   map. **Read the body and the newest comments, and trust neither alone.**
+   Body edits raise no timeline entry, so a body can sit stale for weeks; but a
+   comment can also be overtaken and never corrected. Both have happened here —
+   see `docs/agents/issue-tracker.md`, **Deliberate divergence: map state lives
+   in the newest comments**, which is where the rule now lives so that every
+   harness reads it. Where they disagree, recompute from the tracker: a
+   frontier is open children in map order, minus anything blocked or assigned.
 3. The active child ticket and its evidence comments.
 4. Claim the work on the tracker before branching — file an issue first if it
    has none, assign it, and declare its owned paths. See

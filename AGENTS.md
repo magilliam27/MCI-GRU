@@ -33,9 +33,10 @@ directly on `main`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-Use the five canonical Matt Pocock triage roles with their exact default label
-strings. Missing canonical labels may be created as part of the requested
-workflow. See `docs/agents/triage-labels.md`.
+Use the two category roles and five state roles from the Matt Pocock triage
+vocabulary, with their exact default label strings. A triaged issue carries
+exactly one of each. Missing canonical labels may be created as part of the
+requested workflow. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 

@@ -158,12 +158,54 @@ GitHub issues and pull requests share one number space. Resolve an ambiguous
 - Before mutating the tracker, confirm the repository and requested workflow
   scope; do not ask again for each normal in-scope operation.
 
-## Wayfinder Conventions
+## Wayfinding operations
+
+`wayfinder/SKILL.md` refers to this section **by this name**. Do not rename it.
 
 Wayfinder uses one map issue and linked child issues as tickets.
 
+**`/mattpocock-skills:wayfinder` is human-gated, not unavailable.** It carries
+`disable-model-invocation: true`, which means an agent cannot reach for it on
+its own and no skill can chain to it — but when **you type it**, the skill loads
+and the session follows it in full. That is deliberate upstream design: charting
+a map is workflow-defining, and the plugin's test is *"could the model usefully
+reach for this autonomously?"*
+
+So there are two paths, and they are not equivalent:
+
+- **You typed it.** The real skill is in play. Follow it, and prefer it over
+  this section wherever the two differ.
+- **You did not.** This section is the operative substitute and is what the
+  session actually follows. It is deliberately kept close to the skill for that
+  reason.
+
+Where this section and `wayfinder/SKILL.md` disagree, the `SKILL.md` wins unless
+the divergence is recorded here as deliberate, with its reason.
+
 - **Map:** Maintain a single issue labelled `wayfinder:map`. Its body tracks
-  `Notes`, `Decisions-so-far`, and `Fog`.
+  `Destination`, `Notes`, `Decisions so far`, `Not yet specified` (this
+  repository calls it `Fog`), and `Out of scope`.
+  - `Destination` is named **first** and fixes the scope; every session orients
+    to it before choosing a ticket. A map whose destination cannot be named is
+    not a map — that is the test for whether charting is premature.
+  - `Out of scope` is work ruled beyond the destination. It never graduates into
+    a ticket, and it exists so that beyond-scope work stops reading as takeable
+    frontier.
+  - `Fog` is *in-scope* uncertainty and does graduate. When a fog patch becomes
+    a ticket, clear it from `Fog` so it lives in exactly one place.
+  - The upstream `setup-matt-pocock-skills` seed template still describes only
+    `Notes` / `Decisions-so-far` / `Fog`. That template is stale against
+    `wayfinder/SKILL.md`; the skill wins.
+- **Plan, don't do.** A map produces decisions, not deliverables. An effort that
+  needs execution tickets may override this — but the override goes in that
+  map's own `Notes`, in writing. It is a per-map exception, not the default.
+- **HITL or AFK.** Every child is one or the other, and the map should say
+  which. `wayfinder:research` is AFK: an agent resolves it alone.
+  `wayfinder:grilling` and `wayfinder:prototype` are **HITL** and resolve only
+  through live exchange with the human — **an agent must never answer its own
+  grilling questions.** `wayfinder:task` is either, depending on the ticket.
+- **One ticket per session.** Never resolve more than one ticket in a session,
+  except research tickets. This bounds how much unreviewed change lands at once.
 - **Child ticket:** Prefer a native GitHub sub-issue linked to the map and label
   it with exactly one type:
   `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling`, or
@@ -180,5 +222,34 @@ Wayfinder uses one map issue and linked child issues as tickets.
   this step to work that has no ticket yet.
 - **Resolve:** Record the answer or outcome in a durable ticket comment. Close
   an eligible non-code ticket, then add a concise pointer to the map's
-  `Decisions-so-far`. Implementation tickets remain open for merge-driven
+  `Decisions so far`. Implementation tickets remain open for merge-driven
   closure through `Closes #<number>`.
+  - **The comment comes first, always.** A ticket closed with no recorded
+    resolution leaves an empty record, and what it delivered becomes
+    reconstructable only from someone else's prose elsewhere. This has happened.
+  - If a pull request deliberately omits the closing keyword, the ticket falls
+    back to the direct-closure route — which means it needs the resolution
+    comment. Declining one route does not exempt you from the other.
+
+### Deliberate divergence: map state lives in the newest comments
+
+Recorded here rather than only in `CLAUDE.md`, so that every harness reads it.
+
+A map's body edit raises no timeline entry, notification, or email, so a body
+alone reads as frozen. This repository therefore requires **every material body
+update to be paired with a short companion comment** on the map.
+
+`wayfinder/SKILL.md` treats the body as the whole map at low resolution, loaded
+once per session. That model and this convention pull in opposite directions,
+and the failure has now been observed in both directions:
+
+- A body that stops tracking its comments goes stale invisibly. One map's body
+  sat eleven days behind five comments and asserted a closed ticket as the
+  frontier.
+- A comment that is never folded back can be wrong while the body is right. On
+  another map the newest frontier-bearing comment named the wrong ticket for
+  eight days, and "trust the newest comment" routed readers to it.
+
+So the convention is **both**: comment on every material body update, *and* fold
+comment-recorded state changes back into the body. Neither surface is allowed to
+drift from the other.
