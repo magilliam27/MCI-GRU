@@ -44,7 +44,12 @@ Normal in-scope operations include:
 
 - Creating, editing, labelling, assigning, and commenting on issues.
 - Creating issue hierarchies, Wayfinder maps, child tickets, and dependency
-  relationships.
+  relationships — but **charting a new map is not covered by an implied
+  invocation.** It names a destination, fixes scope, and creates the tickets
+  everything downstream hangs off, so it needs the human either typing
+  `/mattpocock-skills:wayfinder` or asking for a map in terms that leave no
+  doubt. "Work the map" and "chart a map" are different authorities; an agent
+  that is unsure which was asked for should ask. See **Wayfinding operations**.
 - Creating missing labels using the exact configured vocabulary.
 - Closing eligible non-code tickets after recording their resolution.
 - Creating an isolated worktree and scoped `<harness>/<task>` branch.
@@ -164,20 +169,15 @@ GitHub issues and pull requests share one number space. Resolve an ambiguous
 
 Wayfinder uses one map issue and linked child issues as tickets.
 
-**`/mattpocock-skills:wayfinder` is human-gated, not unavailable.** It carries
-`disable-model-invocation: true`, which means an agent cannot reach for it on
-its own and no skill can chain to it — but when **you type it**, the skill loads
-and the session follows it in full. That is deliberate upstream design: charting
-a map is workflow-defining, and the plugin's test is *"could the model usefully
-reach for this autonomously?"*
+**In several harnesses the Wayfinder skill can only be started by the human, not
+reached for by an agent.** Whether that is so in yours is a harness question —
+Claude Code sessions should see `CLAUDE.md`. Either way this section is written
+to stand alone:
 
-So there are two paths, and they are not equivalent:
-
-- **You typed it.** The real skill is in play. Follow it, and prefer it over
-  this section wherever the two differ.
-- **You did not.** This section is the operative substitute and is what the
-  session actually follows. It is deliberately kept close to the skill for that
-  reason.
+- **If the skill is in play**, follow it, and prefer it over this section
+  wherever the two differ.
+- **If it is not**, this section is the operative substitute and is what the
+  session actually follows. It is deliberately kept close to the skill.
 
 Where this section and `wayfinder/SKILL.md` disagree, the `SKILL.md` wins unless
 the divergence is recorded here as deliberate, with its reason.
@@ -193,9 +193,13 @@ the divergence is recorded here as deliberate, with its reason.
     frontier.
   - `Fog` is *in-scope* uncertainty and does graduate. When a fog patch becomes
     a ticket, clear it from `Fog` so it lives in exactly one place.
-  - The upstream `setup-matt-pocock-skills` seed template still describes only
-    `Notes` / `Decisions-so-far` / `Fog`. That template is stale against
-    `wayfinder/SKILL.md`; the skill wins.
+  - **On the heading string:** `wayfinder/SKILL.md` uses `Not yet specified`;
+    the upstream `setup-matt-pocock-skills` seed template still says `Fog`, and
+    is stale against the skill. This repository's existing maps were built from
+    the template and use `Fog`. **New maps should use the skill's
+    `Not yet specified`**; the two live maps keep `Fog` rather than being
+    rewritten, and that is the one place the names differ. Recorded here as a
+    deliberate divergence so it is not read as drift.
 - **Plan, don't do.** A map produces decisions, not deliverables. An effort that
   needs execution tickets may override this — but the override goes in that
   map's own `Notes`, in writing. It is a per-map exception, not the default.
@@ -211,12 +215,28 @@ the divergence is recorded here as deliberate, with its reason.
   `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling`, or
   `wayfinder:task`. If native sub-issues are unavailable, add the child to a
   task list in the map and put `Part of #<map>` at the top of the child body.
+  - Creating the link takes the child's **numeric database id**, not its issue
+    number, and a capital `-F` so the value is sent as an integer. Lowercase
+    `-f` sends a string and the API returns 422.
+
+    ```
+    gh api repos/<owner>/<repo>/issues/<map>/sub_issues -F sub_issue_id=<db-id>
+    ```
+
+    Get the id from `gh api repos/<owner>/<repo>/issues/<child>` and read `.id`,
+    which is not the same field as `.number`.
 - **Dependency:** Prefer GitHub's native issue dependency relation. Host-side
   `gh api` may create the edge using the blocker's numeric database ID, not its
   issue number or node ID. If native dependencies are unavailable, put
   `Blocked by: #<number>, #<number>` at the top of the dependent ticket.
 - **Frontier:** Read the map's open children in map order, exclude tickets with
   any open blocker or any assignee, and select the first remaining ticket.
+  - **Recompute this from the tracker every session. Never substitute a
+    comment's claim about the frontier for computing it.** A map comment here
+    named the wrong ticket for eight days: it was written expecting a pull
+    request to close its child, the child was then deliberately left open, and
+    the comment was never corrected. Reading it instead of recomputing sends you
+    to the wrong work. The same applies to the map body.
 - **Claim:** Assign the selected ticket to the driving developer; this is the
   session's first tracker write. See **Claim Before Branching**, which extends
   this step to work that has no ticket yet.
@@ -227,11 +247,19 @@ the divergence is recorded here as deliberate, with its reason.
   - **The comment comes first, always.** A ticket closed with no recorded
     resolution leaves an empty record, and what it delivered becomes
     reconstructable only from someone else's prose elsewhere. This has happened.
-  - If a pull request deliberately omits the closing keyword, the ticket falls
-    back to the direct-closure route — which means it needs the resolution
-    comment. Declining one route does not exempt you from the other.
+  - **A pull request that deliberately omits the closing keyword does not
+    change who may close the ticket** — see **Closing Issues**, which keeps
+    implementation issues on the merge-driven route regardless. What it changes
+    is that nothing will record the outcome automatically, so the resolution
+    comment is owed by hand. One ticket here shipped with an entirely empty
+    record that way.
+  - Before publishing a pull request body or a commit message, scan it for a
+    closing keyword near a `#`-prefixed number. GitHub's parser is lexical and
+    ignores negation, so "does not fix" still closes. This has fired twice here.
+    Write references symbolically (`#<n>`) or keep the keyword away from the
+    number.
 
-### Deliberate divergence: map state lives in the newest comments
+### Keeping map body and comments in step
 
 Recorded here rather than only in `CLAUDE.md`, so that every harness reads it.
 

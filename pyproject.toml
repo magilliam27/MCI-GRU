@@ -32,6 +32,10 @@ dev = [
     "pypdf>=4.0",
     "ruff==0.15.12",
     "pip-tools>=7.4",
+    # tests/test_project_skills.py parses skill frontmatter. It resolves today
+    # only transitively via omegaconf; declared so a tightened closure does not
+    # turn it into a collection error for the whole file.
+    "pyyaml>=6.0",
 ]
 all = ["mci-gru[tracking,fred,dev]"]
 
