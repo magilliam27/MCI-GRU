@@ -305,7 +305,26 @@ class GraphConfig:
     Graph construction configuration.
 
     Attributes:
-        judge_value: Correlation threshold for edge creation (used only when top_k == 0)
+        judge_value: Correlation threshold for edge creation (used only when top_k == 0).
+            Admissible range is ``[-1, 1)``. The threshold path keeps off-diagonal
+            pairs where ``corr > judge_value``, so ``0.8`` (the shipped default)
+            keeps only strongly co-moving pairs, ``0.0`` keeps every positively
+            correlated pair, and a negative value admits anti-correlated pairs --
+            which the threshold path could not reach at all before issue 162.
+            A negative threshold also makes the ``|corr|`` edge channel informative
+            again (issue 114), but only on arms that set one: at ``0.8`` it is still
+            a bit-identical copy of ``corr``.
+            At ``-1`` the result is a complete directed graph: every non-NaN
+            off-diagonal pair, ``n(n-1)`` edges -- roughly 11,990 on a 110-name
+            universe, against the tens of edges ``0.8`` yields. That is a materially
+            different model, and it compounds with ``drop_edge_p``.
+            ``-1`` is a floor, not a literal "every pair": the comparison is strict,
+            so a pair at exactly ``-1.0`` is still dropped -- measure-zero on real
+            return panels, reachable in synthetic fixtures. Values *strictly* below
+            ``-1`` are rejected rather than clamped; they would all select the same
+            edge set, so accepting one would let a meaningless number read as a
+            deliberate choice. ``>= 1`` is rejected because ``corr <= 1`` under a
+            strict ``>`` makes it a guaranteed-empty graph.
         update_frequency_months: How often to update graph (0 = never)
         corr_lookback_days: Days of history for correlation computation
         top_k: Per-node top-K neighbour selection. 0 = legacy global threshold path.
@@ -348,8 +367,8 @@ class GraphConfig:
     _VALID_TOP_K_METRICS = ("corr", "abs_corr")
 
     def __post_init__(self):
-        if not (0 < self.judge_value < 1):
-            raise ValueError(f"judge_value must be between 0 and 1, got {self.judge_value}")
+        if not (-1 <= self.judge_value < 1):
+            raise ValueError(f"judge_value must be in [-1, 1), got {self.judge_value}")
         if self.update_frequency_months < 0:
             raise ValueError("update_frequency_months must be >= 0")
         if self.corr_lookback_days <= 0:
