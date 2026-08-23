@@ -33,9 +33,12 @@ directly on `main`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-Use the five canonical Matt Pocock triage roles with their exact default label
-strings. Missing canonical labels may be created as part of the requested
-workflow. See `docs/agents/triage-labels.md`.
+Use the two category roles and five state roles from the Matt Pocock triage
+vocabulary, with their exact default label strings. A fully triaged issue should
+carry one of each — but the state machine's first move is `needs-triage` alone,
+before a category is determined, so a state role without a category is a normal
+intermediate rather than a defect. Missing canonical labels may be created as
+part of the requested workflow. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
@@ -74,6 +77,7 @@ mci_gru/             ← core Python package
 └── training/        ← Trainer, losses (MSE/IC/combined), metrics
 paper_trade/         ← frozen-checkpoint inference + portfolio pipeline
 skills/              ← versioned Codex skills for GitHub review/upload
+.claude/skills/      ← repo-owned model-invoked skills (work-the-map, implement-ticket)
 tests/               ← pytest suite + backtest scripts
 ```
 

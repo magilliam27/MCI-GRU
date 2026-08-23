@@ -55,6 +55,7 @@ generated report.
 | [../handoffs/](../handoffs/) | Operational continuity notes | Research evidence or canonical behaviour |
 | [../agent_references/README.md](../agent_references/README.md) | Historical Claude/Cursor guidance and plans | Current requirements without code verification |
 | [../index.md](../index.md) | Full documentation map | A substitute for reading the routed document |
+| `.claude/skills/` | Repo-owned model-invoked skills: `work-the-map` (the AFK half of Wayfinder) and `implement-ticket` | The rules themselves — both point back here and at `CLAUDE.md` |
 
 ### Composition roots and system boundaries
 

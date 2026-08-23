@@ -14,6 +14,87 @@ so that every harness working this repository produces identically shaped
 tickets, specs, and evidence. Under the plugin install these skills are
 namespaced: `/mattpocock-skills:implement`, not `/implement`.
 
+The plugin's skills split on **who may start them**, which is not the same as who
+may use them.
+
+**Model-invoked** skills an agent may reach for on its own — `tdd`,
+`code-review`, `research`, `prototype`, `domain-modeling`, `codebase-design`,
+`diagnosing-bugs`, `resolving-merge-conflicts`, `grilling`.
+
+**User-invoked** skills carry `disable-model-invocation: true` in their
+frontmatter. That includes `implement`, `wayfinder`, `triage`, `to-spec`, and
+`to-tickets` — the five this repository's documented workflow leans on. It means
+an agent cannot *start* them and no skill can chain to them. **It does not mean
+they are unavailable: type the name and the skill loads, and the session then
+follows it in full.** The gating is deliberate — these are workflow-defining,
+and the plugin's own test is *"could the model usefully reach for this
+autonomously?"*
+
+The split is not fixed, so read it from the frontmatter rather than from a count
+written here — the marketplace updates and the numbers move:
+
+```powershell
+Get-ChildItem "$env:USERPROFILE\.claude\plugins\marketplaces\mattpocock\skills" `
+  -Recurse -Filter SKILL.md |
+  ForEach-Object { if (Select-String $_ -Pattern 'disable-model-invocation:\s*true' -Quiet)
+                   { "gated   $($_.Directory.Name)" } else { "reachable $($_.Directory.Name)" } }
+```
+
+The practical consequence, which is the part worth remembering:
+
+- **Type the skill when you want its protocol.** `/mattpocock-skills:wayfinder`
+  before map work, `/mattpocock-skills:triage` before a triage pass. That gets
+  the real thing, and it is better than the substitute.
+- **When you have not typed it,** `docs/agents/issue-tracker.md` and
+  `docs/agents/triage-labels.md` are the operative substitutes and are what the
+  session actually follows. They are kept deliberately close to the skills.
+- When a substitute and a `SKILL.md` disagree, the `SKILL.md` wins unless the
+  divergence is recorded as deliberate with its reason.
+
+### Repo-owned skills, reachable without you
+
+`.claude/skills/` holds two project skills that **are** model-invoked, so the
+workstyle holds on a cold start without anyone typing a command:
+
+- **`work-the-map`** — the AFK half of `wayfinder`: load a map, recompute the
+  frontier, claim, resolve, record, fold state back into the body. It refuses
+  to chart, **stops at any HITL ticket** rather than answering its own grilling
+  questions, and resolves at most one ticket per session — research tickets
+  excepted, which the skill may fan out.
+- **`implement-ticket`** — the implementation loop: claim before branching with
+  owned paths declared, `/mattpocock-skills:tdd` at seams confirmed with you,
+  mutation-checking, `/mattpocock-skills:code-review`, draft pull request.
+
+They are deliberately **not** copies of the plugin's versions. Upstream
+`implement` ends "commit to the current branch", which contradicts the rules
+below; and its testing guidance is weaker than the mutation-check standard here.
+Their names differ from the plugin's so there is never a question about which
+fired.
+
+What stays human-gated, and why: **charting** a map, `triage`, `to-spec`, and
+`to-tickets`. Each creates or restructures work. `wayfinder/SKILL.md` § *Ticket
+Types* is explicit that a HITL ticket "only resolves through that live exchange;
+the agent never stands in for the human's side of it (a grilling agent that
+answers its own questions has broken this)" — a rule worded as a correction,
+which is why the gate is doing real work there. `work-the-map` deliberately
+covers only the half where it is not.
+
+Edit these in `.claude/skills/`, never in the plugin marketplace — that is a
+clean git checkout of `mattpocock/skills` and an update reverts local edits
+silently.
+
+Two traps in that arrangement:
+
+- `mattpocock-skills:code-review` **collides by name** with
+  `engineering:code-review` from a different enabled plugin. Always namespace
+  it; the wrong one firing produces differently shaped evidence, which is the
+  exact failure this setup exists to prevent.
+- `implement` is the one this file used to single out, and it is the *least*
+  consequential of the five to leave untyped — `AGENTS.md` Testing plus the
+  mutation-check rule below are stricter than it, and the two steps it delegates
+  (`tdd`, `code-review`) are both model-invoked anyway. The ones worth typing
+  are `wayfinder` and `triage`, whose protocols have no real substitute.
+
 ## Cold start
 
 Work may arrive here from any harness, or from a previous session of this one.
@@ -22,8 +103,15 @@ being in context. Brief yourself from the tracker every time:
 
 1. `docs/agents/issue-tracker.md` and `docs/agents/guide.md`.
 2. `gh issue view 97 --repo magilliam27/MCI-GRU --comments` for the Wayfinder
-   map. **The map's current state lives in its newest comments, not its body.**
-   Body edits raise no timeline entry, so the body alone reads as frozen.
+   map. **Read the body and the newest comments, and trust neither alone.**
+   Body edits raise no timeline entry, so a body can sit stale for weeks; but a
+   comment can also be overtaken and never corrected. Both have happened here —
+   see `docs/agents/issue-tracker.md`, **Keeping map body and comments in
+   step**, which is where the rule lives so that every harness reads it.
+   **Recompute the frontier from the tracker every session — never read it off
+   either surface, even when they agree.** Open children in map order, minus
+   anything blocked or assigned. Two agreeing surfaces can both be stale, which
+   is the case reading-instead-of-computing cannot detect.
 3. The active child ticket and its evidence comments.
 4. Claim the work on the tracker before branching — file an issue first if it
    has none, assign it, and declare its owned paths. See
@@ -72,11 +160,12 @@ as expected rather than as a violation.
 - **The dirty-entry count is not a constant, so do not treat a change in it as
   damage.** Data pulls land under `data/raw/`, and the owner may approve those;
   `*.csv` is gitignored so bulk data is invisible to `git status`, but each
-  `*meta.json` sidecar adds one untracked entry. Compare your own start-of-session
-  and end-of-session counts against each other, not against a number written
-  here. Waypoint: 40 entries before 2026-07-31, 42 after the approved
-  `sp500_pit_gics_top10_mcap_monthly_20160104_20260731` pull added its two
-  sidecars. Resolving a delta:
+  `*meta.json` sidecar adds one untracked entry. **Compare your own
+  start-of-session count against your own end-of-session count.** No number is
+  written here on purpose: a figure in this file goes stale silently, and a
+  reader who takes it as current will either raise a false alarm or, worse,
+  treat a real change as expected. Take your baseline at session start, from the
+  repository itself. Resolving a delta:
   - A delta inside your session is yours to explain. You caused it.
   - A delta across sessions should be explained by an open, **assigned** ticket
     whose owned paths cover it. Concurrent sessions are normal here; see
@@ -86,8 +175,10 @@ as expected rather than as a violation.
 - **That directory is never removable, and "retired" never means "delete".** It
   is no longer the default working surface, but its `.git` is the only object
   store on this machine: every linked worktree resolves through it, and it holds
-  roughly 68 ref entries and 6 stashes that exist on no remote — `refs/codex/*`
-  backups, snapshots, and turn-diffs. `git ls-remote origin` advertises only
+  refs and stashes that exist on no remote — `refs/codex/*` backups, snapshots,
+  and turn-diffs. Count them yourself with `git -C C:\Users\magil\MCI-GRU
+  for-each-ref` and `git -C C:\Users\magil\MCI-GRU stash list` rather than
+  trusting a figure here; both grow. `git ls-remote origin` advertises only
   `refs/heads/*` and `refs/pull/*`, so a fresh clone inherits none of them and
   does not warn. Prefer `git worktree add` over any clone.
 - **Never run `git gc`, `git gc --prune=now`, `git prune`, `git repack -ad`, or
