@@ -273,14 +273,22 @@ zero-filled before `DataFrame.corr()`.
 
 | Mode | Configuration | Implemented selection |
 |---|---|---|
-| Positive threshold | `top_k == 0` | Off-diagonal directed edges where **`corr > judge_value`** |
+| Signed threshold | `top_k == 0` | Off-diagonal directed edges where **`corr > judge_value`** |
 | Positive top-K | `top_k > 0`, `top_k_metric=corr` | Each node keeps up to K most-positive valid neighbours |
 | Signed top-K | `top_k > 0`, `top_k_metric=abs_corr` | Each node keeps up to K largest by absolute correlation, storing the signed value |
 
-The threshold path compares the **signed** correlation, so strong negative
-correlations are excluded from threshold mode entirely; they are reachable only
-through `abs_corr` top-K selection. Top-K edges are directed and need not be
-reciprocal.
+The threshold path compares the **signed** correlation, so the sign of
+`judge_value` decides what it can reach. At the shipped `0.8` only strongly
+co-moving pairs survive; at a negative threshold anti-correlated pairs survive
+too. `GraphConfig` admits the whole of `[-1, 1)` — before issue #162 it required
+`0 < judge_value < 1`, which is what once made `abs_corr` top-K the only route to
+a negative correlation.
+
+The comparison is **strict**, which is why `-1` is a floor rather than a literal
+"every pair": a pair at exactly `-1.0` is dropped at `judge_value = -1`. That is
+measure-zero on real return panels and reachable in a fixture, and it is pinned
+by `tests/test_threshold_selection_strictness.py`. Top-K edges are directed and
+need not be reciprocal.
 
 ### Edge attributes
 
