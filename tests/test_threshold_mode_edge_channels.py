@@ -155,8 +155,66 @@ def test_build_graph_warns_when_multi_feature_edges_meet_threshold_selection(cap
     assert "rank_pct" in warnings[0].getMessage()
 
 
+@pytest.mark.parametrize("judge_value", [0.0, 0.5, DEFAULT_JUDGE_VALUE])
+def test_the_rank_two_claim_holds_down_to_and_including_zero(judge_value, caplog):
+    """Issue 170: zero is on the degenerate side of the branch, not the open side.
+
+    `corr > judge_value` is strict, so a threshold of exactly 0.0 still admits
+    positive correlations only and |corr| still duplicates corr. A branch written
+    `judge_value > 0` rather than `>= 0` would emit the negative-threshold message
+    at 0.0 and be wrong; only the 0.0 case separates the two, which is why the
+    boundary is parametrised rather than left to the shipped 0.8.
+    """
+    with caplog.at_level(logging.WARNING, logger="mci_gru.graph.builder"):
+        _edge_attr(_builder(judge_value=judge_value), _correlated_panel())
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert warnings, "the inert-channel combination must warn"
+    message = warnings[0].getMessage()
+    assert "duplicates corr" in message, "|corr| is a copy of corr at a non-negative threshold"
+    assert "rank 2" in message
+
+
+@pytest.mark.parametrize("judge_value", [-0.001, -0.5, -1.0])
+def test_negative_threshold_warns_without_claiming_rank_two(judge_value, caplog):
+    """Issue 170: below zero the |corr| half of the warning stops being true.
+
+    The warning must still fire. `rank_pct` is inert at every threshold, so gating
+    the whole warning on a non-negative `judge_value` would leave the negative
+    threshold arm with a silently dead channel -- the exact defect (issue 114) this
+    warning exists to surface. What changes is the claim: `corr > judge_value`
+    admits negative correlations here, so |corr| is no longer forced to duplicate
+    corr and the tensor is not driven to numerical rank 2.
+
+    `-0.001` is the boundary case. A branch written as `judge_value > 0` instead of
+    `>= 0` sends 0.0 down the wrong arm; a branch written `>= -1` sends every value
+    down this one. Parametrising both sides of zero is what separates them.
+    """
+    with caplog.at_level(logging.WARNING, logger="mci_gru.graph.builder"):
+        _edge_attr(_builder(judge_value=judge_value), _correlated_panel())
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert warnings, "rank_pct is still inert below zero; the warning must not go silent"
+    message = warnings[0].getMessage()
+    assert "rank_pct" in message, "the still-true half of the warning must survive"
+    assert "rank 2" not in message, (
+        "the rank-2 claim is false below zero: |corr| is informative for any kept "
+        "pair with corr < 0"
+    )
+    assert "rank at most 3" in message, "only rank_pct is guaranteed inert below zero"
+    assert str(judge_value) in message, (
+        "the operator has to be able to see which arm they are on from the warning"
+    )
+
+
 def test_no_warning_when_the_combination_is_not_degenerate(caplog):
-    """Control: the warning must not fire for configurations that are fine."""
+    """Control: the warning must not fire for configurations that are fine.
+
+    A negative `judge_value` is deliberately **not** in this list (issue 170). It
+    makes the |corr| channel informative but leaves `rank_pct` identically zero, so
+    it is less degenerate rather than not degenerate, and it keeps warning. The test
+    directly above pins what it says instead.
+    """
     for builder in (
         _builder(top_k=4, judge_value=0.3),
         _builder(use_multi_feature_edges=False),

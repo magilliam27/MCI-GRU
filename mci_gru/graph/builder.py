@@ -134,21 +134,42 @@ class GraphBuilder:
             f"edges={feat_mode})..."
         )
         if self.use_multi_feature_edges and self.top_k == 0:
-            # Issue #114. rank_pct is populated only by top-K selection, so on the
-            # threshold path column 3 is a constant zero. GATConv.lin_edge has no
-            # bias, so that column is bitwise inert: it receives zero gradient and
-            # cannot change the output. |corr| is a bit-identical copy of corr here
-            # too, because GraphConfig rejects judge_value <= 0 and the threshold
-            # path can therefore only admit positive correlations.
-            logger.warning(
-                "graph.use_multi_feature_edges=true with graph.top_k=0: of the 4 edge "
-                "channels [corr, |corr|, corr^2, rank_pct], rank_pct is identically "
-                "zero and |corr| duplicates corr, so the tensor has numerical rank 2. "
-                "The model is still sized for %d channels. Set graph.top_k>0 to "
-                "populate rank_pct, or graph.use_multi_feature_edges=false for a "
-                "scalar edge weight.",
-                n_feat,
-            )
+            # Issue #114, corrected by issue #170. rank_pct is populated only by
+            # top-K selection, so on the threshold path column 3 is a constant
+            # zero. GATConv.lin_edge has no bias, so that column is bitwise inert:
+            # it receives zero gradient and cannot change the output. That half of
+            # the warning holds at every threshold, which is why the condition is
+            # not narrowed -- doing so would leave the negative-threshold arm with
+            # a silently dead channel.
+            #
+            # The |corr| half is conditional. `corr > judge_value` can admit only
+            # positive correlations while judge_value >= 0, and GraphConfig has
+            # accepted the whole of [-1, 1) since issue #162. Zero sits on the
+            # degenerate side: the comparison is strict, so judge_value == 0 still
+            # keeps positives only.
+            if self.judge_value >= 0:
+                logger.warning(
+                    "graph.use_multi_feature_edges=true with graph.top_k=0: of the 4 edge "
+                    "channels [corr, |corr|, corr^2, rank_pct], rank_pct is identically "
+                    "zero and |corr| duplicates corr, so the tensor has numerical rank 2. "
+                    "The model is still sized for %d channels. Set graph.top_k>0 to "
+                    "populate rank_pct, or graph.use_multi_feature_edges=false for a "
+                    "scalar edge weight.",
+                    n_feat,
+                )
+            else:
+                logger.warning(
+                    "graph.use_multi_feature_edges=true with graph.top_k=0: of the 4 edge "
+                    "channels [corr, |corr|, corr^2, rank_pct], rank_pct is identically "
+                    "zero, so that channel is inert and the tensor has numerical rank at "
+                    "most 3. judge_value=%s is negative, so selection is not restricted "
+                    "to positive correlations: |corr| stays a copy of corr only if every "
+                    "kept pair happens to be non-negative. The model is still sized for "
+                    "%d channels. Set graph.top_k>0 to populate rank_pct, or "
+                    "graph.use_multi_feature_edges=false for a scalar edge weight.",
+                    self.judge_value,
+                    n_feat,
+                )
         pivot = self._daily_returns_pivot(df, kdcode_list, end_date)
         self.correlation_matrix = pivot.corr()
         rp = pivot if self.use_lead_lag_features else None
