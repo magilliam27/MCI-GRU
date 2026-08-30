@@ -1,0 +1,12 @@
+# @package _global_
+# Ablation arm A2 (issue 164 protocol): the shipped selection rule at a sane
+# calibration. judge_value=0.5 sits inside the correlation distribution's mass
+# on the PIT-admissible axis (~13% mean isolation vs ~76% at the shipped 0.8 -
+# docs/research/current/GRAPH_EDGE_DENSITY_PIT_AXIS_2026-08-28.md), so this arm
+# separates calibration from selection rule. Everything else inherits the base
+# config: static cadence, top_k=0, multi-feature edges.
+
+experiment_name: graph_thr05
+
+graph:
+  judge_value: 0.5

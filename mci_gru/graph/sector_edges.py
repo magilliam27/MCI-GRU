@@ -5,8 +5,12 @@ from __future__ import annotations
 import csv
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import torch
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +84,7 @@ def load_sector_map_csv(path: str) -> dict[str, str]:
 def build_sector_edges(
     kdcode_list: list[str],
     sector_by_kdcode: dict[str, str],
+    exclude_pairs: Sequence[Sequence[str]] | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Directed sector edges: every ordered pair of distinct names sharing a sector.
 
@@ -92,12 +97,19 @@ def build_sector_edges(
     all. Bucketing them together under a shared ``UNKNOWN`` label would wire every
     unmapped name to every other one, which is pure noise.
 
+    *exclude_pairs* names kdcode pairs whose edges are withheld in both
+    directions (issue 164 hygiene rule: a same-company twin shares a sector by
+    construction, so the correlation-side exclusion alone would leave the pair
+    wired here).
+
     Returns ``(edge_index (2, E), edge_weight (E,))`` with scalar weight 1.0.
     """
     n = len(kdcode_list)
     if n == 0:
         z = torch.zeros((2, 0), dtype=torch.long)
         return z, torch.zeros(0, dtype=torch.float)
+
+    excluded = {frozenset(pair) for pair in exclude_pairs} if exclude_pairs else set()
 
     buckets: dict[str, list[int]] = {}
     isolated = 0
@@ -110,17 +122,23 @@ def build_sector_edges(
 
     rows: list[int] = []
     cols: list[int] = []
+    skipped = 0
     for group in buckets.values():
         for src in group:
             for dst in group:
-                if src != dst:
-                    rows.append(src)
-                    cols.append(dst)
+                if src == dst:
+                    continue
+                if excluded and frozenset((kdcode_list[src], kdcode_list[dst])) in excluded:
+                    skipped += 1
+                    continue
+                rows.append(src)
+                cols.append(dst)
 
     logger.info(
         f"Sector edges: {n - isolated}/{n} name(s) mapped "
         f"({100.0 * (n - isolated) / n:.1f}% coverage) across {len(buckets)} sector(s); "
         f"{isolated} name(s) isolated with no sector edges; {len(rows)} directed edge(s)"
+        + (f"; {skipped} excluded-pair edge(s) withheld" if skipped else "")
     )
 
     if not rows:
