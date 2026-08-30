@@ -348,6 +348,15 @@ class GraphConfig:
         sector_map_csv: Curated ``kdcode, sector`` map or a universe metadata export
             carrying ``gics_sector``, required when ``use_sector_relation``. Sectors
             are fully connected internally; unmapped names get no sector edges.
+        zero_edges: Ablation control arm A0 (issue 164 protocol). When True, the
+            built correlation edge tensor is forced to shape (2, 0) with the
+            feature width the other flags imply, so the GAT runs on its default
+            self-loops only -- architecture and parameters unchanged, edges
+            suppressed. ``judge_value`` / ``top_k`` become inert (no edges are
+            selected) but still validate. Composes with ``use_sector_relation``
+            (arm A4: sector edges only). Incompatible with a dynamic schedule:
+            precomputing snapshots of an always-empty graph would silently
+            pretend to update, so ``update_frequency_months`` must be 0.
     """
 
     judge_value: float = 0.8
@@ -363,6 +372,7 @@ class GraphConfig:
     lead_lag_days: list[int] = field(default_factory=lambda: [1, 2, 3, 5])
     use_sector_relation: bool = False
     sector_map_csv: str | None = None
+    zero_edges: bool = False
 
     _VALID_TOP_K_METRICS = ("corr", "abs_corr")
 
@@ -390,6 +400,13 @@ class GraphConfig:
             raise ValueError("lead_lag_days must contain only positive integers")
         if self.use_sector_relation and not self.sector_map_csv:
             raise ValueError("use_sector_relation=True requires graph.sector_map_csv")
+        if self.zero_edges and self.update_frequency_months > 0:
+            raise ValueError(
+                "zero_edges=True suppresses all correlation edges, so a dynamic "
+                "schedule is meaningless; got "
+                f"update_frequency_months={self.update_frequency_months}. "
+                "Set update_frequency_months=0 for the zeroed control arm."
+            )
 
 
 @dataclass
