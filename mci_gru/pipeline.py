@@ -678,6 +678,32 @@ def build_correlation_graph(
     first_sample_date: str | None = None,
     pit_intervals: pd.DataFrame | None = None,
 ) -> GraphArtifacts:
+    if graph_config.zero_edges:
+        # Ablation control arm A0 (issue 164 protocol): suppress every
+        # correlation edge at build time. The empty tensor mirrors
+        # build_edges' empty branch exactly -- same width logic -- so collate
+        # and edge_feature_dim stay in agreement, and the GAT then runs on
+        # its default self-loops only. The sector branch (arm A4) is still
+        # honoured below.
+        logger.info("graph.zero_edges=true: correlation edges suppressed (zeroed control arm)")
+        if graph_config.use_multi_feature_edges:
+            n_extra = 2 if graph_config.use_lead_lag_features else 0
+            empty_weight = torch.zeros((0, 4 + n_extra), dtype=torch.float)
+        else:
+            empty_weight = torch.zeros(0, dtype=torch.float)
+        edge_index_sector = None
+        edge_weight_sector = None
+        if graph_config.use_sector_relation and graph_config.sector_map_csv:
+            sector_map = load_sector_map_csv(graph_config.sector_map_csv)
+            edge_index_sector, edge_weight_sector = build_sector_edges(kdcode_list, sector_map)
+        return GraphArtifacts(
+            edge_index=torch.zeros((2, 0), dtype=torch.long),
+            edge_weight=empty_weight,
+            graph_schedule=None,
+            edge_index_sector=edge_index_sector,
+            edge_weight_sector=edge_weight_sector,
+        )
+
     logger.info("Building correlation graph...")
     graph_builder = GraphBuilder(
         judge_value=graph_config.judge_value,
