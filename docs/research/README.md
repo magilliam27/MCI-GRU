@@ -41,6 +41,15 @@ label them as synthetic rather than promoting them into `current/`.
 | `docs/research/current/ISSUE8_2023_VOL_TARGETING_DROP_DIAGNOSTICS_2026-05-27.md` | Current diagnostic for the 2023 volatility-targeting drop. |
 | `docs/research/current/ISSUE8_VOL_TARGETING_CAUSE_ANALYSIS_2026-05-27.md` | Current cause analysis and next-test routing for Issue #8 volatility targeting. |
 
+### Graph Specification Evidence
+
+Evidence produced under the Wayfinder map "the correlation graph's specification is
+chosen on measured evidence" (issue #157).
+
+| Report | Status |
+| --- | --- |
+| `docs/research/current/GRAPH_EDGE_DENSITY_PIT_AXIS_2026-08-28.md` | Current production figures for correlation-graph edge density, node isolation, and grid-point distinctness, measured on the PIT-admissible axis across 120 monthly build dates. Supersedes, as production numbers, the union-axis density table preserved in issue #157's original body; that table is reproduced here as a control and is not itself wrong, but its five figures describe a different axis. Read before quoting any edge-count, density, or isolation figure for the correlation graph. |
+
 ### Loss-Path Evidence
 
 | Report | Status |
