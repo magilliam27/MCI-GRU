@@ -357,6 +357,15 @@ class GraphConfig:
             (arm A4: sector edges only). Incompatible with a dynamic schedule:
             precomputing snapshots of an always-empty graph would silently
             pretend to update, so ``update_frequency_months`` must be 0.
+        exclude_edge_pairs: Kdcode pairs excluded from every constructed
+            adjacency -- threshold, top-K, dynamic snapshots, and the sector
+            relation (issue 164 hygiene rule: the GOOG.OQ/GOOGL.OQ same-company
+            twin). Exclusion is candidate-level: the pair's correlation entries
+            are masked before selection, so on the top-K path the excluded name
+            never spends a neighbour slot and ``rank_pct`` ranks against a clean
+            candidate set. Each entry names two distinct non-empty kdcodes;
+            names absent from a run's node axis are a logged no-op. Default
+            empty: shipped behaviour is unchanged.
     """
 
     judge_value: float = 0.8
@@ -373,6 +382,7 @@ class GraphConfig:
     use_sector_relation: bool = False
     sector_map_csv: str | None = None
     zero_edges: bool = False
+    exclude_edge_pairs: list[list[str]] = field(default_factory=list)
 
     _VALID_TOP_K_METRICS = ("corr", "abs_corr")
 
@@ -407,6 +417,17 @@ class GraphConfig:
                 f"update_frequency_months={self.update_frequency_months}. "
                 "Set update_frequency_months=0 for the zeroed control arm."
             )
+        for pair in self.exclude_edge_pairs:
+            if (
+                not isinstance(pair, (list, tuple))
+                or len(pair) != 2
+                or not all(isinstance(name, str) and name.strip() for name in pair)
+                or pair[0] == pair[1]
+            ):
+                raise ValueError(
+                    "exclude_edge_pairs entries must each name two distinct "
+                    f"non-empty kdcodes, got {pair!r}"
+                )
 
 
 @dataclass

@@ -60,6 +60,7 @@ class GraphBuilder:
         use_multi_feature_edges: bool = False,
         use_lead_lag_features: bool = False,
         lead_lag_days: list[int] | None = None,
+        exclude_edge_pairs: list[tuple[str, str]] | None = None,
     ):
         if top_k < 0:
             raise ValueError(f"top_k must be >= 0, got {top_k}")
@@ -76,6 +77,9 @@ class GraphBuilder:
         self.use_multi_feature_edges = use_multi_feature_edges
         self.use_lead_lag_features = use_lead_lag_features
         self.lead_lag_days = list(lead_lag_days) if lead_lag_days is not None else [1, 2, 3, 5]
+        self.exclude_edge_pairs = (
+            [tuple(pair) for pair in exclude_edge_pairs] if exclude_edge_pairs else []
+        )
         self.last_update_date: str | None = None
         self.current_edge_index: torch.Tensor | None = None
         self.current_edge_weight: torch.Tensor | None = None
@@ -111,6 +115,7 @@ class GraphBuilder:
             self.use_lead_lag_features,
             self.lead_lag_days,
             admissible_mask,
+            exclude_pairs=self.exclude_edge_pairs or None,
         )
 
     def build_graph(
@@ -170,6 +175,15 @@ class GraphBuilder:
                     self.judge_value,
                     n_feat,
                 )
+        if self.exclude_edge_pairs:
+            axis = set(kdcode_list)
+            for pair in self.exclude_edge_pairs:
+                if pair[0] not in axis or pair[1] not in axis:
+                    logger.warning(
+                        "graph.exclude_edge_pairs: %s is not fully on this node axis; "
+                        "exclusion is a no-op for it",
+                        pair,
+                    )
         pivot = self._daily_returns_pivot(df, kdcode_list, end_date)
         self.correlation_matrix = pivot.corr()
         rp = pivot if self.use_lead_lag_features else None

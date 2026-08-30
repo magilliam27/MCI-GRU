@@ -695,7 +695,11 @@ def build_correlation_graph(
         edge_weight_sector = None
         if graph_config.use_sector_relation and graph_config.sector_map_csv:
             sector_map = load_sector_map_csv(graph_config.sector_map_csv)
-            edge_index_sector, edge_weight_sector = build_sector_edges(kdcode_list, sector_map)
+            edge_index_sector, edge_weight_sector = build_sector_edges(
+                kdcode_list,
+                sector_map,
+                exclude_pairs=graph_config.exclude_edge_pairs or None,
+            )
         return GraphArtifacts(
             edge_index=torch.zeros((2, 0), dtype=torch.long),
             edge_weight=empty_weight,
@@ -714,6 +718,7 @@ def build_correlation_graph(
         use_multi_feature_edges=graph_config.use_multi_feature_edges,
         use_lead_lag_features=graph_config.use_lead_lag_features,
         lead_lag_days=graph_config.lead_lag_days,
+        exclude_edge_pairs=graph_config.exclude_edge_pairs or None,
     )
     # Static graph: PIT-restrict selection at its single build date. This is a
     # coarser guarantee than the dynamic path gets - one graph built at
@@ -742,7 +747,11 @@ def build_correlation_graph(
     edge_weight_sector = None
     if graph_config.use_sector_relation and graph_config.sector_map_csv:
         sector_map = load_sector_map_csv(graph_config.sector_map_csv)
-        edge_index_sector, edge_weight_sector = build_sector_edges(kdcode_list, sector_map)
+        edge_index_sector, edge_weight_sector = build_sector_edges(
+            kdcode_list,
+            sector_map,
+            exclude_pairs=graph_config.exclude_edge_pairs or None,
+        )
 
     return GraphArtifacts(
         edge_index=edge_index,
