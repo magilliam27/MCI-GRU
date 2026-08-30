@@ -329,6 +329,7 @@ cells = [
 
         if SMOKE_MODE:
             num_models, num_epochs = 1, 2
+            BOOTSTRAP_RESAMPLES = 25
         elif RUN_STAGE == "screen":
             num_models, num_epochs = SCREEN_NUM_MODELS, SCREEN_NUM_EPOCHS
         elif RUN_STAGE == "confirm":

@@ -669,6 +669,21 @@ def apply_pit_masks_to_tensors(
     return masked, pit_breadth
 
 
+def _build_sector_relation(
+    graph_config: GraphConfig,
+    kdcode_list: list[str],
+) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+    """Sector edges for the configured relation, or ``(None, None)`` when off."""
+    if not (graph_config.use_sector_relation and graph_config.sector_map_csv):
+        return None, None
+    sector_map = load_sector_map_csv(graph_config.sector_map_csv)
+    return build_sector_edges(
+        kdcode_list,
+        sector_map,
+        exclude_pairs=graph_config.exclude_edge_pairs or None,
+    )
+
+
 def build_correlation_graph(
     frames: PipelineFrames,
     kdcode_list: list[str],
@@ -678,6 +693,19 @@ def build_correlation_graph(
     first_sample_date: str | None = None,
     pit_intervals: pd.DataFrame | None = None,
 ) -> GraphArtifacts:
+    if graph_config.exclude_edge_pairs:
+        # Checked here, once per build and on every branch (the zeroed A4
+        # branch constructs no GraphBuilder), so a misspelled kdcode cannot
+        # become a silent no-op.
+        axis = set(kdcode_list)
+        for pair in graph_config.exclude_edge_pairs:
+            if pair[0] not in axis or pair[1] not in axis:
+                logger.warning(
+                    "graph.exclude_edge_pairs: %s is not fully on this node axis; "
+                    "exclusion is a no-op for it",
+                    pair,
+                )
+
     if graph_config.zero_edges:
         # Ablation control arm A0 (issue 164 protocol): suppress every
         # correlation edge at build time. The empty tensor mirrors
@@ -691,15 +719,7 @@ def build_correlation_graph(
             empty_weight = torch.zeros((0, 4 + n_extra), dtype=torch.float)
         else:
             empty_weight = torch.zeros(0, dtype=torch.float)
-        edge_index_sector = None
-        edge_weight_sector = None
-        if graph_config.use_sector_relation and graph_config.sector_map_csv:
-            sector_map = load_sector_map_csv(graph_config.sector_map_csv)
-            edge_index_sector, edge_weight_sector = build_sector_edges(
-                kdcode_list,
-                sector_map,
-                exclude_pairs=graph_config.exclude_edge_pairs or None,
-            )
+        edge_index_sector, edge_weight_sector = _build_sector_relation(graph_config, kdcode_list)
         return GraphArtifacts(
             edge_index=torch.zeros((2, 0), dtype=torch.long),
             edge_weight=empty_weight,
@@ -743,15 +763,7 @@ def build_correlation_graph(
             pit_intervals=pit_intervals,
         )
 
-    edge_index_sector = None
-    edge_weight_sector = None
-    if graph_config.use_sector_relation and graph_config.sector_map_csv:
-        sector_map = load_sector_map_csv(graph_config.sector_map_csv)
-        edge_index_sector, edge_weight_sector = build_sector_edges(
-            kdcode_list,
-            sector_map,
-            exclude_pairs=graph_config.exclude_edge_pairs or None,
-        )
+    edge_index_sector, edge_weight_sector = _build_sector_relation(graph_config, kdcode_list)
 
     return GraphArtifacts(
         edge_index=edge_index,

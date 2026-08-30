@@ -6,6 +6,7 @@ no longer requires batch_size=1 during training.
 """
 
 import logging
+from collections.abc import Sequence
 from datetime import datetime
 
 import numpy as np
@@ -60,7 +61,7 @@ class GraphBuilder:
         use_multi_feature_edges: bool = False,
         use_lead_lag_features: bool = False,
         lead_lag_days: list[int] | None = None,
-        exclude_edge_pairs: list[tuple[str, str]] | None = None,
+        exclude_edge_pairs: Sequence[Sequence[str]] | None = None,
     ):
         if top_k < 0:
             raise ValueError(f"top_k must be >= 0, got {top_k}")
@@ -175,15 +176,6 @@ class GraphBuilder:
                     self.judge_value,
                     n_feat,
                 )
-        if self.exclude_edge_pairs:
-            axis = set(kdcode_list)
-            for pair in self.exclude_edge_pairs:
-                if pair[0] not in axis or pair[1] not in axis:
-                    logger.warning(
-                        "graph.exclude_edge_pairs: %s is not fully on this node axis; "
-                        "exclusion is a no-op for it",
-                        pair,
-                    )
         pivot = self._daily_returns_pivot(df, kdcode_list, end_date)
         self.correlation_matrix = pivot.corr()
         rp = pivot if self.use_lead_lag_features else None

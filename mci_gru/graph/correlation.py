@@ -1,5 +1,7 @@
 """Pure correlation-matrix and edge-selection math for graph construction."""
 
+from collections.abc import Sequence
+
 import numpy as np
 import pandas as pd
 import torch
@@ -50,7 +52,7 @@ def build_edges(
     use_lead_lag_features: bool,
     lead_lag_days: list[int],
     admissible_mask: np.ndarray | None = None,
-    exclude_pairs: list[tuple[str, str]] | None = None,
+    exclude_pairs: Sequence[Sequence[str]] | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Build edge tensors from a correlation matrix using vectorised numpy ops.
 

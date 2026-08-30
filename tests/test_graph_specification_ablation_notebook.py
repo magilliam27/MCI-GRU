@@ -81,6 +81,16 @@ def test_notebook_code_cells_parse_and_request_gpu() -> None:
     for source in code_cells:
         ast.parse(source)
 
+    # The runtime preflight, per the ablation-notebook pattern: hard-refuse
+    # T4/CPU runtimes and sample GPU utilisation for the run record.
+    combined = "\n".join(_cell_sources())
+    for token in [
+        "REQUIRE_G4_L4_GPU = True",
+        "G4/L4-class Colab runtime, not T4/CPU",
+        "scripts/monitor_gpu_util.py",
+    ]:
+        assert token in combined, token
+
 
 def test_notebook_defines_the_five_protocol_arms() -> None:
     combined = "\n".join(_cell_sources())

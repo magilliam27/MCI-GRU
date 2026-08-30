@@ -5,8 +5,12 @@ from __future__ import annotations
 import csv
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import torch
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +84,7 @@ def load_sector_map_csv(path: str) -> dict[str, str]:
 def build_sector_edges(
     kdcode_list: list[str],
     sector_by_kdcode: dict[str, str],
-    exclude_pairs: list[tuple[str, str]] | None = None,
+    exclude_pairs: Sequence[Sequence[str]] | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Directed sector edges: every ordered pair of distinct names sharing a sector.
 
