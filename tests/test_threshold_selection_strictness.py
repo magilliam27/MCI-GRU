@@ -48,8 +48,8 @@ def _threshold_edges(frame: pd.DataFrame, codes: list[str], judge_value: float) 
     edge_index, _ = build_edges(
         frame,
         codes,
-        False,
-        None,
+        show_progress=False,
+        returns_pivot=None,
         judge_value=judge_value,
         top_k=0,
         top_k_metric="corr",
@@ -115,26 +115,19 @@ def test_the_floor_drops_the_pair_sitting_on_it_and_keeps_the_rest():
     """Issue 162 documented `-1` as a floor, not a literal "every pair". This is that.
 
     Both directions are pinned in one assertion. `>=` would return the complete
-    directed graph of 6 edges; a threshold that dropped everything would return 0.
-    Only strict `>` returns exactly the four edges not touching the floor.
+    directed graph of `n(n-1)` = 6 edges; a rule that dropped everything would
+    return 0. Only strict `>` returns exactly the four edges not touching the
+    floor.
+
+    This is also the counterexample to a reading `tests/test_graph_config_judge_value.py`
+    invites: that file asserts `judge_value = -1` yields `n(n-1)` edges on a real
+    panel, and it does -- because no real pair lands on the floor. Read alone it
+    suggests "-1 keeps every pair", which is the reading 162 rejected.
     """
     frame, codes = _floor_fixture()
     edge_index = _threshold_edges(frame, codes, -1.0)
 
     assert _directed_pairs(edge_index) == {(0, 2), (2, 0), (1, 2), (2, 1)}
-
-
-def test_the_floor_is_not_a_complete_directed_graph():
-    """The counting form of the assertion above, stated against `n(n-1)`.
-
-    `tests/test_graph_config_judge_value.py` asserts that `judge_value = -1`
-    yields `n(n-1)` edges on a real panel, and it does -- because no real pair
-    lands on the floor. Read alone it invites "-1 keeps every pair", which is the
-    reading 162 explicitly rejected. This is the counterexample.
-    """
-    frame, codes = _floor_fixture()
-    n = len(codes)
-    assert _threshold_edges(frame, codes, -1.0).shape[1] == n * (n - 1) - 2
 
 
 # --- The strictness survives the production facade ---------------------------

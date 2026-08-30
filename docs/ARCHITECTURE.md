@@ -281,8 +281,11 @@ The threshold path compares the **signed** correlation, so the sign of
 `judge_value` decides what it can reach. At the shipped `0.8` only strongly
 co-moving pairs survive; at a negative threshold anti-correlated pairs survive
 too. `GraphConfig` admits the whole of `[-1, 1)` — before issue #162 it required
-`0 < judge_value < 1`, which is what once made `abs_corr` top-K the only route to
-a negative correlation.
+`0 < judge_value < 1`, so no threshold could admit a negative correlation and
+top-K was the only selection path that could. Not only `abs_corr`: `corr` top-K
+ranks by *signed* correlation and keeps the K most-positive **available**
+neighbours, so a node with fewer than K positive neighbours contributes negative
+edges under either metric.
 
 The comparison is **strict**, which is why `-1` is a floor rather than a literal
 "every pair": a pair at exactly `-1.0` is dropped at `judge_value = -1`. That is
