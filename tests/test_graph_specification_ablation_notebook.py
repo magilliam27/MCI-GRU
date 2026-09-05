@@ -545,6 +545,70 @@ def test_paired_inference_cell_mirrors_the_pre_registered_arbiter(generator) -> 
         assert token in combined, token
 
 
+def test_secondaries_carry_their_pre_registered_inference() -> None:
+    """Ticket 181 s7 names the statistic for each secondary, not just the deltas.
+
+    Seed-paired per-model IC is "paired t with BHY"; the median sign test is
+    "per fold and pooled". Building the differences and stopping there leaves a
+    secondary that cannot qualify a verdict, which is its stated job.
+    """
+    paired_cell = next(source for source in _code_cell_sources() if "paired_pooled_core" in source)
+
+    # Seed-paired per-model IC: a paired t, then BHY over the same contrasts.
+    assert "def per_model_inference(" in paired_cell
+    assert "stats.ttest_1samp(" in paired_cell
+    assert "per_model_stats" in paired_cell
+    tree = ast.parse(paired_cell)
+    per_model = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "per_model_inference"
+    )
+    assert "bhy_adjusted_p_values" in ast.dump(per_model)
+
+    # Both secondaries report pooled over the core folds *and* per fold.
+    assert '"pooled_core"' in paired_cell
+    assert "for fold_key in FOLD_KEYS_PRESENT" in paired_cell
+    median = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "median_sign_rows"
+    )
+    assert "scope" in ast.dump(median)
+    assert "stats.binomtest(" in paired_cell
+
+    # Winsorised Pearson was dropped on ticket 181 s7; it must not reappear.
+    assert "winsor" not in paired_cell.lower()
+
+
+def test_paired_inference_refuses_to_run_on_a_smoke_stage() -> None:
+    """The mechanics smoke proves wiring and supports no claim (ticket 181 s8)."""
+    paired_cell = next(source for source in _code_cell_sources() if "paired_pooled_core" in source)
+    assert "if SMOKE_MODE or RUN_STAGE not in STAGES_FOR_ANALYSIS:" in paired_cell
+    assert "raise RuntimeError(" in paired_cell
+
+
+def test_manifest_rule_states_the_protocol_not_the_narrowed_session() -> None:
+    """ARMS_TO_RUN narrows a Colab session; it must not narrow the recorded rule.
+
+    A two-arm session that wrote "all 2 arms confirm unconditionally" would be
+    the same staleness class the data-driven string exists to end -- and it
+    would disagree with ``confirm_arm_keys()`` sitting beside it in the same
+    manifest.
+    """
+    manifest_cell = next(source for source in _code_cell_sources() if '"promotion_rule"' in source)
+    tree = ast.parse(manifest_cell)
+    call = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "promotion_rule_text"
+    )
+    assert isinstance(call.args[0], ast.Name), ast.dump(call)
+    assert call.args[0].id == "ARMS", ast.dump(call)
+
+
 def test_paired_cell_pools_only_the_core_folds(generator) -> None:
     """The pooled primary iterates the guarded core-fold list and nothing else.
 

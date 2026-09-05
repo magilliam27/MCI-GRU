@@ -42,11 +42,21 @@ def _maybe_drop(p: float, on: bool) -> nn.Module:
 #: steps must not reuse a mask, so the stride separates both axes.
 _EDGE_DROPOUT_STREAM_STRIDE = 2_654_435_761
 _EDGE_DROPOUT_SEED_MODULUS = 1 << 63
+#: Which of the forward's two edge-dropout calls a fork seed belongs to.
+_EDGE_DROPOUT_STREAM_CORRELATION = 0
+_EDGE_DROPOUT_STREAM_SECTOR = 1
+_EDGE_DROPOUT_STREAMS_PER_STEP = 2
+#: Device types whose generator ``_forked_dropout_edge`` knows how to reseed.
+#: Anything else would seed the CPU generator while ``dropout_edge`` drew from
+#: the accelerator's, so isolation would silently become a no-op -- which is the
+#: failure that looks like success. Raise instead; add the device here when one
+#: is actually supported.
+_EDGE_DROPOUT_FORKABLE_DEVICES = ("cpu", "cuda")
 
 
 def _edge_dropout_fork_seed(base_seed: int, step: int, stream: int) -> int:
     """Seed for one forked edge-dropout draw, from the member seed and position."""
-    offset = (step * 2 + stream) * _EDGE_DROPOUT_STREAM_STRIDE
+    offset = (step * _EDGE_DROPOUT_STREAMS_PER_STEP + stream) * _EDGE_DROPOUT_STREAM_STRIDE
     return (int(base_seed) + offset) % _EDGE_DROPOUT_SEED_MODULUS
 
 
@@ -62,6 +72,12 @@ def _forked_dropout_edge(
     stream intact.
     """
     device = edge_index.device
+    if device.type not in _EDGE_DROPOUT_FORKABLE_DEVICES:
+        raise NotImplementedError(
+            f"graph.isolate_edge_dropout_rng cannot fork the RNG for device type "
+            f"{device.type!r}; supported: {_EDGE_DROPOUT_FORKABLE_DEVICES}. Refusing "
+            "rather than silently leaving edge dropout on the global stream."
+        )
     fork_devices = [device] if device.type == "cuda" else []
     with torch.random.fork_rng(devices=fork_devices, enabled=True):
         if device.type == "cuda":
@@ -259,11 +275,18 @@ class StockPredictionModel(nn.Module):
         """
         if not (training and self.isolate_edge_dropout_rng):
             return None, None
+        # The counter advances once per training forward whatever the arm's edge
+        # count, including when a seed goes unused because the arm has no edges
+        # or dropout is off. That is the point rather than an oversight: it is a
+        # position in the forward, not a count of masks drawn, and every arm
+        # must be at the same position after the same number of steps.
         step = self._edge_dropout_step
         self._edge_dropout_step = step + 1
         return (
-            _edge_dropout_fork_seed(self._edge_dropout_seed, step, 0),
-            _edge_dropout_fork_seed(self._edge_dropout_seed, step, 1),
+            _edge_dropout_fork_seed(
+                self._edge_dropout_seed, step, _EDGE_DROPOUT_STREAM_CORRELATION
+            ),
+            _edge_dropout_fork_seed(self._edge_dropout_seed, step, _EDGE_DROPOUT_STREAM_SECTOR),
         )
 
     def forward(

@@ -678,7 +678,11 @@ def build_cells() -> list[dict]:
                 "bhy_contrast_count": BHY_CONTRAST_COUNT,
                 "effect_worth_acting_on": EFFECT_WORTH_ACTING_ON,
                 # Rendered from the arm list and the stage, never written as prose.
-                "promotion_rule": promotion_rule_text(arms_to_run, RUN_STAGE, num_models, num_epochs),
+                # ARMS, never arms_to_run: ARMS_TO_RUN narrows a session, not the
+                # protocol, and a two-arm session must not record "all 2 arms
+                # confirm unconditionally". That is the staleness this string was
+                # made data-driven to end.
+                "promotion_rule": promotion_rule_text(ARMS, RUN_STAGE, num_models, num_epochs),
                 "confirm_arm_keys": confirm_arm_keys(),
                 "arms": {arm["key"]: arm for arm in arms_to_run},
                 "folds": {fold["key"]: fold for fold in folds_to_run},
@@ -1084,8 +1088,18 @@ def build_cells() -> list[dict]:
                 realized_returns_from_market_data,
             )
             from mci_gru.evaluation.statistics import cross_sectional_ic
+            from scipy import stats
 
             ALL_ARMS = [CONTROL_ARM, *COMPARISON_ARMS]
+
+            # The mechanics smoke proves wiring and supports no claim (ticket
+            # 181 section 8), so the paired arbiter refuses to run on one. This
+            # is what keeps the smoke from becoming an input to anything.
+            if SMOKE_MODE or RUN_STAGE not in STAGES_FOR_ANALYSIS:
+                raise RuntimeError(
+                    f"paired inference runs only on {STAGES_FOR_ANALYSIS} and never on a smoke "
+                    f"run; got RUN_STAGE={RUN_STAGE!r}, SMOKE_MODE={SMOKE_MODE}"
+                )
 
             # The alongside folds are reported per fold and never pooled into the
             # primary. Asserted rather than assumed: the 2025 bridge fold shares
@@ -1167,20 +1181,26 @@ def build_cells() -> list[dict]:
             )
             paired_per_fold.to_csv(RUN_ROOT / f"paired_per_fold_{RUN_STAGE}.csv", index=False)
 
+            def fold_deltas(arm: str, method: str, fold_key: str):
+                # One fold's paired daily differences against the control.
+                if (fold_key, arm) not in IC[method] or (fold_key, CONTROL_ARM) not in IC[method]:
+                    return None
+                aligned = align_daily_series(
+                    {
+                        CONTROL_ARM: IC[method][(fold_key, CONTROL_ARM)],
+                        arm: IC[method][(fold_key, arm)],
+                    }
+                )
+                return paired_daily_differences(aligned, control=CONTROL_ARM)[arm]
+
             def pooled_deltas(arm: str, method: str):
                 # Pools POOLED_FOLD_KEYS and nothing else -- the guard above is
                 # what makes that list the core folds.
                 chunks = []
                 for fold_key in POOLED_FOLD_KEYS:
-                    if (fold_key, arm) not in IC[method] or (fold_key, CONTROL_ARM) not in IC[method]:
-                        continue
-                    aligned = align_daily_series(
-                        {
-                            CONTROL_ARM: IC[method][(fold_key, CONTROL_ARM)],
-                            arm: IC[method][(fold_key, arm)],
-                        }
-                    )
-                    chunks.append(paired_daily_differences(aligned, control=CONTROL_ARM)[arm])
+                    chunk = fold_deltas(arm, method, fold_key)
+                    if chunk is not None:
+                        chunks.append(chunk)
                 if not chunks:
                     return None
                 pooled = pd.concat(chunks)
@@ -1257,7 +1277,9 @@ def build_cells() -> list[dict]:
             paired_pooled_core.to_csv(RUN_ROOT / f"paired_pooled_core_{RUN_STAGE}.csv", index=False)
             outcome_df.to_csv(RUN_ROOT / f"paired_outcome_map_{RUN_STAGE}.csv", index=False)
 
-            # Secondary: seed-paired per-model IC, member i against member i.
+            # Secondary: seed-paired per-model IC, member i against member i,
+            # twenty pairs per arm per fold, pooled over the core folds and
+            # disclosed per fold; paired t with BHY (ticket 181 section 7).
             def per_model_ic(fold_key: str, arm_key: str) -> list[float]:
                 run_dir = run_dirs[(fold_key, arm_key)]
                 member_root = run_dir / "model_predictions"
@@ -1290,26 +1312,89 @@ def build_cells() -> list[dict]:
             per_model_df = pd.DataFrame(per_model_rows)
             per_model_df.to_csv(RUN_ROOT / f"per_model_ic_paired_{RUN_STAGE}.csv", index=False)
 
-            # Secondary: median difference with a sign test, pooled over the core folds.
-            def sign_test_p(values: np.ndarray) -> float:
-                from scipy import stats
+            def per_model_inference(frame: pd.DataFrame, scope: str) -> pd.DataFrame:
+                # Paired t over the member deltas -- the deltas are already
+                # member-paired, so a one-sample t on them is the paired t --
+                # then BHY across the same five contrasts.
+                rows = []
+                for arm in COMPARISON_ARMS:
+                    values = frame.loc[frame["arm"] == arm, "delta"].to_numpy(dtype=float)
+                    values = values[np.isfinite(values)]
+                    if values.size < 2:
+                        continue
+                    result = stats.ttest_1samp(values, 0.0)
+                    rows.append(
+                        {
+                            "scope": scope,
+                            "arm": arm,
+                            "n_pairs": int(values.size),
+                            "mean_delta": float(values.mean()),
+                            "t": float(result.statistic),
+                            "p": float(result.pvalue),
+                        }
+                    )
+                table = pd.DataFrame(rows)
+                if not table.empty:
+                    table["bhy_p"] = bhy_adjusted_p_values(table["p"].to_numpy())
+                return table
 
+            per_model_stats = pd.DataFrame()
+            if not per_model_df.empty:
+                per_model_stats = pd.concat(
+                    [
+                        per_model_inference(
+                            per_model_df[per_model_df["fold"].isin(POOLED_FOLD_KEYS)], "pooled_core"
+                        ),
+                        *[
+                            per_model_inference(per_model_df[per_model_df["fold"] == fold_key], fold_key)
+                            for fold_key in FOLD_KEYS_PRESENT
+                        ],
+                    ],
+                    ignore_index=True,
+                )
+            per_model_stats.to_csv(RUN_ROOT / f"per_model_ic_inference_{RUN_STAGE}.csv", index=False)
+
+            # Secondary: median difference with a sign test, per fold and pooled
+            # (ticket 181 section 7).
+            def sign_test_p(values: np.ndarray) -> float:
                 x = values[np.isfinite(values) & (values != 0.0)]
                 if x.size == 0:
                     return float("nan")
                 return float(stats.binomtest(int((x > 0).sum()), x.size, 0.5).pvalue)
 
-            median_rows = []
+            def median_sign_rows(scope: str, deltas_by_arm: dict) -> list[dict]:
+                rows = []
+                for arm, values in deltas_by_arm.items():
+                    if values is None or values.size == 0:
+                        continue
+                    rows.append(
+                        {
+                            "scope": scope,
+                            "arm": arm,
+                            "n_days": int(values.size),
+                            "median_delta": float(np.median(values)),
+                            "sign_test_p": sign_test_p(values),
+                        }
+                    )
+                return rows
+
+            median_frames = []
+            pooled_by_arm = {}
             for arm in COMPARISON_ARMS:
                 pooled = pooled_deltas(arm, "pearson")
-                if pooled is None:
-                    continue
-                values = pooled.to_numpy()
-                median_rows.append(
-                    {"arm": arm, "median_delta": float(np.median(values)), "sign_test_p": sign_test_p(values)}
-                )
-            median_df = pd.DataFrame(median_rows)
-            median_df["bhy_p"] = bhy_adjusted_p_values(median_df["sign_test_p"].to_numpy())
+                pooled_by_arm[arm] = None if pooled is None else pooled.to_numpy()
+            median_frames.append(pd.DataFrame(median_sign_rows("pooled_core", pooled_by_arm)))
+            for fold_key in FOLD_KEYS_PRESENT:
+                fold_by_arm = {}
+                for arm in COMPARISON_ARMS:
+                    series = fold_deltas(arm, "pearson", fold_key)
+                    fold_by_arm[arm] = None if series is None else series.to_numpy()
+                median_frames.append(pd.DataFrame(median_sign_rows(fold_key, fold_by_arm)))
+
+            median_df = pd.concat([frame for frame in median_frames if not frame.empty], ignore_index=True)
+            median_df["bhy_p"] = median_df.groupby("scope")["sign_test_p"].transform(
+                lambda s: bhy_adjusted_p_values(s.to_numpy())
+            )
             median_df.to_csv(RUN_ROOT / f"median_sign_test_{RUN_STAGE}.csv", index=False)
 
             # Arm-versus-arm contrasts: reported paired with intervals, labelled
@@ -1357,7 +1442,7 @@ def build_cells() -> list[dict]:
             display(paired_per_fold[paired_per_fold["method"] == "pearson"])
             print("=== secondaries: median with a sign test; seed-paired per-model IC ===")
             display(median_df)
-            display(per_model_df.groupby(["fold", "arm"])["delta"].agg(["mean", "std", "count"]))
+            display(per_model_stats)
             print("=== arm versus arm: descriptive, unadjusted ===")
             display(descriptive_df)
             """

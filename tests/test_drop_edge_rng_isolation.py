@@ -24,6 +24,7 @@ from hydra import compose, initialize_config_dir
 
 from mci_gru.config import GraphConfig
 from mci_gru.models import create_model
+from mci_gru.models.trunk import _apply_edge_dropout
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "configs"
 
@@ -192,8 +193,6 @@ def test_forked_stream_advances_between_steps() -> None:
     earlier output-only form of this guard was blind to a frozen step counter
     (mutation M12 on ticket 183's pull request).
     """
-    from mci_gru.models.trunk import _apply_edge_dropout
-
     model = _model(isolate=True)
     model.train()
     edge_index, edge_weight = _populated_edges(n_stocks=40)
@@ -215,8 +214,6 @@ def test_forked_stream_advances_between_steps() -> None:
 
 def test_forked_edge_dropout_still_drops_edges() -> None:
     """Isolation must not silently disable the regulariser it wraps."""
-    from mci_gru.models.trunk import _apply_edge_dropout
-
     edge_index, edge_weight = _populated_edges(n_stocks=40)
     kept, kept_weight = _apply_edge_dropout(
         edge_index, edge_weight, EDGE_DROPOUT_P, training=True, fork_seed=11
