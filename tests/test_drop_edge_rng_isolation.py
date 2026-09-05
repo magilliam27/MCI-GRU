@@ -25,7 +25,11 @@ from hydra import compose, initialize_config_dir
 
 from mci_gru.config import GraphConfig
 from mci_gru.models import create_model
-from mci_gru.models.trunk import _apply_edge_dropout, _forked_dropout_edge
+from mci_gru.models.trunk import (
+    _EDGE_DROPOUT_FORKABLE_DEVICES,
+    _apply_edge_dropout,
+    _forked_dropout_edge,
+)
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "configs"
 
@@ -237,6 +241,11 @@ def test_fork_refuses_a_device_type_it_cannot_reseed() -> None:
     meta_edges = torch.zeros(2, 4, dtype=torch.long, device="meta")
     with pytest.raises(NotImplementedError, match="cannot fork the RNG for device type"):
         _forked_dropout_edge(meta_edges, EDGE_DROPOUT_P, 11)
+
+    # The allowlist is pinned rather than merely exercised: a device added to it
+    # without a reseeding branch would isolate nothing on that device, and no
+    # test on this machine could reach it to notice.
+    assert _EDGE_DROPOUT_FORKABLE_DEVICES == ("cpu", "cuda")
 
 
 def test_forked_edge_dropout_is_inert_in_eval_mode() -> None:
