@@ -19,12 +19,13 @@ mutation-checked on ticket 183's pull request.
 
 from pathlib import Path
 
+import pytest
 import torch
 from hydra import compose, initialize_config_dir
 
 from mci_gru.config import GraphConfig
 from mci_gru.models import create_model
-from mci_gru.models.trunk import _apply_edge_dropout
+from mci_gru.models.trunk import _apply_edge_dropout, _forked_dropout_edge
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "configs"
 
@@ -223,6 +224,19 @@ def test_forked_edge_dropout_still_drops_edges() -> None:
     assert 0 < kept.shape[1] < total
     assert abs(kept.shape[1] / total - (1.0 - EDGE_DROPOUT_P)) < 0.1
     assert kept_weight.shape[0] == kept.shape[1]
+
+
+def test_fork_refuses_a_device_type_it_cannot_reseed() -> None:
+    """An unsupported accelerator must fail loudly, not isolate nothing.
+
+    ``dropout_edge`` draws on ``edge_index.device``. Seeding the CPU generator
+    for a device whose generator is elsewhere leaves edge dropout on the global
+    stream with no error and no isolation -- the failure that looks like
+    success. A meta tensor stands in for any such device.
+    """
+    meta_edges = torch.zeros(2, 4, dtype=torch.long, device="meta")
+    with pytest.raises(NotImplementedError, match="cannot fork the RNG for device type"):
+        _forked_dropout_edge(meta_edges, EDGE_DROPOUT_P, 11)
 
 
 def test_forked_edge_dropout_is_inert_in_eval_mode() -> None:

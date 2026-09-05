@@ -554,9 +554,10 @@ def test_secondaries_carry_their_pre_registered_inference() -> None:
     """
     paired_cell = next(source for source in _code_cell_sources() if "paired_pooled_core" in source)
 
-    # Seed-paired per-model IC: a paired t, then BHY over the same contrasts.
+    # Seed-paired per-model IC: a paired t against zero, then BHY over the same
+    # contrasts. The null is asserted off the AST, not by the call's presence:
+    # `ttest_1samp(values, values.mean())` is the same call and always t = 0.
     assert "def per_model_inference(" in paired_cell
-    assert "stats.ttest_1samp(" in paired_cell
     assert "per_model_stats" in paired_cell
     tree = ast.parse(paired_cell)
     per_model = next(
@@ -565,10 +566,19 @@ def test_secondaries_carry_their_pre_registered_inference() -> None:
         if isinstance(node, ast.FunctionDef) and node.name == "per_model_inference"
     )
     assert "bhy_adjusted_p_values" in ast.dump(per_model)
+    ttest = next(
+        node
+        for node in ast.walk(per_model)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "ttest_1samp"
+    )
+    assert isinstance(ttest.args[1], ast.Constant), ast.dump(ttest)
+    assert ttest.args[1].value == 0.0, ast.dump(ttest)
 
-    # Both secondaries report pooled over the core folds *and* per fold.
+    # Both secondaries report pooled over the core folds *and* per fold. The
+    # per-fold frames must actually be collected, not merely computed.
     assert '"pooled_core"' in paired_cell
-    assert "for fold_key in FOLD_KEYS_PRESENT" in paired_cell
     median = next(
         node
         for node in ast.walk(tree)
@@ -576,6 +586,19 @@ def test_secondaries_carry_their_pre_registered_inference() -> None:
     )
     assert "scope" in ast.dump(median)
     assert "stats.binomtest(" in paired_cell
+
+    per_fold_loops = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.For)
+        and isinstance(node.iter, ast.Name)
+        and node.iter.id == "FOLD_KEYS_PRESENT"
+        and "median_sign_rows" in ast.dump(node)
+    ]
+    assert per_fold_loops, "no per-fold loop feeds the median sign test"
+    assert any("median_frames" in ast.dump(loop) for loop in per_fold_loops), (
+        "the per-fold median rows are computed but never collected"
+    )
 
     # Winsorised Pearson was dropped on ticket 181 s7; it must not reappear.
     assert "winsor" not in paired_cell.lower()
