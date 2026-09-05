@@ -45,6 +45,8 @@ graph:
   top_k_metric: corr            # corr | abs_corr (only when top_k > 0)
   use_multi_feature_edges: true  # true => (E,4) edge_attr; false => scalar (E,)
   drop_edge_p: 0.1              # train-time GAT edge dropout; 0 disables
+  isolate_edge_dropout_rng: false  # true = fork the RNG around edge dropout so the
+                                   # global stream is untouched by it (ticket 181 s4)
   append_snapshot_age_days: false
   use_lead_lag_features: false
   lead_lag_days: [1, 2, 3, 5]

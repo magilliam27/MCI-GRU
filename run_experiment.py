@@ -257,6 +257,7 @@ def main(cfg: DictConfig):
                 **cfg_w.model.to_dict(),
                 "edge_feature_dim": edge_dim,
                 "drop_edge_p": cfg_w.graph.drop_edge_p,
+                "isolate_edge_dropout_rng": cfg_w.graph.isolate_edge_dropout_rng,
                 "use_sector_relation": cfg_w.graph.use_sector_relation,
             }
 

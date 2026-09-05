@@ -340,6 +340,21 @@ class GraphConfig:
             (E, 4+) edge feature tensor [corr, |corr|, corr^2, rank_pct] plus optional
             lead–lag columns; snapshot age is appended in collate when enabled.
         drop_edge_p: Train-time edge dropout probability for GAT (0 disables).
+        isolate_edge_dropout_rng: Draw train-time edge dropout from a forked
+            random stream instead of the global one (ticket 181 section 4).
+            ``dropout_edge`` (PyG 2.7.0) takes no generator argument and draws
+            from the global torch RNG, so how far a training step advances that
+            stream depends on how many edges the arm has. The zeroed control
+            (``zero_edges``) has none, so its stream and every populated arm's
+            diverge after the first step and the divergence lands inside the
+            paired ``sd(delta)`` of an arm-versus-control comparison. Under this
+            flag each ``dropout_edge`` call runs inside a fork seeded from the
+            member seed and the step, and the global stream is restored
+            afterwards, so the non-graph draws -- initialisation, feature
+            dropout, shuffling -- coincide across arms and only the graph
+            differs. Default False: shipped behaviour is unchanged, and the flag
+            is meant to be set uniformly across the arms of one comparison
+            rather than on a single run.
         append_snapshot_age_days: Append days (sample date − snapshot valid_from) per edge.
         use_lead_lag_features: Add best-lag normalised index and signed corr at that lag.
         lead_lag_days: Candidate lags in days for lead–lag edge features.
@@ -376,6 +391,7 @@ class GraphConfig:
     use_multi_feature_edges: bool = True
     # Default 0: legacy-safe; set in configs/config.yaml for train-time regularisation
     drop_edge_p: float = 0.0
+    isolate_edge_dropout_rng: bool = False
     append_snapshot_age_days: bool = False
     use_lead_lag_features: bool = False
     lead_lag_days: list[int] = field(default_factory=lambda: [1, 2, 3, 5])
