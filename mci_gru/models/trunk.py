@@ -37,15 +37,70 @@ def _maybe_drop(p: float, on: bool) -> nn.Module:
     return nn.Dropout(p)
 
 
+#: Odd stride mixing (step, stream) into a fork seed. Two ``dropout_edge`` calls
+#: happen per training forward -- correlation then sector -- and consecutive
+#: steps must not reuse a mask, so the stride separates both axes.
+_EDGE_DROPOUT_STREAM_STRIDE = 2_654_435_761
+_EDGE_DROPOUT_SEED_MODULUS = 1 << 63
+#: Which of the forward's two edge-dropout calls a fork seed belongs to.
+_EDGE_DROPOUT_STREAM_CORRELATION = 0
+_EDGE_DROPOUT_STREAM_SECTOR = 1
+_EDGE_DROPOUT_STREAMS_PER_STEP = 2
+#: Device types whose generator ``_forked_dropout_edge`` knows how to reseed.
+#: Anything else would seed the CPU generator while ``dropout_edge`` drew from
+#: the accelerator's, so isolation would silently become a no-op -- which is the
+#: failure that looks like success. Raise instead; add the device here when one
+#: is actually supported.
+_EDGE_DROPOUT_FORKABLE_DEVICES = ("cpu", "cuda")
+
+
+def _edge_dropout_fork_seed(base_seed: int, step: int, stream: int) -> int:
+    """Seed for one forked edge-dropout draw, from the member seed and position."""
+    offset = (step * _EDGE_DROPOUT_STREAMS_PER_STEP + stream) * _EDGE_DROPOUT_STREAM_STRIDE
+    return (int(base_seed) + offset) % _EDGE_DROPOUT_SEED_MODULUS
+
+
+def _forked_dropout_edge(
+    edge_index: torch.Tensor, p: float, fork_seed: int
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """``dropout_edge`` with the global RNG saved, reseeded, and restored.
+
+    PyG 2.7.0's ``dropout_edge`` takes no generator argument -- it calls
+    ``torch.rand`` on ``edge_index.device`` -- so the isolation has to fork
+    around the call rather than be passed into it. Only the one generator that
+    call consults is reseeded, so a multi-device process keeps every other
+    stream intact.
+    """
+    device = edge_index.device
+    if device.type not in _EDGE_DROPOUT_FORKABLE_DEVICES:
+        raise NotImplementedError(
+            f"graph.isolate_edge_dropout_rng cannot fork the RNG for device type "
+            f"{device.type!r}; supported: {_EDGE_DROPOUT_FORKABLE_DEVICES}. Refusing "
+            "rather than silently leaving edge dropout on the global stream."
+        )
+    fork_devices = [device] if device.type == "cuda" else []
+    with torch.random.fork_rng(devices=fork_devices, enabled=True):
+        if device.type == "cuda":
+            with torch.cuda.device(device):
+                torch.cuda.manual_seed(fork_seed)
+        else:
+            torch.default_generator.manual_seed(fork_seed)
+        return dropout_edge(edge_index, p=p, force_undirected=False, training=True)
+
+
 def _apply_edge_dropout(
     edge_index: torch.Tensor,
     edge_weight: torch.Tensor,
     p: float,
     training: bool,
+    fork_seed: int | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     if (not training) or p <= 0.0 or p >= 1.0 or edge_index.numel() == 0:
         return edge_index, edge_weight
-    e_new, edge_mask = dropout_edge(edge_index, p=p, force_undirected=False, training=True)
+    if fork_seed is None:
+        e_new, edge_mask = dropout_edge(edge_index, p=p, force_undirected=False, training=True)
+    else:
+        e_new, edge_mask = _forked_dropout_edge(edge_index, p, fork_seed)
     w = edge_weight[edge_mask] if edge_weight is not None else edge_weight
     return e_new, w
 
@@ -81,6 +136,7 @@ class StockPredictionModel(nn.Module):
         use_nn_multihead_attention: bool = False,
         temporal_encoder: str = "legacy",
         drop_edge_p: float = 0.0,
+        isolate_edge_dropout_rng: bool = False,
         use_sector_relation: bool = False,
         use_a1_a2_cross_attention: bool = False,
         cross_a2_num_heads: int = 4,
@@ -190,6 +246,17 @@ class StockPredictionModel(nn.Module):
         )
         self.output_act = _make_output_activation(output_activation)
         self.drop_edge_p = float(drop_edge_p)
+        self.isolate_edge_dropout_rng = bool(isolate_edge_dropout_rng)
+        # ``train_multiple_models`` calls ``set_seed(config.seed + model_id)``
+        # immediately before ``model_factory()``, so reading the seed here
+        # captures this member's seed without consuming a draw from the global
+        # stream -- which is the point: arms with the flag on must consume the
+        # stream identically whatever their edge count. The step counter is
+        # transient training state, deliberately not a buffer: a resumed model
+        # restarts the edge-dropout sequence and its non-graph draws still
+        # coincide with every other arm's.
+        self._edge_dropout_seed = int(torch.initial_seed())
+        self._edge_dropout_step = 0
 
     def _temporal_fast_sequence(self, x_time_series: torch.Tensor) -> torch.Tensor:
         enc = self.temporal_encoder
@@ -198,6 +265,29 @@ class StockPredictionModel(nn.Module):
         if hasattr(enc, "forward_sequence"):
             return enc.forward_sequence(x_time_series)
         raise TypeError("Temporal encoder does not expose a sequence for cross-attention")
+
+    def _next_edge_dropout_fork_seeds(self, training: bool) -> tuple[int | None, int | None]:
+        """Fork seeds for this step's correlation and sector edge dropout.
+
+        ``(None, None)`` when isolation is off or outside training, which is the
+        shipped path: ``_apply_edge_dropout`` then draws from the global stream
+        exactly as it always has.
+        """
+        if not (training and self.isolate_edge_dropout_rng):
+            return None, None
+        # The counter advances once per training forward whatever the arm's edge
+        # count, including when a seed goes unused because the arm has no edges
+        # or dropout is off. That is the point rather than an oversight: it is a
+        # position in the forward, not a count of masks drawn, and every arm
+        # must be at the same position after the same number of steps.
+        step = self._edge_dropout_step
+        self._edge_dropout_step = step + 1
+        return (
+            _edge_dropout_fork_seed(
+                self._edge_dropout_seed, step, _EDGE_DROPOUT_STREAM_CORRELATION
+            ),
+            _edge_dropout_fork_seed(self._edge_dropout_seed, step, _EDGE_DROPOUT_STREAM_SECTOR),
+        )
 
     def forward(
         self,
@@ -222,8 +312,9 @@ class StockPredictionModel(nn.Module):
             x_time_series = x_time_series * stock_mask[:, :, None, None].to(x_time_series.dtype)
             x_graph = x_graph * node_mask
 
+        corr_fork_seed, sector_fork_seed = self._next_edge_dropout_fork_seeds(training)
         e_idx, e_wt = _apply_edge_dropout(
-            edge_index, edge_weight, self.drop_edge_p, training=training
+            edge_index, edge_weight, self.drop_edge_p, training=training, fork_seed=corr_fork_seed
         )
         # Sector fusion falls back to correlation-only when the sector tensors are
         # absent. That fallback is deliberate and no reachable training config hits
@@ -236,7 +327,11 @@ class StockPredictionModel(nn.Module):
             and edge_weight_sector is not None
         ):
             e_idx_s, e_wt_s = _apply_edge_dropout(
-                edge_index_sector, edge_weight_sector, self.drop_edge_p, training=training
+                edge_index_sector,
+                edge_weight_sector,
+                self.drop_edge_p,
+                training=training,
+                fork_seed=sector_fork_seed,
             )
         else:
             e_idx_s, e_wt_s = None, None
