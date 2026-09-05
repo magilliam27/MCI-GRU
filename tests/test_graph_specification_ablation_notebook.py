@@ -556,9 +556,26 @@ def test_paired_cell_pools_only_the_core_folds(generator) -> None:
     paired_cell = next(source for source in _code_cell_sources() if "paired_pooled_core" in source)
     tree = ast.parse(paired_cell)
 
-    # POOLED_FOLD_KEYS is the core folds, and the cell refuses to run if an
-    # alongside fold ever reaches it.
-    assert "POOLED_FOLD_KEYS = list(CORE_FOLD_KEYS)" in paired_cell
+    # POOLED_FOLD_KEYS is exactly list(CORE_FOLD_KEYS) -- read off the assignment
+    # node, not by substring: `list(CORE_FOLD_KEYS) + list(ALONGSIDE_FOLD_KEYS)`
+    # contains the substring and would otherwise pass (mutation M8b).
+    assignment = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "POOLED_FOLD_KEYS"
+            for target in node.targets
+        )
+    )
+    assert isinstance(assignment.value, ast.Call), ast.dump(assignment.value)
+    assert isinstance(assignment.value.func, ast.Name)
+    assert assignment.value.func.id == "list"
+    assert [ast.dump(arg) for arg in assignment.value.args] == [
+        ast.dump(ast.Name(id="CORE_FOLD_KEYS", ctx=ast.Load()))
+    ], ast.dump(assignment.value)
+
+    # And the cell refuses to run if an alongside fold ever reaches that list.
     assert "set(POOLED_FOLD_KEYS) & set(ALONGSIDE_FOLD_KEYS)" in paired_cell
 
     pooled = next(
