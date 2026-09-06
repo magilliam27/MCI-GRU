@@ -29,6 +29,7 @@ label them as synthetic rather than promoting them into `current/`.
 | --- | --- |
 | `docs/research/current/MCI_GRU_TOP_UNIVERSITY_RESEARCH_SCAN_2026-06-21.md` | Promoted active research map for implementation planning. Use this June 21 top-university-gated scan before the broader June 19 opportunity scan when prioritizing testing, backtesting, evidence-harness, data, model, loss, or paper-trade work. |
 | `docs/research/current/MCI_GRU_PROGRAM_MAP_2026-06-19.md` | Current structural companion map for MCI-GRU components and safe tweak surfaces. |
+| `docs/research/current/MCI_GRU_TRUNK_ARCHITECTURE_OPPORTUNITIES_2026-09-05.md` | Current trunk-architecture map: measured information-flow diagnostics on the four-stream trunk and a ranked, pre-registered trunk-hygiene ablation (residual cross-stock block, market-state gate, capacity-matched widths). Diagnostics are mechanics-level, not performance evidence. |
 | `docs/research/current/MCI_GRU_RESEARCH_OPPORTUNITY_SCAN_2026-06-19.md` | Superseded as the main prioritization map by the June 21 top-university-gated scan; keep as broader background and source-lead history. |
 
 ### PIT, Backtest, And Volatility-Targeting Evidence
