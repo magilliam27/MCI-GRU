@@ -56,6 +56,11 @@ exclude = [
     "outputs/",
     "results/",
     ".hydra/",
+    # Preserved research diagnostics. Python under docs/research/ is a record of
+    # the script that produced a recorded result, kept so the numbers can be
+    # traced. Reformatting or "fixing" it would break that guarantee, so it is
+    # archived as-run rather than maintained. Same intent as seed_results/.
+    "docs/research/",
 ]
 
 [tool.ruff.lint]
