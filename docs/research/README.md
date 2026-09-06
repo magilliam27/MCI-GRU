@@ -52,6 +52,15 @@ chosen on measured evidence" (issue #157).
 | `docs/research/current/GRAPH_SPECIFICATION_ABLATION_2026-09-01.md` | Current result of the graph-specification ablation run under the ticket-164 protocol (ticket 167): five arms — graph-zeroed control, shipped threshold 0.8, threshold 0.5, top-K 20, sector-relation-only — at screen (3 × 20) and frozen-recipe confirm (20 × 100) on the PIT 110-name 2016 universe. The graph-zeroed control ranks first on the decided arbiter (test-span pooled daily IC) at both stages, no arm separates from it, and every 95% CI contains zero. Read before quoting any arm-against-arm result; read its section 7 before quoting Sharpe, rank-IC, or composite figures, which order the arms differently from the arbiter. |
 | `docs/research/current/GRAPH_PAIRED_REANALYSIS_2026-09-02.md` | Current paired re-analysis of the 2026-09-01 graph-specification ablation (ticket 179, Phase 0 of the multi-year protocol proposal on issue #157): every arm scored against the graph-zeroed control on the same 238 test days with overlap-aware HAC and block-bootstrap inference and BHY across the four comparisons; Spearman, winsorised, and median sensitivity; Sharpe with bootstrap error bars; seed-paired per-model IC; the ensemble-scale audit; and the power table (`sd(Δ)` per arm and the minimum detectable effect by pooled test days). No arm separates from the control on any variant, and every 2025 gap is below its arm's four-fold minimum detectable effect. Read before sizing or designing any multi-year graph protocol; read its section 6 before quoting a detectable-effect figure, and its section 3 before quoting the per-year IC table from the ablation report, which used a different label. |
 
+### Data Engineering Evidence
+
+Evidence produced under the Wayfinder map "MCI-GRU data engineering: dataset identity,
+quality contracts, and safe pulls" (issue #187).
+
+| Report | Status |
+| --- | --- |
+| `docs/research/current/DATA_INPUT_INVENTORY_2026-09-05.md` | Current inventory of every data input MCI-GRU can read (ticket 188): 83 rows covering the 70 files present under the protected checkout's `data/raw/` (1,013,195,582 bytes, every one SHA-256 hashed read-only) plus 13 referenced-but-absent paths. Live configs depend on 10 distinct files; 4 of those have no sidecar; 0 of 12 sidecars carry a checksum; 5 of the 10 are covered by an external preservation manifest, all 20 manifest rows matching the bytes on disk. Read before quoting any count of data files, sidecars, or manifests, and before choosing which files a manifest backfill must cover. |
+
 ### Loss-Path Evidence
 
 | Report | Status |
