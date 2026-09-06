@@ -165,6 +165,7 @@ Because the base default sets `use_pit_universe: true` against a PIT CSV that is
 | Model | his_t | 10 |
 | Model | label_t | 5 |
 | Model | gru_hidden_sizes | [32, 10] |
+| Model | market_latent_mode | `static` — what the B1/B2 latent states are. `static` keeps `R1`/`R2` as frozen parameters, so the streams cannot observe the date's market (issue #198). `data_dependent` lets the latents read the date's active cross-section first. The two modes hold different parameters, so a checkpoint belongs to the mode that produced it. |
 | Graph | use_multi_feature_edges | `true` (4-D edge features; `paper_faithful` preset pins `false`) |
 | Training | batch_size | 32 |
 | Training | learning_rate | 5e-5 |

@@ -43,4 +43,5 @@ def create_model(input_size: int, config: dict[str, Any]) -> StockPredictionMode
         use_sector_relation=bool(config.get("use_sector_relation", False)),
         use_a1_a2_cross_attention=bool(config.get("use_a1_a2_cross_attention", False)),
         cross_a2_num_heads=int(config.get("cross_a2_num_heads", 4)),
+        market_latent_mode=config.get("market_latent_mode", "static"),
     )
