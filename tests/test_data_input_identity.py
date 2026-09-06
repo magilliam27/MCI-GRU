@@ -211,3 +211,68 @@ def test_run_metadata_carries_data_inputs_beside_unchanged_legacy_keys(tmp_path,
         "mtime_iso": parsed["data_inputs"]["data.pit_universe_csv"]["mtime_iso"],
     }
     assert parsed["data_inputs"]["data.filename"]["sha256"] == parsed["data_file_sha256"]
+
+
+def test_data_inputs_identity_omits_a_sector_map_whose_relation_is_switched_off(tmp_path):
+    """Naming a sector map does not mean the run reads it.
+
+    ``mci_gru/pipeline.py`` gates the sector-map read on
+    ``use_sector_relation and sector_map_csv``, so a config that names the file
+    with the relation off never opens it. Recording it would assert an input the
+    run did not consume.
+    """
+    config = create_config_from_dict(
+        {
+            "data": {"filename": _write(tmp_path / "panel.csv")},
+            "graph": {
+                "use_sector_relation": False,
+                "sector_map_csv": _write(tmp_path / "sectors.csv"),
+            },
+        }
+    )
+
+    inputs = data_inputs_identity(config, logger)
+
+    assert list(inputs) == ["data.filename"]
+
+
+def test_legacy_data_file_keys_keep_cwd_semantics_where_the_resolver_disagrees(
+    tmp_path, monkeypatch
+):
+    """The two blocks mean different things, and that is deliberate.
+
+    ``data_file_sha256`` is read by the PIT notebook generators, so it keeps its
+    existing cwd-relative meaning. ``data_inputs`` reports what the loaders
+    actually open. Where a basename fallback makes those diverge, the legacy key
+    stays null and the new block carries the digest.
+    """
+    fallback_dir = tmp_path / "data" / "raw" / "market"
+    fallback_dir.mkdir(parents=True)
+    payload = b"kdcode,dt,close\nAAPL,2026-01-02,100\n"
+    (fallback_dir / "panel.csv").write_bytes(payload)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.setattr(path_resolver, "PROJECT_ROOT", tmp_path)
+    monkeypatch.chdir(elsewhere)
+
+    config = create_config_from_dict({"data": {"filename": "panel.csv"}})
+    data = {
+        "norm_means": {"close": 1.0},
+        "norm_stds": {"close": 2.0},
+        "feature_cols": ["close"],
+        "kdcode_list": ["AAPL"],
+    }
+
+    metadata = build_run_metadata(
+        config,
+        data,
+        walkforward_window=0,
+        resolved_config_identity={},
+        logger=logger,
+    )
+
+    assert metadata["data_file_sha256"] is None
+    assert metadata["data_inputs"]["data.filename"]["sha256"] == hashlib.sha256(payload).hexdigest()
+    assert metadata["data_inputs"]["data.filename"]["resolved_path"] == str(
+        (fallback_dir / "panel.csv").resolve()
+    )
