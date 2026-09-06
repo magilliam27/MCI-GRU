@@ -44,8 +44,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mci_gru.config import create_config_from_dict
 from mci_gru.data.data_manager import create_data_loaders
 from mci_gru.evaluation.experiment_summary import (
+    build_run_metadata,
     compute_evaluation_summary,
-    data_file_fingerprint,
     select_training_objective_value,
     write_resolved_config,
 )
@@ -175,24 +175,13 @@ def main(cfg: DictConfig):
                 data = prepare_data(cfg_w, feature_engineer)
             timing_summary["phases"]["prepare_data_seconds"] = perf_counter() - phase_started
 
-            metadata = {
-                "norm_means": {k: float(v) for k, v in data["norm_means"].items()},
-                "norm_stds": {k: float(v) for k, v in data["norm_stds"].items()},
-                "feature_cols": data["feature_cols"],
-                "kdcode_list": data["kdcode_list"],
-                "his_t": cfg_w.model.his_t,
-                "label_t": cfg_w.model.label_t,
-                "seed": cfg_w.seed,
-                "train_end": cfg_w.data.train_end,
-                "data_file": cfg_w.data.filename,
-                "walkforward_window": wi,
-                **resolved_config_identity,
-                "graph_static_valid_from": data.get("graph_static_valid_from"),
-                "feature_reference_path": "feature_reference.json",
-                "pit_universe_mode": data.get("pit_universe_mode"),
-                "pit_breadth": data.get("pit_breadth"),
-                **data_file_fingerprint(cfg_w.data.filename, logger),
-            }
+            metadata = build_run_metadata(
+                cfg_w,
+                data,
+                walkforward_window=wi,
+                resolved_config_identity=resolved_config_identity,
+                logger=logger,
+            )
             metadata_path = os.path.join(wpath, "run_metadata.json")
             with open(metadata_path, "w") as f:
                 json.dump(metadata, f, indent=2)
