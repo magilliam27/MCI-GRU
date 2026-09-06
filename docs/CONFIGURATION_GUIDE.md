@@ -165,6 +165,7 @@ Because the base default sets `use_pit_universe: true` against a PIT CSV that is
 | Model | his_t | 10 |
 | Model | label_t | 5 |
 | Model | gru_hidden_sizes | [32, 10] |
+| Model | cross_section_block | `legacy` — how the cross-stock attention is applied. `legacy` replaces `z` with the attention output; `residual` applies it as `z + Attn(LayerNorm(z))` so it corrects `z` instead (issue #197). The two forms have disjoint parameter names, so a checkpoint belongs to the form that produced it. |
 | Graph | use_multi_feature_edges | `true` (4-D edge features; `paper_faithful` preset pins `false`) |
 | Training | batch_size | 32 |
 | Training | learning_rate | 5e-5 |
