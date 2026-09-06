@@ -190,6 +190,19 @@ as expected rather than as a violation.
   root quotes the correct policy while running the wrong skill set, with no
   warning. Start at the workspace root. `claude --setting-sources user` and SDK
   entrypoints load neither file regardless of directory.
+- **`.claude/skills/` is a third surface and does not follow the settings rule.
+  The placement works — the skills do load — but the mechanism is not
+  established, so do not reason from the bullet above.** Observed once, on merge
+  day: `work-the-map` and `implement-ticket` appeared in a session's skill
+  listing carrying their merged `description` strings, while the only copy on
+  disk sat in a *different* worktree from that session's working directory, and
+  they appeared **mid-session** after being absent from the same session's
+  listing earlier. Both cut against the settings rule, and the second also
+  contradicts the belief that a session cannot see skills added after it started
+  — which is the belief that left this unverified through an entire pull request.
+  What follows from it: a missing skill is **not** evidence you started in the
+  wrong directory, and it is not a reason to relocate skill content out of
+  `.claude/skills/`. See issue #172; a second data point is still wanted.
 - Load-bearing tests are mutation-checked: break the behaviour, confirm the test
   fails, restore, confirm it passes, and report the table. Three shipped defects
   in this repository survived because their guarding tests were vacuous.
