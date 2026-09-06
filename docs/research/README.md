@@ -60,6 +60,7 @@ quality contracts, and safe pulls" (issue #187).
 | Report | Status |
 | --- | --- |
 | `docs/research/current/DATA_INPUT_INVENTORY_2026-09-05.md` | Current inventory of every data input MCI-GRU can read (ticket 188): 83 rows covering the 70 files present under the protected checkout's `data/raw/` (1,013,195,582 bytes, every one SHA-256 hashed read-only) plus 13 referenced-but-absent paths. Live configs depend on 10 distinct files; 4 of those have no sidecar; 0 of 12 sidecars carry a checksum; 5 of the 10 are covered by an external preservation manifest, all 20 manifest rows matching the bytes on disk. Read before quoting any count of data files, sidecars, or manifests, and before choosing which files a manifest backfill must cover. |
+| `docs/research/current/DATA_IDENTITY_MECHANISMS_2026-09-05.md` | Current comparison of the four dataset-identity mechanisms (ticket 190): hardened sidecars, DVC, Git LFS, and a home-grown content-addressed store, assessed against this repository's corpus, hosting, Drive staging, worktree and Windows constraints from 31 primary sources read on 2026-09-05. Records the GitHub LFS free-tier quota (10 GiB storage, 10 GiB per month bandwidth, metered overage), DVC's MD5-only hash and blocked default Google Drive app, and the blast radius of each option. Read before ruling on the identity mechanism, and read its Sources section before quoting any vendor quota or version. |
 
 ### Loss-Path Evidence
 
