@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch_geometric.utils import dropout_edge
 
-from mci_gru.models.attention import SelfAttention
+from mci_gru.models.attention import ResidualCrossSectionBlock, SelfAttention
 from mci_gru.models.graph import GATBlock
 from mci_gru.models.latent import MarketLatentStateLearner
 from mci_gru.models.temporal import (
@@ -140,6 +140,7 @@ class StockPredictionModel(nn.Module):
         use_sector_relation: bool = False,
         use_a1_a2_cross_attention: bool = False,
         cross_a2_num_heads: int = 4,
+        cross_section_block: str = "legacy",
     ):
         super().__init__()
         if gru_hidden_sizes is None:
@@ -227,10 +228,15 @@ class StockPredictionModel(nn.Module):
         self.drop_z = _maybe_drop(tdrop, tr)
 
         if use_self_attention:
-            self.self_attention: SelfAttention | None = SelfAttention(
+            cross_section_attn = SelfAttention(
                 embed_dim=self.concat_size,
                 align_dim=self.align_dim,
                 use_group_type_embed=use_group_type_embed,
+            )
+            self.self_attention: nn.Module | None = (
+                ResidualCrossSectionBlock(cross_section_attn, embed_dim=self.concat_size)
+                if cross_section_block == "residual"
+                else cross_section_attn
             )
         else:
             self.self_attention = None
