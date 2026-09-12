@@ -55,7 +55,7 @@ not authorize changes to `paper_trade/` or its frozen-graph invariant.
 Resolved configuration, seeds, source code state and environment identity are
 also replay dependencies, coordinated with #144, #143 and #142. A code hash must
 resolve to recoverable code; it does not reconstruct an unretained dirty tree.
-Credentials are access mechanisms and must not be embedded in public manifests
+Credentials are access mechanisms and must not be embedded in manifests
 or run artifacts. Input retention does not imply bitwise training determinism.
 
 ## Manifest and storage contracts
