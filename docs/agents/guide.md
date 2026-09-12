@@ -21,6 +21,11 @@ Future-state design is deliberately out of scope here. It belongs in
 [target-architecture.md](target-architecture.md), which is human-led and is not
 current-state authority.
 
+For the owner-approved input-preservation target and its implementation packet,
+read [data-input-contract.md](data-input-contract.md). It covers the selected
+110-universe package, auxiliary inputs, verified retrieval and saved-run
+manifest snapshots; it is not evidence of implemented behavior.
+
 ## How To Use This Guide
 
 1. Read `AGENTS.md` for the invariants and required reads.
