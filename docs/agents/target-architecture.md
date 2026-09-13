@@ -233,7 +233,7 @@ work; it does not change ticket states, merge draft PRs, or grant run budgets.
 | #143 | Interpreter/dependency role and reference software qualification; retain `pyproject.toml` as range authority and the documented Colab range file until a reviewed change |
 | #144, coordinated with #191 / PR #201 | Runtime/code provenance and all-consumed-input identities; avoid parallel metadata implementations |
 | #132 | Strict-mode deferral is answered; comparable-condition artifacts still require delivery |
-| #187 / #192 | Raw-input identity mechanism remains an owner decision; both GPUs need the same verifiable inputs |
+| #187 / #192 | The approved [run input preservation contract](data-input-contract.md) defines input identity and preservation; implementation remains pending, and both GPUs need the same verifiable inputs |
 | #157 / #185 / PR #186 | Existing graph experiment and mechanics evidence; this policy does not expand their charter |
 
 Provenance is needed before calibration evidence can be trusted. A comparator
@@ -261,8 +261,9 @@ do not assert implementation completion. Subsequent rows also require review.
   tail summaries, and numeric tolerances remain to be specified and reviewed.
 - The G4 software profile and precise runtime validation fields must be tested;
   T4 capacity, cost, repeatability, and supported workload are not established.
-- Dataset identity choice remains with #192; this document selects neither
-  hardened sidecars nor DVC, LFS, or a custom store.
+- Input identity, the selected stock dataset, and preservation requirements are
+  decided in [the run input preservation contract](data-input-contract.md);
+  their implementation and preservation proof remain pending.
 - Comparator schema, tie handling, empty/insufficient-candidate behavior,
   recovery granularity, and validation seams need bounded implementation specs.
 - Model interfaces and the other architecture sections left as placeholders
