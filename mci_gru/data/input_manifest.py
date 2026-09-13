@@ -28,7 +28,7 @@ import os
 import re
 import tempfile
 from dataclasses import asdict, dataclass, field
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import TYPE_CHECKING, Any
 
 from mci_gru.evaluation.artifacts import canonical_json_bytes
@@ -146,7 +146,7 @@ def _validate_relative_path(path: str) -> None:
             or part in {".", ".."}
             or part.endswith((".", " "))
             or re.search(r'[<>:"\\|?*\x00-\x1f]', part)
-            or re.fullmatch(r"(?i)(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?", part)
+            or PureWindowsPath(part).is_reserved()
         ):
             raise InputManifestError(f"Unsafe package path: {path!r}")
 
