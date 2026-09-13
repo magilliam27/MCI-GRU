@@ -4,6 +4,34 @@ This guide captures the testing patterns agents and humans should use when
 changing MCI-GRU. Prefer small saved regression tests with synthetic data before
 running broad suites.
 
+## Training Repeatability: Current Guarantee And Agreed Target
+
+`mci_gru/utils/seeding.py:set_seed` seeds the Python, NumPy, and PyTorch RNGs
+but does not enable deterministic algorithms or configure the cuDNN
+determinism/benchmark flags. A recorded seed alone does not promise bitwise
+training equality. Deterministic replay of saved predictions, notebook contract
+tests, and a successful mechanics smoke do not prove training repeatability.
+
+The owner-approved [target contract](agents/target-architecture.md#target-training-evaluation-and-promotion-flow)
+is environment-equivalent reruns with complete provenance and measured
+tolerances. G4 is the first Colab reference; T4 has a staged qualification plan.
+Optional strict determinism is deferred until baseline measurements show
+whether it is needed. These are requirements to implement, not a claim that
+qualification has already passed.
+
+The target compares matching-date selected-stock distributions with base-2
+Jensen-Shannon divergence and selection-frequency views, alongside ranking,
+prediction, and metric diagnostics. It first measures same-seed G4 baseline
+variation, then brings interpretable thresholds to the owner, freezes approved
+limits, and evaluates independent qualifying reruns. No numerical pass limits
+have been selected. Different-seed sensitivity and cross-device portability
+must be reported separately from execution repeatability.
+
+The detailed method, remaining specifications, and decision links live in the
+target contract. The policy portion of #132 is answered; comparable-condition
+artifacts remain implementation work. No new training flag or automatic
+acceptance gate is introduced by this documentation.
+
 ## Local Commands
 
 ```bash
