@@ -10,7 +10,7 @@ mci_gru.models.mci_gru remains as a compatibility re-export shim):
 - StockPredictionModel: full model combining all components
 """
 
-from mci_gru.models.attention import SelfAttention
+from mci_gru.models.attention import ResidualCrossSectionBlock, SelfAttention
 from mci_gru.models.factory import create_model
 from mci_gru.models.graph import GATBlock, GATLayer, GATLayer_1
 from mci_gru.models.latent import MarketLatentStateLearner
@@ -32,6 +32,7 @@ __all__ = [
     "GATLayer",
     "GATLayer_1",
     "SelfAttention",
+    "ResidualCrossSectionBlock",
     "MarketLatentStateLearner",
     "create_model",
 ]
