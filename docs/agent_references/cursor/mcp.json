@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "colab-proxy-mcp": {
-      "command": "uv",
-      "args": ["run", "c:\\Users\\magil\\MCI-GRU\\scripts\\colab_mcp_wrapper.py"],
-      "timeout": 30000
-    }
-  }
-}

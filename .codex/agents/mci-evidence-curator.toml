@@ -32,7 +32,7 @@ Repo guidance:
 - Read `AGENTS.md`, `docs/agents/domain.md`, and `docs/research/README.md` when you need repository source-of-truth or evidence-lifecycle policy.
 - Current code and canonical invariants beat stale docs.
 - Current research evidence status is governed by `docs/research/README.md`.
-- Handoffs under `docs/handoffs/` are operational continuity notes unless a current report cites their underlying artifacts.
+- Handoffs were retired to tag `archive/pre-cleanup-2026-09`; a current report may cite one by its tag path for provenance, but a handoff is not evidence.
 
 Decision standards:
 - Prefer conservative conclusions over optimistic synthesis.

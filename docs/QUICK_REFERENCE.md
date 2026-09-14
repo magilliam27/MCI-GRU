@@ -49,23 +49,6 @@ python scripts/backtest_sp500.py \
 - `equity_curve.png` - Plot (with `--plot`)
 - `summary.txt` - Report
 
-## Paper Trade Pipeline
-
-The paper trading pipeline in `paper_trade/scripts/` provides inference, portfolio decisions, tracking, and reporting:
-
-```bash
-# Full nightly run (refresh data, track, infer, portfolio, report)
-python paper_trade/scripts/run_nightly.py
-
-# Individual steps
-python paper_trade/scripts/infer.py
-python paper_trade/scripts/portfolio.py
-python paper_trade/scripts/track.py
-python paper_trade/scripts/report.py
-```
-
-Pipeline order: `refresh_data` -> `track` -> `infer` -> `portfolio` -> `report`
-
 ## Finding Latest Run
 
 ```python
@@ -104,5 +87,5 @@ output_dir/
 ## See Also
 
 - `OUTPUT_MANAGEMENT.md` - Full documentation
-- `colab_workflow.ipynb` - Complete Colab example
+- `docs/NOTEBOOK_BEST_PRACTICES.md` - Colab notebook contract
 - `configs/` - Configuration files

@@ -6,7 +6,8 @@ Primary run:
 [MCI-GRU-Ablations/pit_masked_panel_2022_2025/20260514_043539](https://drive.google.com/drive/folders/1p1F2NqY5C6ISBzjm7-JBkbvsE4K2E2LF)
 
 This report reviews the full PIT masked-panel notebook run that followed
-`docs/handoffs/2026-05-15-frozen-default-pit-masked-panel.md`.
+`archive/pre-cleanup-2026-09:docs/handoffs/2026-05-15-frozen-default-pit-masked-panel.md`
+(a retired handoff; read it with `git show`).
 
 ## Executive Summary
 
