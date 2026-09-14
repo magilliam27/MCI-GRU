@@ -237,6 +237,17 @@ matrices `R1` and `R2` of shape `(num_hidden_states, D)`. A1 and A2 query them
 independently. `model.use_nn_multihead_attention` switches between the legacy
 eight-`Linear` implementation and `nn.MultiheadAttention`.
 
+`model.market_latent_mode` decides what those states are:
+
+| Mode | Behaviour |
+|------|-----------|
+| `static` (default) | `R1` and `R2` are plain parameters, frozen after training. Each stock's output is a function of its own vector alone, so **these streams cannot observe the date's market** despite the name (issue #198). |
+| `data_dependent` | The latents first read the date's PIT-active cross-section, then every stock reads those date-conditioned latents (the Set Transformer induced-set construction). Inactive names are excluded as attention keys, not merely zeroed, so the gathered state does not drift with the width of the PIT union axis. Requires `use_nn_multihead_attention=true`; the legacy eight-`Linear` path cannot take per-date keys. |
+
+The two modes hold different parameters, so a checkpoint belongs to the mode
+that produced it. `static` remains the default and the frozen recipe is
+unchanged.
+
 ### Prediction head
 
 `[A1, A2, B1, B2]` are concatenated in that order (the order `SelfAttention`'s

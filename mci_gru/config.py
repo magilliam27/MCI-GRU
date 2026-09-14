@@ -486,6 +486,12 @@ class ModelConfig:
             fast path (with a ``gru_attn`` slow branch in multi-scale mode).
         use_a1_a2_cross_attention: Fuse graph stream with temporal sequence via MHA (Q=A2, KV=A1).
         cross_a2_num_heads: Heads for A1–A2 cross-attention (must divide ``hidden_size_gat1``).
+        market_latent_mode: What the B1/B2 latent states are. ``"static"`` keeps
+            the shipped behaviour, where ``R1``/``R2`` are frozen parameters and
+            the streams cannot observe the date's market (issue #198).
+            ``"data_dependent"`` lets the latents read the date's active
+            cross-section before each stock reads them. Defaults to ``"static"``
+            for checkpoint compatibility.
     """
 
     his_t: int = 10
@@ -512,9 +518,11 @@ class ModelConfig:
     temporal_encoder: str = "legacy"
     use_a1_a2_cross_attention: bool = False
     cross_a2_num_heads: int = 4
+    market_latent_mode: str = "static"
 
     _VALID_OUTPUT_ACTIVATIONS = ("none", "elu", "relu", "sigmoid")
     _VALID_TEMPORAL_ENCODERS = ("legacy", "gru_attn", "transformer")
+    _VALID_MARKET_LATENT_MODES = ("static", "data_dependent")
 
     def __post_init__(self):
         if self.activation not in ("elu", "relu"):
@@ -528,6 +536,20 @@ class ModelConfig:
             raise ValueError(
                 f"temporal_encoder must be one of {self._VALID_TEMPORAL_ENCODERS}, "
                 f"got {self.temporal_encoder!r}"
+            )
+        if self.market_latent_mode not in self._VALID_MARKET_LATENT_MODES:
+            raise ValueError(
+                f"market_latent_mode must be one of {self._VALID_MARKET_LATENT_MODES}, "
+                f"got {self.market_latent_mode!r}"
+            )
+        if self.market_latent_mode == "data_dependent" and not self.use_nn_multihead_attention:
+            # Per-date latents need per-date keys, which the legacy 8-Linear
+            # cross-attention cannot express, so that path is unreachable in this
+            # mode. Refuse rather than silently overriding the flag the config
+            # asked for, which is the defect family recorded in #131.
+            raise ValueError(
+                "market_latent_mode='data_dependent' requires use_nn_multihead_attention=True; "
+                "the legacy 8-Linear cross-attention cannot take per-date keys."
             )
         if self.latent_init_scale <= 0:
             raise ValueError("latent_init_scale must be > 0")
@@ -562,6 +584,7 @@ class ModelConfig:
             "temporal_encoder": self.temporal_encoder,
             "use_a1_a2_cross_attention": self.use_a1_a2_cross_attention,
             "cross_a2_num_heads": self.cross_a2_num_heads,
+            "market_latent_mode": self.market_latent_mode,
         }
 
 
