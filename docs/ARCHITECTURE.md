@@ -451,7 +451,7 @@ child run per ensemble member and, in walk-forward mode, a child run per window.
 ## Evaluation Surfaces
 
 Evaluation has distinct trust boundaries: a metric summary is not an economic
-backtest, and neither is paper trading.
+backtest.
 
 ### In-run prediction evaluation
 
@@ -496,7 +496,7 @@ manifest.json
 unique, successful membership against a declared `expected_trial_ids` set, and
 the research protocol requires that set whenever a complete trial ledger is
 claimed. This surface measures dated stock-selection information only; it does
-not model capital, orders, fills, costs, leverage, or paper trading.
+not model capital, orders, fills, costs, or leverage.
 
 ### Supporting surfaces
 
@@ -518,7 +518,7 @@ configs/
 ├── config.yaml          ← executable base composition and defaults
 ├── data/                ← DataConfig overrides (sp500, russell1000, temporal_2019, ...)
 ├── features/            ← FeatureConfig overrides (base, with_momentum, full, ...)
-└── experiment/          ← multi-section experiment presets (paper_faithful, hybrid, ...)
+└── experiment/          ← multi-section experiment presets (paper_faithful, graph_zeroed, ...)
 ```
 
 `create_config_from_dict()` in `mci_gru/config.py` is the single plain-dict
@@ -550,42 +550,12 @@ load. New runs receive explicit values from typed config plus the graph-derived
 Override from the CLI:
 `python run_experiment.py model.his_t=20 training.loss_type=ic`
 
-## Paper Trading (paper_trade/)
+## Paper Trading
 
-Paper trading is frozen-checkpoint inference, not a continuation of training.
-
-`paper_trade/scripts/infer.py` loads the frozen `config.yaml`,
-`run_metadata.json`, every `model_*_best.pth` under the model directory, and
-`graph_data.pt`. It reconstructs the feature engineer, optionally fetches regime
-inputs through the inference date, reuses the shared imputation, z-score, and
-single-date tensor helpers from `mci_gru/data/transforms.py`, runs every
-checkpoint, and averages their scores. It does **not** instantiate or call
-`GraphBuilder`.
-
-`paper_trade/scripts/run_nightly.py` runs the steps in this order, because
-execution tracking needs the new day's open before a new target portfolio is
-formed:
-
-1. `refresh_data.py` — append incremental LSEG bars to the master CSV.
-2. `track.py` — simulate prior orders at the next open and update open-to-open
-   position returns, costs, trades, and persistent fill state. Its benchmark is
-   `SPY.P`.
-3. `infer.py` — write dated scores plus the normalized feature matrix used for
-   monitoring.
-4. `portfolio.py` — rank scores, apply the rank-drop policy, and write target
-   holdings, orders, and persisted rank/holding state.
-5. `monitor.py` — compare normalized inference features against the frozen
-   train-window `feature_reference.json` and write `feature_drift.json` /
-   `feature_drift.csv`.
-6. `report.py` — write Markdown and JSON reports plus equity and drawdown charts.
-
-The default policy exits a scored holding when its rank worsens by at least 30
-places (`DEFAULT_MIN_RANK_DROP` in `paper_trade/scripts/portfolio.py`, applied
-through the shared gate in `mci_gru/evaluation/portfolio.py`).
-
-`paper_trade/scripts/catchup.py` replays missed dates sequentially and
-`paper_trade/scripts/compare_regime.py` compares frozen regime and no-regime
-model outputs. Neither path trains a model.
+`paper_trade/` was retired in 2026-09 (map #211). The frozen-checkpoint
+inference and nightly portfolio pipeline it held are readable at tag
+`archive/pre-cleanup-2026-09`; `tests/test_repository_retirement_guard.py`
+forbids reintroducing the directory.
 
 ## Package Layout
 
@@ -651,13 +621,6 @@ mci_gru/
 │   └── mlflow_manager.py         ← optional MLflow integration
 └── utils/
     └── seeding.py                ← set_seed()
-paper_trade/
-├── Model/                        ← frozen configs, metadata, and checkpoints
-├── scripts/                      ← refresh, track, infer, portfolio, monitor, report, nightly
-└── state/                        ← persistent holdings, ranks, fills, run manifest
-                                     (dated scores, orders, monitoring, and reports are
-                                      written at runtime under paper_trade/results/,
-                                      which is not tracked in git)
 scripts/                          ← supported CLIs for backtest, research, and reporting
 tests/                            ← pytest suite (run via scripts/run_pytest_isolated.py)
 ```
@@ -672,11 +635,11 @@ These are properties of the code as written, not intended guarantees:
   no pre-train observations.
 - `graph_data.pt` stores only the `train_start` correlation graph and the
   optional sector edges. A dynamic `GraphSchedule` lives in memory and is not
-  exported, so frozen paper-trade inference uses the static saved graph even
-  after dynamic-graph training.
+  exported, so frozen inference from `graph_data.pt` uses the static saved
+  graph even after dynamic-graph training.
 - `run_metadata.json` serializes z-score means and standard deviations but not a
-  fitted rank-Gaussian reference, so the frozen paper-trade path is not
-  self-contained for a `rank_gauss` training run.
+  fitted rank-Gaussian reference, so frozen inference from `run_metadata.json`
+  is not self-contained for a `rank_gauss` training run.
 - `EvaluationConfig.sharpe_method` is validated but is not passed by
   `resolved_evaluation_kwargs()`; headline Sharpe selection follows `label_t` as
   described above.

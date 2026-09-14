@@ -767,7 +767,7 @@ class TestGATBlockEdgeDim:
     """GATBlock must accept (E, F) edge_attr when edge_feature_dim=F."""
 
     def test_forward_with_4d_edge_attr(self):
-        from mci_gru.models.mci_gru import GATBlock
+        from mci_gru.models.graph import GATBlock
 
         block = GATBlock(
             in_channels=8,
@@ -785,7 +785,7 @@ class TestGATBlockEdgeDim:
 
     def test_forward_with_1d_edge_weight_default(self):
         """Default edge_feature_dim=1 keeps legacy scalar-weight behaviour."""
-        from mci_gru.models.mci_gru import GATBlock
+        from mci_gru.models.graph import GATBlock
 
         block = GATBlock(in_channels=6, hidden=3, out_channels=2, heads=2)
         x = torch.randn(4, 6)

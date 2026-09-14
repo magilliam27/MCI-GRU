@@ -6,7 +6,8 @@ Primary Drive run:
 [MCI-GRU-Ablations/pit_repeated_seed_replication/20260520_183538](https://drive.google.com/drive/folders/1ecTUflJGVILFpaZ0TKDiGrsc4W1EYhFj)
 
 This report reviews the expanded Option A notebook run described in
-`docs/handoffs/2026-05-20-pit-repeated-seed-option-a-notebook.md`.
+`archive/pre-cleanup-2026-09:docs/handoffs/2026-05-20-pit-repeated-seed-option-a-notebook.md`
+(a retired handoff; read it with `git show`).
 
 ## Executive Summary
 
