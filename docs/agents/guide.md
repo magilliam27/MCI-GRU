@@ -443,15 +443,21 @@ The source snapshot covers `run_experiment.py`, `mci_gru/`, `configs/`,
 source and exact line endings. Symlinks, unreadable source and detected
 credential-bearing files are excluded with explicit partial-source evidence.
 The credential checks are conservative guards for credential filenames,
-literal assignments, private-key text and authenticated URLs; they are not a
-general secret scanner. Config must already be redacted; capture rejects unsafe
+decoded JSON keys, Python literal assignments/dictionaries/keyword arguments,
+simple YAML/TOML assignments, private-key text and authenticated URLs. Python
+that cannot be parsed is also excluded. These checks are not a general secret
+scanner. Config must already be redacted; capture rejects unsafe
 config rather than rewriting its established bytes or digest.
 
 This first boundary records Python, NumPy, pandas, SciPy, Torch, PyG and the
-process platform. Failed Git/package observations are explicit unavailable
+process platform. Failed Git/package/platform observations are explicit unavailable
 values. The Colab runtime label is explicitly unknown. Source completeness is
 relative to the declared source scope, not proof of a complete execution
 dependency closure. External plugins and notebook-only code are not covered.
+The code-identity object preserves the existing v1 fields, including the dirty
+diff digest and version map; explicit observation states distinguish unavailable
+Git evidence from a clean tree. Read-back rejects missing or inconsistent required
+metadata as well as byte-integrity failures.
 Every start record stays `incomplete`: it provides no completion event or
 actual member seed/device/AMP/backend evidence. Training integration, richer
 runtime observations, input-identity linkage and bundle attachment remain

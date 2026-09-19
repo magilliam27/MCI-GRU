@@ -163,6 +163,8 @@ def test_capture_rejects_changed_config_without_modifying_sources_or_prior_attem
     "payload",
     [
         b'{"tracking":{"password":"fixture-secret"}}',
+        b'{"fred_api_key":"fixture-secret"}',
+        rb'{"pass\u0077ord":"fixture-secret"}',
         b'{"tracking":{"uri":"https://user:fixture-secret@server/"}}',
         b'{"data":{"filename":"/private/market.csv"}}',
         b'{"seed":NaN}',
@@ -247,7 +249,18 @@ def test_unreadable_source_is_explicit_partial_evidence_and_not_a_silent_omissio
 
 
 @pytest.mark.parametrize(
-    "damage", ["blob", "size", "source_inventory", "path", "shape", "status", "timestamp"]
+    "damage",
+    [
+        "blob",
+        "blob_digest",
+        "size",
+        "source_inventory",
+        "source_digest",
+        "path",
+        "shape",
+        "status",
+        "timestamp",
+    ],
 )
 def test_reader_rejects_invalid_record_semantics_even_with_a_matching_outer_digest(
     tmp_path, damage
@@ -261,6 +274,10 @@ def test_reader_rejects_invalid_record_semantics_even_with_a_matching_outer_dige
         record["resolved_config"]["content_base64"] = "e30="
     elif damage == "size":
         record["resolved_config"]["size_bytes"] += 1
+    elif damage == "blob_digest":
+        record["resolved_config"]["sha256"] = "0" * 64
+    elif damage == "source_digest":
+        record["code_identity"]["working_tree_source_sha256"] = "0" * 64
     elif damage == "source_inventory":
         del record["source_files"]["mci_gru/new_model.py"]
     elif damage == "path":
@@ -381,3 +398,134 @@ def test_each_capture_is_a_distinct_incomplete_attempt_and_readback_does_not_wri
     assert read_execution_provenance(refs[0]).record["execution_status"] == "incomplete"
     assert refs[0].path.read_bytes() == first_bytes
     assert refs[0].path.stat().st_mtime_ns == first_mtime
+
+
+@pytest.mark.parametrize(
+    ("name", "content"),
+    [
+        ("provider.py", b'FRED_API_KEY = "fixture-secret"'),
+        ("provider.py", rb'config = {"pass\u0077ord": "fixture-secret"}'),
+        ("provider.py", b'client = connect(client_secret="fixture-secret")'),
+        ("provider.yaml", b"password: fixture-secret"),
+        ("provider.toml", b'fred_api_key = "fixture-secret"'),
+    ],
+)
+def test_source_credential_formats_are_excluded_with_explicit_partial_evidence(
+    tmp_path, name, content
+):
+    repo, _, config_path, digest, _ = _fixture(tmp_path)
+    (repo / "mci_gru" / name).write_bytes(content)
+    ref = capture_execution_start(
+        repo, config_path, resolved_config_sha256=digest, output_dir=tmp_path / "evidence"
+    )
+    retained = read_execution_provenance(ref)
+    assert f"mci_gru/{name}" not in retained.source_files
+    assert retained.record["source_capture"]["status"] == "partial"
+    assert b"fixture-secret" not in b"".join(retained.source_files.values())
+
+
+def test_runtime_credential_lookup_and_redacted_config_are_preserved(tmp_path):
+    repo, _, config_path, _, _ = _fixture(tmp_path)
+    content = b'import os\nFRED_API_KEY = os.getenv("FRED_API_KEY")\n'
+    (repo / "mci_gru" / "provider.py").write_bytes(content)
+    config_bytes = b'{"password":"<REDACTED>","fred_api_key":null}'
+    config_path.write_bytes(config_bytes)
+    ref = capture_execution_start(
+        repo,
+        config_path,
+        resolved_config_sha256=hashlib.sha256(config_bytes).hexdigest(),
+        output_dir=tmp_path / "evidence",
+    )
+    retained = read_execution_provenance(ref)
+    assert retained.source_files["mci_gru/provider.py"] == content
+    assert retained.resolved_config_bytes == config_bytes
+
+
+def test_platform_observation_failure_still_retains_an_incomplete_attempt(tmp_path, monkeypatch):
+    repo, _, config_path, digest, _ = _fixture(tmp_path)
+
+    def unavailable():
+        raise subprocess.SubprocessError("sensitive observation error")
+
+    monkeypatch.setattr(platform, "platform", unavailable)
+    ref = capture_execution_start(
+        repo, config_path, resolved_config_sha256=digest, output_dir=tmp_path / "evidence"
+    )
+    retained = read_execution_provenance(ref)
+    assert retained.record["environment"]["platform"] is None
+    assert retained.record["environment"]["platform_observation"] == {
+        "status": "unavailable",
+        "value": None,
+        "reason": "SubprocessError",
+    }
+    assert retained.record["execution_status"] == "incomplete"
+    assert b"sensitive observation error" not in ref.path.read_bytes()
+
+
+def test_code_identity_keeps_existing_v1_fields_with_execution_time_observations(tmp_path):
+    repo, _, config_path, digest, commit = _fixture(tmp_path)
+    diff = subprocess.check_output(["git", "diff", "--binary", "HEAD"], cwd=repo)
+    ref = capture_execution_start(
+        repo, config_path, resolved_config_sha256=digest, output_dir=tmp_path / "evidence"
+    )
+    retained = read_execution_provenance(ref)
+    identity = retained.record["code_identity"]
+    assert identity["schema"] == "mci_gru.selection_research_code_identity.v1"
+    assert identity["git_commit"] == commit
+    assert identity["git_dirty_diff_sha256"] == hashlib.sha256(diff).hexdigest()
+    assert identity["runtime_versions"] == {
+        name: observation["value"]
+        for name, observation in retained.record["environment"]["runtime_versions"].items()
+    }
+    assert identity["git_observations"]["status"] == {"status": "observed", "value": True}
+    assert identity["git_observations"]["diff"]["value"] == identity["git_dirty_diff_sha256"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "remove"),
+    [
+        ("attempt_id", None, True),
+        ("window_id", None, True),
+        ("environment", None, True),
+        ("source_capture", None, True),
+        ("code_identity.git_observations", None, True),
+        ("attempt_id", "", False),
+        ("window_id", 17, False),
+        ("source_capture.roots", [], False),
+        ("source_capture.status", "partial", False),
+        ("source_capture.problems", [{"path": "../escape.py", "reason": "failed"}], False),
+        ("code_identity.schema", "future", False),
+        ("code_identity.git_observations.commit.status", "invented", False),
+        ("code_identity.git_observations.commit.value", None, False),
+        ("code_identity.git_observations.status.value", "true", False),
+        ("code_identity.git_observations.diff.value", "bad", False),
+        ("code_identity.git_dirty", False, False),
+        ("code_identity.git_dirty_diff_sha256", None, False),
+        ("environment.runtime_versions.torch", None, True),
+        ("environment.runtime_versions.torch", {"status": "unavailable", "value": "2.7"}, False),
+        ("environment.runtime_versions.torch", {"status": "unavailable", "value": None}, False),
+        ("environment.platform", "changed", False),
+        ("environment.python_implementation", "", False),
+        ("environment.colab_runtime_label", {"status": "observed", "value": "G4"}, False),
+        ("code_identity.runtime_versions", {}, False),
+    ],
+)
+def test_reader_requires_valid_attempt_and_observation_metadata(tmp_path, field, value, remove):
+    repo, _, config_path, digest, _ = _fixture(tmp_path)
+    ref = capture_execution_start(
+        repo, config_path, resolved_config_sha256=digest, output_dir=tmp_path / "evidence"
+    )
+    record = json.loads(ref.path.read_bytes())
+    target = record
+    *parents, key = field.split(".")
+    for parent in parents:
+        target = target[parent]
+    if remove:
+        del target[key]
+    else:
+        target[key] = value
+    payload = json.dumps(record).encode()
+    ref.path.write_bytes(payload)
+    ref = replace(ref, sha256=hashlib.sha256(payload).hexdigest())
+    with pytest.raises(ValueError, match="Invalid"):
+        read_execution_provenance(ref)
