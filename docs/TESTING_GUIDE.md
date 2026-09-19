@@ -85,7 +85,7 @@ Windows identity that created it. `MCI_GRU_PYTEST_TEMP_ROOT` can override the
 parent directory when the default user temp directory is unavailable.
 
 Use the smallest command that proves the changed behavior first. Run broader
-checks before pushing shared pipeline, graph, model, or paper-trade changes.
+checks before pushing shared pipeline, graph, or model changes.
 
 ## Test Registry And Run Reports
 
@@ -122,7 +122,7 @@ Always report exact commands, exit status, skipped tests, and remaining risk.
 - **Contract test**: a saved pytest that protects an invariant or regression.
 - **Local pytest/ruff**: targeted, non-slow, full-suite, or lint evidence from
   this checkout.
-- **Local smoke**: a short `run_experiment.py` or paper-trade command that
+- **Local smoke**: a short `run_experiment.py` or `scripts/ci_smoke.py` command that
   proves wiring outside pytest.
 - **Live Colab smoke**: foreground notebook execution that proves the remote
   runtime can start the path.
@@ -162,9 +162,7 @@ Tests should protect the repository invariants in `AGENTS.md`:
 - normalization stats, graph edges, and labels use strict train-period cutoffs;
 - dynamic graph batches resolve edges through `GraphSchedule`;
 - `combined_collate_fn` preserves the 9-tuple contract;
-- ensemble prediction is the mean of independently trained models;
-- paper-trade inference loads frozen `graph_data.pt` and does not import
-  `GraphBuilder`.
+- ensemble prediction is the mean of independently trained models.
 
 ## Synthetic Data Pattern
 
@@ -250,7 +248,7 @@ Graph tests should use small deterministic panels and verify:
 
 Use `tests/test_dynamic_graph_updates.py` as the main reference.
 
-## Backtest And Paper-Trade Checks
+## Backtest Checks
 
 Backtest tests should assert the timing contract directly:
 
@@ -258,16 +256,6 @@ Backtest tests should assert the timing contract directly:
 - execution date;
 - return attribution period;
 - transaction cost and turnover handling.
-
-Paper-trade tests should guard frozen inference:
-
-```python
-source = Path("paper_trade/infer.py").read_text()
-assert "GraphBuilder" not in source
-```
-
-Prefer behavioral tests where possible, but keep this import guard because the
-paper-trade invariant is architectural and easy to regress.
 
 ## Regression Test Quality Bar
 

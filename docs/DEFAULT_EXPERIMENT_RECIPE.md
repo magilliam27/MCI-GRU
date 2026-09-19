@@ -21,8 +21,9 @@ runs unless an experiment is explicitly testing one of these factors.
 > | train start | 2019-01-01 | 2016-01-04 |
 > | `use_pit_universe` / mode | `false` / `row_filter` | `true` / `masked_panel` |
 >
-> Existing `seed_results/` were produced under the inherited S&P 500 universe.
-> Do not compare them with new recipe-labelled runs without saying so.
+> The pre-recipe `seed_results/` (retired to tag `archive/pre-cleanup-2026-09`) were
+> produced under the inherited S&P 500 universe and are not comparable with
+> recipe-labelled runs.
 
 Recipe slug:
 
