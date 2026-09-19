@@ -4,6 +4,34 @@ This guide captures the testing patterns agents and humans should use when
 changing MCI-GRU. Prefer small saved regression tests with synthetic data before
 running broad suites.
 
+## Training Repeatability: Current Guarantee And Agreed Target
+
+`mci_gru/utils/seeding.py:set_seed` seeds the Python, NumPy, and PyTorch RNGs
+but does not enable deterministic algorithms or configure the cuDNN
+determinism/benchmark flags. A recorded seed alone does not promise bitwise
+training equality. Deterministic replay of saved predictions, notebook contract
+tests, and a successful mechanics smoke do not prove training repeatability.
+
+The owner-approved [target contract](agents/target-architecture.md#target-training-evaluation-and-promotion-flow)
+is environment-equivalent reruns with complete provenance and measured
+tolerances. G4 is the first Colab reference; T4 has a staged qualification plan.
+Optional strict determinism is deferred until baseline measurements show
+whether it is needed. These are requirements to implement, not a claim that
+qualification has already passed.
+
+The target compares matching-date selected-stock distributions with base-2
+Jensen-Shannon divergence and selection-frequency views, alongside ranking,
+prediction, and metric diagnostics. It first measures same-seed G4 baseline
+variation, then brings interpretable thresholds to the owner, freezes approved
+limits, and evaluates independent qualifying reruns. No numerical pass limits
+have been selected. Different-seed sensitivity and cross-device portability
+must be reported separately from execution repeatability.
+
+The detailed method, remaining specifications, and decision links live in the
+target contract. The policy portion of #132 is answered; comparable-condition
+artifacts remain implementation work. No new training flag or automatic
+acceptance gate is introduced by this documentation.
+
 ## Local Commands
 
 ```bash
@@ -57,7 +85,7 @@ Windows identity that created it. `MCI_GRU_PYTEST_TEMP_ROOT` can override the
 parent directory when the default user temp directory is unavailable.
 
 Use the smallest command that proves the changed behavior first. Run broader
-checks before pushing shared pipeline, graph, model, or paper-trade changes.
+checks before pushing shared pipeline, graph, or model changes.
 
 ## Test Registry And Run Reports
 
@@ -94,7 +122,7 @@ Always report exact commands, exit status, skipped tests, and remaining risk.
 - **Contract test**: a saved pytest that protects an invariant or regression.
 - **Local pytest/ruff**: targeted, non-slow, full-suite, or lint evidence from
   this checkout.
-- **Local smoke**: a short `run_experiment.py` or paper-trade command that
+- **Local smoke**: a short `run_experiment.py` or `scripts/ci_smoke.py` command that
   proves wiring outside pytest.
 - **Live Colab smoke**: foreground notebook execution that proves the remote
   runtime can start the path.
@@ -120,8 +148,7 @@ local test.
 - **Slow/data-dependent tests**: keep them marked with `slow`, `requires_data`,
   `requires_fred`, or `requires_lseg`.
 - **Script-like harnesses**: files that launch experiments or backtests rather
-  than asserting behavior. Recommend moving these to `scripts/` or
-  `tests/manual/`.
+  than asserting behavior. Recommend moving these to `scripts/`.
 - **Stale or contradictory tests**: tests whose assumptions conflict with the
   current architecture. Explain the conflict before proposing archive/removal.
 
@@ -134,9 +161,7 @@ Tests should protect the repository invariants in `AGENTS.md`:
 - normalization stats, graph edges, and labels use strict train-period cutoffs;
 - dynamic graph batches resolve edges through `GraphSchedule`;
 - `combined_collate_fn` preserves the 9-tuple contract;
-- ensemble prediction is the mean of independently trained models;
-- paper-trade inference loads frozen `graph_data.pt` and does not import
-  `GraphBuilder`.
+- ensemble prediction is the mean of independently trained models.
 
 ## Synthetic Data Pattern
 
@@ -222,7 +247,7 @@ Graph tests should use small deterministic panels and verify:
 
 Use `tests/test_dynamic_graph_updates.py` as the main reference.
 
-## Backtest And Paper-Trade Checks
+## Backtest Checks
 
 Backtest tests should assert the timing contract directly:
 
@@ -230,16 +255,6 @@ Backtest tests should assert the timing contract directly:
 - execution date;
 - return attribution period;
 - transaction cost and turnover handling.
-
-Paper-trade tests should guard frozen inference:
-
-```python
-source = Path("paper_trade/infer.py").read_text()
-assert "GraphBuilder" not in source
-```
-
-Prefer behavioral tests where possible, but keep this import guard because the
-paper-trade invariant is architectural and easy to regress.
 
 ## Regression Test Quality Bar
 

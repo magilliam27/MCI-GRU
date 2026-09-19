@@ -44,8 +44,7 @@ COLAB_GPU_METADATA_BARE_KERNEL: dict = {
 }
 
 #: Plain local-kernel metadata with a pinned language_info version
-#: (gen_performance_proof_nb, gen_temporal_rolling_backtest_nb,
-#: gen_train_test_nb, gen_promising_backtest_nb).
+#: (gen_performance_proof_nb, gen_temporal_rolling_backtest_nb).
 LOCAL_PY310_METADATA: dict = {
     "kernelspec": {
         "display_name": "Python 3",
@@ -95,7 +94,7 @@ def code_lines(text: str) -> dict:
 
 
 # Canonical Colab setup-cell source (reference: the historical inline cell in
-# scripts/gen_lambdarank_ic_pit_nb.py). Deliberately a raw string: the "\n"
+# the retired scripts/gen_lambdarank_ic_pit_nb.py, at tag archive/pre-cleanup-2026-09). Deliberately a raw string: the "\n"
 # inside the RuntimeError message must land in the notebook as a literal
 # backslash-n, exactly as the generators emitted it. The §…§ placeholders are
 # substituted by colab_setup_cell().

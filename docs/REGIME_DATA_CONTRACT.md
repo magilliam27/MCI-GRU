@@ -58,11 +58,10 @@ If the deprecated CSV path is used:
 
 ## Retired Colab Reconciliation
 
-`scripts/colab_regime_reconcile.py` and `scripts/export_lseg_regime.py` are
-deprecated. They no longer write regime CSV files, because the live loader is
-the canonical source for seven-variable regime inputs. Older notebooks that
-reference these scripts should be updated to leave `features.regime_inputs_csv`
-unset and rely on `FRED_API_KEY`.
+The Colab reconciliation exporters were retired in 2026-09 (readable at tag
+`archive/pre-cleanup-2026-09`). The live loader is the canonical source for
+seven-variable regime inputs; leave `features.regime_inputs_csv` unset and rely
+on `FRED_API_KEY`.
 
 ## Validation
 

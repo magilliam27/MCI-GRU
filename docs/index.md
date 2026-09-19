@@ -1,7 +1,11 @@
 # Documentation Index
 
-> Start with `AGENTS.md` in the repo root for the short Codex entrypoint.
+> Start with `AGENTS.md` in the repo root for the short entrypoint.
 > Use this file to choose the right deep-dive document.
+
+The `docs/` root holds the canonical guides only. Research evidence lives under
+`research/` in two states, `current/` and `archive/`, with
+[research/README.md](research/README.md) as the status map.
 
 ## Canonical Docs
 
@@ -10,7 +14,7 @@
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Current model, pipeline, graph, and data-flow map. |
 | [CONFIGURATION_GUIDE.md](CONFIGURATION_GUIDE.md) | Hydra config system, override patterns, and preset catalog. |
 | [DEFAULT_EXPERIMENT_RECIPE.md](DEFAULT_EXPERIMENT_RECIPE.md) | Frozen production-style recipe for confirmation notebooks and PIT validation. |
-| [TESTING_GUIDE.md](TESTING_GUIDE.md) | MCI-GRU testing patterns, verification ladder, and test categories. |
+| [TESTING_GUIDE.md](TESTING_GUIDE.md) | Testing patterns, verification ladder, and test categories. |
 | [REGIME_DATA_CONTRACT.md](REGIME_DATA_CONTRACT.md) | Regime feature inputs, outputs, and no-lookahead guarantees. |
 | [NOTEBOOK_BEST_PRACTICES.md](NOTEBOOK_BEST_PRACTICES.md) | Colab notebook structure, Drive safety, outputs, and review checklist. |
 
@@ -22,33 +26,32 @@
 | [workflows/COLAB_CHROME_CONTROL_GUIDE.md](workflows/COLAB_CHROME_CONTROL_GUIDE.md) | Reusable agent runbook for operating authenticated Colab notebooks through Chrome control. |
 | [OUTPUT_MANAGEMENT.md](OUTPUT_MANAGEMENT.md) | Output directory structure, naming, cleanup, and persistence. |
 | [MLFLOW_TRACKING.md](MLFLOW_TRACKING.md) | MLflow experiment tracking setup and usage. |
-| [TSFM_PREDICTION_REPORT.md](TSFM_PREDICTION_REPORT.md) | Saved-prediction R2, sign, IC, and yearly decay report method. |
 | [evaluation/EVIDENCE_HARNESS.md](evaluation/EVIDENCE_HARNESS.md) | Additive run manifests, trial ledgers, saved-prediction audits, PIT availability reports, and capacity replay. |
+| [TEST_REGISTRY.md](TEST_REGISTRY.md) | Generated registry of every test with its last-run status. Do not edit by hand. |
 
 ## Research Evidence
 
 | Document | Purpose |
 | --- | --- |
-| [research/README.md](research/README.md) | Current/archive research evidence lifecycle and report status map. |
-| [research/current/MCI_GRU_TOP_UNIVERSITY_RESEARCH_SCAN_2026-06-21.md](research/current/MCI_GRU_TOP_UNIVERSITY_RESEARCH_SCAN_2026-06-21.md) | Active June 21 research map for evidence-harness wave ordering and guarded opportunities. |
+| [research/README.md](research/README.md) | The status map: which reports are current evidence, which are superseded, and where the artifacts behind them live. |
+| [research/current/](research/current/) | Current evidence: the point-in-time universe and masked-panel reports, the graph-specification evidence, the loss-path notes, the volatility-targeting reads, the active research scan, and the saved-prediction report method. |
+| [research/archive/README.md](research/archive/README.md) | Superseded evidence with one status line per report saying what replaced it and what still stands as background. |
+| [research-paper-evaluations/](research-paper-evaluations/) | Research-to-implementation briefs written by the research skill. |
 
 Keep detailed current and superseded evidence lists in
 [research/README.md](research/README.md), not in this top-level index.
 
-## Historical And Reference Material
+## Reference Material
 
 | Document | Purpose |
 | --- | --- |
-| [ARCHITECTURE_REVIEW.md](ARCHITECTURE_REVIEW.md) | Architecture critique and roadmap; check current code before treating recommendations as active. |
-| [BACKTEST_FAIRNESS_AUDIT.md](BACKTEST_FAIRNESS_AUDIT.md) | Historical fairness audit; line references may predate refactors. |
-| [mci_gru_implementation_plan.md](mci_gru_implementation_plan.md) | Colab-oriented paper walkthrough; repo defaults differ. |
-| [agent_references/README.md](agent_references/README.md) | Previous Claude/Cursor guidance retained as reference material. |
+| [agent_references/README.md](agent_references/README.md) | The previous Claude guidance; the Cursor-era material is at tag `archive/pre-cleanup-2026-09`. |
 
-## Handoffs
+## Retired Material
 
-Handoffs under [handoffs/](handoffs/) are operational continuity notes. They
-help resume work but are not research evidence unless a current report cites
-them as provenance.
+Handoffs, the Cursor-era plans, and the pre-cleanup notebooks and scripts were
+retired in 2026-09 (map #211). They are readable at tag
+`archive/pre-cleanup-2026-09`; the tracker is the continuity surface.
 
 ## Agent Docs And Skills
 
@@ -56,6 +59,7 @@ them as provenance.
 | --- | --- |
 | [agents/guide.md](agents/guide.md) | Current-state routing for nontrivial work: owning modules, adjacent contracts, focused tests, and engineering constraints. |
 | [agents/target-architecture.md](agents/target-architecture.md) | Human-led workspace for future-state architecture decisions; intentionally undecided and not current-state authority. |
+| [agents/data-input-contract.md](agents/data-input-contract.md) | Owner-approved run input preservation contract; a target, not implemented behaviour. |
 | [agents/domain.md](agents/domain.md) | Source-of-truth hierarchy and stale-doc policy. |
 | [agents/issue-tracker.md](agents/issue-tracker.md) | GitHub issue tracker policy. |
 | [agents/triage-labels.md](agents/triage-labels.md) | Default triage label vocabulary. |

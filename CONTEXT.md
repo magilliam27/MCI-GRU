@@ -84,7 +84,7 @@ A reusable Codex skill stored under the repository root `skills/` directory so i
 _Avoid_: Local-only skill, hidden prompt
 
 **MCI-GRU-Aware Translation**:
-A research translation workflow grounded in this repo's architecture, configuration, evaluation, graph, feature, and paper-trade constraints rather than generic paper summarization.
+A research translation workflow grounded in this repo's architecture, configuration, evaluation, graph, and feature constraints rather than generic paper summarization.
 _Avoid_: Generic finance-paper summary
 
 **Research-to-Implementation Brief**:
@@ -116,7 +116,7 @@ A generated notebook launcher that runs a resumable explicit experiment matrix o
 _Avoid_: Hand-edited notebook, local-only runner
 
 **Slice Category**:
-One of data, feature, graph, model, training/evaluation, config/experiment, notebook, paper-trade, or ADR.
+One of data, feature, graph, model, training/evaluation, config/experiment, notebook, or ADR.
 _Avoid_: Miscellaneous, uncategorized task
 
 **Volatility-Targeting Feature Family**:
@@ -137,8 +137,8 @@ _Avoid_: Portfolio volatility targeting, exposure cap, rank-gate rule
 
 **Portfolio Volatility Targeting**:
 An execution or portfolio-construction rule that scales actual portfolio
-notional exposure toward a volatility target. This belongs in evaluation or
-paper-trade surfaces, not in issue #8's first feature-family implementation.
+notional exposure toward a volatility target. This belongs in evaluation
+surfaces, not in issue #8's first feature-family implementation.
 _Avoid_: Feature column, model input, issue #8 first slice
 
 **Portfolio-IC Hybrid Loss**:
@@ -183,7 +183,7 @@ _Avoid_: Auto-created issue, hidden tracker mutation
 - A **Research-to-Implementation Brief** uses stable sections: Intake, Mechanisms, Data Readiness Gate, Landing Zone Ranking, Invariant Check, Feasibility Opinion, GitHub-Ready Slices, ADR Candidates, Rejected Ideas, and Open Questions.
 - A **Research-to-Implementation Brief** cites **Repo Evidence** for major MCI-GRU mappings.
 - A **Research Mechanism** gets a **Landing Zone Ranking** before implementation slices are proposed.
-- A **Research Mechanism** passes the **Data Readiness Gate** before feature, graph, model, paper-trade, or evaluation slices proceed.
+- A **Research Mechanism** passes the **Data Readiness Gate** before feature, graph, model, or evaluation slices proceed.
 - A **Paper Intake Helper** produces a **Paper Intake Artifact** that can feed a **Research-to-Implementation Brief**, but it does not interpret or rank the paper.
 - A **Versioned Skill Artifact** can be uploaded to GitHub from the repo and installed into Codex separately.
 - A **Research-to-Implementation Brief** is an **MCI-GRU-Aware Translation**, not a generic summary.

@@ -14,8 +14,7 @@ Use path plus concept evidence. Exact line numbers are optional.
 - `mci_gru/evaluation/statistics.py`: evaluation helpers cover IC, Newey-West Sharpe, and moving-block bootstrap confidence intervals.
 - `mci_gru/evaluation/portfolio.py`: portfolio helpers cover top-k returns, deterministic ranking, turnover, and rank-drop gate logic.
 - `docs/CONFIGURATION_GUIDE.md`: Hydra configs and typed dataclasses are the entrypoint for experiment presets and ablations.
-- `docs/BACKTEST_FAIRNESS_AUDIT.md`: backtest review highlights execution timing, label leakage, graph timing, and return attribution risks.
-- `paper_trade/scripts/infer.py`: paper-trade inference loads frozen checkpoints, `run_metadata.json`, and `graph_data.pt`; it does not rebuild research graphs on the fly.
+- `docs/research/archive/BACKTEST_FAIRNESS_AUDIT.md`: backtest review highlights execution timing, label leakage, graph timing, and return attribution risks.
 
 ## Slice Categories
 
@@ -26,7 +25,6 @@ Use path plus concept evidence. Exact line numbers are optional.
 - **Training/evaluation issue**: losses, metrics, IC, bootstrap, Sharpe, top-k returns, portfolio diagnostics, or statistical tests.
 - **Config/experiment issue**: Hydra preset, ablation matrix, train/val/test split, sweep, or smoke-run wiring.
 - **Notebook issue**: exploratory reproduction, sensitivity analysis, diagnostics, or paper-faithful calculation outside production code.
-- **Paper-trade issue**: frozen inference, monitoring, portfolio, reporting, or nightly pipeline. Use only after offline validation.
 - **ADR issue**: durable architecture choice with hard-to-reverse consequences and real alternatives.
 
 ## Data Readiness Gate
@@ -51,7 +49,6 @@ Every brief must explicitly check:
 - Dynamic graph snapshot timing through `GraphSchedule`.
 - Label embargo gaps between train/validation/test splits.
 - Backtest fairness and return timing.
-- Paper-trade frozen checkpoint and frozen `graph_data.pt` rule.
 - Missing-data behavior, warmup periods, and survivorship/point-in-time universe risk.
 
 ## Landing Zone Ranking

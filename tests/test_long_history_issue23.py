@@ -167,8 +167,8 @@ def test_long_history_colab_code_cells_parse() -> None:
         ast.parse(source)
 
 
-def test_training_metrics_import_is_not_blocked_by_prediction_report_cycle() -> None:
-    metrics = importlib.import_module("mci_gru.training.metrics")
+def test_evaluation_metrics_import_is_not_blocked_by_prediction_report_cycle() -> None:
+    metrics = importlib.import_module("mci_gru.evaluation.metrics")
 
     assert hasattr(metrics, "evaluate_predictions")
 
