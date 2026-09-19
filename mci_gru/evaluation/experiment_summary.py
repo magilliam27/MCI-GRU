@@ -105,11 +105,12 @@ def build_run_metadata(
 ) -> dict[str, Any]:
     """One walk-forward window's ``run_metadata.json`` payload.
 
-    Pure in *config*, *data* and *resolved_config_identity*, so the artifact a
-    run writes is observable without running one. The top-level ``data_file_*``
-    keys keep their existing cwd-relative meaning — the notebook generators
-    read ``data_file_sha256`` — and ``data_inputs`` adds the resolved identity
-    of every input the window consumed.
+    Consumed identities come from the sealed preparation result; their sources
+    are never reopened here. The separate legacy ``data_file_*`` keys still
+    fingerprint the cwd-relative configured path at metadata time, preserving
+    notebook compatibility. ``input_observations`` retains every observed read
+    and use; ``data_inputs`` projects the first consumed identity per role with
+    links to all of its consumed reads.
     """
     return {
         "norm_means": {k: float(v) for k, v in data["norm_means"].items()},
