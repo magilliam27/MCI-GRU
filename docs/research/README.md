@@ -1,9 +1,10 @@
 # Research Evidence
 
-This directory defines the lifecycle for MCI-GRU research evidence. Existing
-reports in the docs root are not moved in this first organization pass; this
-file is the status map that tells agents which reports are current evidence and
-which need later archive review.
+This directory defines the lifecycle for MCI-GRU research evidence. Reports live
+under `current/` or `archive/`; the `docs/` root holds canonical guides only, and
+`scripts/check_docs_sot.py` refuses a dated report placed there. This file is the
+status map that tells agents which reports are current evidence and which are
+superseded.
 
 ## Lifecycle
 
@@ -11,9 +12,10 @@ which need later archive review.
   validation, data, or experiment decisions.
 - **Superseded Research Evidence**: a report whose facts remain useful history
   but whose conclusion has been replaced by newer evidence.
-- **Research Archive**: the future home for superseded summary reports. Bulky
-  artifacts, raw results, checkpoints, and run folders should stay in Drive or
-  external artifact storage, with links or run IDs recorded in the summary.
+- **Research Archive**: the home for superseded summary reports, with one
+  status line per report in `archive/README.md`. Bulky artifacts, raw results,
+  checkpoints, and run folders stay in Drive or external artifact storage, with
+  links or run IDs recorded in the summary.
 
 Current evidence must be traceable to a real run, reviewed source, or explicit
 decision record. Synthetic fixtures, example values, and files generated under
@@ -28,8 +30,9 @@ label them as synthetic rather than promoting them into `current/`.
 | Report | Status |
 | --- | --- |
 | `docs/research/current/MCI_GRU_TOP_UNIVERSITY_RESEARCH_SCAN_2026-06-21.md` | Promoted active research map for implementation planning. Use this June 21 top-university-gated scan before the broader June 19 opportunity scan when prioritizing testing, backtesting, evidence-harness, data, model, loss, or paper-trade work. |
-| `docs/research/current/MCI_GRU_PROGRAM_MAP_2026-06-19.md` | Current structural companion map for MCI-GRU components and safe tweak surfaces. |
-| `docs/research/current/MCI_GRU_RESEARCH_OPPORTUNITY_SCAN_2026-06-19.md` | Superseded as the main prioritization map by the June 21 top-university-gated scan; keep as broader background and source-lead history. |
+
+The June 19 program map and opportunity scan are archived; `docs/agents/guide.md`
+now carries the routing role, and the status lines are in `archive/README.md`.
 
 ### PIT, Backtest, And Volatility-Targeting Evidence
 
@@ -60,29 +63,31 @@ chosen on measured evidence" (issue #157).
 | `docs/research/current/LOSS_PATH_DECISION_2026-06-04.md` | Current June 4 conservative loss-path decision note; read with later handoffs before making LambdaRankIC readiness claims. |
 | `docs/research/current/LOSS_PATH_EXPERIMENTAL_SEARCH_2026-06-04.md` | Current exploratory companion for uncertainty-adjusted ranking, distributional heads, and deferred optimizer-style losses. |
 
-Keep these root-level reports easy to find until a follow-up pass moves or
-reclassifies them:
+### Point-In-Time Universe And Evaluation Evidence
 
 | Report | Status |
 | --- | --- |
-| `docs/PIT_UNIVERSE_REPORT.md` | Current evidence for PIT universe construction and membership behavior. |
-| `docs/PIT_LSEG_ALIAS_COVERAGE_AUDIT_2026-05-16.md` | Current evidence for PIT/LSEG alias coverage. |
-| `docs/PIT_MASKED_PANEL_2022_2025_FULL_RUN_REPORT_2026-05-16.md` | Current evidence for masked-panel full-run interpretation. |
-| `docs/LONG_HISTORY_PIT_EVAL_RESULTS_2026-05-18.md` | Current evidence for long-history PIT evaluation. |
-| `docs/PIT_REPEATED_SEED_OPTION_A_RESULTS_2026-05-21.md` | Current evidence for repeated-seed PIT replication, if present in the worktree. |
-| `docs/TSFM_PREDICTION_REPORT.md` | Current method reference for saved-prediction evaluation reports. |
+| `docs/research/current/PIT_UNIVERSE_REPORT.md` | Current evidence for PIT universe construction and membership behavior. Its alias-coverage companion and two CSVs sit beside it. |
+| `docs/research/current/PIT_LSEG_ALIAS_COVERAGE_AUDIT_2026-05-16.md` | Current evidence for PIT/LSEG alias coverage. |
+| `docs/research/current/PIT_MASKED_PANEL_2022_2025_FULL_RUN_REPORT_2026-05-16.md` | Current evidence for masked-panel full-run interpretation. Its membership-progression audit and CSV are under `current/audits/`. |
+| `docs/research/current/LONG_HISTORY_PIT_EVAL_RESULTS_2026-05-18.md` | Current evidence for long-history PIT evaluation. |
+| `docs/research/current/PIT_REPEATED_SEED_OPTION_A_RESULTS_2026-05-21.md` | Current evidence for repeated-seed PIT replication. |
+| `docs/research/current/TSFM_PREDICTION_REPORT.md` | Current method reference for saved-prediction evaluation reports. |
 
-## Archive Review Queue
+## Archive
 
-These reports should be reviewed before any move. Do not archive them just
-because they are dated.
+Superseded reports live under `archive/`. `archive/README.md` carries one status
+line per report saying what replaced it, which artifacts support it, and what
+still stands as background; it is the only list of archived reports.
 
-| Report | Review note |
-| --- | --- |
-| `docs/ABLATION_NOTEBOOK_RESULTS_REPORT_2026-04-30.md` | Decide whether newer PIT evidence supersedes its recommendations. |
-| `docs/FULL_FEATURE_FACTORIAL_ABLATION.md` | Decide whether it is an active experiment design or historical planning note. |
-| `docs/MODERN_DEFAULTS_HANDOFF_2026.md` | Handoff-like status document; keep separate from research evidence if retained. |
-| `docs/BACKTEST_FAIRNESS_AUDIT.md` | Historical fairness audit with useful caveats; canonical status should be checked against current code. |
+## Drive Links
+
+Run folders and artifacts cited by these reports live in the maintainer's Google
+Drive, which is private; a link there is a permission wall for anyone else. The
+tables and figures inside each report are the public record. Run-backed reports
+carry their run identity (run tag and Drive folder, and where recorded the commit
+and data hash) so a maintainer can locate the artifact; literature scans and
+method notes cite their sources instead.
 
 ## Handoffs
 

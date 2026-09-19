@@ -21,8 +21,8 @@ Before mapping the paper, read the repo anchors needed for the target surfaces:
 
 - Always read `AGENTS.md`, `docs/ARCHITECTURE.md`, and `docs/CONFIGURATION_GUIDE.md`.
 - For features, read `mci_gru/features/registry.py`.
-- For graph ideas, read `mci_gru/graph/builder.py` and dynamic-graph notes in `AGENTS.md`.
-- For evaluation/backtests, read `mci_gru/evaluation/` and `docs/BACKTEST_FAIRNESS_AUDIT.md`.
+- For graph ideas, read `mci_gru/graph/builder.py`, `mci_gru/graph/correlation.py`, and the Graph section of `docs/ARCHITECTURE.md`.
+- For evaluation/backtests, read `mci_gru/evaluation/` and `docs/research/archive/BACKTEST_FAIRNESS_AUDIT.md`.
 
 Read `references/mci-gru-surfaces.md` for the surface taxonomy and invariant checklist. Read `references/conditional-skewness-example.md` when you need a calibrated example of higher-moment/coskewness translation.
 
