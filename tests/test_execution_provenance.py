@@ -192,8 +192,11 @@ def test_unavailable_observations_are_retained_as_unknown_not_clean(
 ):
     repo, _, config_path, digest, _ = _fixture(tmp_path)
     original_version = metadata.version
+    original_run = subprocess.run
 
     def unavailable_git(args, **kwargs):
+        if args[0] != "git":
+            return original_run(args, **kwargs)
         if git_failure == "absent":
             raise FileNotFoundError("git unavailable")
         return subprocess.CompletedProcess(args, 128, b"", b"fatal: fixture unavailable")
