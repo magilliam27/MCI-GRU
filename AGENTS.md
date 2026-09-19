@@ -7,8 +7,8 @@
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/run_pytest_isolated.py tests/ -v  # Windows-preferred full suite
-.\.venv\Scripts\python.exe run_experiment.py training.num_epochs=2 training.num_models=1 data.source=csv tracking.enabled=false  # smoke run (CSV + no MLflow)
-.\.venv\Scripts\python.exe paper_trade/scripts/run_nightly.py  # nightly paper-trade pipeline
+.\.venv\Scripts\python.exe scripts/ci_smoke.py  # end-to-end smoke on a synthetic panel; what CI runs
+.\.venv\Scripts\python.exe run_experiment.py data.use_pit_universe=false training.num_epochs=2 training.num_models=1 tracking.enabled=false  # smoke run against the default CSV group (needs its CSV locally); PIT masks off
 ```
 
 ## Default Experiment Recipe
@@ -61,24 +61,21 @@ docs/
 ├── REGIME_DATA_CONTRACT.md
 ├── BACKTEST_FAIRNESS_AUDIT.md
 ├── OUTPUT_MANAGEMENT.md
-├── MLFLOW_TRACKING.md
-└── mci_gru_implementation_plan.md
+└── MLFLOW_TRACKING.md
 configs/             ← Hydra YAML (config.yaml is the base; graph experiments under configs/experiment/)
-docs/agent_references/
-├── claude/CLAUDE.md  ← Claude-specific guidance, retained for reference
-└── cursor/plans/graph_signal_upgrades_c28cf640.plan.md  ← dynamic-graph audit + roadmap (levers 1–4)
+docs/research/archive/graph_signal_upgrades_plan_2026-04.md  ← the April dynamic-graph audit + roadmap (levers 1–4), archived
+docs/agent_references/claude/CLAUDE.md  ← previous Claude guidance, retained until the CLAUDE.md ticket retires it
 mci_gru/             ← core Python package
 ├── config.py        ← typed dataclass configs (ExperimentConfig)
 ├── pipeline.py      ← central orchestrator: load → features → normalize → window → graph
-├── models/factory.py + trunk.py ← model construction and four-stream architecture (A1, A2, B1, B2); models/mci_gru.py is a compatibility shim
+├── models/factory.py + trunk.py ← model construction and four-stream architecture (A1, A2, B1, B2)
 ├── data/            ← DataManager, preprocessing, loaders (LSEG, FRED, CSV)
 ├── features/        ← FeatureEngineer + registry (momentum, vol, credit, regime)
 ├── graph/           ← Pearson-correlation graph (static or dynamic): builder, correlation math, schedule, sector, edge width
-└── training/        ← Trainer, losses (MSE/IC/combined), metrics
-paper_trade/         ← frozen-checkpoint inference + portfolio pipeline
+└── training/        ← Trainer, losses (MSE/IC/combined), ensemble
 skills/              ← versioned Codex skills for GitHub review/upload
 .claude/skills/      ← repo-owned model-invoked skills (work-the-map, implement-ticket)
-tests/               ← pytest suite + backtest scripts
+tests/               ← pytest suite and golden fixtures
 ```
 
 ## Invariants — Do Not Break
@@ -87,8 +84,7 @@ tests/               ← pytest suite + backtest scripts
 2. **Dynamic graph uses `GraphSchedule`**: precomputed snapshots indexed by date; any batch size works.
 3. **`combined_collate_fn` returns a 9-tuple**: `(time_series, labels, graph_features, edge_index, edge_weight, n_stocks, batch_dates, edge_index_sector, edge_weight_sector)`. The first seven entries match the historical contract; the last two are `None` unless `graph.use_sector_relation=true`. `edge_weight` is `(E,)`, `(E, 4)`, or wider when lead-lag / snapshot-age columns are enabled; collate concatenates along dim 0.
 4. **Ensemble averaging**: `train_multiple_models` trains N independent models; prediction = mean.
-5. **Paper-trade inference does not use `GraphBuilder`**: it loads a frozen `graph_data.pt`.
-6. **True PIT masked panels keep breadth**: `data.pit_universe_mode=masked_panel`
+5. **True PIT masked panels keep breadth**: `data.pit_universe_mode=masked_panel`
    keeps a fixed PIT union axis and carries daily stock masks; do not replace it
    with complete-stock filtering or continuous-member/stayer-only filtering.
 
@@ -114,17 +110,14 @@ tests/               ← pytest suite + backtest scripts
   `docs/agents/target-architecture.md`; it is human-led and is not a description
   of current behaviour.
 - **When docs disagree**, current code and the invariants in this file win; see `docs/agents/domain.md`.
-- **`paper_trade/` is not under active development.** Note findings there in
-  passing; do not file issues for them, propose fixes, or treat a paper-trade
-  gap as a blocker on otherwise-ready work. The code stays in the tree — this
-  is a scoping decision, not a retirement like the cockpit surfaces that
-  `tests/test_repository_retirement_guard.py` forbids reintroducing.
+- **`paper_trade/` was retired in 2026-09 (map #211).** It is readable at tag
+  `archive/pre-cleanup-2026-09`, and `tests/test_repository_retirement_guard.py`
+  forbids reintroducing it, as it does the cockpit surfaces.
 - **For automated Colab work**, default to `chrome:control-chrome` and the runbook in `docs/workflows/COLAB_CHROME_CONTROL_GUIDE.md`; use Playwright MCP only as a documented legacy fallback.
 - **For Colab evidence**, notebook contract tests are not live-run proof; live Colab claims need visible Chrome/Colab execution plus Drive artifacts (heartbeat/results), per `docs/workflows/COLAB_CHROME_CONTROL_GUIDE.md`.
 - **Before translating finance papers into implementation work**, use `skills/research-paper-to-mci-gru/` to produce an MCI-GRU-aware brief and GitHub-ready issue drafts.
 - **Before adding features**, read `mci_gru/features/registry.py` for the plugin pattern.
-- **Before changing the graph**, read `mci_gru/graph/builder.py` and `mci_gru/graph/correlation.py`, `docs/ARCHITECTURE.md` (Graph section), and `docs/agent_references/cursor/plans/graph_signal_upgrades_c28cf640.plan.md` (audit + roadmap).
-- **Before touching paper_trade/**, understand that it uses frozen checkpoints — do not import `GraphBuilder`.
+- **Before changing the graph**, read `mci_gru/graph/builder.py` and `mci_gru/graph/correlation.py`, `docs/ARCHITECTURE.md` (Graph section), and `docs/research/archive/graph_signal_upgrades_plan_2026-04.md` (audit + roadmap, archived).
 - **Run tests** after every change with the repo venv and isolated pytest launcher
   on Windows: `.\.venv\Scripts\python.exe scripts/run_pytest_isolated.py tests/ -v`.
   It creates a unique temp root for each run and routes both pytest's basetemp
@@ -150,14 +143,14 @@ or renaming tests: `.\.venv\Scripts\python.exe scripts/generate_test_registry.py
 
 ## Correlation graph: plan vs implementation
 
-The file `docs/agent_references/cursor/plans/graph_signal_upgrades_c28cf640.plan.md` has two layers: (1) an **audit** that the dynamic graph is wired end-to-end (no lookahead; `GraphSchedule.get_graph_for_date` in `combined_collate_fn` when `graph.update_frequency_months > 0`; `run_experiment.py` sets `dynamic_graph` from that flag), and (2) a **roadmap** of levers 1–4. The YAML frontmatter todos there are still largely *pending* relative to that roadmap.
+The archived plan `docs/research/archive/graph_signal_upgrades_plan_2026-04.md` has two layers: (1) an **audit** that the dynamic graph is wired end-to-end (no lookahead; `GraphSchedule.get_graph_for_date` in `combined_collate_fn` when `graph.update_frequency_months > 0`; `run_experiment.py` sets `dynamic_graph` from that flag), and (2) a **roadmap** of levers 1–4. The YAML frontmatter todos there are still largely *pending* relative to that roadmap.
 
 **Implemented today (code, not the whole roadmap)**
 
 - **Dynamic schedule**: If `graph.update_frequency_months > 0`, `build_correlation_graph` in `mci_gru/pipeline.py` calls `GraphBuilder.precompute_snapshots(...)` and returns the schedule through `prepare_data`. `run_experiment.py` then sets `dynamic_graph` from the same flag and passes `graph_schedule` into `create_data_loaders(...)`. Each batch resolves edges for the sample date via the schedule (see `mci_gru/data/data_manager.py` `combined_collate_fn`).
 - **Lever 1a (partial)**: `GraphConfig.top_k` and `GraphConfig.top_k_metric` (`"corr"` or `"abs_corr"`). `top_k == 0` keeps the legacy global threshold `corr > judge_value` (signed, off-diagonal). `top_k > 0` selects per-node top-K neighbours. Both selection paths and the correlation math live in `mci_gru/graph/correlation.py` (`compute_correlation_matrix`, `build_edges`, `_select_edges_threshold`, `_select_edges_topk`, `_lead_lag_columns`); `mci_gru/graph/builder.py` holds only `GraphBuilder`, which orchestrates them.
-- **Lever 1c + Phase 3**: `GraphConfig.use_multi_feature_edges` makes `build_edges` return at least **4** channels `[corr, |corr|, corr^2, rank_pct]` (`rank_pct` is zero in threshold mode; it is only populated by top-K selection), optionally **+2** lead–lag columns (`use_lead_lag_features`). `append_snapshot_age_days` adds **one** column at collate time. `edge_feature_dim(graph_cfg)` in `mci_gru/graph/utils.py` is the single source of that final width: `run_experiment.py` calls it before `create_model`, and `paper_trade/scripts/infer.py` calls the same helper so frozen inference agrees.
-- **Experiments**: Use Hydra includes such as `configs/experiment/correlation_dynamic.yaml` (6-month updates) or `correlation_dynamic_topk20_pos.yaml` (top-K + multi-feature + updates) for dynamic-graph presets. Base `configs/config.yaml` defaults: static graph, `top_k=0`, `use_multi_feature_edges=true`.
+- **Lever 1c + Phase 3**: `GraphConfig.use_multi_feature_edges` makes `build_edges` return at least **4** channels `[corr, |corr|, corr^2, rank_pct]` (`rank_pct` is zero in threshold mode; it is only populated by top-K selection), optionally **+2** lead–lag columns (`use_lead_lag_features`). `append_snapshot_age_days` adds **one** column at collate time. `edge_feature_dim(graph_cfg)` in `mci_gru/graph/utils.py` is the single source of that final width: `run_experiment.py` calls it before `create_model`.
+- **Experiments**: Use `configs/experiment/correlation_dynamic.yaml` (6-month updates) for the dynamic-graph preset. Base `configs/config.yaml` defaults: static graph, `top_k=0`, `use_multi_feature_edges=true`.
 
 **Still roadmap / not implemented as described in that plan**
 
@@ -177,5 +170,5 @@ The file `docs/agent_references/cursor/plans/graph_signal_upgrades_c28cf640.plan
 ## Key Gotchas
 
 - `results/`, `outputs/`, `*.pth`, `*.pt` are gitignored — don't reference them as source of truth
-- `seed_results/` holds committed experiment artifacts — not production code; do not treat as source of truth
-- Handoffs are operational continuity notes, not research evidence; use `docs/research/README.md` for current/archive evidence status.
+- `seed_results/`, `paper_trade/`, the handoffs, and the pre-cleanup notebooks and scripts were retired in 2026-09 (map #211) and are readable at tag `archive/pre-cleanup-2026-09`; do not treat them as source of truth
+- The tracker is the continuity surface; use `docs/research/README.md` for current/archive evidence status.

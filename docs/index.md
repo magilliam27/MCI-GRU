@@ -39,16 +39,14 @@ Keep detailed current and superseded evidence lists in
 
 | Document | Purpose |
 | --- | --- |
-| [ARCHITECTURE_REVIEW.md](ARCHITECTURE_REVIEW.md) | Architecture critique and roadmap; check current code before treating recommendations as active. |
 | [BACKTEST_FAIRNESS_AUDIT.md](BACKTEST_FAIRNESS_AUDIT.md) | Historical fairness audit; line references may predate refactors. |
-| [mci_gru_implementation_plan.md](mci_gru_implementation_plan.md) | Colab-oriented paper walkthrough; repo defaults differ. |
-| [agent_references/README.md](agent_references/README.md) | Previous Claude/Cursor guidance retained as reference material. |
+| [agent_references/README.md](agent_references/README.md) | The previous Claude guidance; the Cursor-era material is at tag `archive/pre-cleanup-2026-09`. |
 
-## Handoffs
+## Retired Material
 
-Handoffs under [handoffs/](handoffs/) are operational continuity notes. They
-help resume work but are not research evidence unless a current report cites
-them as provenance.
+Handoffs, the Cursor-era plans, and the pre-cleanup notebooks and scripts were
+retired in 2026-09 (map #211). They are readable at tag
+`archive/pre-cleanup-2026-09`; the tracker is the continuity surface.
 
 ## Agent Docs And Skills
 

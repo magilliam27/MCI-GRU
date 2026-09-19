@@ -18,15 +18,11 @@ configs/
 ├── features/
 │   ├── base.yaml           # Basic features only
 │   ├── with_momentum.yaml  # Default (with momentum)
-│   ├── with_credit.yaml    # With credit spread features
-│   ├── with_regime.yaml    # With regime features
 │   ├── full.yaml           # All features
 │   └── ...
 └── experiment/
     ├── baseline.yaml       # Baseline experiment
     ├── with_vix.yaml       # With VIX features
-    ├── momentum_dynamic.yaml
-    ├── lookback_sweep.yaml # Lookback period sweep
     └── ...
 ```
 

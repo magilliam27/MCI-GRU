@@ -86,6 +86,6 @@ because they are dated.
 
 ## Handoffs
 
-Handoffs remain under `docs/handoffs/` and are operational continuity notes.
-They can be cited by a research report for provenance, but they are not research
-evidence by themselves.
+Handoffs were retired in 2026-09 (map #211) and are readable at tag
+`archive/pre-cleanup-2026-09`. A current report may still cite one for provenance
+by its tag path; the tracker is the continuity surface.

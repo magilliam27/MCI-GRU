@@ -3,8 +3,8 @@ Data pipeline for MCI-GRU experiments.
 
 Consolidates the data loading → feature engineering → normalisation →
 tensor construction flow that was previously split across run_experiment.py
-(``prepare_data`` / ``prepare_data_index_level``) and
-paper_trade/scripts/infer.py.
+(``prepare_data`` / ``prepare_data_index_level``) and the
+retired paper-trade inference script.
 """
 
 from __future__ import annotations
