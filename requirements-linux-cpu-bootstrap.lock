@@ -1,0 +1,13 @@
+# Bootstrap for requirements-linux-cpu.lock; exact PyPI wheel URLs and hashes.
+# pip 25.0.1 matches CPython 3.12.11 ensurepip used in the first measurement.
+# setuptools 80.9.0 supplies the build backend and satisfies CPU torch's <82.
+# wheel 0.47.0 is pinned in the main Linux CPU lock.
+# Install in a new venv with --force-reinstall --no-deps --require-hashes.
+
+# pip==25.0.1
+pip @ https://files.pythonhosted.org/packages/c9/bc/b7db44f5f39f9d0494071bddae6880eb645970366d0a200022a1a93d57f5/pip-25.0.1-py3-none-any.whl \
+    --hash=sha256:c46efd13b6aa8279f33f2864459c8ce587ea6a1a59ee20de055868d8f7688f7f
+
+# setuptools==80.9.0
+setuptools @ https://files.pythonhosted.org/packages/a3/dc/17031897dae0efacfea57dfd3a82fdd2a2aeb58e0ff71b77b87e44edc772/setuptools-80.9.0-py3-none-any.whl \
+    --hash=sha256:062d34222ad13e0cc312a4c02d73f059e86a4acbfbdea8f8f76b28c99f306922
