@@ -371,3 +371,31 @@ def test_preparation_propagates_observation_integrity_errors_but_preserves_ordin
         data = prepare_data(config, FeatureEngineer(config.features))
         metadata = _saved_metadata(tmp_path, config, data)
         assert set(metadata["data_inputs"]) == {"data.filename"}
+
+
+@pytest.mark.parametrize("invalid", ["columns", "date"])
+def test_rejected_regime_csv_remains_an_observation_without_a_consumption_link(tmp_path, invalid):
+    source = tmp_path / "panel.csv"
+    source.write_bytes(_native_panel())
+    regime = tmp_path / "regime.csv"
+    content = (
+        b"dt,regime_market\n2020-01-01,1\n"
+        if invalid == "columns"
+        else b"dt,regime_market,regime_yield_curve,regime_oil,regime_copper,regime_stock_bond_corr,regime_monetary_policy,regime_volatility\ninvalid-date,1,2,3,4,5,6,7\n"
+    )
+    regime.write_bytes(content)
+    config = _native_config(str(source))
+    config.features.include_global_regime = True
+    config.features.regime_strict = False
+    config.features.regime_inputs_csv = str(regime)
+    data = prepare_data(config, FeatureEngineer(config.features))
+    metadata = _saved_metadata(tmp_path, config, data)
+
+    assert set(metadata["data_inputs"]) == {"data.filename"}
+    events = metadata["input_observations"]["observations"]
+    rejected = [event for event in events if event["role"] == "features.regime_inputs_csv"]
+    assert len(rejected) == 1
+    assert rejected[0]["outcome"] == "error"
+    assert rejected[0]["stage"] == "parse"
+    assert rejected[0]["identity"]["sha256"] == hashlib.sha256(content).hexdigest()
+    assert regime.read_bytes() == content
