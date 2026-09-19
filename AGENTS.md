@@ -59,7 +59,6 @@ docs/
 ├── research/        ← current/archive research evidence lifecycle
 ├── QUICK_REFERENCE.md
 ├── REGIME_DATA_CONTRACT.md
-├── BACKTEST_FAIRNESS_AUDIT.md
 ├── OUTPUT_MANAGEMENT.md
 └── MLFLOW_TRACKING.md
 configs/             ← Hydra YAML (config.yaml is the base; graph experiments under configs/experiment/)
@@ -141,24 +140,11 @@ regime data contracts, backtest fairness, output management, MLflow tracking.
 last-run status when `test_reports/junit.xml` exists). Regenerate after adding
 or renaming tests: `.\.venv\Scripts\python.exe scripts/generate_test_registry.py`.
 
-## Correlation graph: plan vs implementation
+## Correlation graph
 
-The archived plan `docs/research/archive/graph_signal_upgrades_plan_2026-04.md` has two layers: (1) an **audit** that the dynamic graph is wired end-to-end (no lookahead; `GraphSchedule.get_graph_for_date` in `combined_collate_fn` when `graph.update_frequency_months > 0`; `run_experiment.py` sets `dynamic_graph` from that flag), and (2) a **roadmap** of levers 1–4. The YAML frontmatter todos there are still largely *pending* relative to that roadmap.
-
-**Implemented today (code, not the whole roadmap)**
-
-- **Dynamic schedule**: If `graph.update_frequency_months > 0`, `build_correlation_graph` in `mci_gru/pipeline.py` calls `GraphBuilder.precompute_snapshots(...)` and returns the schedule through `prepare_data`. `run_experiment.py` then sets `dynamic_graph` from the same flag and passes `graph_schedule` into `create_data_loaders(...)`. Each batch resolves edges for the sample date via the schedule (see `mci_gru/data/data_manager.py` `combined_collate_fn`).
-- **Lever 1a (partial)**: `GraphConfig.top_k` and `GraphConfig.top_k_metric` (`"corr"` or `"abs_corr"`). `top_k == 0` keeps the legacy global threshold `corr > judge_value` (signed, off-diagonal). `top_k > 0` selects per-node top-K neighbours. Both selection paths and the correlation math live in `mci_gru/graph/correlation.py` (`compute_correlation_matrix`, `build_edges`, `_select_edges_threshold`, `_select_edges_topk`, `_lead_lag_columns`); `mci_gru/graph/builder.py` holds only `GraphBuilder`, which orchestrates them.
-- **Lever 1c + Phase 3**: `GraphConfig.use_multi_feature_edges` makes `build_edges` return at least **4** channels `[corr, |corr|, corr^2, rank_pct]` (`rank_pct` is zero in threshold mode; it is only populated by top-K selection), optionally **+2** lead–lag columns (`use_lead_lag_features`). `append_snapshot_age_days` adds **one** column at collate time. `edge_feature_dim(graph_cfg)` in `mci_gru/graph/utils.py` is the single source of that final width: `run_experiment.py` calls it before `create_model`.
-- **Experiments**: Use `configs/experiment/correlation_dynamic.yaml` (6-month updates) for the dynamic-graph preset. Base `configs/config.yaml` defaults: static graph, `top_k=0`, `use_multi_feature_edges=true`.
-
-**Still roadmap / not implemented as described in that plan**
-
-- `RGATConv` / true multi-relation message passing (Phase 3 ships **dual GAT + fuse** for sector instead); graph-aware temporal encoder (Lever 3a), shorter cadence defaults (Lever 4b), rate-of-change edge feature (Lever 4c), and the optional graph-zeroed ablation workflow called out in the plan.
-
-**Diagnostic**
-
-- The snapshot edge-count / Jaccard diagnostic script described in that plan is **not in this repository**; do not route to it. Snapshot timing and edge behaviour are covered by `tests/test_dynamic_graph_updates.py`.
+How the graph is built, selected (threshold or top-K), given edge features, and scheduled is documented in `docs/ARCHITECTURE.md` (Graph section) and routed in `docs/agents/guide.md` (Correlation edge selection, Edge feature width, Graph change propagation).
+Whether the graph earns its place is a measured question: see the Graph Specification Evidence section of `docs/research/README.md`, where the graph-zeroed control is not beaten by any specification tried.
+The April 2026 roadmap those measurements replaced is archived at `docs/research/archive/graph_signal_upgrades_plan_2026-04.md`; its lever names are still used in tickets, its todos are not a plan.
 
 ## Code Style
 

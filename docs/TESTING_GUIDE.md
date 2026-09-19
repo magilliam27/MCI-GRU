@@ -148,8 +148,7 @@ local test.
 - **Slow/data-dependent tests**: keep them marked with `slow`, `requires_data`,
   `requires_fred`, or `requires_lseg`.
 - **Script-like harnesses**: files that launch experiments or backtests rather
-  than asserting behavior. Recommend moving these to `scripts/` or
-  `tests/manual/`.
+  than asserting behavior. Recommend moving these to `scripts/`.
 - **Stale or contradictory tests**: tests whose assumptions conflict with the
   current architecture. Explain the conflict before proposing archive/removal.
 

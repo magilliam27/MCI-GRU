@@ -3,7 +3,7 @@
 Date: 2026-06-21
 
 Status: new scan from scratch, stricter source gate than
-`MCI_GRU_RESEARCH_OPPORTUNITY_SCAN_2026-06-19.md`.
+`docs/research/archive/MCI_GRU_RESEARCH_OPPORTUNITY_SCAN_2026-06-19.md` (archived).
 
 Purpose: identify practical MCI-GRU research opportunities supported only by
 primary research sources whose authors include verified top-university
@@ -35,10 +35,10 @@ Repo anchors reviewed:
 - `AGENTS.md`
 - `docs/ARCHITECTURE.md`
 - `docs/CONFIGURATION_GUIDE.md`
-- `docs/BACKTEST_FAIRNESS_AUDIT.md`
+- `docs/research/archive/BACKTEST_FAIRNESS_AUDIT.md` (archived)
 - `docs/OUTPUT_MANAGEMENT.md`
 - `docs/MLFLOW_TRACKING.md`
-- `docs/research/current/MCI_GRU_PROGRAM_MAP_2026-06-19.md`
+- `docs/research/archive/MCI_GRU_PROGRAM_MAP_2026-06-19.md` (archived)
 - `mci_gru/config.py`
 - `mci_gru/pipeline.py`
 - `mci_gru/data/data_manager.py`
@@ -535,7 +535,7 @@ trades from equal weights, lagged rolling dollar ADV and volatility known by the
 prediction date, participation rate, capacity breaches, gross/net return,
 turnover, total cost, and clipped/unfillable diagnostics.
 
-Repo surfaces: `docs/BACKTEST_FAIRNESS_AUDIT.md`,
+Repo surfaces: `docs/research/archive/BACKTEST_FAIRNESS_AUDIT.md`,
 `mci_gru/evaluation/portfolio.py`, backtest scripts under `tests/`,
 paper-trade `portfolio.py`.
 
