@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 import torch
+
+if TYPE_CHECKING:
+    from mci_gru.data.input_observations import InputObservationContext
 
 
 @dataclass(frozen=True)
@@ -132,8 +136,17 @@ def classify_pit_knowledge_as_of(
     return PITKnowledgeClass.KNOWN_AS_OF
 
 
-def load_pit_intervals(csv_path: str) -> pd.DataFrame:
-    return normalise_pit_intervals(pd.read_csv(csv_path))
+def load_pit_intervals(
+    csv_path: str, *, input_observations: InputObservationContext | None = None
+) -> pd.DataFrame:
+    frame = (
+        input_observations.read_csv(
+            csv_path, role="data.pit_universe_csv", configured_path=csv_path
+        )
+        if input_observations is not None
+        else pd.read_csv(csv_path)
+    )
+    return normalise_pit_intervals(frame)
 
 
 def active_kdcodes_in_period(

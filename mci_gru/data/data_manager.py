@@ -19,6 +19,7 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
+from mci_gru.data.input_observations import InputObservationContext
 from mci_gru.data.path_resolver import resolve_project_data_path
 from mci_gru.data.pit import filter_edges_by_stock_mask
 from mci_gru.graph.schedule import canonical_date
@@ -42,8 +43,13 @@ class DataManager:
     Supports loading from CSV files or LSEG/Refinitiv API.
     """
 
-    def __init__(self, config: DataConfig):
+    def __init__(
+        self, config: DataConfig, *, input_observations: InputObservationContext | None = None
+    ) -> None:
         self.config = config
+        self.input_observations = (
+            input_observations if input_observations is not None else InputObservationContext()
+        )
         self.df: pd.DataFrame | None = None
         self.vix_df: pd.DataFrame | None = None
         self.credit_df: pd.DataFrame | None = None
@@ -72,7 +78,9 @@ class DataManager:
 
         if self.config.index_filename:
             resolved = resolve_project_data_path(self.config.index_filename)
-            df = pd.read_csv(resolved)
+            df = self.input_observations.read_csv(
+                resolved, role="data.index_filename", configured_path=self.config.index_filename
+            )
             df["dt"] = pd.to_datetime(df["dt"]).dt.strftime("%Y-%m-%d")
             if "close" not in df.columns:
                 raise ValueError(f"Index CSV must have 'close' column: {resolved}")
@@ -107,7 +115,9 @@ class DataManager:
         resolved_path = resolve_project_data_path(self.config.filename)
         logger.info(f"Loading data from {resolved_path}...")
 
-        df = pd.read_csv(resolved_path)
+        df = self.input_observations.read_csv(
+            resolved_path, role="data.filename", configured_path=self.config.filename
+        )
 
         logger.info(f"  Loaded {len(df)} rows")
         logger.info(f"  Date range: {df['dt'].min()} to {df['dt'].max()}")
@@ -160,7 +170,9 @@ class DataManager:
                     "VIX data not found. Create vix_data.csv under data/raw/market "
                     "or use source='lseg'"
                 ) from e
-            vix_df = pd.read_csv(vix_path)
+            vix_df = self.input_observations.read_csv(
+                vix_path, role="implicit.vix_csv", configured_path="vix_data.csv"
+            )
             self.vix_df = vix_df
             return vix_df
 
@@ -237,7 +249,9 @@ class DataManager:
                 stacklevel=2,
             )
             resolved = resolve_project_data_path(regime_inputs_csv)
-            base = pd.read_csv(resolved)
+            base = self.input_observations.read_csv(
+                resolved, role="features.regime_inputs_csv", configured_path=regime_inputs_csv
+            )
             base["dt"] = pd.to_datetime(base["dt"])
             base = base.sort_values("dt").drop_duplicates(subset=["dt"], keep="last")
             required = {"dt"} | set(REGIME_VARIABLES)

@@ -1,278 +1,373 @@
-"""Guards for the per-input data identity recorded in ``run_metadata.json``.
+"""Actual native reads remain identifiable in each saved preparation result."""
 
-A run's data identity is every raw input it consumed, not only
-``data.filename``. These tests pin the two seams the identity is observed at:
-the parsed ``run_metadata.json`` payload, and the pure fingerprint helpers in
-``mci_gru.evaluation.experiment_summary`` that produce it.
-"""
-
+import builtins
 import hashlib
+import io
 import json
 import logging
-from datetime import datetime, timezone
+import os
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 from mci_gru.config import create_config_from_dict
 from mci_gru.data import path_resolver
+from mci_gru.data.input_observations import InputObservationError
 from mci_gru.evaluation.experiment_summary import (
     build_run_metadata,
     data_file_fingerprint,
-    data_input_identity,
-    data_inputs_identity,
 )
+from mci_gru.features import FeatureEngineer
+from mci_gru.pipeline import prepare_data, prepare_data_index_level
 
 logger = logging.getLogger(__name__)
 
 
-def test_data_input_identity_records_resolved_path_and_content_digest(tmp_path):
-    payload = b"kdcode,valid_from,valid_to\nAAPL,2020-01-01,2025-12-31\n"
-    csv_path = tmp_path / "pit_universe.csv"
-    csv_path.write_bytes(payload)
-
-    identity = data_input_identity(str(csv_path), logger)
-
-    assert identity["configured_path"] == str(csv_path)
-    assert identity["resolved_path"] == str(csv_path.resolve())
-    assert identity["sha256"] == hashlib.sha256(payload).hexdigest()
-    assert identity["size_bytes"] == len(payload)
-    assert (
-        identity["mtime_iso"]
-        == datetime.fromtimestamp(csv_path.stat().st_mtime, tz=timezone.utc).isoformat()
-    )
+def _native_panel() -> bytes:
+    rows = ["kdcode,dt,open,high,low,close,volume,turnover"]
+    for day in range(1, 32):
+        for stock, offset in [("AAA", 0), ("BBB", 20)]:
+            close = 100 + day + offset
+            rows.append(
+                f"{stock},2020-01-{day:02d},{close},{close + 1},{close - 1},"
+                f"{close},1000,{close * 1000}"
+            )
+    return ("\n".join(rows) + "\n").encode()
 
 
-def test_data_input_identity_unresolvable_path_warns_and_nulls_fields(tmp_path, caplog):
-    missing = tmp_path / "absent_universe.csv"
-
-    with caplog.at_level(logging.WARNING):
-        identity = data_input_identity(str(missing), logger)
-
-    assert identity == {
-        "configured_path": str(missing),
-        "resolved_path": None,
-        "sha256": None,
-        "size_bytes": None,
-        "mtime_iso": None,
-    }
-    assert any("absent_universe.csv" in record.getMessage() for record in caplog.records)
-
-
-def test_data_input_identity_records_the_fallback_file_the_resolver_found(tmp_path, monkeypatch):
-    """A basename fallback must be visible: resolved path differs from configured."""
-    fallback_dir = tmp_path / "data" / "raw" / "market"
-    fallback_dir.mkdir(parents=True)
-    payload = b"kdcode,dt,close\nAAPL,2026-01-02,100\n"
-    (fallback_dir / "panel.csv").write_bytes(payload)
-    monkeypatch.setattr(path_resolver, "PROJECT_ROOT", tmp_path)
-    monkeypatch.chdir(tmp_path / "data")
-
-    identity = data_input_identity("some/other/place/panel.csv", logger)
-
-    assert identity["configured_path"] == "some/other/place/panel.csv"
-    assert identity["resolved_path"] == str((fallback_dir / "panel.csv").resolve())
-    assert identity["sha256"] == hashlib.sha256(payload).hexdigest()
-    # The legacy cwd-relative helper cannot see this file at all, which is the
-    # gap this block exists to close.
-    assert data_file_fingerprint("some/other/place/panel.csv", logger)["data_file_sha256"] is None
-
-
-def _write(path, payload=b"a,b\n1,2\n"):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(payload)
-    return str(path)
-
-
-def test_data_inputs_identity_keys_every_configured_input_by_its_config_field(tmp_path):
-    config = create_config_from_dict(
+def _native_config(filename: str):
+    return create_config_from_dict(
         {
             "data": {
-                "filename": _write(tmp_path / "panel.csv"),
-                "use_pit_universe": True,
-                "pit_universe_csv": _write(tmp_path / "pit.csv"),
-            },
-            "graph": {
-                "use_sector_relation": True,
-                "sector_map_csv": _write(tmp_path / "sectors.csv"),
-            },
-            "features": {
-                "include_global_regime": True,
-                "regime_inputs_csv": _write(tmp_path / "regime.csv"),
-            },
-        }
-    )
-
-    inputs = data_inputs_identity(config, logger)
-
-    assert sorted(inputs) == [
-        "data.filename",
-        "data.pit_universe_csv",
-        "features.regime_inputs_csv",
-        "graph.sector_map_csv",
-    ]
-    assert inputs["data.pit_universe_csv"]["resolved_path"] == str((tmp_path / "pit.csv").resolve())
-    assert all(entry["sha256"] for entry in inputs.values())
-
-
-def test_data_inputs_identity_omits_inputs_that_are_unset_or_switched_off(tmp_path):
-    config = create_config_from_dict(
-        {
-            "data": {
-                "filename": _write(tmp_path / "panel.csv"),
-                # PIT universe named but switched off: not read, so not recorded.
+                "filename": filename,
                 "use_pit_universe": False,
-                "pit_universe_csv": _write(tmp_path / "pit.csv"),
+                "train_start": "2020-01-05",
+                "train_end": "2020-01-15",
+                "val_start": "2020-01-19",
+                "val_end": "2020-01-23",
+                "test_start": "2020-01-27",
+                "test_end": "2020-01-31",
             },
-            "graph": {"use_sector_relation": False, "sector_map_csv": None},
-            "features": {"include_global_regime": True, "regime_inputs_csv": None},
+            "features": {"include_momentum": False, "include_weekly_momentum": False},
+            "model": {"his_t": 2, "label_t": 2},
+            "graph": {"use_multi_feature_edges": False},
+            "training": {"label_type": "returns"},
+            "tracking": {"enabled": False},
         }
     )
 
-    inputs = data_inputs_identity(config, logger)
 
-    assert list(inputs) == ["data.filename"]
-
-
-def test_data_inputs_identity_records_the_index_csv_instead_of_the_panel(tmp_path):
-    config = create_config_from_dict(
-        {
-            "data": {
-                "experiment_mode": "index_level",
-                "filename": _write(tmp_path / "panel.csv"),
-                "index_filename": _write(tmp_path / "index.csv"),
-            },
-        }
-    )
-
-    inputs = data_inputs_identity(config, logger)
-
-    assert list(inputs) == ["data.index_filename"]
-
-
-def test_run_metadata_carries_data_inputs_beside_unchanged_legacy_keys(tmp_path, monkeypatch):
-    """The artifact seam: what a window actually writes to run_metadata.json."""
-    panel = tmp_path / "panel.csv"
-    panel_payload = b"kdcode,dt,close\nAAPL,2026-01-02,100\n"
-    panel.write_bytes(panel_payload)
-    pit = tmp_path / "pit.csv"
-    pit_payload = b"kdcode,valid_from,valid_to\nAAPL,2020-01-01,2026-12-31\n"
-    pit.write_bytes(pit_payload)
-    monkeypatch.chdir(tmp_path)
-
-    config = create_config_from_dict(
-        {
-            "data": {
-                "filename": "panel.csv",
-                "use_pit_universe": True,
-                "pit_universe_csv": "pit.csv",
-            },
-            "model": {"his_t": 5, "label_t": 3},
-            "seed": 11,
-        }
-    )
-    data = {
-        "norm_means": {"close": 1.0},
-        "norm_stds": {"close": 2.0},
-        "feature_cols": ["close"],
-        "kdcode_list": ["AAPL"],
-        "graph_static_valid_from": "2021-01-01",
-        "pit_universe_mode": "row_filter",
-        "pit_breadth": {"2026-01-02": 1},
-    }
-
+def _saved_metadata(tmp_path, config, data, window=0):
     metadata = build_run_metadata(
         config,
         data,
-        walkforward_window=2,
-        resolved_config_identity={
-            "resolved_config_path": "resolved_config.json",
-            "resolved_config_sha256": "deadbeef",
-        },
+        walkforward_window=window,
+        resolved_config_identity={"resolved_config_sha256": "synthetic-config"},
         logger=logger,
     )
-    metadata_path = tmp_path / "run_metadata.json"
-    metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-    parsed = json.loads(metadata_path.read_text(encoding="utf-8"))
-
-    # Legacy keys are unchanged: the notebook generators read data_file_sha256.
-    assert parsed["data_file"] == "panel.csv"
-    assert parsed["train_end"] == config.data.train_end
-    assert parsed["data_file_sha256"] == hashlib.sha256(panel_payload).hexdigest()
-    assert parsed["data_file_size_bytes"] == len(panel_payload)
-    assert datetime.fromisoformat(parsed["data_file_mtime_iso"]).tzinfo is not None
-    assert parsed["walkforward_window"] == 2
-    assert parsed["resolved_config_sha256"] == "deadbeef"
-
-    # And every configured input the window read is now identified.
-    assert sorted(parsed["data_inputs"]) == ["data.filename", "data.pit_universe_csv"]
-    assert parsed["data_inputs"]["data.pit_universe_csv"] == {
-        "configured_path": "pit.csv",
-        "resolved_path": str(pit.resolve()),
-        "sha256": hashlib.sha256(pit_payload).hexdigest(),
-        "size_bytes": len(pit_payload),
-        "mtime_iso": parsed["data_inputs"]["data.pit_universe_csv"]["mtime_iso"],
-    }
-    assert parsed["data_inputs"]["data.filename"]["sha256"] == parsed["data_file_sha256"]
+    target = tmp_path / f"run_metadata_{window}.json"
+    target.write_text(json.dumps(metadata), encoding="utf-8")
+    return json.loads(target.read_text(encoding="utf-8"))
 
 
-def test_data_inputs_identity_omits_a_sector_map_whose_relation_is_switched_off(tmp_path):
-    """Naming a sector map does not mean the run reads it.
+def test_saved_metadata_keeps_consumed_csv_identity_after_source_replacement(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / "panel.csv"
+    original = _native_panel()
+    source.write_bytes(original)
+    os.utime(source, (1700000000, 1700000000))
+    config = _native_config("panel.csv")
 
-    ``mci_gru/pipeline.py`` gates the sector-map read on
-    ``use_sector_relation and sector_map_csv``, so a config that names the file
-    with the relation off never opens it. Recording it would assert an input the
-    run did not consume.
-    """
-    config = create_config_from_dict(
-        {
-            "data": {"filename": _write(tmp_path / "panel.csv")},
-            "graph": {
-                "use_sector_relation": False,
-                "sector_map_csv": _write(tmp_path / "sectors.csv"),
-            },
-        }
+    data = prepare_data(config, FeatureEngineer(config.features))
+    replacement = b"a different file after preparation\n"
+    source.write_bytes(replacement)
+    os.utime(source, (1800000000, 1800000000))
+    metadata = _saved_metadata(tmp_path, config, data)
+
+    identity = metadata["data_inputs"]["data.filename"]
+    assert identity["sha256"] == hashlib.sha256(original).hexdigest()
+    assert identity["size_bytes"] == len(original)
+    assert identity["mtime_iso"] == "2023-11-14T22:13:20+00:00"
+    assert identity["configured_path"] == "panel.csv"
+    assert identity["resolved_path"] == str(source)
+    assert metadata["data_file_sha256"] == hashlib.sha256(replacement).hexdigest()
+
+
+def test_index_metadata_records_its_read_and_excludes_unused_stock_pit_and_sector(tmp_path):
+    source = tmp_path / "index.csv"
+    original = (
+        "dt,close\n" + "".join(f"2020-01-{d:02d},{100 + d}\n" for d in range(1, 32))
+    ).encode()
+    source.write_bytes(original)
+    config = _native_config(str(tmp_path / "unused_stock.csv"))
+    config.data.index_filename = str(source)
+    config.data.use_pit_universe = True
+    config.data.pit_universe_csv = str(tmp_path / "unused_pit.csv")
+    config.graph.sector_map_csv = str(tmp_path / "unused_sector.csv")
+    data = prepare_data_index_level(config, FeatureEngineer(config.features))
+    source.write_bytes(b"replacement\n")
+
+    metadata = _saved_metadata(tmp_path, config, data)
+
+    assert set(metadata["data_inputs"]) == {"data.index_filename"}
+    assert (
+        metadata["data_inputs"]["data.index_filename"]["sha256"]
+        == hashlib.sha256(original).hexdigest()
+    )
+    assert metadata["data_file_sha256"] is None
+
+
+@pytest.mark.parametrize(
+    "mode,normalisation",
+    [("row_filter", "zscore"), ("masked_panel", "zscore"), ("masked_panel", "rank_gauss")],
+)
+def test_preparation_keeps_both_pit_reads_when_the_file_changes(
+    tmp_path, monkeypatch, mode, normalisation
+):
+    source = tmp_path / "panel.csv"
+    source.write_bytes(_native_panel())
+    pit_path = tmp_path / "pit.csv"
+    original = b"kdcode,valid_from,valid_to\nAAA,2020-01-01,2020-01-31\nBBB,2020-01-01,2020-01-31\n"
+    replacement = original.replace(b"2020-01-31", b"2020-02-01")
+    pit_path.write_bytes(original)
+    config = _native_config(str(source))
+    config.data.use_pit_universe = True
+    config.data.pit_universe_csv = str(pit_path)
+    config.data.pit_universe_mode = mode
+    config.data.pit_min_scoreable_stocks = 0
+    config.data.normalisation = normalisation
+    original_open = io.open
+    reads = []
+
+    def replace_before_second_read(file, mode="r", *args, **kwargs):
+        if isinstance(file, (str, os.PathLike)) and Path(file) == pit_path and "r" in mode:
+            reads.append(str(file))
+            if len(reads) == 2:
+                pit_path.write_bytes(replacement)
+        return original_open(file, mode, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", replace_before_second_read)
+    monkeypatch.setattr(io, "open", replace_before_second_read)
+    data = prepare_data(config, FeatureEngineer(config.features))
+    metadata = _saved_metadata(tmp_path, config, data)
+
+    assert len(reads) == 2
+    events = metadata["input_observations"]
+    uses = [use for use in events["uses"] if use["role"] == "data.pit_universe_csv"]
+    assert len(uses) == 2
+    identities = [events["observations"][use["observation_id"]]["identity"] for use in uses]
+    assert [identity["sha256"] for identity in identities] == [
+        hashlib.sha256(original).hexdigest(),
+        hashlib.sha256(replacement).hexdigest(),
+    ]
+    assert metadata["data_inputs"]["data.pit_universe_csv"]["observation_ids"] == [
+        use["observation_id"] for use in uses
+    ]
+
+
+@pytest.mark.parametrize("zero_edges", [False, True])
+def test_sector_metadata_identifies_the_csv_used_by_the_sector_parser(tmp_path, zero_edges):
+    source = tmp_path / "panel.csv"
+    source.write_bytes(_native_panel())
+    sectors = tmp_path / "sectors.csv"
+    original = b'kdcode,sector\r\nAAA,"Tech, communications"\r\nBBB,"Tech, communications"\r\n'
+    sectors.write_bytes(original)
+    config = _native_config(str(source))
+    config.graph.use_sector_relation = True
+    config.graph.sector_map_csv = str(sectors)
+    config.graph.zero_edges = zero_edges
+    data = prepare_data(config, FeatureEngineer(config.features))
+    sectors.write_bytes(b"replaced\n")
+    metadata = _saved_metadata(tmp_path, config, data)
+
+    assert data["edge_index_sector"].tolist() == [[0, 1], [1, 0]]
+    assert (
+        metadata["data_inputs"]["graph.sector_map_csv"]["sha256"]
+        == hashlib.sha256(original).hexdigest()
     )
 
-    inputs = data_inputs_identity(config, logger)
 
-    assert list(inputs) == ["data.filename"]
+def test_implicit_vix_csv_is_observed_when_enabled(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / "panel.csv"
+    source.write_bytes(_native_panel())
+    vix = tmp_path / "vix_data.csv"
+    original = ("dt,vix\n" + "".join(f"2020-01-{d:02d},{20 + d}\n" for d in range(1, 32))).encode()
+    vix.write_bytes(original)
+    config = _native_config(str(source))
+    config.features.include_vix = True
+    data = prepare_data(config, FeatureEngineer(config.features))
+    vix.write_bytes(b"changed after prepare\n")
+    metadata = _saved_metadata(tmp_path, config, data)
+
+    identity = metadata["data_inputs"]["implicit.vix_csv"]
+    assert identity["configured_path"] == "vix_data.csv"
+    assert identity["resolved_path"] == str(vix)
+    assert identity["sha256"] == hashlib.sha256(original).hexdigest()
+
+
+def test_regime_override_identity_precedes_parsing_and_transforms(tmp_path):
+    source = tmp_path / "panel.csv"
+    source.write_bytes(_native_panel())
+    regime = tmp_path / "regime.csv"
+    original = (
+        b"dt,regime_market,regime_yield_curve,regime_oil,regime_copper,regime_stock_bond_corr,regime_monetary_policy,regime_volatility\n"
+        b"2020-01-01,1,2,3,4,5,6,7\n2020-01-02,2,3,4,5,6,7,8\n"
+    )
+    regime.write_bytes(original)
+    config = _native_config(str(source))
+    config.features.include_global_regime = True
+    config.features.regime_inputs_csv = str(regime)
+    config.features.regime_include_subsequent_returns = False
+    data = prepare_data(config, FeatureEngineer(config.features))
+    regime.write_bytes(b"changed after prepare\n")
+
+    metadata = _saved_metadata(tmp_path, config, data)
+
+    identity = metadata["data_inputs"]["features.regime_inputs_csv"]
+    assert identity["sha256"] == hashlib.sha256(original).hexdigest()
+    assert identity["size_bytes"] == len(original)
 
 
 def test_legacy_data_file_keys_keep_cwd_semantics_where_the_resolver_disagrees(
     tmp_path, monkeypatch
 ):
-    """The two blocks mean different things, and that is deliberate.
-
-    ``data_file_sha256`` is read by the PIT notebook generators, so it keeps its
-    existing cwd-relative meaning. ``data_inputs`` reports what the loaders
-    actually open. Where a basename fallback makes those diverge, the legacy key
-    stays null and the new block carries the digest.
-    """
-    fallback_dir = tmp_path / "data" / "raw" / "market"
-    fallback_dir.mkdir(parents=True)
-    payload = b"kdcode,dt,close\nAAPL,2026-01-02,100\n"
-    (fallback_dir / "panel.csv").write_bytes(payload)
-    elsewhere = tmp_path / "elsewhere"
-    elsewhere.mkdir()
+    fallback = tmp_path / "data" / "raw" / "market"
+    fallback.mkdir(parents=True)
+    source = fallback / "panel.csv"
+    original = _native_panel()
+    source.write_bytes(original)
     monkeypatch.setattr(path_resolver, "PROJECT_ROOT", tmp_path)
-    monkeypatch.chdir(elsewhere)
+    monkeypatch.chdir(tmp_path)
+    config = _native_config("missing/panel.csv")
+    data = prepare_data(config, FeatureEngineer(config.features))
+    higher_priority = tmp_path / "missing"
+    higher_priority.mkdir()
+    (higher_priority / "panel.csv").write_bytes(b"new higher priority file")
 
-    config = create_config_from_dict({"data": {"filename": "panel.csv"}})
-    data = {
-        "norm_means": {"close": 1.0},
-        "norm_stds": {"close": 2.0},
-        "feature_cols": ["close"],
-        "kdcode_list": ["AAPL"],
+    metadata = _saved_metadata(tmp_path, config, data)
+
+    assert metadata["data_file_sha256"] == hashlib.sha256(b"new higher priority file").hexdigest()
+    assert (
+        metadata["data_inputs"]["data.filename"]["sha256"] == hashlib.sha256(original).hexdigest()
+    )
+    assert metadata["data_inputs"]["data.filename"]["resolved_path"] == str(source)
+    assert metadata["data_inputs"]["data.filename"]["configured_path"] == "missing/panel.csv"
+    (higher_priority / "panel.csv").unlink()
+    missing_legacy = _saved_metadata(tmp_path, config, data)
+    assert missing_legacy["data_file_sha256"] is None
+    assert missing_legacy["data_file_size_bytes"] is None
+    assert missing_legacy["data_file_mtime_iso"] is None
+
+
+def test_disabled_inputs_are_absent_and_each_preparation_has_its_own_observations(tmp_path):
+    source = tmp_path / "panel.csv"
+    original = _native_panel()
+    source.write_bytes(original)
+    config = _native_config(str(source))
+    config.data.pit_universe_csv = str(tmp_path / "unused_pit.csv")
+    config.graph.sector_map_csv = str(tmp_path / "unused_sector.csv")
+    config.features.regime_inputs_csv = str(tmp_path / "unused_regime.csv")
+    (tmp_path / "vix_data.csv").write_bytes(b"unused vix")
+    first = prepare_data(config, FeatureEngineer(config.features))
+    replacement = original.replace(b"1000,", b"2000,")
+    source.write_bytes(replacement)
+    second = prepare_data(config, FeatureEngineer(config.features))
+
+    for window, (data, content) in enumerate([(first, original), (second, replacement)]):
+        metadata = _saved_metadata(tmp_path, config, data, window)
+        assert metadata["walkforward_window"] == window
+        assert set(metadata["data_inputs"]) == {"data.filename"}
+        assert len(metadata["input_observations"]["observations"]) == 1
+        assert (
+            metadata["data_inputs"]["data.filename"]["sha256"]
+            == hashlib.sha256(content).hexdigest()
+        )
+
+
+def test_legacy_missing_file_still_warns_and_returns_nulls(tmp_path, caplog):
+    with caplog.at_level(logging.WARNING):
+        identity = data_file_fingerprint(str(tmp_path / "missing.csv"), logger)
+    assert identity == {
+        "data_file_sha256": None,
+        "data_file_size_bytes": None,
+        "data_file_mtime_iso": None,
     }
+    assert "skipping sha256" in caplog.text
 
-    metadata = build_run_metadata(
-        config,
-        data,
-        walkforward_window=0,
-        resolved_config_identity={},
-        logger=logger,
-    )
 
-    assert metadata["data_file_sha256"] is None
-    assert metadata["data_inputs"]["data.filename"]["sha256"] == hashlib.sha256(payload).hexdigest()
-    assert metadata["data_inputs"]["data.filename"]["resolved_path"] == str(
-        (fallback_dir / "panel.csv").resolve()
-    )
+def test_failed_optional_csv_parse_is_recorded_without_changing_continuation(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / "panel.csv"
+    source.write_bytes(_native_panel())
+    vix = tmp_path / "regime.csv"
+    vix.write_bytes(b"")
+    config = _native_config(str(source))
+    config.features.include_global_regime = True
+    config.features.regime_inputs_csv = "regime.csv"
+    data = prepare_data(config, FeatureEngineer(config.features))
+
+    metadata = _saved_metadata(tmp_path, config, data)
+
+    events = metadata["input_observations"]["observations"]
+    failed = [event for event in events if event["outcome"] == "error"]
+    assert len(failed) == 1
+    assert failed[0]["stage"] == "parse"
+    assert failed[0]["error_code"] == "EmptyDataError"
+    assert failed[0]["configured_path"] == "regime.csv"
+    assert failed[0]["identity"]["sha256"] == hashlib.sha256(b"").hexdigest()
+    assert "features.regime_inputs_csv" not in metadata["data_inputs"]
+    assert vix.read_bytes() == b""
+
+
+@pytest.mark.parametrize("route", ["vix", "credit", "regime"])
+@pytest.mark.parametrize("integrity", [True, False])
+def test_preparation_propagates_observation_integrity_errors_but_preserves_ordinary_errors(
+    tmp_path, monkeypatch, route, integrity
+):
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / "panel.csv"
+    source.write_bytes(_native_panel())
+    config = _native_config(str(source))
+    error_type = InputObservationError if integrity else ValueError
+    if route == "credit":
+        config.features.include_credit_spread = True
+        monkeypatch.setenv("FRED_API_KEY", "synthetic-never-sent")
+
+        class FaultingFred:
+            def __init__(self, **kwargs):
+                pass
+
+            def get_series(self, *args, **kwargs):
+                raise error_type("synthetic input failure")
+
+        monkeypatch.setitem(sys.modules, "fredapi", SimpleNamespace(Fred=FaultingFred))
+    else:
+        auxiliary = tmp_path / ("vix_data.csv" if route == "vix" else "regime.csv")
+        auxiliary.write_bytes(b"present but read will fail")
+        if route == "vix":
+            config.features.include_vix = True
+        else:
+            config.features.include_global_regime = True
+            config.features.regime_strict = False
+            config.features.regime_inputs_csv = str(auxiliary)
+        real_open = io.open
+
+        def fail_auxiliary_read(file, *args, **kwargs):
+            if isinstance(file, (str, os.PathLike)) and Path(file) == auxiliary:
+                raise error_type("synthetic input failure")
+            return real_open(file, *args, **kwargs)
+
+        monkeypatch.setattr(io, "open", fail_auxiliary_read)
+    if integrity:
+        with pytest.raises(InputObservationError, match="synthetic input failure"):
+            prepare_data(config, FeatureEngineer(config.features))
+    elif route == "vix":
+        with pytest.raises(ValueError, match="vix_df not provided"):
+            prepare_data(config, FeatureEngineer(config.features))
+    else:
+        data = prepare_data(config, FeatureEngineer(config.features))
+        metadata = _saved_metadata(tmp_path, config, data)
+        assert set(metadata["data_inputs"]) == {"data.filename"}
