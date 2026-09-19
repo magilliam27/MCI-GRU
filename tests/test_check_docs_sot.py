@@ -34,11 +34,6 @@ def test_subdirectory_reports_are_not_flagged(tmp_path: Path) -> None:
     assert check_docs_sot.main(docs_dir) == 0
 
 
-def test_allowlist_stays_empty() -> None:
-    """The grandfathered root-level reports all moved in 2026-09; nothing may be re-grandfathered."""
-    assert not check_docs_sot.ALLOWED_EXISTING_FILES
-
-
 def test_real_docs_tree_is_clean() -> None:
     repo_docs = Path(__file__).resolve().parents[1] / "docs"
     assert check_docs_sot.main(repo_docs) == 0

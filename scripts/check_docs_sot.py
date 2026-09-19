@@ -3,9 +3,9 @@
 The docs source-of-truth policy (docs/agents/domain.md, docs/research/README.md)
 requires dated research reports to live in docs/research/{current,archive}/.
 This check fails when a markdown file matching the dated-report naming pattern
-appears directly under docs/. The pre-existing root-level reports that were
-grandfathered when the check was added all moved into the lifecycle in 2026-09,
-so the allowlist is empty and must stay so.
+appears directly under docs/. The root-level reports that were grandfathered
+when the check was added all moved into the lifecycle in 2026-09, so there is no
+allowlist: a dated report at the docs/ root is always an offender.
 """
 
 from __future__ import annotations
@@ -16,16 +16,11 @@ from pathlib import Path
 
 DATED_REPORT_PATTERN = re.compile(r"^[A-Z0-9_]+_\d{4}-\d{2}-\d{2}\.md$")
 
-# Empty since 2026-09: every grandfathered report moved under docs/research/.
-ALLOWED_EXISTING_FILES: frozenset[str] = frozenset()
-
 
 def find_offenders(docs_dir: Path) -> list[str]:
-    """Return non-allowlisted dated-report filenames directly under docs_dir."""
+    """Return dated-report filenames directly under docs_dir."""
     return sorted(
-        path.name
-        for path in docs_dir.glob("*.md")
-        if DATED_REPORT_PATTERN.match(path.name) and path.name not in ALLOWED_EXISTING_FILES
+        path.name for path in docs_dir.glob("*.md") if DATED_REPORT_PATTERN.match(path.name)
     )
 
 

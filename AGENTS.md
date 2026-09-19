@@ -142,9 +142,9 @@ or renaming tests: `.\.venv\Scripts\python.exe scripts/generate_test_registry.py
 
 ## Correlation graph
 
-How the graph is built, selected (threshold or top-K), given edge features, and scheduled is documented in `docs/ARCHITECTURE.md` (Graph section) and routed in `docs/agents/guide.md` (Correlation edge selection, Edge feature width, Graph change propagation).
+How the graph is built, selected (threshold or top-K), given edge features, and scheduled is documented in `docs/ARCHITECTURE.md` (Graph section, including the dynamic `GraphSchedule` path) and routed in `docs/agents/guide.md` (Correlation edge selection, Edge feature width, and the graph block under Change propagation). The dynamic-graph preset is `configs/experiment/correlation_dynamic.yaml`.
 Whether the graph earns its place is a measured question: see the Graph Specification Evidence section of `docs/research/README.md`, where the graph-zeroed control is not beaten by any specification tried.
-The April 2026 roadmap those measurements replaced is archived at `docs/research/archive/graph_signal_upgrades_plan_2026-04.md`; its lever names are still used in tickets, its todos are not a plan.
+The April 2026 roadmap those measurements replaced is archived at `docs/research/archive/graph_signal_upgrades_plan_2026-04.md`; its lever names are still used in tickets, its todos are not a plan, and the diagnostic script it names was never in this repository.
 
 ## Code Style
 

@@ -76,20 +76,18 @@ chosen on measured evidence" (issue #157).
 
 ## Archive
 
-Superseded reports live under `archive/`, each with a status line in
-`archive/README.md` saying what replaced it and what still stands as background:
-the April 2026 ablation report (reconciled by the graph-specification ablation),
-the full-feature factorial design, the modern-defaults handoff, the March 2026
-backtest fairness audit, the May 2026 PIT replay diagnostics, the June 19 program
-map and opportunity scan, and the April 2026 graph roadmap.
+Superseded reports live under `archive/`. `archive/README.md` carries one status
+line per report saying what replaced it, which artifacts support it, and what
+still stands as background; it is the only list of archived reports.
 
 ## Drive Links
 
 Run folders and artifacts cited by these reports live in the maintainer's Google
 Drive, which is private; a link there is a permission wall for anyone else. The
-tables and figures inside each report are the public record, and every current
-report carries its run identity (run tag, commit, data hash) so a maintainer can
-locate the artifact.
+tables and figures inside each report are the public record. Run-backed reports
+carry their run identity (run tag and Drive folder, and where recorded the commit
+and data hash) so a maintainer can locate the artifact; literature scans and
+method notes cite their sources instead.
 
 ## Handoffs
 

@@ -6,8 +6,8 @@
 
 Generated: 2026-09-19
 Test files: 79
-Test functions: 545 (parametrized cases collapsed)
-<!-- test-inventory-sha256: be1a0321b0c921959131854937f91cd0cda01824b5cda759f83cbf01c1c36c6d -->
+Test functions: 544 (parametrized cases collapsed)
+<!-- test-inventory-sha256: 460f194ea97f9008e522511eb87bbeba481056a3775dc83c80008880dcb97b4b -->
 Last-run results merged from `test_reports/junit.xml`.
 
 ## `tests/test_backtest_engine_golden.py`
@@ -86,7 +86,6 @@ Contract tests for scripts/check_config.py.
 | `test_new_offender_fails` |  |  | PASSED | 0.00 |
 | `test_clean_tree_passes` |  |  | PASSED | 0.00 |
 | `test_subdirectory_reports_are_not_flagged` |  |  | PASSED | 0.00 |
-| `test_allowlist_stays_empty` | The grandfathered root-level reports all moved in 2026-09; nothing may be re-grandfathered. |  | PASSED | 0.00 |
 | `test_real_docs_tree_is_clean` |  |  | PASSED | 0.00 |
 
 ## `tests/test_ci_smoke.py`
