@@ -6,7 +6,8 @@ Primary Drive run:
 [MCI-GRU-Ablations/pit_repeated_seed_replication/20260520_183538](https://drive.google.com/drive/folders/1ecTUflJGVILFpaZ0TKDiGrsc4W1EYhFj)
 
 This report reviews the expanded Option A notebook run described in
-`docs/handoffs/2026-05-20-pit-repeated-seed-option-a-notebook.md`.
+`archive/pre-cleanup-2026-09:docs/handoffs/2026-05-20-pit-repeated-seed-option-a-notebook.md`
+(a retired handoff; read it with `git show`).
 
 ## Executive Summary
 
@@ -121,7 +122,7 @@ Sensitivity variants:
   diagnostic `label_t=21`.
 
 The `label_t=21` row is diagnostic for this artifact set because the Option A
-models were trained with `model.label_t=5`. In `tests/backtest_sp500_daily.py`,
+models were trained with `model.label_t=5`. In `scripts/backtest_sp500_daily.py`,
 changing `label_t` changes prediction-vs-forward-return evaluation fields; the
 daily portfolio P&L path remains open-to-open.
 

@@ -57,7 +57,6 @@ generated report.
 | [../TESTING_GUIDE.md](../TESTING_GUIDE.md) | Verification policy, ladder, and evidence taxonomy | Proof that an unexecuted test currently passes |
 | `../../CONTEXT.md` | Repo-wide vocabulary | Runtime behaviour |
 | [../research/README.md](../research/README.md) | Router for current versus superseded research evidence | Implementation truth |
-| [../handoffs/](../handoffs/) | Operational continuity notes | Research evidence or canonical behaviour |
 | [../agent_references/README.md](../agent_references/README.md) | Historical Claude/Cursor guidance and plans | Current requirements without code verification |
 | [../index.md](../index.md) | Full documentation map | A substitute for reading the routed document |
 | `.claude/skills/` | Repo-owned model-invoked skills: `work-the-map` (the AFK half of Wayfinder) and `implement-ticket` | The rules themselves — both point back here and at `CLAUDE.md` |
@@ -66,16 +65,15 @@ generated report.
 
 | Surface | Composition root | Owns | Boundary to preserve |
 | --- | --- | --- | --- |
-| Training and prediction | `run_experiment.py` | Hydra composition, data preparation, model construction, ensemble training, summaries, tracking, walk-forward windows | Does not define paper-trade execution policy |
+| Training and prediction | `run_experiment.py` | Hydra composition, data preparation, model construction, ensemble training, summaries, tracking, walk-forward windows | Does not define execution policy |
 | Panel preparation | `mci_gru/pipeline.py` | Loading, feature composition, PIT resolution, train-only normalisation, universe selection, tensors, graph artifacts | Timing and mask contracts stay explicit at each stage |
 | Configuration | `configs/` plus `mci_gru/config.py` | YAML selects values; dataclasses validate them | Do not hide experiment behaviour in hard-coded branches |
-| Model | `mci_gru/models/factory.py` and `mci_gru/models/trunk.py` | Model assembly and the prediction trunk | `mci_gru/models/mci_gru.py` is a compatibility re-export shim only |
+| Model | `mci_gru/models/factory.py` and `mci_gru/models/trunk.py` | Model assembly and the prediction trunk | No compatibility shims; import from the owning module |
 | Training | `mci_gru/training/` | Objectives, optimisation, validation, checkpoint selection, ensemble averaging | Evaluation semantics live in `mci_gru/evaluation/` |
 | Evaluation | `mci_gru/evaluation/` plus `scripts/` CLIs | Prediction metrics, economic replay, selection evidence, capacity, provenance | Research evidence is not automatically economic or production evidence |
-| Paper trading | `paper_trade/scripts/run_nightly.py` | Frozen-checkpoint inference, portfolio decisions, tracking, monitoring, reporting | Loads a frozen `graph_data.pt`; never imports `GraphBuilder` |
 
-Economic saved-prediction replay and paper trading are downstream systems.
-Neither is part of the training loop.
+Economic saved-prediction replay is a downstream system, not part of the
+training loop.
 
 ### Current entry path
 
@@ -99,8 +97,7 @@ Hydra YAML
 
 `edge_feature_dim` is a module-level function in `mci_gru/graph/utils.py`, not a
 method on `GraphConfig`. `run_experiment.py` calls it and passes the result to
-`create_model` under the `model` key `edge_feature_dim`; `paper_trade/scripts/infer.py`
-calls the same helper so frozen inference and training agree on edge width.
+`create_model` under the `model` key `edge_feature_dim`.
 
 ### Pipeline stages
 
@@ -142,16 +139,13 @@ existing stage over widening `run_experiment.py`:
 | Objectives | `mci_gru/training/losses.py` | `build_training_loss`, `TrainingConfig.loss_type`, masked cross sections |
 | Training lifecycle | `mci_gru/training/trainer.py` | `Trainer`, `TrainingResult`, `ValidationObservation`, selection metric |
 | Ensembling | `mci_gru/training/ensemble.py` | `train_multiple_models`, per-member seeds, mean prediction |
-| In-run metrics | `mci_gru/training/metrics.py`, `mci_gru/evaluation/metrics.py`, `statistics.py` | `EvaluationConfig`, bootstrap and Sharpe policy |
+| In-run metrics | `mci_gru/evaluation/metrics.py`, `statistics.py` | `EvaluationConfig`, bootstrap and Sharpe policy |
 | Run summaries and provenance | `mci_gru/evaluation/experiment_summary.py` | `run_metadata.json`, `resolved_config.json` and its SHA-256 |
 | Economic replay | `mci_gru/evaluation/backtest_engine.py`, `portfolio.py`, `scripts/backtest_sp500.py` | score / execution / return timing, costs, benchmark |
 | Selection research | `mci_gru/evaluation/selection_audit.py`, `selection_nulls.py`, `trial_ledger.py`, `artifacts.py` | [../evaluation/EVIDENCE_HARNESS.md](../evaluation/EVIDENCE_HARNESS.md), `SelectionResearchProtocol` |
 | Run bundles | `mci_gru/evaluation/run_bundle.py` | manifest hashes, `CONFIG_CANDIDATES`, immutability |
 | Capacity and drift | `mci_gru/evaluation/capacity.py`, `drift.py` | replay inputs, feature-drift reporting |
 | Walk-forward | `mci_gru/walkforward.py` | `WalkforwardConfig`, per-window `ExperimentConfig` fidelity |
-| Paper-trade inference | `paper_trade/scripts/infer.py` | frozen `config.yaml`, `run_metadata.json`, `graph_data.pt`, checkpoints |
-| Paper-trade decisions | `paper_trade/scripts/portfolio.py`, `track.py`, `monitor.py`, `report.py` | ranks, holdings, simulated fills, state under `paper_trade/state/` |
-| Nightly orchestration | `paper_trade/scripts/run_nightly.py` | `STEPS` order: `refresh_data.py` → `track.py` → `infer.py` → `portfolio.py` → `monitor.py` → `report.py` |
 
 ### Contracts worth locating before you change anything
 
@@ -167,7 +161,7 @@ existing stage over widening `run_experiment.py`:
 - `TrainingResult` and `ValidationObservation` carry checkpoint-selection
   outcomes; IC metrics are `None`, not `0.0`, when no rows are eligible.
 - `averaged_predictions/` is the ensemble prediction surface consumed by
-  backtests, selection research, and paper trading.
+  backtests and selection research.
 - `run_metadata.json`, `resolved_config.json`, `feature_reference.json`,
   `graph_data.pt`, and member checkpoints form the frozen inference inputs.
 
@@ -237,7 +231,7 @@ Start from the task concept, not from a guessed filename.
 | Correlation edge selection | `mci_gru/graph/correlation.py`, `mci_gru/graph/builder.py` | `GraphConfig` threshold / top-K semantics | `tests/test_dynamic_graph_updates.py` |
 | Dynamic graph timing | `mci_gru/graph/schedule.py`, `builder.py`, `combined_collate_fn` | strict valid-from timing | `tests/test_dynamic_graph_updates.py`, `tests/test_phase3_graph_and_walkforward.py` |
 | Sector relation | `mci_gru/graph/sector_edges.py`, `data_manager.py`, `models/trunk.py` | 9-tuple sector slots | `tests/test_phase3_graph_and_walkforward.py` |
-| Edge feature width | `mci_gru/graph/utils.py`, `models/graph.py`, `paper_trade/scripts/infer.py` | collate width must equal model `edge_feature_dim` | `tests/test_inference_edge_dim.py`, `tests/test_dynamic_graph_updates.py` |
+| Edge feature width | `mci_gru/graph/utils.py`, `models/graph.py` | collate width must equal model `edge_feature_dim` | `tests/test_inference_edge_dim.py`, `tests/test_dynamic_graph_updates.py` |
 | Model trunk or encoder | `mci_gru/models/factory.py`, `trunk.py`, `temporal.py`, `graph.py` | `ModelConfig` | `tests/test_mci_gru_phase2.py`, `tests/test_phase3_graph_and_walkforward.py` |
 | Loss or selection metric | `mci_gru/training/losses.py`, `trainer.py` | `TrainingConfig`, fail-closed selection | `tests/test_lambdarank_ic_loss.py`, `tests/test_lambdarank_ic_trainer.py`, `tests/test_portfolio_ic_loss.py`, `tests/test_portfolio_ic_trainer.py`, `tests/test_lambdarank_ic_config.py`, `tests/test_portfolio_ic_config.py` |
 | Training efficiency knobs | `mci_gru/training/trainer.py`, `mci_gru/config.py` | dataloader and AMP settings | `tests/test_training_efficiency_config.py` |
@@ -250,8 +244,6 @@ Start from the task concept, not from a guessed filename.
 | Capacity replay | `mci_gru/evaluation/capacity.py`, `scripts/run_saved_prediction_capacity_replay.py` | replay inputs and provenance | `tests/test_capacity_replay.py` |
 | Output layout | `run_experiment.py`, `mci_gru/evaluation/` writers | [../OUTPUT_MANAGEMENT.md](../OUTPUT_MANAGEMENT.md) | `tests/test_output_management.py` |
 | MLflow tracking | `mci_gru/tracking/mlflow_manager.py` | [../MLFLOW_TRACKING.md](../MLFLOW_TRACKING.md), `TrackingConfig` | `tests/test_mlflow_tracking.py` |
-| Paper-trade inference | `paper_trade/scripts/infer.py` | frozen artifacts; `GraphBuilder` ban | `tests/test_paper_trade_infer.py` |
-| Paper-trade monitoring | `paper_trade/scripts/monitor.py`, `report.py` | state files under `paper_trade/state/` | `tests/test_paper_trade_monitor.py` |
 | Notebook generators | the owning `scripts/gen_*.py` | [../NOTEBOOK_BEST_PRACTICES.md](../NOTEBOOK_BEST_PRACTICES.md), [../workflows/COLAB_CHROME_CONTROL_GUIDE.md](../workflows/COLAB_CHROME_CONTROL_GUIDE.md) | the matching `tests/test_*_notebook*.py` contract test |
 | CI smoke path | `scripts/ci_smoke.py` | smoke overrides prove wiring only | `tests/test_ci_smoke.py` |
 | Docs placement | `scripts/check_docs_sot.py` | dated reports belong under `docs/research/` | `tests/test_check_docs_sot.py` |
@@ -267,8 +259,7 @@ rg -n "class GraphSchedule|def precompute_snapshots|def get_graph_for_date" mci_
 rg -n "def edge_feature_dim" mci_gru/graph/utils.py
 rg -n "class StockPredictionModel|def create_model" mci_gru/models
 rg -n "def build_training_loss|class Trainer|def train_multiple_models" mci_gru/training
-rg -n "averaged_predictions|graph_data.pt|run_metadata.json" run_experiment.py mci_gru paper_trade
-rg -n "GraphBuilder" paper_trade
+rg -n "averaged_predictions|graph_data.pt|run_metadata.json" run_experiment.py mci_gru
 ```
 
 ### Change propagation
@@ -292,7 +283,6 @@ GraphConfig -> mci_gru/graph/utils.py edge_feature_dim()
   -> combined_collate_fn
   -> create_model()
   -> GAT blocks in models/graph.py and models/trunk.py
-  -> paper_trade/scripts/infer.py
   -> dynamic-timing + edge-width + 9-tuple + inference tests
 ```
 
@@ -313,16 +303,14 @@ Frozen inference change:
 training artifacts
   -> config.yaml + run_metadata.json + feature_reference.json
   -> graph_data.pt + member checkpoints
-  -> paper_trade/scripts/infer.py
-  -> portfolio.py -> monitor.py -> report.py
 ```
 
 ### Stop conditions
 
 Resolve the boundary before editing when:
 
-- a change crosses training, economic replay, and paper trading without
-  distinguishing their semantics;
+- a change crosses training and economic replay without distinguishing
+  their semantics;
 - a feature or graph proposal has no statement of when each input is knowable;
 - a PIT change would reduce the fixed masked-panel union to complete stocks,
   continuous members, or stayers only;
@@ -358,7 +346,6 @@ guard surfaces are:
 | Dynamic graph resolves by sample date through `GraphSchedule` | `tests/test_dynamic_graph_updates.py`, `tests/test_phase3_graph_and_walkforward.py` |
 | `combined_collate_fn` returns the 9-tuple and concatenates edge tensors on the edge dimension | `mci_gru/data/data_manager.py`, trainer unpacking, `tests/test_phase3_graph_and_walkforward.py` |
 | Ensemble prediction is the unweighted mean of independently seeded members | `tests/test_ensemble_averaging.py` |
-| Paper-trade inference loads a frozen `graph_data.pt` and never imports `GraphBuilder` | `tests/test_paper_trade_infer.py`, `rg -n "GraphBuilder" paper_trade` |
 | `masked_panel` keeps the fixed PIT union axis and daily masks | `tests/test_pit_masked_panel.py` |
 | Retired repository surfaces stay absent | `tests/test_repository_retirement_guard.py` |
 
@@ -372,8 +359,8 @@ guard surfaces are:
   return attribution separately.
 - Mechanics smokes prove wiring only. They do not support performance,
   profitability, or production-readiness claims.
-- Saved-prediction selection evidence, economic backtests, and paper trading
-  are separate evidence surfaces.
+- Saved-prediction selection evidence and economic backtests are separate
+  evidence surfaces.
 - Rank labels, raw return labels, prediction scores, and realised portfolio
   returns are not interchangeable scales.
 
@@ -396,8 +383,7 @@ guard surfaces are:
 - Prefer the existing typed pipeline seams over widening `run_experiment.py`.
 - Keep feature composition in `FeatureEngineer` and calculations in the owning
   feature module.
-- Keep model construction in `mci_gru/models/factory.py`; do not add
-  implementation to the `mci_gru/models/mci_gru.py` compatibility shim.
+- Keep model construction in `mci_gru/models/factory.py`.
 - Keep loss construction in `mci_gru/training/losses.py` and evaluation
   semantics in `mci_gru/evaluation/`.
 - Preserve public and serialised contracts unless a migration is designed and
@@ -410,14 +396,14 @@ guard surfaces are:
   a unique temp root for basetemp and cache.
 - Start from a tiny deterministic synthetic regression test.
 - Prefer observable behaviour over implementation detail, except for small
-  architectural guards such as the paper-trade `GraphBuilder` ban.
+  architectural guards such as the repository retirement guard.
 - Mark data-, credential-, GPU-, or runtime-dependent tests with the existing
   pytest markers and add a fast companion test where practical.
 - Do not move, archive, delete, or restructure tests without explicit approval.
 - Regenerate `docs/TEST_REGISTRY.md` with `scripts/generate_test_registry.py`
   after adding, renaming, or removing tests; do not hand-edit it.
 - Broaden from a focused proof to the non-slow suite plus ruff, then the full
-  suite when shared pipeline, graph, model, or paper-trade contracts change.
+  suite when shared pipeline, graph, or model contracts change.
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/run_pytest_isolated.py <focused-test> -v
@@ -430,7 +416,6 @@ guard surfaces are:
 
 - `results/`, `outputs/`, `*.pth`, and `*.pt` are gitignored and are not source
   of truth merely because they exist locally.
-- `seed_results/` holds committed experiment artifacts, not production code.
 - Keep each `(year, base_seed)` distinct in frozen-prediction research and use
   `averaged_predictions/`; do not blend seeds before protocol-defined
   aggregation.

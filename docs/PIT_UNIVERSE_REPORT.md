@@ -442,7 +442,7 @@ Command:
 
 ```powershell
 $env:MPLBACKEND='Agg'
-.venv\Scripts\python.exe -X utf8 tests\backtest_sp500_daily.py --predictions_dir results\pit_smoke_lseg\pit_true_rolling_2022\20260513_162011\averaged_predictions --data_file data\raw\market\sp500_pit_union_lseg_20150101_20260513.csv --pit_universe_csv data\raw\constituents\sp500_pit_joiner_leaver_20160101_20260513_pit_universe.csv --test_start 2022-01-24 --test_end 2022-12-30 --label_t 5 --auto_save --backtest_suffix _agg
+.venv\Scripts\python.exe -X utf8 scripts\backtest_sp500_daily.py --predictions_dir results\pit_smoke_lseg\pit_true_rolling_2022\20260513_162011\averaged_predictions --data_file data\raw\market\sp500_pit_union_lseg_20150101_20260513.csv --pit_universe_csv data\raw\constituents\sp500_pit_joiner_leaver_20160101_20260513_pit_universe.csv --test_start 2022-01-24 --test_end 2022-12-30 --label_t 5 --auto_save --backtest_suffix _agg
 ```
 
 Output:
@@ -540,7 +540,7 @@ Implementation:
 mci_gru/data/pit.py
 mci_gru/pipeline.py
 mci_gru/data/data_manager.py
-mci_gru/models/mci_gru.py
+mci_gru/models/trunk.py
 mci_gru/training/losses.py
 mci_gru/training/trainer.py
 mci_gru/evaluation/portfolio.py
@@ -550,8 +550,8 @@ Tests:
 
 ```text
 tests/test_pit_masked_panel.py
-tests/backtest_sp500_daily.py
-tests/backtest_sp500.py
+scripts/backtest_sp500_daily.py (CLI wrapper; the former tests/ shims are retired)
+scripts/backtest_sp500.py
 ```
 
 Configs:

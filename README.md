@@ -17,7 +17,6 @@ The system trains an ensemble of models that learn temporal patterns (via a modi
 - [Configuration Reference](#configuration-reference)
 - [Data Sources](#data-sources)
 - [Training](#training)
-- [Paper Trading Pipeline](#paper-trading-pipeline)
 - [Testing](#testing)
 - [References](#references)
 
@@ -109,16 +108,6 @@ MCI-GRU/
 │   │   └── metrics.py             #   Evaluation metrics (IC, Sharpe, hit rate)
 │   └── graph/
 │       └── builder.py             #   Correlation graph construction
-├── paper_trade/                   # Paper trading pipeline
-│   ├── scripts/
-│   │   ├── run_nightly.py         #   Orchestrator (runs all steps)
-│   │   ├── refresh_data.py        #   Incremental LSEG data fetch
-│   │   ├── infer.py               #   Standalone model inference
-│   │   ├── portfolio.py           #   Rank-drop gate portfolio decisions
-│   │   ├── track.py               #   Execution simulation + return tracking
-│   │   └── report.py              #   Daily markdown/chart reports
-│   ├── state/                     #   Persistent state (holdings, ranks)
-│   └── Model/                     #   Frozen model checkpoints
 ├── tests/                         # Test suite + backtest scripts
 ├── scripts/                       # Utility scripts (data fetching, analysis)
 ├── docs/                          # Additional documentation
@@ -451,7 +440,7 @@ Used for credit spread features (IG/HY OAS) and regime input series (yields, oil
 
 ```bash
 export FRED_API_KEY="your_key_here"
-python run_experiment.py +features=with_credit
+python run_experiment.py +features=full
 ```
 
 ### Index-Level Mode
@@ -472,7 +461,6 @@ Uses FRED SP500 index or a custom CSV with `dt`, `close` columns.
 | GICS top-10 PIT, 2021 start | ~110 | `data=gics_top10_110` |
 | S&P 500 | ~500 | `data=sp500` |
 | Russell 1000 | ~1000 | `+data=russell1000` |
-| MSCI World | ~1500 | `+data=msci_world` |
 | NASDAQ 100 | ~100 | Available via LSEG |
 
 ---
@@ -524,47 +512,6 @@ Saved to `{output_dir}/{experiment_name}/{timestamp}/`:
 | `mse` | Mean Squared Error (default) |
 | `ic` | Negative Pearson IC (maximizes cross-sectional correlation) |
 | `combined` | `(1-alpha)*MSE + alpha*(-IC)` blend |
-
----
-
-## Paper Trading Pipeline
-
-The `paper_trade/scripts/` directory implements a full paper trading system:
-
-### Pipeline Steps (run in order)
-
-| Step | Script | Purpose |
-|------|--------|---------|
-| 1 | `refresh_data.py` | Append today's LSEG bars to master CSV |
-| 2 | `track.py` | Record fills, compute open-to-open returns |
-| 3 | `infer.py` | Score universe using frozen checkpoints |
-| 4 | `portfolio.py` | Rank-drop gate, generate orders |
-| 5 | `report.py` | Daily markdown report + equity curve |
-
-### Running the Pipeline
-
-```bash
-# Full nightly run
-python paper_trade/scripts/run_nightly.py
-
-# Skip data refresh (data already current)
-python paper_trade/scripts/run_nightly.py --skip-refresh
-
-# Dry run (show what would execute)
-python paper_trade/scripts/run_nightly.py --dry-run
-```
-
-### Standalone Inference
-
-```bash
-python paper_trade/scripts/infer.py \
-    --model-dir paper_trade/Model/Seed73_trained_to_2062026 \
-    --csv data/raw/market/sp500_2019_universe_data_through_2026.csv
-```
-
-### Rank-Drop Gate
-
-The portfolio decision engine uses a rank-drop gate: held positions are only sold if their rank deteriorates by at least `--min-rank-drop` (default: 30) positions since the prior rebalance. This reduces turnover and avoids churning positions that are still reasonably ranked.
 
 ---
 

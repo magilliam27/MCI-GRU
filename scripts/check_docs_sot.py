@@ -16,8 +16,6 @@ from pathlib import Path
 DATED_REPORT_PATTERN = re.compile(r"^[A-Z0-9_]+_\d{4}-\d{2}-\d{2}\.md$")
 
 # Pre-existing root-level files grandfathered in when this check was added.
-# The two REARCHITECTURE_TECHNICAL_SPEC files are specs, not research reports,
-# but match the naming pattern and are intentionally kept at docs/ root.
 ALLOWED_EXISTING_FILES: frozenset[str] = frozenset(
     {
         "ABLATION_NOTEBOOK_RESULTS_REPORT_2026-04-30.md",
@@ -26,8 +24,6 @@ ALLOWED_EXISTING_FILES: frozenset[str] = frozenset(
         "PIT_LSEG_ALIAS_COVERAGE_AUDIT_2026-05-16.md",
         "PIT_MASKED_PANEL_2022_2025_FULL_RUN_REPORT_2026-05-16.md",
         "PIT_REPEATED_SEED_OPTION_A_RESULTS_2026-05-21.md",
-        "REARCHITECTURE_TECHNICAL_SPEC_2026-07-01.md",
-        "REARCHITECTURE_TECHNICAL_SPEC_ADDENDUM_2026-07-04.md",
     }
 )
 
