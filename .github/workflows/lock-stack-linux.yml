@@ -20,8 +20,6 @@ jobs:
       run:
         shell: bash
     env:
-      EVIDENCE_DIR: ${{ runner.temp }}/lock-stack-evidence
-      MEASUREMENT_VENV: ${{ runner.temp }}/lock-stack-venv
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
@@ -29,6 +27,11 @@ jobs:
       CUDA_VISIBLE_DEVICES: ""
 
     steps:
+      - name: Set disposable measurement paths
+        run: |
+          echo "EVIDENCE_DIR=$RUNNER_TEMP/lock-stack-evidence" >> "$GITHUB_ENV"
+          echo "MEASUREMENT_VENV=$RUNNER_TEMP/lock-stack-venv" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v4
         with:
           # Measure the submitted source, including on pull_request events.
@@ -153,6 +156,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: linux-lock-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ env.EVIDENCE_DIR }}
+          path: ${{ runner.temp }}/lock-stack-evidence
           if-no-files-found: error
           retention-days: 30
