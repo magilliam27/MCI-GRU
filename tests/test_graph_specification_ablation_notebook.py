@@ -267,9 +267,21 @@ def test_base_seed_is_one_per_fold_and_shared_across_arms(generator) -> None:
     assert seeds["F2023"] == 2729
     assert seeds["F2024"] == 3729
     assert seeds["F2025"] == 4729
-    # One seed per fold, and no two folds share one.
-    assert len(set(seeds.values())) == len(generator.FOLDS)
+    # The property that matters is that no two *pooled* folds share a seed: the
+    # core four are pooled into the primary, so a shared seed there would
+    # correlate the folds the arbiter averages over. This was "no two folds
+    # share one" until ticket 185, when the bridge fold was deliberately put on
+    # F2022's 1729 to match the ticket-167 run; the bridge fold is never pooled
+    # with anything, which is what makes that safe. Narrowed rather than
+    # dropped -- see test_bridge_fold_carries_the_ticket_167_reference_seed.
+    core_seeds = [seeds[key] for key in generator.CORE_FOLD_KEYS]
+    assert len(set(core_seeds)) == len(core_seeds) == 4
+    assert seeds["F2021_stress"] not in core_seeds
+
+    # Every fold without a declared override still reads off the s4 formula.
     for fold in generator.FOLDS:
+        if fold.get("seed_override") is not None:
+            continue
         expected = generator.BASE_SEED_ORIGIN + generator.BASE_SEED_FOLD_STRIDE * fold["index"]
         assert generator.fold_seed(fold) == expected, fold["key"]
 
@@ -768,3 +780,189 @@ def test_smoke_tag_is_not_an_input() -> None:
     run_tag_cell = next(source for source in _code_cell_sources() if "RUN_TAG = " in source)
     assert "SMOKE_MODE" not in run_tag_cell.split("RUN_TAG = ")[1].split("\n")[0]
     assert "smoke" not in code.split("STAGES_FOR_ANALYSIS = ")[1].split("\n")[0].lower()
+
+
+# -- ticket 185: the bridge fold's seed exception, and smoke artifact isolation -
+
+
+def _assigned_value(cell_source: str, name: str) -> ast.AST:
+    """The value node of the last assignment to ``name`` in a cell."""
+    tree = ast.parse(cell_source)
+    assignments = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == name for target in node.targets)
+    ]
+    assert assignments, f"no assignment to {name}"
+    return assignments[-1].value
+
+
+def _name_ids(node: ast.AST) -> set[str]:
+    return {child.id for child in ast.walk(node) if isinstance(child, ast.Name)}
+
+
+def test_bridge_fold_carries_the_ticket_167_reference_seed(generator) -> None:
+    """The bridge fold's job is reproduction, so it carries the reference seed.
+
+    Ticket 181 s2 admits ``F2025_bridge`` as *the one check that the new harness
+    reproduces the ticket-167 fold*. Section 4's formula ``1729 + 1000 x index``
+    puts it on 6729, which reproduces that fold distributionally rather than
+    member-for-member -- weak at twenty members. Ticket 183 disclosed this and
+    deliberately left it; the maintainer overrode it to 1729 on 2026-09-05,
+    which is where s4's carried defaults are overridable ("before the Phase-3
+    smoke"). The exception is per fold and explicit; the formula is untouched.
+    """
+    bridge = next(fold for fold in generator.FOLDS if fold["key"] == "F2025_bridge")
+    assert bridge["seed_override"] == 1729
+    assert generator.fold_seed(bridge) == 1729
+
+    # The ruled formula itself is unchanged: it still says 6729 at this index.
+    formula = generator.BASE_SEED_ORIGIN + generator.BASE_SEED_FOLD_STRIDE * bridge["index"]
+    assert formula == 6729
+    assert generator.fold_seed(bridge) != formula
+
+    # Exactly one fold deviates, and every other fold still reads the formula
+    # with no override key at all.
+    overridden = [fold["key"] for fold in generator.FOLDS if "seed_override" in fold]
+    assert overridden == ["F2025_bridge"]
+    for fold in generator.FOLDS:
+        if fold["key"] == "F2025_bridge":
+            continue
+        assert generator.fold_seed(fold) == (
+            generator.BASE_SEED_ORIGIN + generator.BASE_SEED_FOLD_STRIDE * fold["index"]
+        ), fold["key"]
+
+    # The override lands on F2022's seed. That is deliberate and must stay a
+    # visible fact: the two folds are never pooled with each other, and the
+    # bridge fold's whole purpose is to match the ticket-167 run's seed.
+    seeds = {fold["key"]: generator.fold_seed(fold) for fold in generator.FOLDS}
+    assert seeds["F2025_bridge"] == seeds["F2022"] == 1729
+    assert sorted(key for key, value in seeds.items() if value == 1729) == [
+        "F2022",
+        "F2025_bridge",
+    ]
+
+
+def test_seed_exception_is_disclosed_in_the_run_record(generator) -> None:
+    """A seed deviating from a ruled formula must be visible in the manifest.
+
+    Prose in a ticket is not the run's own record. The exception is computed,
+    not written: add or drop an override and the disclosure follows.
+    """
+    exceptions = generator.fold_seed_exceptions()
+    assert set(exceptions) == {"F2025_bridge"}
+    entry = exceptions["F2025_bridge"]
+    assert entry["seed"] == 1729
+    assert entry["formula_seed"] == 6729
+    assert entry["reason"]
+
+    # And the manifest actually carries it, read off the dict node rather than
+    # by substring: a comment naming the key would satisfy a text search.
+    manifest_cell = next(source for source in _code_cell_sources() if '"fold_seeds"' in source)
+    manifest_value = _assigned_value(manifest_cell, "manifest")
+    assert isinstance(manifest_value, ast.Dict), ast.dump(manifest_value)
+    keys = [key.value for key in manifest_value.keys if isinstance(key, ast.Constant)]
+    assert "fold_seed_exceptions" in keys
+    call = manifest_value.values[keys.index("fold_seed_exceptions")]
+    assert isinstance(call, ast.Call), ast.dump(call)
+    assert isinstance(call.func, ast.Name) and call.func.id == "fold_seed_exceptions"
+
+
+def test_smoke_artifacts_cannot_satisfy_a_screen_or_confirm_resume(generator) -> None:
+    """A 1 x 2 result must never be mistaken for a real stage's completed job.
+
+    ``RUN_STAGE`` accepts only ``screen`` or ``confirm``, so a smoke necessarily
+    writes under a real stage's name. Within a fresh ``RUN_TAG`` that is
+    harmless -- but the documented cross-session resume path is
+    ``RUN_TAG_OVERRIDE``, and a screen resumed into a smoke's run tag would find
+    the smoke's ``evaluation_summary.json``, skip the job under
+    ``RESUME_COMPLETED_TRAINING``, and record ``smoke_mode`` from the running
+    session rather than from the one that wrote the file. Namespacing the
+    smoke's stage segment makes the substitution impossible, not unlikely.
+    """
+    assert generator.stage_slug("screen", smoke=False) == "screen"
+    assert generator.stage_slug("confirm", smoke=False) == "confirm"
+    assert generator.stage_slug("screen", smoke=True) != "screen"
+    assert generator.stage_slug("confirm", smoke=True) != "confirm"
+
+    # A smoke slug must not collide with the other real stage either.
+    smoke_slugs = {generator.stage_slug(stage, smoke=True) for stage in ("screen", "confirm")}
+    assert smoke_slugs.isdisjoint({"screen", "confirm"})
+    assert len(smoke_slugs) == 2
+
+    # Resume keys: for the same (fold, arm), smoke and real must differ.
+    for fold in generator.FOLDS:
+        for arm in generator.ARMS:
+            for stage in ("screen", "confirm"):
+                real = generator.job_name(generator.stage_slug(stage, smoke=False), fold, arm)
+                smoke = generator.job_name(generator.stage_slug(stage, smoke=True), fold, arm)
+                assert real != smoke, (fold["key"], arm["key"], stage)
+
+    # And all (stage x smoke x fold x arm) keys stay distinct.
+    names = {
+        generator.job_name(generator.stage_slug(stage, smoke=smoke), fold, arm)
+        for stage in ("screen", "confirm")
+        for smoke in (True, False)
+        for fold in generator.FOLDS
+        for arm in generator.ARMS
+    }
+    assert len(names) == 4 * len(generator.FOLDS) * len(generator.ARMS)
+
+
+def test_stage_keyed_paths_use_the_smoke_aware_slug() -> None:
+    """The resume directory and key are built from the slug, not the raw stage.
+
+    Read off the assignment and call nodes: a cell that merely mentions
+    ``STAGE_SLUG`` in a comment, or that computes it and then keeps using
+    ``RUN_STAGE`` for the paths, would pass a substring search.
+    """
+    jobs_cell = next(
+        source for source in _code_cell_sources() if "TRAINING_OUTPUT_DIR = " in source
+    )
+
+    slug_value = _assigned_value(jobs_cell, "STAGE_SLUG")
+    assert isinstance(slug_value, ast.Call), ast.dump(slug_value)
+    assert isinstance(slug_value.func, ast.Name) and slug_value.func.id == "stage_slug"
+
+    # The training directory -- which is the resume directory -- keys on the slug.
+    training_dir = _assigned_value(jobs_cell, "TRAINING_OUTPUT_DIR")
+    assert "STAGE_SLUG" in _name_ids(training_dir), ast.dump(training_dir)
+    assert "RUN_STAGE" not in _name_ids(training_dir), ast.dump(training_dir)
+
+    # The resume key itself.
+    call = next(
+        node
+        for node in ast.walk(ast.parse(jobs_cell))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "job_name"
+    )
+    assert isinstance(call.args[0], ast.Name), ast.dump(call)
+    assert call.args[0].id == "STAGE_SLUG", ast.dump(call)
+
+    # The manifest path, so a smoke cannot overwrite a real stage's record.
+    manifest_path = _assigned_value(jobs_cell, "MANIFEST_PATH")
+    assert "STAGE_SLUG" in _name_ids(manifest_path), ast.dump(manifest_path)
+    assert "RUN_STAGE" not in _name_ids(manifest_path), ast.dump(manifest_path)
+
+
+def test_analysis_gate_still_reads_the_semantic_stage() -> None:
+    """Namespacing the smoke must not weaken the refusal that keeps it inert.
+
+    If the gate were switched to ``STAGE_SLUG``, a smoke would be refused
+    because ``smoke_screen`` is not in ``STAGES_FOR_ANALYSIS`` rather than
+    because ``SMOKE_MODE`` is set -- the same outcome today, but it would stop
+    being the ticket-181 s8 rule and would follow the slug's spelling instead.
+    """
+    paired_cell = next(source for source in _code_cell_sources() if "paired_pooled_core" in source)
+    gate = next(
+        node
+        for node in ast.walk(ast.parse(paired_cell))
+        if isinstance(node, ast.If)
+        and isinstance(node.test, ast.BoolOp)
+        and "SMOKE_MODE" in _name_ids(node.test)
+    )
+    assert isinstance(gate.test.op, ast.Or), ast.dump(gate.test)
+    assert "RUN_STAGE" in _name_ids(gate.test), ast.dump(gate.test)
+    assert "STAGE_SLUG" not in _name_ids(gate.test), ast.dump(gate.test)
