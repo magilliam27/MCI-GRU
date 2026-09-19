@@ -12,6 +12,7 @@ from importlib import metadata
 import pytest
 
 from mci_gru.config import create_config_from_dict
+from mci_gru.evaluation.artifacts import canonical_json_bytes
 from mci_gru.evaluation.execution_provenance import (
     capture_execution_start,
     read_execution_provenance,
@@ -282,6 +283,11 @@ def test_reader_rejects_invalid_record_semantics_even_with_a_matching_outer_dige
         del record["source_files"]["mci_gru/new_model.py"]
     elif damage == "path":
         record["source_files"]["../escape.py"] = record["source_files"].pop("run_experiment.py")
+        hashes = {name: blob["sha256"] for name, blob in record["source_files"].items()}
+        record["code_identity"]["source_hashes"] = hashes
+        record["code_identity"]["working_tree_source_sha256"] = hashlib.sha256(
+            canonical_json_bytes(hashes)
+        ).hexdigest()
     elif damage == "shape":
         record = []
     elif damage == "status":
@@ -406,6 +412,8 @@ def test_each_capture_is_a_distinct_incomplete_attempt_and_readback_does_not_wri
         ("provider.py", b'FRED_API_KEY = "fixture-secret"'),
         ("provider.py", rb'config = {"pass\u0077ord": "fixture-secret"}'),
         ("provider.py", b'client = connect(client_secret="fixture-secret")'),
+        ("provider.py", b'os.environ["FRED_API_KEY"] = "fixture-secret"'),
+        ("provider.py", b'settings["password"] = "fixture-secret"'),
         ("provider.yaml", b"password: fixture-secret"),
         ("provider.toml", b'fred_api_key = "fixture-secret"'),
     ],
@@ -529,3 +537,17 @@ def test_reader_requires_valid_attempt_and_observation_metadata(tmp_path, field,
     ref = replace(ref, sha256=hashlib.sha256(payload).hexdigest())
     with pytest.raises(ValueError, match="Invalid"):
         read_execution_provenance(ref)
+
+
+@pytest.mark.parametrize("window_id", ["", 17])
+def test_invalid_window_identifier_is_rejected_before_output(tmp_path, window_id):
+    repo, _, config_path, digest, _ = _fixture(tmp_path)
+    with pytest.raises(ValueError, match="window identifier"):
+        capture_execution_start(
+            repo,
+            config_path,
+            resolved_config_sha256=digest,
+            output_dir=tmp_path / "evidence",
+            window_id=window_id,
+        )
+    assert not (tmp_path / "evidence").exists()

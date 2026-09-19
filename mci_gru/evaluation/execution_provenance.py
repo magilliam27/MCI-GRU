@@ -68,6 +68,8 @@ def capture_execution_start(
     source file is overwritten. The source scope is the training entry point,
     package, configuration and dependency declarations, including untracked code.
     """
+    if window_id is not None and (not isinstance(window_id, str) or not window_id):
+        raise ValueError("Invalid window identifier")
     root = Path(repo_root).resolve()
     captured_at = datetime.now(timezone.utc).isoformat()
     config_bytes = Path(resolved_config_path).read_bytes()
@@ -347,6 +349,8 @@ def _contains_credentials(content: bytes, suffix: str = "") -> bool:
             elif isinstance(node, ast.keyword):
                 pairs = [(node.arg, node.value)]
             for key, value in pairs:
+                if isinstance(key, ast.Subscript):
+                    key = key.slice
                 name = (
                     key.id
                     if isinstance(key, ast.Name)
