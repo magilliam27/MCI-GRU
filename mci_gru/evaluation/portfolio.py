@@ -38,7 +38,7 @@ def apply_rank_drop_gate(
     top_k: int,
     min_rank_drop: int,
 ) -> dict:
-    """Apply the paper-trade rank-drop exit gate and refill open slots."""
+    """Apply the rank-drop exit gate and refill open slots."""
     ranked = rank_scores(scores_df) if "rank" not in scores_df.columns else scores_df.copy()
     current_ranks = ranked.set_index("kdcode")["rank"].to_dict()
 

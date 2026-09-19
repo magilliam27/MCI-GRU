@@ -11,7 +11,7 @@ This guide explains how training outputs are organized and persisted, including 
 The project supports **local MLflow tracking** alongside Hydra run folders.
 In **`configs/config.yaml`**, `tracking.enabled` defaults to **`true`** (store under `tracking_uri`, usually `./mlruns`).
 Disable logging for a run with `tracking.enabled=false`.
-Filesystem outputs (`config.yaml`, `run_metadata.json`, checkpoints, predictions) remain the source of truth for paper-trade inference.
+Filesystem outputs (`config.yaml`, `run_metadata.json`, checkpoints, predictions) remain the source of truth for frozen inference.
 See `docs/MLFLOW_TRACKING.md` for setup, metrics, and UI usage.
 
 ## Output Directory Structure
@@ -114,7 +114,7 @@ python run_experiment.py --multirun model.his_t=5,10,15,20
 
 ## Google Colab Workflow
 
-See `colab_workflow.ipynb` for a complete example. Quick start:
+See `docs/NOTEBOOK_BEST_PRACTICES.md` and the generated notebooks under `notebooks/`. Quick start:
 
 ```python
 from google.colab import drive
@@ -128,10 +128,6 @@ runs = sorted(glob.glob(f"{GDRIVE_BASE}/baseline/*/"))
 latest = runs[-1]
 ```
 
-## Paper Trade Pipeline
-
-`paper_trade/scripts/infer.py` loads checkpoints, `run_metadata.json`, and `graph_data.pt` from a run directory. `portfolio.py`, `track.py`, `report.py` handle portfolio decisions and reporting.
-
 ## Troubleshooting
 
 - **No predictions:** Verify training completed and path to `averaged_predictions`; use `find_latest_run()` to locate outputs
@@ -142,5 +138,5 @@ latest = runs[-1]
 
 - Hydra: https://hydra.cc/
 - Config management: `configs/` directory
-- Colab notebook: `colab_workflow.ipynb`
+- Colab notebooks: `docs/NOTEBOOK_BEST_PRACTICES.md`
 - Backtesting: `scripts/backtest_sp500.py` (separate workflow)

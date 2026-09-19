@@ -385,4 +385,4 @@ Use this structure:
 
 - `docs/NOTEBOOK_BEST_PRACTICES.md`
 - `docs/DEFAULT_EXPERIMENT_RECIPE.md`
-- `docs/handoffs/2026-05-22-colab-mcp-training-run.md`
+- `archive/pre-cleanup-2026-09:docs/handoffs/2026-05-22-colab-mcp-training-run.md` (a retired handoff; read it with `git show`)
