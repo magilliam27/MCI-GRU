@@ -171,7 +171,10 @@ the same values.
 | `isolate_edge_dropout_rng` | false | Fork the RNG around edge dropout so the global stream is untouched. |
 | `append_snapshot_age_days` | false | One extra edge column: days since the snapshot's valid-from date. |
 | `use_lead_lag_features` | false | Two extra edge columns from the best lead-lag correlation (`lead_lag_days`). |
+| `lead_lag_days` | [1, 2, 3, 5] | Candidate lags for the lead-lag edge columns. |
 | `use_sector_relation` | false | Second GAT branch over sector edges from `sector_map_csv`. |
+| `sector_map_csv` | null | `kdcode, sector` map, or a universe metadata export the loader derives one from. |
+| `exclude_edge_pairs` | [] | `kdcode` pairs removed from every constructed graph. |
 | `zero_edges` | false | Suppress every correlation edge (the ablation control). |
 
 The graph's construction, edge attributes, and static, dynamic, and sector forms are in
@@ -179,34 +182,10 @@ The graph's construction, edge attributes, and static, dynamic, and sector forms
 
 ## Model Parameters
 
-`model.*`, `ModelConfig`. Base values from `configs/config.yaml`.
-
-| Parameter | Base | Meaning |
-| --- | --- | --- |
-| `his_t` | 10 | Lookback window in trading days. |
-| `label_t` | 5 | Forward-return horizon in trading days. |
-| `gru_hidden_sizes` | [32, 10] | Hidden size of each GRU layer. |
-| `hidden_size_gat1` | 32 | Hidden width of the cross-sectional GAT. |
-| `output_gat1` | 4 | Output width of the cross-sectional GAT. |
-| `gat_heads` | 4 | Attention heads in the GAT layers. |
-| `hidden_size_gat2` | 32 | Hidden width of the prediction GAT. |
-| `num_hidden_states` | 32 | Learned market latent state vectors per stream. |
-| `cross_attn_heads` | 4 | Heads in the market-latent cross-attention. |
-| `slow_kernel` | 5 | Kernel of the slow temporal path's convolution. |
-| `slow_stride` | 2 | Stride of the slow temporal path's convolution. |
-| `use_multi_scale` | true | Fast and slow temporal paths; false is the plain encoder. |
-| `temporal_encoder` | `gru_attn` | Temporal backbone: `legacy`, `gru_attn`, or `transformer`. |
-| `use_self_attention` | true | Cross-stock self-attention before the prediction GAT. |
-| `use_group_type_embed` | true | Stream-type embedding inside that self-attention. |
-| `use_a1_a2_cross_attention` | false | A2 queries A1's temporal sequence (`cross_a2_num_heads`, 4). |
-| `use_nn_multihead_attention` | true | Library attention in the latent stage instead of the legacy implementation. |
-| `use_trunk_regularisation` | true | LayerNorm and dropout (`trunk_dropout`, 0.1) on the concatenated streams. |
-| `activation` | `elu` | Activation inside the GAT blocks: `elu` or `relu`. |
-| `output_activation` | `none` | Final head activation: `none`, `elu`, `relu`, or `sigmoid`. Quote `"none"` in YAML. |
-| `latent_init_scale` | 0.02 | Standard deviation of the latent state initialisation. |
-
-What each parameter drives is in [`ARCHITECTURE.md`](ARCHITECTURE.md), Model
-Architecture.
+`model.*`, `ModelConfig`. The base value of every key, with a comment naming it, is in
+`configs/config.yaml`; the ones that matter most are in the Hydra Base Defaults table
+below, and what each drives is in [`ARCHITECTURE.md`](ARCHITECTURE.md), Model
+Architecture. There is deliberately no second table here.
 
 ## Regime Inputs
 

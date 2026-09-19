@@ -41,6 +41,9 @@ by the other side of a collision.
   keyword next to a `#`-number. GitHub's parser reads the keyword and the reference and
   ignores the words between them.
 
+The branch and pull request policy, and the rule that merging is a separate action, are
+in [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md).
+
 ## What a pull request carries
 
 The pull request template lays these out. Each is a section, not a checkbox.
@@ -77,9 +80,9 @@ The pull request template lays these out. Each is a section, not a checkbox.
 
 ## Evidence
 
-- Every figure in a current report is `[Verified]`, read from a run artifact, or
-  `[Inferred]`, reasoning on top of one. A run-backed report names its run tag and its
-  artifact folder.
+- A report marks each figure `[Verified]`, read from a run artifact, or `[Inferred]`,
+  reasoning on top of one, and a run-backed report names its run tag and its artifact
+  folder. The research issue template carries both requirements.
 - A handoff is not evidence, a notebook contract test is not a live run, and a
   mechanics smoke proves wiring only. Research claims come from
   `docs/research/current/`.

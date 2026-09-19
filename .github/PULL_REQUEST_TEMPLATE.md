@@ -4,7 +4,7 @@ Closes #<n>
 
 Draft: merging is the maintainer's call.
 
-## What this does
+## What changed
 
 <!-- What changed and why, in prose. Name the ticket. Say what a reader of the tree finds different. -->
 

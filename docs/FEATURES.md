@@ -16,19 +16,11 @@ A row dated `D` for stock `k` is computed from that stock's rows dated `D` or ea
 from a market-wide series at `D` or earlier, with two families deliberately lagged further:
 volatility targeting uses returns ending at `D − 2`, and the global regime compares a month
 only to months that ended before it. Rolling windows are trailing and never centred.
-Three more rules sit outside this file:
-
-- **Normalization** is fit on the training window only: per-feature z-score after
-  3-sigma clipping (`data.normalisation=zscore`, the default), or Gaussianised ranks fit
-  on the training slice (`rank_gauss`). Nothing after `train_end` touches the statistics
-  (`mci_gru/pipeline.py`).
-- **The label** is `close[D + label_t] / close[D + 1] − 1` per stock, counted in that
-  stock's rows (`mci_gru/data/preprocessing.py`). It is not a feature, and the last
-  `label_t` sessions of the training window are dropped so no training label matures
-  inside validation.
-- **The correlation graph** is fit on trailing returns up to the training cutoff or, when
-  dynamic, up to each snapshot's valid-from date ([ARCHITECTURE.md](ARCHITECTURE.md),
-  Graph).
+Three related rules live in [ARCHITECTURE.md](ARCHITECTURE.md) and are only named here:
+normalization statistics are fit on the training window and nothing later; the label,
+`close[D + label_t] / close[D + 1] − 1` per stock, is not a feature and never enters one;
+and the correlation graph is fit on trailing returns up to the training cutoff or, when
+dynamic, up to each snapshot's valid-from date.
 
 Every timing-sensitive family carries the no-lookahead canary described in
 [TESTING_GUIDE.md](TESTING_GUIDE.md): compute twice, mutate a future row, assert earlier
@@ -62,14 +54,15 @@ sum of daily returns over its trailing window and is missing until the window is
 | `cycle_correction` | 1 when slow `≥ 0` and fast `< 0` | as above |
 | `cycle_bear` | 1 when slow and fast are both `< 0` | as above |
 
-The fourth state, Rebound (slow `< 0`, fast `≥ 0`), has no column; it is the row where all
-three indicators are 0.
+The fourth state, Rebound (slow `< 0`, fast `≥ 0`), has no column: all three indicators
+are 0 there, as they are on a row whose windows are not yet full.
 
 **Encoding** (`momentum_encoding`):
 
 - `binary` (default): a signal is `+1` when its momentum is `≥ 0`, `−1` otherwise.
 - `continuous`: the momentum columns keep their values (missing filled with 0), and each
-  signal is the day's cross-sectional z-score of its momentum column.
+  signal is the day's cross-sectional z-score of its momentum column, clipped to
+  `[−3, 3]`.
 - `buffered`: each signal is a linear map of the day's cross-sectional percentile rank
   onto `[−1, +1]`, set to 0 outside `[momentum_buffer_low, momentum_buffer_high]`
   (defaults 0.1 and 0.9). This encoding adds one column, `trade_signal`: the sign of
@@ -95,13 +88,14 @@ three indicators are 0.
 | `volatility_21d` | standard deviation of daily returns, annualised | 21 sessions |
 | `vol_ratio` | `volatility_5d / volatility_21d`, clipped to `[0.1, 10]` | 21 sessions |
 
-Missing values are filled from the expanding median of strictly earlier observations.
+Missing values are filled from the expanding median of strictly earlier observations, and
+with 0.2 when there are none.
 
 ## Volatility targeting (`include_volatility_targeting`)
 
 `mci_gru/features/volatility.py`. Harvey-style ex ante inputs: a row dated `D` uses stock
 returns ending no later than `D − 2`. Half-lives come from
-`volatility_targeting_half_lives` (default `[20, 60, 90]`); the shortest and longest
+`volatility_targeting_half_lives` (default `[20, 60, 90]`); the first and last listed
 drive the dynamics columns. Column names carry the half-life.
 
 | Column | Definition | Window |
@@ -155,8 +149,9 @@ Each input is sampled at month end, differenced over `regime_change_months` (12)
 z-scored against a trailing `regime_norm_months` (120) window that needs at least
 `regime_min_history_months` (24) of history, and clipped to `±regime_clip_z` (3). Month
 `T` is then compared, by Euclidean distance over the jointly available inputs, with every
-month up to `T − regime_exclusion_months` (1). Features are missing until at least 24
-comparable months exist. A stock-day dated `D` receives the features of the latest
+earlier month `i` where `i < T − regime_exclusion_months`: with the default of 1, the
+month just before `T` is excluded along with `T` itself. Features are missing until at
+least 24 comparable months exist. A stock-day dated `D` receives the features of the latest
 month end at or before `D`, then forward-fills, then 0.
 
 | Column | Definition | Window |
