@@ -139,7 +139,7 @@ existing stage over widening `run_experiment.py`:
 | Objectives | `mci_gru/training/losses.py` | `build_training_loss`, `TrainingConfig.loss_type`, masked cross sections |
 | Training lifecycle | `mci_gru/training/trainer.py` | `Trainer`, `TrainingResult`, `ValidationObservation`, selection metric |
 | Ensembling | `mci_gru/training/ensemble.py` | `train_multiple_models`, per-member seeds, mean prediction |
-| In-run metrics | `mci_gru/training/metrics.py`, `mci_gru/evaluation/metrics.py`, `statistics.py` | `EvaluationConfig`, bootstrap and Sharpe policy |
+| In-run metrics | `mci_gru/evaluation/metrics.py`, `statistics.py` | `EvaluationConfig`, bootstrap and Sharpe policy |
 | Run summaries and provenance | `mci_gru/evaluation/experiment_summary.py` | `run_metadata.json`, `resolved_config.json` and its SHA-256 |
 | Economic replay | `mci_gru/evaluation/backtest_engine.py`, `portfolio.py`, `scripts/backtest_sp500.py` | score / execution / return timing, costs, benchmark |
 | Selection research | `mci_gru/evaluation/selection_audit.py`, `selection_nulls.py`, `trial_ledger.py`, `artifacts.py` | [../evaluation/EVIDENCE_HARNESS.md](../evaluation/EVIDENCE_HARNESS.md), `SelectionResearchProtocol` |
@@ -383,8 +383,7 @@ guard surfaces are:
 - Prefer the existing typed pipeline seams over widening `run_experiment.py`.
 - Keep feature composition in `FeatureEngineer` and calculations in the owning
   feature module.
-- Keep model construction in `mci_gru/models/factory.py`; do not add
-  implementation to the `mci_gru/models/mci_gru.py` compatibility shim.
+- Keep model construction in `mci_gru/models/factory.py`.
 - Keep loss construction in `mci_gru/training/losses.py` and evaluation
   semantics in `mci_gru/evaluation/`.
 - Preserve public and serialised contracts unless a migration is designed and

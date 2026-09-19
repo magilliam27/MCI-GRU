@@ -14,7 +14,9 @@ with no failing test to say so.
 
 Presence is judged by the git index, not the filesystem, so a stale
 ``__pycache__`` left under a retired directory on a developer machine does not
-trip the guard, while a file staged or committed under one does.
+trip the guard, while a file staged or committed under one does. The test
+requires git; there is no fallback, so an environment without it fails loudly
+rather than reporting a verdict it cannot support.
 """
 
 import ast
@@ -58,21 +60,14 @@ PYTHON_SOURCE_FILES = ("run_experiment.py",)
 
 
 def _tracked_under(path: str) -> bool:
-    """True when git's index holds at least one file at or under ``path``.
-
-    Falls back to filesystem existence when git is unavailable, so the guard
-    still fires in an exported tree.
-    """
-    try:
-        result = subprocess.run(
-            ["git", "ls-files", "--", path],
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except (OSError, subprocess.CalledProcessError):
-        return (REPO_ROOT / path).exists()
+    """True when git's index holds at least one file at or under ``path``."""
+    result = subprocess.run(
+        ["git", "ls-files", "--", path],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
     return bool(result.stdout.strip())
 
 

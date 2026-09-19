@@ -19,9 +19,10 @@ publishers' to distribute.
 4. Veličković et al., *Graph Attention Networks*, ICLR 2018. arXiv:1710.10903.
    <https://arxiv.org/abs/1710.10903>. The graph-attention blocks.
 5. Man Group, *Regimes, Systematic Models and the Power of Prediction*,
-   March 2025, and a companion note on market regimes. Background for the
-   global regime features in `mci_gru/features/regime.py`; see
-   `docs/REGIME_DATA_CONTRACT.md` for what the code actually computes.
+   March 2025. Background for the global regime features in
+   `mci_gru/features/regime.py`; see `docs/REGIME_DATA_CONTRACT.md` for what
+   the code actually computes. A second, untitled regimes note was kept
+   alongside it; it is at the tag as `references/papers/656_Regimes_general.pdf`.
 
 ## Vendor documentation
 

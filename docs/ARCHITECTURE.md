@@ -169,8 +169,7 @@ separately for post-prediction evaluation.
 ## Model Architecture (mci_gru/models/)
 
 The model is defined in `mci_gru/models/trunk.py` and built by
-`create_model()` in `mci_gru/models/factory.py`. `mci_gru/models/mci_gru.py` is
-a compatibility re-export shim for legacy imports and contains no model logic.
+`create_model()` in `mci_gru/models/factory.py`.
 
 Four parallel streams are concatenated before the final predictor:
 
@@ -463,8 +462,7 @@ Newey-West value when `label_t > 1` and the naive value otherwise.
 `resolved_evaluation_kwargs()` derives defaults from `EvaluationConfig`:
 Newey-West lags default to `label_t - 1` and the bootstrap block size defaults to
 `max(1, label_t)`. `run_experiment.py` writes the result as
-`evaluation_summary.json`. `mci_gru/training/metrics.py` is a compatibility
-re-export of the evaluation module.
+`evaluation_summary.json`.
 
 ### Economic saved-prediction replay
 

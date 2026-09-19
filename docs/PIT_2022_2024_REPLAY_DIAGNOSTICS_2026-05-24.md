@@ -4,7 +4,8 @@ Date: 2026-05-24
 
 ## Scope
 
-This memo follows `docs/handoffs/2026-05-24-pit-2022-2024-diagnostics.md`.
+This memo follows `archive/pre-cleanup-2026-09:docs/handoffs/2026-05-24-pit-2022-2024-diagnostics.md`
+(a retired handoff; read it with `git show`).
 It uses saved Option A predictions and backtest artifacts from
 `20260520_183538`. It does not retrain models, change the frozen default
 recipe, or treat the diagnostic `label_t=21` replay as training-matched

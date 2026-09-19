@@ -440,7 +440,7 @@ Used for credit spread features (IG/HY OAS) and regime input series (yields, oil
 
 ```bash
 export FRED_API_KEY="your_key_here"
-python run_experiment.py +features=with_credit
+python run_experiment.py +features=full
 ```
 
 ### Index-Level Mode
@@ -461,7 +461,6 @@ Uses FRED SP500 index or a custom CSV with `dt`, `close` columns.
 | GICS top-10 PIT, 2021 start | ~110 | `data=gics_top10_110` |
 | S&P 500 | ~500 | `data=sp500` |
 | Russell 1000 | ~1000 | `+data=russell1000` |
-| MSCI World | ~1500 | `+data=msci_world` |
 | NASDAQ 100 | ~100 | Available via LSEG |
 
 ---

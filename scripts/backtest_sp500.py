@@ -2,7 +2,7 @@
 
 The engine body lives in ``mci_gru/evaluation/backtest_engine.py`` (WS-C).
 ``main()`` consumes ``sys.argv`` via argparse, so delegation preserves the
-historical command-line behavior of ``tests/backtest_sp500.py`` exactly.
+historical command-line behavior exactly.
 """
 
 from __future__ import annotations

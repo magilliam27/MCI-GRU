@@ -485,7 +485,7 @@ class TestCreateDataLoaders:
 
 
 class TestNotebookLegacyBaselineGraphProfile:
-    """Parity with ``GRAPH_PROFILE='legacy_baseline'`` in ``train_test_backtest_workflow.ipynb``.
+    """Parity with the ``legacy_baseline`` graph profile of the retired train/test notebook.
 
     That profile forces ``update_frequency_months=0`` (no dynamic snapshots),
     ``top_k=0`` (threshold edges), and ``use_multi_feature_edges=False`` (scalar

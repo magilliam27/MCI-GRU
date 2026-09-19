@@ -1,8 +1,8 @@
 """
 Shared LSEG DataFrame reshaping utilities.
 
-Centralizes the MultiIndex-to-flat-OHLCV transformation used by both
-``lseg_loader.py`` and the data export scripts under ``scripts/data/``.
+Centralizes the MultiIndex-to-flat-OHLCV transformation used by
+``lseg_loader.py``.
 """
 
 import pandas as pd
