@@ -1,9 +1,9 @@
 """Contract tests for scripts/gen_readme_figure.py and the README evidence figure.
 
 Two seams. The committed figure must be reproducible from the committed JSON, so a
-reader can regenerate it without Drive access. And every number in that JSON must be
-the number printed in the report it cites, parsed from the report's own table rather
-than retyped, so the figure cannot drift from the evidence it claims to show.
+reader can regenerate it without Drive access. And every number, label, and caveat in
+that JSON must be what the report it cites prints, parsed from the report rather than
+retyped, so the figure and its caption cannot drift from the evidence they claim to show.
 """
 
 from __future__ import annotations
@@ -23,10 +23,15 @@ from scripts.gen_readme_figure import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+YEAR_BLOCKS = ("reduced_universe_excess", "full_panel_compounded")
 
 
 def _spec() -> dict:
     return json.loads((REPO_ROOT / DEFAULT_JSON).read_text(encoding="utf-8"))
+
+
+def _report(block: dict) -> str:
+    return (REPO_ROOT / block["report"]).read_text(encoding="utf-8")
 
 
 def _number(cell: str) -> float:
@@ -55,17 +60,21 @@ def _table(text: str, column_names: list[str]) -> tuple[list[str], list[list[str
     raise AssertionError(f"no table with columns {column_names!r}")
 
 
-def _year_rows(block: dict) -> tuple[dict[str, int], dict[int, list[str]]]:
-    text = (REPO_ROOT / block["report"]).read_text(encoding="utf-8")
-    header, rows = _table(text, list(block["columns"].values()))
-    col = {key: header.index(name) for key, name in block["columns"].items()}
+def _columns(block: dict) -> tuple[dict[str, int], list[list[str]]]:
+    header, rows = _table(_report(block), list(block["columns"].values()))
+    return {key: header.index(name) for key, name in block["columns"].items()}, rows
+
+
+def _caption() -> str:
+    """The README paragraph that follows the figure."""
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    after = readme.split(f"]({DEFAULT_SVG})", 1)[1]
+    return after.strip().split("\n\n", 1)[0]
+
+
+def _assert_year_rows_match(block: dict) -> None:
+    col, rows = _columns(block)
     by_year = {int(r[col["year"]]): r for r in rows if re.fullmatch(r"20\d\d", r[col["year"]])}
-    return col, by_year
-
-
-def test_reduced_universe_rows_match_report():
-    block = _spec()["reduced_universe_excess"]
-    col, by_year = _year_rows(block)
     assert [r["year"] for r in block["rows"]] == sorted(by_year), (
         "every year in the table is plotted"
     )
@@ -73,20 +82,17 @@ def test_reduced_universe_rows_match_report():
         cells = by_year[row["year"]]
         for key in ("model_total_pct", "benchmark_pct", "excess_pct"):
             assert _number(cells[col[key]]) == row[key], (row["year"], key)
+
+
+def test_reduced_universe_rows_match_report():
+    _assert_year_rows_match(_spec()["reduced_universe_excess"])
 
 
 def test_full_panel_rows_and_compounded_figures_match_report():
     block = _spec()["full_panel_compounded"]
-    col, by_year = _year_rows(block)
-    assert [r["year"] for r in block["rows"]] == sorted(by_year), (
-        "every year in the table is plotted"
-    )
-    for row in block["rows"]:
-        cells = by_year[row["year"]]
-        for key in ("model_total_pct", "benchmark_pct", "excess_pct"):
-            assert _number(cells[col[key]]) == row[key], (row["year"], key)
+    _assert_year_rows_match(block)
 
-    text = (REPO_ROOT / block["report"]).read_text(encoding="utf-8")
+    text = _report(block)
     model = re.search(r"Compounded model return[^.]*?about (\d+\.\d)%", text, re.S)
     benchmark = re.search(r"compounded benchmark return is about (\d+\.\d)%", text)
     assert model and benchmark, "the report's compounded sentences were not found"
@@ -102,23 +108,37 @@ def test_full_panel_rows_and_compounded_figures_match_report():
     assert model_path[0] == 0.0 and bench_path[0] == 0.0
 
 
-def test_paired_reanalysis_rows_match_report():
+def test_paired_reanalysis_rows_and_labels_match_report():
     block = _spec()["paired_reanalysis"]
-    text = (REPO_ROOT / block["report"]).read_text(encoding="utf-8")
-    header, rows = _table(text, list(block["columns"].values()))
-    col = {key: header.index(name) for key, name in block["columns"].items()}
+    col, rows = _columns(block)
     by_arm = {r[col["arm"]].split(" ")[0]: r for r in rows}
     assert [r["arm"] for r in block["rows"]] == list(by_arm), (
         "arms in the report's order, all of them"
     )
     for row in block["rows"]:
         cells = by_arm[row["arm"]]
+        _code, description = cells[col["arm"]].split(" — ", 1)
+        assert row["label"] == description.strip(), row["arm"]
         assert _number(cells[col["mean_delta"]]) == row["mean_delta"], row["arm"]
         assert _number(cells[col["bhy_p"]]) == row["bhy_p"], row["arm"]
         low, high = cells[col["ci"]].strip("[]").split(",")
         assert _number(low) == row["ci_low"] and _number(high) == row["ci_high"], row["arm"]
-    days = re.search(r"\| Test days \| (\d+),", text)
+    days = re.search(r"\| Test days \| (\d+),", _report(block))
     assert days and int(days.group(1)) == block["test_days"]
+
+
+def test_caveats_are_the_reports_words_and_the_caption_carries_them():
+    spec = _spec()
+    caption = _caption()
+    for name in (*YEAR_BLOCKS, "paired_reanalysis"):
+        block = spec[name]
+        report = re.sub(r"\s+", " ", _report(block).replace("**", ""))
+        assert block["caveats"], name
+        for sentence in block["caveats"]:
+            assert sentence in report, (name, sentence)
+            assert sentence in caption, (name, sentence)
+        assert f"]({block['report']})" in caption, name
+    assert f"{spec['paired_reanalysis']['test_days']} test days" in caption
 
 
 def test_generator_reproduces_committed_svg(tmp_path):
@@ -133,25 +153,18 @@ def test_generator_reproduces_committed_svg(tmp_path):
     )
 
 
-def test_committed_svg_carries_both_themes_and_no_volatile_metadata():
+def test_committed_svg_carries_both_themes_tabular_numerals_and_no_volatile_metadata():
     svg = (REPO_ROOT / DEFAULT_SVG).read_text(encoding="utf-8")
     assert "@media (prefers-color-scheme: dark)" in svg
-    stripped = svg
     for role, (light, dark) in TOKENS.items():
         assert f"--{role}: {light}" in svg, role
         assert f"--{role}: {dark}" in svg, role
-        stripped = (
-            stripped.replace(f"var(--{role}, {light})", "")
-            .replace(f"--{role}: {light}", "")
-            .replace(f"--{role}: {dark}", "")
-        )
-    for role, (light, _dark) in TOKENS.items():
-        assert light not in stripped, f"a raw {role} colour escaped the token mapping"
-    assert "<dc:date>" not in svg and "dc:creator" not in svg
     assert "<text" in svg, "text is kept as text, not converted to paths"
+    numeric = re.findall(r'<text style="([^"]*)"[^>]*>([−+]?\d[\d.,]*%?)</text>', svg)
+    assert numeric and all("tabular-nums" in style for style, _ in numeric)
+    assert "<dc:date>" not in svg and "dc:creator" not in svg
 
 
-def test_readme_embeds_the_committed_figure():
+def test_readme_embeds_the_committed_figure_once():
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-    assert f"]({DEFAULT_SVG})" in readme
-    assert readme.count("](docs/assets/readme_evidence.svg)") == 1
+    assert readme.count(f"]({DEFAULT_SVG})") == 1

@@ -132,31 +132,31 @@ z
 " clip-path="url(#clip-1)" style="fill: var(--series-1, #2a78d6)"/>
    </g>
    <g id="text_1">
-    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-secondary, #52514e)" x="60.48" y="205.5207" transform="rotate(-0 60.48 205.5207)">−22</text>
+    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-secondary, #52514e); font-variant-numeric: tabular-nums" x="60.48" y="205.5207" transform="rotate(-0 60.48 205.5207)">−22</text>
    </g>
    <g id="text_2">
-    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-secondary, #52514e)" x="103.68" y="74.98578" transform="rotate(-0 103.68 74.98578)">+30</text>
+    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-secondary, #52514e); font-variant-numeric: tabular-nums" x="103.68" y="74.98578" transform="rotate(-0 103.68 74.98578)">+30</text>
    </g>
    <g id="text_3">
-    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-secondary, #52514e)" x="146.88" y="91.521" transform="rotate(-0 146.88 91.521)">+23</text>
+    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-secondary, #52514e); font-variant-numeric: tabular-nums" x="146.88" y="91.521" transform="rotate(-0 146.88 91.521)">+23</text>
    </g>
    <g id="text_4">
-    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781)" x="60.48" y="237.888" transform="rotate(-0 60.48 237.888)">2022</text>
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781); font-variant-numeric: tabular-nums" x="60.48" y="237.888" transform="rotate(-0 60.48 237.888)">2022</text>
    </g>
    <g id="text_5">
-    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781)" x="103.68" y="237.888" transform="rotate(-0 103.68 237.888)">2023</text>
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781); font-variant-numeric: tabular-nums" x="103.68" y="237.888" transform="rotate(-0 103.68 237.888)">2023</text>
    </g>
    <g id="text_6">
-    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781)" x="146.88" y="237.888" transform="rotate(-0 146.88 237.888)">2024</text>
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781); font-variant-numeric: tabular-nums" x="146.88" y="237.888" transform="rotate(-0 146.88 237.888)">2024</text>
    </g>
    <g id="text_7">
-    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: end; fill: var(--ink-muted, #898781)" x="29.52" y="216.936" transform="rotate(-0 29.52 216.936)">−30</text>
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: end; fill: var(--ink-muted, #898781); font-variant-numeric: tabular-nums" x="29.52" y="216.936" transform="rotate(-0 29.52 216.936)">−30</text>
    </g>
    <g id="text_8">
-    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: end; fill: var(--ink-muted, #898781)" x="29.52" y="149.076" transform="rotate(-0 29.52 149.076)">0</text>
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: end; fill: var(--ink-muted, #898781); font-variant-numeric: tabular-nums" x="29.52" y="149.076" transform="rotate(-0 29.52 149.076)">0</text>
    </g>
    <g id="text_9">
-    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: end; fill: var(--ink-muted, #898781)" x="29.52" y="81.216" transform="rotate(-0 29.52 81.216)">+30</text>
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: end; fill: var(--ink-muted, #898781); font-variant-numeric: tabular-nums" x="29.52" y="81.216" transform="rotate(-0 29.52 81.216)">+30</text>
    </g>
   </g>
   <g id="axes_2">
@@ -221,7 +221,7 @@ z
     </g>
    </g>
    <g id="text_10">
-    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: start; fill: var(--ink-secondary, #52514e)" x="334.1088" y="171.921446" transform="rotate(-0 334.1088 171.921446)">+20%</text>
+    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: start; fill: var(--ink-secondary, #52514e); font-variant-numeric: tabular-nums" x="334.1088" y="171.921446" transform="rotate(-0 334.1088 171.921446)">+20%</text>
    </g>
    <g id="line2d_10">
     <defs>
@@ -242,7 +242,7 @@ z
     </g>
    </g>
    <g id="text_11">
-    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: start; fill: var(--ink-secondary, #52514e)" x="334.1088" y="90.552218" transform="rotate(-0 334.1088 90.552218)">+92%</text>
+    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: start; fill: var(--ink-secondary, #52514e); font-variant-numeric: tabular-nums" x="334.1088" y="90.552218" transform="rotate(-0 334.1088 90.552218)">+92%</text>
    </g>
    <g id="text_12">
     <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: start; fill: var(--ink-secondary, #52514e)" x="225.60768" y="75.9672" transform="rotate(-0 225.60768 75.9672)">model</text>
@@ -254,25 +254,25 @@ z
     <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781)" x="217.0368" y="237.888" transform="rotate(-0 217.0368 237.888)">start</text>
    </g>
    <g id="text_15">
-    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781)" x="244.6848" y="237.888" transform="rotate(-0 244.6848 237.888)">2022</text>
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781); font-variant-numeric: tabular-nums" x="244.6848" y="237.888" transform="rotate(-0 244.6848 237.888)">2022</text>
    </g>
    <g id="text_16">
-    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781)" x="272.3328" y="237.888" transform="rotate(-0 272.3328 237.888)">2023</text>
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781); font-variant-numeric: tabular-nums" x="272.3328" y="237.888" transform="rotate(-0 272.3328 237.888)">2023</text>
    </g>
    <g id="text_17">
-    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781)" x="299.9808" y="237.888" transform="rotate(-0 299.9808 237.888)">2024</text>
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781); font-variant-numeric: tabular-nums" x="299.9808" y="237.888" transform="rotate(-0 299.9808 237.888)">2024</text>
    </g>
    <g id="text_18">
-    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781)" x="327.6288" y="237.888" transform="rotate(-0 327.6288 237.888)">2025</text>
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781); font-variant-numeric: tabular-nums" x="327.6288" y="237.888" transform="rotate(-0 327.6288 237.888)">2025</text>
    </g>
    <g id="text_19">
-    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: end; fill: var(--ink-muted, #898781)" x="202.32" y="194.316" transform="rotate(-0 202.32 194.316)">0</text>
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: end; fill: var(--ink-muted, #898781); font-variant-numeric: tabular-nums" x="202.32" y="194.316" transform="rotate(-0 202.32 194.316)">0</text>
    </g>
    <g id="text_20">
-    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: end; fill: var(--ink-muted, #898781)" x="202.32" y="137.766" transform="rotate(-0 202.32 137.766)">+50%</text>
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: end; fill: var(--ink-muted, #898781); font-variant-numeric: tabular-nums" x="202.32" y="137.766" transform="rotate(-0 202.32 137.766)">+50%</text>
    </g>
    <g id="text_21">
-    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: end; fill: var(--ink-muted, #898781)" x="202.32" y="81.216" transform="rotate(-0 202.32 81.216)">+100%</text>
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: end; fill: var(--ink-muted, #898781); font-variant-numeric: tabular-nums" x="202.32" y="81.216" transform="rotate(-0 202.32 81.216)">+100%</text>
    </g>
    <g id="line2d_11">
     <path d="M 211.92192 72.7272 
@@ -287,111 +287,111 @@ L 221.80608 90.64224
   </g>
   <g id="axes_3">
    <g id="patch_9">
-    <path d="M 483.84 227.448 
+    <path d="M 494.208 227.448 
 L 635.904 227.448 
 L 635.904 64.584 
-L 483.84 64.584 
-L 483.84 227.448 
+L 494.208 64.584 
+L 494.208 227.448 
 z
 " style="fill: none"/>
    </g>
    <g id="line2d_13">
-    <path d="M 509.184 227.448 
-L 509.184 64.584 
+    <path d="M 517.824 227.448 
+L 517.824 64.584 
 " clip-path="url(#clip-3)" style="fill: none; stroke: var(--grid, #e1e0d9); stroke-width: 0.72; stroke-linecap: square"/>
    </g>
    <g id="line2d_14">
-    <path d="M 534.528 227.448 
-L 534.528 64.584 
+    <path d="M 541.44 227.448 
+L 541.44 64.584 
 " clip-path="url(#clip-3)" style="fill: none; stroke: var(--grid, #e1e0d9); stroke-width: 0.72; stroke-linecap: square"/>
    </g>
    <g id="line2d_15">
-    <path d="M 585.216 227.448 
-L 585.216 64.584 
+    <path d="M 588.672 227.448 
+L 588.672 64.584 
 " clip-path="url(#clip-3)" style="fill: none; stroke: var(--grid, #e1e0d9); stroke-width: 0.72; stroke-linecap: square"/>
    </g>
    <g id="line2d_16">
-    <path d="M 559.872 227.448 
-L 559.872 64.584 
+    <path d="M 565.056 227.448 
+L 565.056 64.584 
 " clip-path="url(#clip-3)" style="fill: none; stroke: var(--baseline, #c3c2b7); stroke-width: 0.72; stroke-linecap: square"/>
    </g>
    <g id="matplotlib.axis_5"/>
    <g id="matplotlib.axis_6"/>
    <g id="line2d_17">
-    <path d="M 540.864 90.494182 
-L 576.09216 90.494182 
+    <path d="M 547.344 90.494182 
+L 580.17024 90.494182 
 " clip-path="url(#clip-3)" style="fill: none; stroke: var(--series-1, #2a78d6); stroke-width: 1.44; stroke-linecap: round"/>
    </g>
    <g id="line2d_18">
-    <path d="M 510.4512 127.508727 
-L 589.0176 127.508727 
+    <path d="M 519.0048 127.508727 
+L 592.2144 127.508727 
 " clip-path="url(#clip-3)" style="fill: none; stroke: var(--series-1, #2a78d6); stroke-width: 1.44; stroke-linecap: round"/>
    </g>
    <g id="line2d_19">
-    <path d="M 520.84224 164.523273 
-L 575.33184 164.523273 
+    <path d="M 528.68736 164.523273 
+L 579.46176 164.523273 
 " clip-path="url(#clip-3)" style="fill: none; stroke: var(--series-1, #2a78d6); stroke-width: 1.44; stroke-linecap: round"/>
    </g>
    <g id="line2d_20">
-    <path d="M 498.79296 201.537818 
-L 584.70912 201.537818 
+    <path d="M 508.14144 201.537818 
+L 588.19968 201.537818 
 " clip-path="url(#clip-3)" style="fill: none; stroke: var(--series-1, #2a78d6); stroke-width: 1.44; stroke-linecap: round"/>
    </g>
    <g id="line2d_21">
     <g clip-path="url(#clip-3)">
-     <use xlink:href="#marker-2" x="558.680832" y="90.494182" style="fill: var(--series-1, #2a78d6); stroke: var(--surface, #ffffff); stroke-width: 1.44"/>
+     <use xlink:href="#marker-2" x="563.946048" y="90.494182" style="fill: var(--series-1, #2a78d6); stroke: var(--surface, #ffffff); stroke-width: 1.44"/>
     </g>
    </g>
    <g id="text_22">
-    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: start; fill: var(--ink-secondary, #52514e)" x="601.6896" y="93.734182" transform="rotate(-0 601.6896 93.734182)">−0.0005</text>
+    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: start; fill: var(--ink-secondary, #52514e); font-variant-numeric: tabular-nums" x="604.0224" y="93.734182" transform="rotate(-0 604.0224 93.734182)">−0.0005</text>
    </g>
    <g id="text_23">
-    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: end; fill: var(--ink-secondary, #52514e)" x="478.8" y="93.734182" transform="rotate(-0 478.8 93.734182)">threshold 0.8, shipped</text>
+    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: end; fill: var(--ink-secondary, #52514e)" x="489.168" y="93.734182" transform="rotate(-0 489.168 93.734182)">threshold 0.8, the incumbent</text>
    </g>
    <g id="line2d_22">
     <g clip-path="url(#clip-3)">
-     <use xlink:href="#marker-2" x="550.215936" y="127.508727" style="fill: var(--series-1, #2a78d6); stroke: var(--surface, #ffffff); stroke-width: 1.44"/>
+     <use xlink:href="#marker-2" x="556.058304" y="127.508727" style="fill: var(--series-1, #2a78d6); stroke: var(--surface, #ffffff); stroke-width: 1.44"/>
     </g>
    </g>
    <g id="text_24">
-    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: start; fill: var(--ink-secondary, #52514e)" x="601.6896" y="130.748727" transform="rotate(-0 601.6896 130.748727)">−0.0038</text>
+    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: start; fill: var(--ink-secondary, #52514e); font-variant-numeric: tabular-nums" x="604.0224" y="130.748727" transform="rotate(-0 604.0224 130.748727)">−0.0038</text>
    </g>
    <g id="text_25">
-    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: end; fill: var(--ink-secondary, #52514e)" x="478.8" y="130.748727" transform="rotate(-0 478.8 130.748727)">top-K 20, static</text>
+    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: end; fill: var(--ink-secondary, #52514e)" x="489.168" y="130.748727" transform="rotate(-0 489.168 130.748727)">top-K 20, static</text>
    </g>
    <g id="line2d_23">
     <g clip-path="url(#clip-3)">
-     <use xlink:href="#marker-2" x="547.858944" y="164.523273" style="fill: var(--series-1, #2a78d6); stroke: var(--surface, #ffffff); stroke-width: 1.44"/>
+     <use xlink:href="#marker-2" x="553.862016" y="164.523273" style="fill: var(--series-1, #2a78d6); stroke: var(--surface, #ffffff); stroke-width: 1.44"/>
     </g>
    </g>
    <g id="text_26">
-    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: start; fill: var(--ink-secondary, #52514e)" x="601.6896" y="167.763273" transform="rotate(-0 601.6896 167.763273)">−0.0047</text>
+    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: start; fill: var(--ink-secondary, #52514e); font-variant-numeric: tabular-nums" x="604.0224" y="167.763273" transform="rotate(-0 604.0224 167.763273)">−0.0047</text>
    </g>
    <g id="text_27">
-    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: end; fill: var(--ink-secondary, #52514e)" x="478.8" y="167.763273" transform="rotate(-0 478.8 167.763273)">sector relation only</text>
+    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: end; fill: var(--ink-secondary, #52514e)" x="489.168" y="167.763273" transform="rotate(-0 489.168 167.763273)">exact sector relation</text>
    </g>
    <g id="line2d_24">
     <g clip-path="url(#clip-3)">
-     <use xlink:href="#marker-2" x="540.635904" y="201.537818" style="fill: var(--series-1, #2a78d6); stroke: var(--surface, #ffffff); stroke-width: 1.44"/>
+     <use xlink:href="#marker-2" x="547.131456" y="201.537818" style="fill: var(--series-1, #2a78d6); stroke: var(--surface, #ffffff); stroke-width: 1.44"/>
     </g>
    </g>
    <g id="text_28">
-    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: start; fill: var(--ink-secondary, #52514e)" x="601.6896" y="204.777818" transform="rotate(-0 601.6896 204.777818)">−0.0076</text>
+    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: start; fill: var(--ink-secondary, #52514e); font-variant-numeric: tabular-nums" x="604.0224" y="204.777818" transform="rotate(-0 604.0224 204.777818)">−0.0076</text>
    </g>
    <g id="text_29">
-    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: end; fill: var(--ink-secondary, #52514e)" x="478.8" y="204.777818" transform="rotate(-0 478.8 204.777818)">threshold 0.5</text>
+    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: end; fill: var(--ink-secondary, #52514e)" x="489.168" y="204.777818" transform="rotate(-0 489.168 204.777818)">threshold 0.5</text>
    </g>
    <g id="text_30">
-    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781)" x="509.184" y="237.888" transform="rotate(-0 509.184 237.888)">−0.02</text>
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781); font-variant-numeric: tabular-nums" x="517.824" y="237.888" transform="rotate(-0 517.824 237.888)">−0.02</text>
    </g>
    <g id="text_31">
-    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781)" x="534.528" y="237.888" transform="rotate(-0 534.528 237.888)">−0.01</text>
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781); font-variant-numeric: tabular-nums" x="541.44" y="237.888" transform="rotate(-0 541.44 237.888)">−0.01</text>
    </g>
    <g id="text_32">
-    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781)" x="559.872" y="237.888" transform="rotate(-0 559.872 237.888)">0</text>
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781); font-variant-numeric: tabular-nums" x="565.056" y="237.888" transform="rotate(-0 565.056 237.888)">0</text>
    </g>
    <g id="text_33">
-    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781)" x="585.216" y="237.888" transform="rotate(-0 585.216 237.888)">+0.01</text>
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781); font-variant-numeric: tabular-nums" x="588.672" y="237.888" transform="rotate(-0 588.672 237.888)">+0.01</text>
    </g>
   </g>
   <g id="text_34">
@@ -404,13 +404,13 @@ L 584.70912 201.537818
    <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: start; fill: var(--ink-secondary, #52514e)" x="34.56" y="49.9824" transform="rotate(-0 34.56 49.9824)">compounded return, roughly 700-name panel (right)</text>
   </g>
   <g id="text_37">
-   <text style="font-weight: 700; font-size: 10.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: start; fill: var(--ink-primary, #0b0b0b)" x="397.44" y="23.868" transform="rotate(-0 397.44 23.868)">Graph specifications against the graph-zeroed control</text>
+   <text style="font-weight: 700; font-size: 10.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: start; fill: var(--ink-primary, #0b0b0b)" x="376.704" y="23.868" transform="rotate(-0 376.704 23.868)">Graph specifications against the graph-zeroed control</text>
   </g>
   <g id="text_38">
-   <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: start; fill: var(--ink-secondary, #52514e)" x="397.44" y="38.7504" transform="rotate(-0 397.44 38.7504)">mean daily IC difference, 238 test days</text>
+   <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: start; fill: var(--ink-secondary, #52514e)" x="376.704" y="38.7504" transform="rotate(-0 376.704 38.7504)">mean daily IC difference, 238 test days</text>
   </g>
   <g id="text_39">
-   <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: start; fill: var(--ink-secondary, #52514e)" x="397.44" y="49.9824" transform="rotate(-0 397.44 49.9824)">95% block-bootstrap interval; none distinguishable from zero</text>
+   <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: start; fill: var(--ink-secondary, #52514e)" x="376.704" y="49.9824" transform="rotate(-0 376.704 49.9824)">95% block-bootstrap interval; none distinguishable from zero</text>
   </g>
   <g id="text_40">
    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781)" x="103.68" y="268.164" transform="rotate(-0 103.68 268.164)">percentage points over the benchmark</text>
@@ -419,7 +419,7 @@ L 584.70912 201.537818
    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781)" x="283.392" y="268.164" transform="rotate(-0 283.392 268.164)">cumulative return, yearly test windows</text>
   </g>
   <g id="text_42">
-   <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781)" x="559.872" y="268.164" transform="rotate(-0 559.872 268.164)">arm minus control, daily cross-sectional IC</text>
+   <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-anchor: middle; fill: var(--ink-muted, #898781)" x="565.056" y="268.164" transform="rotate(-0 565.056 268.164)">arm minus control, daily cross-sectional IC</text>
   </g>
  </g>
  <defs>
@@ -430,7 +430,7 @@ L 584.70912 201.537818
    <rect x="207.36" y="64.584" width="152.064" height="162.864"/>
   </clipPath>
   <clipPath id="clip-3">
-   <rect x="483.84" y="64.584" width="152.064" height="162.864"/>
+   <rect x="494.208" y="64.584" width="141.696" height="162.864"/>
   </clipPath>
  </defs>
 </svg>

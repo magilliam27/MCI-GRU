@@ -7,14 +7,18 @@ figure needs no Drive access and anyone can regenerate it:
 * Left: excess return over the benchmark by test year on the 110-name point-in-time
   universe (SP500_PIT_GICS_TOP10_MULTIYEAR_BASELINE_2026-06-23), with the roughly
   700-name panel's return compounded across its four yearly test windows against the
-  benchmark's beside it (PIT_MASKED_PANEL_2022_2025_FULL_RUN_REPORT_2026-05-16).
+  benchmark's beside it (PIT_MASKED_PANEL_2022_2025_FULL_RUN_REPORT_2026-05-16). The
+  line's interior points are compounded from the printed per-year rows; its endpoints
+  are checked against the compounded figures the report prints.
 * Right: the paired re-analysis (GRAPH_PAIRED_REANALYSIS_2026-09-02) as a forest plot:
   each arm's mean daily IC difference from the graph-zeroed control with its 95%
   block-bootstrap interval.
 
-The JSON carries every plotted number with the report and section it is read from.
+The JSON carries every plotted number and label with the report, section, and column it
+is read from, and each panel's caveat in the report's own words.
 tests/test_readme_figure.py parses those reports and refuses a JSON value that differs,
-and checks that this script reproduces the committed SVG byte for byte.
+checks the README caption carries the caveats, and checks that this script reproduces
+the committed SVG byte for byte.
 
 Determinism, so that reproduction holds across machines and matplotlib versions: axes
 are placed by figure fraction with no layout engine and no tight bounding box; every
@@ -22,14 +26,15 @@ piece of text is placed at an explicit baseline coordinate (no tick labels, no l
 no axis labels, and no vertical alignment other than baseline, all of which move with
 font metrics and moved between matplotlib 3.10 and 3.11); text is kept as text; the
 hash-derived clip-path and marker ids matplotlib emits are renamed in order of
-appearance; and no date or creator metadata is written.
+appearance; and no date or creator metadata is written. Checked byte-identical on
+matplotlib 3.10.9 and 3.11.2.
 
 Colour is by role. Each role has a light and a dark value from the reference palette
 the repository's chart method documents (categorical slots 1 and 2, the blue/red
 diverging poles, the ink and chrome tokens); the surface pair is GitHub's page
 background in each theme. The light value is drawn, then rewritten as a CSS custom
 property with a ``prefers-color-scheme: dark`` block, so one SVG renders on both
-GitHub themes.
+GitHub themes. Numeric text gets tabular numerals so value columns align.
 
 Usage:
     python scripts/gen_readme_figure.py
@@ -45,10 +50,14 @@ import re
 import sys
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import matplotlib
 from matplotlib.figure import Figure
 from matplotlib.patches import BoxStyle, FancyBboxPatch, Rectangle
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_JSON = "docs/assets/readme_evidence.json"
@@ -68,6 +77,9 @@ TOKENS: dict[str, tuple[str, str]] = {
 }
 LIGHT = {role: light for role, (light, _dark) in TOKENS.items()}
 
+Rect = tuple[float, float, float, float]  # left, bottom, width, height as figure fractions
+Limits = tuple[float, float]
+
 DPI = 100
 PT_PER_PX = 72.0 / DPI  # one figure pixel, in points
 FIG_W, FIG_H = 9.6, 3.9  # inches; 691 x 281 pt, close to the README column so it scales little
@@ -75,11 +87,12 @@ FONT = "DejaVu Sans"  # bundled with matplotlib; only its name is written, never
 FONT_STACK = "system-ui, -apple-system, 'Segoe UI', sans-serif"
 HASH_SALT = "mci-gru-readme-evidence"
 MINUS = "−"
+NUMERIC_TEXT = re.compile(rf"^[{MINUS}+]?\d[\d.,]*%?$")
 
-RECT_BARS = (0.05, 0.19, 0.20, 0.58)
-RECT_LINE = (0.30, 0.19, 0.22, 0.58)
-RECT_FOREST = (0.70, 0.19, 0.22, 0.58)
-X_RIGHT_BLOCK = 0.575  # where the right panel's title and row labels begin
+RECT_BARS: Rect = (0.05, 0.19, 0.20, 0.58)
+RECT_LINE: Rect = (0.30, 0.19, 0.22, 0.58)
+RECT_FOREST: Rect = (0.715, 0.19, 0.205, 0.58)
+X_RIGHT_BLOCK = 0.545  # where the right panel's title begins; its row labels end at the axes
 
 SIZE_TITLE, SIZE_SUB, SIZE_LABEL, SIZE_TICK = 10.5, 9.0, 9.0, 8.5
 CAP = 0.72  # cap height of the sans, as a fraction of the font size
@@ -102,11 +115,15 @@ def signed(value: float, decimals: int, suffix: str = "") -> str:
 
 
 def half_up(value: float) -> int:
-    """Round to the nearest integer, halves away from zero, as the reports are quoted."""
+    """Round to the nearest integer with halves away from zero.
+
+    The baseline report prints 22.50; the README quotes it as 23 points, and Python's
+    banker's rounding would print 22.
+    """
     return int(Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
-def compounded_pct(yearly_pct: list[float]) -> list[float]:
+def compounded_pct(yearly_pct: Sequence[float]) -> list[float]:
     """Compound yearly percentage returns into a path of cumulative returns starting at 0."""
     path = [0.0]
     growth = 1.0
@@ -119,7 +136,7 @@ def compounded_pct(yearly_pct: list[float]) -> list[float]:
 class Panel:
     """An axes with fixed limits, plus pixel-to-data conversions for placing marks and text."""
 
-    def __init__(self, fig: Figure, rect: tuple[float, float, float, float], xlim, ylim):
+    def __init__(self, fig: Figure, rect: Rect, xlim: Limits, ylim: Limits) -> None:
         self.ax = fig.add_axes(rect)
         self.ax.set_xlim(*xlim)
         self.ax.set_ylim(*ylim)
@@ -166,11 +183,11 @@ class Panel:
     ) -> None:
         self.centred(x - self.dx(gap), y, s, size=size, role=role, ha="right")
 
-    def x_ticks(self, positions: list[float], labels: list[str]) -> None:
+    def x_ticks(self, positions: Sequence[float], labels: Sequence[str]) -> None:
         for x, label in zip(positions, labels, strict=True):
             self.below(x, self.ylim[0], label, size=SIZE_TICK, role="ink-muted")
 
-    def y_ticks(self, positions: list[float], labels: list[str]) -> None:
+    def y_ticks(self, positions: Sequence[float], labels: Sequence[str]) -> None:
         for y, label in zip(positions, labels, strict=True):
             self.left_of(self.xlim[0], y, label, size=SIZE_TICK, role="ink-muted")
 
@@ -188,7 +205,7 @@ class Panel:
             zorder=3,
         )
 
-    def line(self, xs, ys, role: str, zorder: int = 2, **kwargs) -> None:
+    def line(self, xs: Sequence[float], ys: Sequence[float], role: str, zorder: int = 2) -> None:
         self.ax.plot(
             xs,
             ys,
@@ -197,7 +214,28 @@ class Panel:
             solid_joinstyle="round",
             solid_capstyle="round",
             zorder=zorder,
-            **kwargs,
+        )
+
+    def key(self, y_axes: float, name: str, role: str) -> None:
+        """One legend entry at a fixed axes-fraction height: a short line and its name."""
+        self.ax.plot(
+            [0.03, 0.095],
+            [y_axes, y_axes],
+            transform=self.ax.transAxes,
+            color=LIGHT[role],
+            linewidth=LINE_W,
+            solid_capstyle="round",
+            zorder=4,
+        )
+        self.ax.text(
+            0.12,
+            y_axes - MID * px(SIZE_LABEL) / self.h_px,
+            name,
+            transform=self.ax.transAxes,
+            fontsize=SIZE_LABEL,
+            color=LIGHT["ink-secondary"],
+            ha="left",
+            va="baseline",
         )
 
 
@@ -213,37 +251,25 @@ def draw_bars(fig: Figure, block: dict) -> None:
     aspect = panel.ppx / panel.ppy
     for x, row in enumerate(rows):
         value = float(row["excess_pct"])
-        role = "series-1" if value >= 0 else "negative"
+        positive = value >= 0
+        role = "series-1" if positive else "negative"
         x0 = x - width / 2
-        y0, height = (0.0, value) if value >= 0 else (value, -value)
-        panel.ax.add_patch(
+        height = abs(value)
+        base_height = min(height, 2 * radius_y)
+        for patch in (
             FancyBboxPatch(
-                (x0, y0),
+                (x0, 0.0 if positive else -height),
                 width,
                 height,
                 boxstyle=BoxStyle.Round(pad=0, rounding_size=radius_x),
                 mutation_aspect=aspect,
-                facecolor=LIGHT[role],
-                edgecolor="none",
-                linewidth=0,
-                zorder=2,
-            )
-        )
-        base_height = min(height, 2 * radius_y)
-        base_y = 0.0 if value >= 0 else -base_height
-        panel.ax.add_patch(
-            Rectangle(
-                (x0, base_y),
-                width,
-                base_height,
-                facecolor=LIGHT[role],
-                edgecolor="none",
-                linewidth=0,
-                zorder=2,
-            )
-        )
+            ),
+            Rectangle((x0, 0.0 if positive else -base_height), width, base_height),
+        ):
+            patch.set(facecolor=LIGHT[role], edgecolor="none", linewidth=0, zorder=2)
+            panel.ax.add_patch(patch)
         label = signed(half_up(value), 0)
-        if value >= 0:
+        if positive:
             panel.above(x, value, label, size=SIZE_LABEL, role="ink-secondary")
         else:
             panel.below(x, value, label, size=SIZE_LABEL, role="ink-secondary", gap=5)
@@ -273,28 +299,8 @@ def draw_compounded(fig: Figure, block: dict) -> None:
             role="ink-secondary",
             ha="left",
         )
-    # Legend at fixed axes coordinates, top left.
     for index, (name, _path, role) in enumerate(reversed(series)):
-        y = 0.95 - index * 0.11
-        panel.ax.plot(
-            [0.03, 0.095],
-            [y, y],
-            transform=panel.ax.transAxes,
-            color=LIGHT[role],
-            linewidth=LINE_W,
-            solid_capstyle="round",
-            zorder=4,
-        )
-        panel.ax.text(
-            0.12,
-            y - MID * px(SIZE_LABEL) / panel.h_px,
-            name,
-            transform=panel.ax.transAxes,
-            fontsize=SIZE_LABEL,
-            color=LIGHT["ink-secondary"],
-            ha="left",
-            va="baseline",
-        )
+        panel.key(0.95 - index * 0.11, name, role)
     panel.x_ticks(xs, ["start"] + [str(row["year"]) for row in rows])
     panel.y_ticks([0, 50, 100], ["0", "+50%", "+100%"])
 
@@ -334,58 +340,25 @@ def draw_figure(spec: dict) -> Figure:
     draw_compounded(fig, spec["full_panel_compounded"])
     draw_forest(fig, forest)
 
-    x_left, x_right = RECT_BARS[0], X_RIGHT_BLOCK
     y_title, y_sub1, y_sub2 = 0.915, 0.862, 0.822
-    _fig_text(
-        fig,
-        x_left,
-        y_title,
-        "Point-in-time replays against the benchmark",
-        size=SIZE_TITLE,
-        role="ink-primary",
-        weight="bold",
+    blocks = (
+        (
+            RECT_BARS[0],
+            "Point-in-time replays against the benchmark",
+            "excess return by test year, 110-name universe (left)",
+            "compounded return, roughly 700-name panel (right)",
+        ),
+        (
+            X_RIGHT_BLOCK,
+            "Graph specifications against the graph-zeroed control",
+            f"mean daily IC difference, {forest['test_days']} test days",
+            "95% block-bootstrap interval; none distinguishable from zero",
+        ),
     )
-    _fig_text(
-        fig,
-        x_left,
-        y_sub1,
-        "excess return by test year, 110-name universe (left)",
-        size=SIZE_SUB,
-        role="ink-secondary",
-    )
-    _fig_text(
-        fig,
-        x_left,
-        y_sub2,
-        "compounded return, roughly 700-name panel (right)",
-        size=SIZE_SUB,
-        role="ink-secondary",
-    )
-    _fig_text(
-        fig,
-        x_right,
-        y_title,
-        "Graph specifications against the graph-zeroed control",
-        size=SIZE_TITLE,
-        role="ink-primary",
-        weight="bold",
-    )
-    _fig_text(
-        fig,
-        x_right,
-        y_sub1,
-        f"mean daily IC difference, {forest['test_days']} test days",
-        size=SIZE_SUB,
-        role="ink-secondary",
-    )
-    _fig_text(
-        fig,
-        x_right,
-        y_sub2,
-        "95% block-bootstrap interval; none distinguishable from zero",
-        size=SIZE_SUB,
-        role="ink-secondary",
-    )
+    for x, title, sub1, sub2 in blocks:
+        _fig_text(fig, x, y_title, title, size=SIZE_TITLE, role="ink-primary", weight="bold")
+        _fig_text(fig, x, y_sub1, sub1, size=SIZE_SUB, role="ink-secondary")
+        _fig_text(fig, x, y_sub2, sub2, size=SIZE_SUB, role="ink-secondary")
     for rect, caption in (
         (RECT_BARS, "percentage points over the benchmark"),
         (RECT_LINE, "cumulative return, yearly test windows"),
@@ -439,6 +412,18 @@ def stable_ids(svg: str) -> str:
     return svg
 
 
+def tabular_numerals(svg: str) -> str:
+    """Give every numeric text run tabular numerals, so value columns align."""
+
+    def restyle(match: re.Match[str]) -> str:
+        style, rest, content = match.group(1), match.group(2), match.group(3)
+        if NUMERIC_TEXT.match(content):
+            style += "; font-variant-numeric: tabular-nums"
+        return f'<text style="{style}"{rest}>{content}</text>'
+
+    return re.sub(r'<text style="([^"]*)"([^>]*)>([^<]*)</text>', restyle, svg)
+
+
 def tokenise(svg: str) -> str:
     """Rewrite every drawn light colour as its role's CSS custom property."""
     for role, (light, _dark) in TOKENS.items():
@@ -461,12 +446,7 @@ def tokenise(svg: str) -> str:
 
 def render_svg(spec: dict) -> bytes:
     with matplotlib.rc_context(
-        {
-            "svg.fonttype": "none",
-            "svg.hashsalt": HASH_SALT,
-            "font.family": FONT,
-            "axes.unicode_minus": True,
-        }
+        {"svg.fonttype": "none", "svg.hashsalt": HASH_SALT, "font.family": FONT}
     ):
         fig = draw_figure(spec)
         buffer = io.BytesIO()
@@ -479,7 +459,7 @@ def render_svg(spec: dict) -> bytes:
             metadata={"Date": None, "Creator": None},
         )
     svg = buffer.getvalue().decode("utf-8")
-    return tokenise(stable_ids(svg)).encode("utf-8")
+    return tokenise(tabular_numerals(stable_ids(svg))).encode("utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
