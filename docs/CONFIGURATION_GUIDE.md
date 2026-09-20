@@ -1,6 +1,8 @@
 # Configuration Guide
 
-This guide explains all configuration options and how to use them effectively.
+This guide explains the configuration groups, the presets that exist, and how to
+override them. Feature columns and their flags are in [`FEATURES.md`](FEATURES.md); what
+the model and graph parameters drive is in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Configuration Files Structure
 
@@ -8,55 +10,89 @@ The configuration system is Hydra-based with typed dataclasses in `mci_gru/confi
 
 ```
 configs/
-├── config.yaml              # Base configuration
-├── data/
-│   ├── sp500.yaml          # S&P 500 (default: LSEG)
-│   ├── csv_sp500.yaml      # S&P 500 (CSV source)
-│   ├── lseg_sp500.yaml     # S&P 500 (explicit LSEG)
-│   ├── russell1000.yaml    # Russell 1000
-│   └── ...
-├── features/
-│   ├── base.yaml           # Basic features only
-│   ├── with_momentum.yaml  # Default (with momentum)
-│   ├── full.yaml           # All features
-│   └── ...
-└── experiment/
-    ├── baseline.yaml       # Baseline experiment
-    ├── with_vix.yaml       # With VIX features
-    └── ...
+├── config.yaml                   # Base configuration; composes data=gics_top10_110_2016 and features=with_momentum
+├── data/                         # Source, universe, PIT settings, date windows (select with data=<name>)
+│   ├── gics_top10_110_2016.yaml  #   110-name GICS top-10 point-in-time universe, 2016 start (default; CSV)
+│   ├── gics_top10_110.yaml       #   the same universe, 2021 start (CSV)
+│   ├── csv_sp500.yaml            #   S&P 500 from a CSV, PIT off
+│   ├── sp500.yaml                #   S&P 500 through the LSEG loader
+│   ├── lseg_sp500.yaml           #   S&P 500 through the LSEG loader, explicit
+│   ├── russell1000.yaml          #   Russell 1000 through the LSEG loader
+│   ├── temporal_2016.yaml ...    #   anchored historical snapshot universes, 2016 to 2019 (mechanics only)
+│   └── index_level.yaml          #   one index series; experiment_mode=index_level
+├── features/                     # Feature families (select with features=<name>)
+│   ├── base.yaml                 #   OHLCV only
+│   ├── with_momentum.yaml        #   default
+│   └── full.yaml                 #   every family
+└── experiment/                   # Named experiments (add with +experiment=<name>); catalogued below
 ```
 
 ## Data Sources
 
-### LSEG (Default)
+Every data preset sets `source` (`csv` or `lseg`), the universe, the panel file, the
+point-in-time settings, and the train, validation, and test windows. Select one with
+`data=<name>`; `data` is already in the base defaults list, so it takes no `+` prefix.
 
-**Configuration:** `configs/data/sp500.yaml` or `configs/data/lseg_sp500.yaml`
+### CSV (default)
 
-```yaml
-source: lseg
-api_key: ${oc.env:LSEG_API_KEY}
-```
+The base configuration composes `data=gics_top10_110_2016`: a CSV panel with
+`kdcode, dt, open, high, low, close, volume` columns and a point-in-time membership
+table (`kdcode, valid_from, valid_to`). Both files are LSEG-derived and gitignored, so
+the default runs only where they exist, and `use_pit_universe: true` is required for
+that universe rather than optional. A run that supplies its own panel passes
+`data.use_pit_universe=false`:
 
-**Setup:** `export LSEG_API_KEY="your_api_key_here"`
-
-**Usage:**
 ```bash
-python run_experiment.py  # Uses LSEG by default
+python run_experiment.py data.filename=/path/to/panel.csv data.use_pit_universe=false
 ```
 
-### CSV Fallback
+`csv_sp500` is the generic CSV preset (`data/raw/market/sp500_data.csv`, PIT off, a 2019
+training start):
 
-**Configuration:** `configs/data/csv_sp500.yaml`
-
-```yaml
-source: csv
-filename: sp500_data.csv
-```
-
-**Usage:**
 ```bash
-python run_experiment.py +data=csv_sp500
+python run_experiment.py data=csv_sp500
 ```
+
+### LSEG
+
+`sp500`, `lseg_sp500`, and `russell1000` set `source: lseg` and fetch constituent OHLCV
+through the Refinitiv Workspace desktop application, which must be running. Nothing
+selects LSEG by default.
+
+```bash
+python run_experiment.py data=lseg_sp500
+```
+
+### FRED
+
+Credit-spread and global-regime features read FRED series and need `FRED_API_KEY` in
+the environment (see `.env.example`). The frozen recipe enables global regime, so it
+needs the key unless a smoke run turns that family off.
+
+```bash
+export FRED_API_KEY="your_key_here"
+python run_experiment.py features=full
+```
+
+### Index-Level Mode
+
+`data=index_level` sets `experiment_mode: index_level`: a single index series (FRED
+`SP500`, or a CSV with `dt, close` named in `data.index_filename`) in place of a stock
+panel, for experiments free of stock-level survivorship bias.
+
+### Universes
+
+| Universe | Names | Preset |
+| --- | ---: | --- |
+| GICS top-10 by market cap, point-in-time, 2016 start | ~110 | `data=gics_top10_110_2016` (default) |
+| GICS top-10 by market cap, point-in-time, 2021 start | ~110 | `data=gics_top10_110` |
+| S&P 500, LSEG | ~500 | `data=sp500`, `data=lseg_sp500` |
+| S&P 500, CSV | ~500 | `data=csv_sp500` |
+| Russell 1000, LSEG | ~1000 | `data=russell1000` |
+| Anchored historical snapshot universes, 2016 to 2019 | S&P 500 snapshot | `data=temporal_2016` … `data=temporal_2019` |
+
+The `temporal_*` presets are non-PIT anchored historical snapshot universes: mechanics
+smokes only, never headline evidence (see Long-History Presets below).
 
 ### True Rolling PIT S&P 500 Panel
 
@@ -89,6 +125,67 @@ python run_experiment.py +experiment=pit_temporal_2023
 python run_experiment.py +experiment=pit_temporal_2024
 python run_experiment.py +experiment=pit_temporal_2025
 ```
+
+## Experiment Presets
+
+`configs/experiment/`, added with `+experiment=<name>`. Each is a `@package _global_`
+overlay on the base configuration; the file's header comment records its purpose.
+
+| Preset | What it changes |
+| --- | --- |
+| `baseline` | Nothing; names the run `baseline`. |
+| `paper_faithful` | The paper's architecture: legacy GRU, no multi-scale encoder, no self-attention, ReLU, scalar edge weights, MSE loss, loss-based selection, no scheduler or AMP. |
+| `correlation_dynamic` | Rebuilds the correlation graph every 6 months (`graph.update_frequency_months=6`). |
+| `graph_zeroed` | Ablation control: every correlation edge suppressed, model unchanged. |
+| `graph_thr05` | Correlation threshold 0.5 instead of 0.8. |
+| `graph_topk20_static` | Per-node top-20 neighbours by signed correlation on the static cadence. |
+| `graph_sector_only` | Correlation edges zeroed, sector relation on, sector map derived from the universe metadata export. |
+| `long_history_his_t_21`, `_63`, `_126` | The frozen recipe with a longer temporal window; non-PIT runs are mechanics checks only. |
+| `momentum_dynamic` | Cycle-aware dynamic momentum blend (`features.momentum_blend_mode=dynamic`). |
+| `volatility_targeting` | `with_momentum` plus the volatility and volatility-targeting families. |
+| `with_vix` | The `full` feature preset with VIX and volatility on. |
+| `pit_temporal_2022` … `pit_temporal_2025` | True rolling point-in-time S&P 500 masked panels: five training years, one validation year, the named test year. |
+
+Retired presets are readable at tag `archive/pre-cleanup-2026-09`.
+
+## Feature Presets
+
+`configs/features/`, selected with `features=<name>`: `base`, `with_momentum` (the
+default), and `full`. Every column each family produces, its window, and its timing rule
+are in [`FEATURES.md`](FEATURES.md).
+
+## Graph Parameters
+
+`graph.*`, `GraphConfig`. Base values from `configs/config.yaml`; the frozen recipe pins
+the same values.
+
+| Parameter | Base | Meaning |
+| --- | --- | --- |
+| `judge_value` | 0.8 | Correlation threshold for an edge; used when `top_k` is 0. |
+| `update_frequency_months` | 0 | Months between graph rebuilds; 0 is a static graph. |
+| `corr_lookback_days` | 252 | Trading days of returns behind each correlation. |
+| `top_k` | 0 | Per-node top-K neighbour selection; 0 keeps the threshold rule. |
+| `top_k_metric` | `corr` | Ranking metric when `top_k` is set: `corr` or `abs_corr`. |
+| `use_multi_feature_edges` | true | Four-channel edge attributes instead of a scalar weight. |
+| `drop_edge_p` | 0.1 | Train-time edge dropout; 0 disables. |
+| `isolate_edge_dropout_rng` | false | Fork the RNG around edge dropout so the global stream is untouched. |
+| `append_snapshot_age_days` | false | One extra edge column: days since the snapshot's valid-from date. |
+| `use_lead_lag_features` | false | Two extra edge columns from the best lead-lag correlation (`lead_lag_days`). |
+| `lead_lag_days` | [1, 2, 3, 5] | Candidate lags for the lead-lag edge columns. |
+| `use_sector_relation` | false | Second GAT branch over sector edges from `sector_map_csv`. |
+| `sector_map_csv` | null | `kdcode, sector` map, or a universe metadata export the loader derives one from. |
+| `exclude_edge_pairs` | [] | `kdcode` pairs removed from every constructed graph. |
+| `zero_edges` | false | Suppress every correlation edge (the ablation control). |
+
+The graph's construction, edge attributes, and static, dynamic, and sector forms are in
+[`ARCHITECTURE.md`](ARCHITECTURE.md), Graph.
+
+## Model Parameters
+
+`model.*`, `ModelConfig`. The base value of every key, with a comment naming it, is in
+`configs/config.yaml`; the ones that matter most are in the Hydra Base Defaults table
+below, and what each drives is in [`ARCHITECTURE.md`](ARCHITECTURE.md), Model
+Architecture. There is deliberately no second table here.
 
 ## Regime Inputs
 
@@ -190,15 +287,17 @@ python run_experiment.py output_dir=/content/drive/MyDrive/MCI-GRU-Experiments
 ### Quick Test Run
 
 ```bash
-python run_experiment.py experiment_name=quick_test training.num_epochs=2 training.num_models=1 data.source=csv tracking.enabled=false
+python run_experiment.py experiment_name=quick_test data.filename=/path/to/panel.csv data.use_pit_universe=false training.num_epochs=2 training.num_models=1 tracking.enabled=false
 ```
 
-Use `data.source=csv` when LSEG / `refinitiv-data` is unavailable; disable MLflow for a quieter smoke run if desired.
+`data.use_pit_universe=false` is needed for any panel other than the default's, whose
+membership CSV is not in the repository. Disable MLflow for a quieter smoke run if
+desired.
 
 ### Use CSV Data Source
 
 ```bash
-python run_experiment.py +data=csv_sp500
+python run_experiment.py data=csv_sp500
 ```
 
 ### Different Lookback Period
@@ -248,8 +347,11 @@ evaluates `his_t=10`, `21`, `63`, and `126` across the 2022, 2023, 2024, and
 ### With VIX Features
 
 ```bash
-python run_experiment.py +experiment=with_vix +features=full
+python run_experiment.py +experiment=with_vix
 ```
+
+The preset already selects the `full` feature set; `features` is in the base defaults
+list, so it is overridden with `features=<name>`, never appended with `+`.
 
 ### Hyperparameter Sweep
 
@@ -260,7 +362,7 @@ python run_experiment.py --multirun experiment_name=lookback_sweep model.his_t=5
 ### Russell 1000 Dataset
 
 ```bash
-python run_experiment.py +data=russell1000 experiment_name=russell1000_baseline
+python run_experiment.py data=russell1000 experiment_name=russell1000_baseline
 ```
 
 ## Override Syntax
@@ -303,7 +405,7 @@ python run_experiment.py --multirun model.his_t=5,10 training.batch_size=32,64
 **Solutions:**
 ```bash
 python run_experiment.py data.filename=your_actual_file.csv
-python run_experiment.py +data=csv_sp500
+python run_experiment.py data=csv_sp500
 ```
 
 ### Issue: "LSEG API key not found"
@@ -313,7 +415,7 @@ python run_experiment.py +data=csv_sp500
 **Solutions:**
 ```bash
 export LSEG_API_KEY="your_key_here"
-python run_experiment.py +data=csv_sp500
+python run_experiment.py data=csv_sp500
 ```
 
 ### Issue: "Output not saved to Google Drive"
@@ -324,4 +426,4 @@ python run_experiment.py +data=csv_sp500
 
 ## Further Reading
 
-- `QUICK_REFERENCE.md`, `OUTPUT_MANAGEMENT.md`, Hydra: https://hydra.cc/
+- `FEATURES.md`, `QUICK_REFERENCE.md`, `OUTPUT_MANAGEMENT.md`, Hydra: https://hydra.cc/
