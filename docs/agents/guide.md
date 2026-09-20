@@ -141,6 +141,7 @@ existing stage over widening `run_experiment.py`:
 | Ensembling | `mci_gru/training/ensemble.py` | `train_multiple_models`, per-member seeds, mean prediction |
 | In-run metrics | `mci_gru/evaluation/metrics.py`, `statistics.py` | `EvaluationConfig`, bootstrap and Sharpe policy |
 | Run summaries and provenance | `mci_gru/evaluation/experiment_summary.py` | `run_metadata.json`, `resolved_config.json` and its SHA-256 |
+| Retained execution-start evidence | `mci_gru/evaluation/execution_provenance.py` | `capture_execution_start`, `read_execution_provenance`; standalone capture/readback only, not yet wired into training |
 | Economic replay | `mci_gru/evaluation/backtest_engine.py`, `portfolio.py`, `scripts/backtest_sp500.py` | score / execution / return timing, costs, benchmark |
 | Selection research | `mci_gru/evaluation/selection_audit.py`, `selection_nulls.py`, `trial_ledger.py`, `artifacts.py` | [../evaluation/EVIDENCE_HARNESS.md](../evaluation/EVIDENCE_HARNESS.md), `SelectionResearchProtocol` |
 | Run bundles | `mci_gru/evaluation/run_bundle.py` | manifest hashes, `CONFIG_CANDIDATES`, immutability |
@@ -413,6 +414,41 @@ guard surfaces are:
 ```
 
 ### Artifact and evidence constraints
+
+`capture_execution_start()` is the first standalone #144 boundary. Supply the
+existing redacted `resolved_config.json` and its expected digest, repository
+root, output directory and optional window identifier. Each call writes a new
+`execution_provenance/<attempt_id>.json` and returns an `ExecutionReference`
+containing its path and exact-byte SHA-256. Keep that reference with the run;
+the digest is an integrity anchor, not a signature. `read_execution_provenance()`
+verifies that reference and returns the original config bytes, source bytes
+and recorded observations without consulting Git, packages or the live source.
+
+The source snapshot covers `run_experiment.py`, `mci_gru/`, `configs/`,
+`pyproject.toml` and the two requirements files. It retains relevant untracked
+source and exact line endings. Symlinks, unreadable source and detected
+credential-bearing files are excluded with explicit partial-source evidence.
+The credential checks are conservative guards for credential filenames,
+decoded JSON keys, Python literal assignments/dictionaries/keyword arguments,
+simple YAML/TOML assignments, private-key text and authenticated URLs. Python
+that cannot be parsed is also excluded. These checks are not a general secret
+scanner. Config must already be redacted; capture rejects unsafe
+config rather than rewriting its established bytes or digest.
+
+This first boundary records Python, NumPy, pandas, SciPy, Torch, PyG and the
+process platform. Failed Git/package/platform observations are explicit unavailable
+values. The Colab runtime label is explicitly unknown. Source completeness is
+relative to the declared source scope, not proof of a complete execution
+dependency closure. External plugins and notebook-only code are not covered.
+The code-identity object preserves the existing v1 fields, including the dirty
+diff digest and version map; explicit observation states distinguish unavailable
+Git evidence from a clean tree. Read-back rejects missing or inconsistent required
+metadata as well as byte-integrity failures.
+Every start record stays `incomplete`: it provides no completion event or
+actual member seed/device/AMP/backend evidence. Training integration, richer
+runtime observations, input-identity linkage and bundle attachment remain
+separate work. Do not report this helper's tests as live capture, replay,
+preservation, or reproducibility proof.
 
 - `results/`, `outputs/`, `*.pth`, and `*.pt` are gitignored and are not source
   of truth merely because they exist locally.
