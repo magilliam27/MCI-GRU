@@ -14,7 +14,7 @@ Use path plus concept evidence. Exact line numbers are optional.
 - `mci_gru/evaluation/statistics.py`: evaluation helpers cover IC, Newey-West Sharpe, and moving-block bootstrap confidence intervals.
 - `mci_gru/evaluation/portfolio.py`: portfolio helpers cover top-k returns, deterministic ranking, turnover, and rank-drop gate logic.
 - `docs/CONFIGURATION_GUIDE.md`: Hydra configs and typed dataclasses are the entrypoint for experiment presets and ablations.
-- `docs/BACKTEST_FAIRNESS_AUDIT.md`: backtest review highlights execution timing, label leakage, graph timing, and return attribution risks.
+- `docs/research/archive/BACKTEST_FAIRNESS_AUDIT.md`: backtest review highlights execution timing, label leakage, graph timing, and return attribution risks.
 
 ## Slice Categories
 

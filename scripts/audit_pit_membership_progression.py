@@ -20,8 +20,10 @@ DEFAULT_SNAPSHOTS_CSV = Path(
     "data/raw/constituents/sp500_pit_joiner_leaver_20160101_20260513_snapshots.csv"
 )
 DEFAULT_MARKET_CSV = Path("data/raw/market/sp500_pit_union_lseg_20150101_20260513.csv")
-DEFAULT_OUTPUT_CSV = Path("docs/audits/pit_membership_progression_snapshot_counts.csv")
-DEFAULT_OUTPUT_MARKDOWN = Path("docs/audits/pit_membership_progression_audit.md")
+DEFAULT_OUTPUT_CSV = Path(
+    "docs/research/current/audits/pit_membership_progression_snapshot_counts.csv"
+)
+DEFAULT_OUTPUT_MARKDOWN = Path("docs/research/current/audits/pit_membership_progression_audit.md")
 DEFAULT_VALIDATION_YEARS = (2022, 2023, 2024, 2025)
 
 
