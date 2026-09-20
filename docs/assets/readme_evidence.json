@@ -1,0 +1,45 @@
+{
+  "_about": "Inputs to scripts/gen_readme_figure.py. Every number, label, and caveat is read from the current report named beside it; tests/test_readme_figure.py parses each report and refuses a value that differs, and checks the README caption carries the caveats. Regenerate the figure with: python scripts/gen_readme_figure.py",
+  "reduced_universe_excess": {
+    "report": "docs/research/current/SP500_PIT_GICS_TOP10_MULTIYEAR_BASELINE_2026-06-23.md",
+    "section": "Results",
+    "columns": {"year": "Year", "model_total_pct": "Top-10 No-TC Total", "benchmark_pct": "Benchmark", "excess_pct": "Excess"},
+    "caveats": ["PIT daily top-10, no transaction costs, no rank-drop gate"],
+    "rows": [
+      {"year": 2022, "model_total_pct": -33.12, "benchmark_pct": -11.27, "excess_pct": -21.85},
+      {"year": 2023, "model_total_pct": 41.66, "benchmark_pct": 11.85, "excess_pct": 29.81},
+      {"year": 2024, "model_total_pct": 37.19, "benchmark_pct": 14.68, "excess_pct": 22.50}
+    ]
+  },
+  "full_panel_compounded": {
+    "report": "docs/research/current/PIT_MASKED_PANEL_2022_2025_FULL_RUN_REPORT_2026-05-16.md",
+    "section": "Backtest Results",
+    "columns": {"year": "Test year", "model_total_pct": "Total return", "benchmark_pct": "Benchmark return", "excess_pct": "Excess return"},
+    "caveats": [
+      "Transaction costs were disabled in the reviewed backtest artifact.",
+      "Rank-drop gating was disabled.",
+      "Year-by-year statistical significance is absent."
+    ],
+    "rows": [
+      {"year": 2022, "model_total_pct": -20.65, "benchmark_pct": -6.45, "excess_pct": -14.20},
+      {"year": 2023, "model_total_pct": 25.90, "benchmark_pct": 7.12, "excess_pct": 18.78},
+      {"year": 2024, "model_total_pct": 45.36, "benchmark_pct": 11.73, "excess_pct": 33.63},
+      {"year": 2025, "model_total_pct": 32.15, "benchmark_pct": 7.14, "excess_pct": 25.01}
+    ],
+    "compounded_pct": {"model": 91.9, "benchmark": 20.0, "section": "Cross-year read"}
+  },
+  "paired_reanalysis": {
+    "report": "docs/research/current/GRAPH_PAIRED_REANALYSIS_2026-09-02.md",
+    "section": "1.",
+    "control": "A0, the graph-zeroed control",
+    "test_days": 238,
+    "columns": {"arm": "arm", "mean_delta": "mean Δ = IC_arm − IC_A0", "bhy_p": "BHY p", "ci": "95% block-bootstrap CI on the mean"},
+    "caveats": ["every arm's mean daily difference is negative, none is distinguishable from zero, and the BHY-adjusted p-value is 1.00 for all four comparisons"],
+    "rows": [
+      {"arm": "A1_shipped", "label": "threshold 0.8, the incumbent", "mean_delta": -0.00047, "ci_low": -0.0075, "ci_high": 0.0064, "bhy_p": 1.00},
+      {"arm": "A3_topk20", "label": "top-K 20, static", "mean_delta": -0.00381, "ci_low": -0.0195, "ci_high": 0.0115, "bhy_p": 1.00},
+      {"arm": "A4_sector_only", "label": "exact sector relation", "mean_delta": -0.00474, "ci_low": -0.0154, "ci_high": 0.0061, "bhy_p": 1.00},
+      {"arm": "A2_thr05", "label": "threshold 0.5", "mean_delta": -0.00759, "ci_low": -0.0241, "ci_high": 0.0098, "bhy_p": 1.00}
+    ]
+  }
+}
