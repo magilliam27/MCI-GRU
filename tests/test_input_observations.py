@@ -42,14 +42,14 @@ def test_native_reader_rejects_a_sealed_context_before_reading_source(tmp_path, 
     manager = DataManager(DataConfig(filename=str(source)))
     manager.load()
     manager.input_observations.freeze()
-    real_open = io.open
+    real_open = Path.open
 
     def forbid_read(file, *args, **kwargs):
         if Path(file) == source:
             pytest.fail("A sealed context still opened a source")
         return real_open(file, *args, **kwargs)
 
-    monkeypatch.setattr(io, "open", forbid_read)
+    monkeypatch.setattr(Path, "open", forbid_read)
     with pytest.raises(ValueError, match="sealed"):
         manager.load()
 

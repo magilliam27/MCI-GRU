@@ -1,8 +1,6 @@
 """Actual native reads remain identifiable in each saved preparation result."""
 
-import builtins
 import hashlib
-import io
 import json
 import logging
 import os
@@ -138,18 +136,17 @@ def test_preparation_keeps_both_pit_reads_when_the_file_changes(
     config.data.pit_universe_mode = mode
     config.data.pit_min_scoreable_stocks = 0
     config.data.normalisation = normalisation
-    original_open = io.open
+    original_open = Path.open
     reads = []
 
     def replace_before_second_read(file, mode="r", *args, **kwargs):
-        if isinstance(file, (str, os.PathLike)) and Path(file) == pit_path and "r" in mode:
+        if file == pit_path and "r" in mode:
             reads.append(str(file))
             if len(reads) == 2:
                 pit_path.write_bytes(replacement)
         return original_open(file, mode, *args, **kwargs)
 
-    monkeypatch.setattr(builtins, "open", replace_before_second_read)
-    monkeypatch.setattr(io, "open", replace_before_second_read)
+    monkeypatch.setattr(Path, "open", replace_before_second_read)
     data = prepare_data(config, FeatureEngineer(config.features))
     metadata = _saved_metadata(tmp_path, config, data)
 
@@ -353,14 +350,14 @@ def test_preparation_propagates_observation_integrity_errors_but_preserves_ordin
             config.features.include_global_regime = True
             config.features.regime_strict = False
             config.features.regime_inputs_csv = str(auxiliary)
-        real_open = io.open
+        real_open = Path.open
 
         def fail_auxiliary_read(file, *args, **kwargs):
-            if isinstance(file, (str, os.PathLike)) and Path(file) == auxiliary:
+            if file == auxiliary:
                 raise error_type("synthetic input failure")
             return real_open(file, *args, **kwargs)
 
-        monkeypatch.setattr(io, "open", fail_auxiliary_read)
+        monkeypatch.setattr(Path, "open", fail_auxiliary_read)
     if integrity:
         with pytest.raises(InputObservationError, match="synthetic input failure"):
             prepare_data(config, FeatureEngineer(config.features))
