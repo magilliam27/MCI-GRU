@@ -8,10 +8,12 @@ via the refinitiv-data library. Requires Refinitiv Workspace to be running.
 import contextlib
 import logging
 import time
+from importlib import import_module
 
 import pandas as pd
 from tqdm import tqdm
 
+from mci_gru.data.input_snapshots import InputSnapshots
 from mci_gru.data.reshape import COLUMN_MAPPING, reshape_lseg_to_standard
 from mci_gru.data.universes import get_chain_ric, get_universe_info
 
@@ -28,7 +30,10 @@ class LSEGLoader:
     Note: Requires Refinitiv Workspace desktop app to be running.
     """
 
-    def __init__(self, session_type: str = "desktop"):
+    def __init__(
+        self, session_type: str = "desktop", *, snapshots: InputSnapshots | None = None
+    ) -> None:
+        self.snapshots = snapshots if snapshots is not None else InputSnapshots()
         self.session_type = session_type
         self.rd = None
         self.connected = False
@@ -42,10 +47,10 @@ class LSEGLoader:
             ImportError: If refinitiv-data not installed
             RuntimeError: If connection fails
         """
+        if self.snapshots.mode == "replay":
+            return True
         try:
-            import refinitiv.data as rd
-
-            self.rd = rd
+            self.rd = import_module("refinitiv.data")
         except ImportError as e:
             raise ImportError(
                 "refinitiv-data package not installed. Install with: pip install refinitiv-data"
@@ -70,7 +75,7 @@ class LSEGLoader:
             logger.info("Disconnected from Refinitiv")
 
     def _ensure_connected(self):
-        if not self.connected:
+        if not self.connected and self.snapshots.mode != "replay":
             raise RuntimeError("Not connected to Refinitiv. Call connect() first.")
 
     def get_universe_constituents(self, universe: str) -> list[str]:
@@ -246,58 +251,26 @@ class LSEGLoader:
         ]
         return any(indicator in error_str for indicator in permission_indicators)
 
-    def get_vix(self, start: str, end: str) -> pd.DataFrame | None:
-        """
-        Fetch VIX index data.
-
-        Args:
-            start: Start date (YYYY-MM-DD)
-            end: End date (YYYY-MM-DD)
-
-        Returns:
-            DataFrame with columns [dt, vix], or None if data unavailable
-        """
+    def get_vix(self, start: str, end: str, *, ric: str = ".VIX") -> pd.DataFrame:
+        """Load the selected VIX RIC, retaining history before reshaping."""
         self._ensure_connected()
-
-        logger.info(f"Fetching VIX data from {start} to {end}...")
-
-        # Try multiple VIX RICs - different ones may be available
-        # depending on user's entitlements
-        vix_rics = [".VIX", "VIX.N", "^VIX", "CBOE/VIX"]
-
-        for ric in vix_rics:
-            try:
-                df = self.rd.get_history(universe=[ric], start=start, end=end, interval="1D")
-
-                if df is None or len(df) == 0:
-                    continue
-
-                df = df.reset_index()
-                df = df.rename(columns={"Date": "dt", "CLOSE": "vix", "Close": "vix"})
-                df["dt"] = pd.to_datetime(df["dt"]).dt.strftime("%Y-%m-%d")
-
-                if "vix" in df.columns:
-                    df = df[["dt", "vix"]]
-                else:
-                    cols = [c for c in df.columns if c != "dt"]
-                    if cols:
-                        df = df.rename(columns={cols[0]: "vix"})
-                        df = df[["dt", "vix"]]
-                    else:
-                        continue
-
-                logger.info(f"  Fetched {len(df)} VIX observations (using {ric})")
-                return df
-
-            except Exception as e:
-                if self._is_permission_error(e):
-                    logger.info(f"  No permission for {ric}, trying alternatives...")
-                    continue
-                logger.info(f"  Error with {ric}: {e}")
-                continue
-
-        logger.warning("  Warning: VIX data unavailable (no permission or data). Skipping.")
-        return None
+        request = {"universe": [ric], "start": start, "end": end, "interval": "1D"}
+        observation = self.snapshots.observe(
+            role="lseg.vix",
+            source="lseg",
+            request=request,
+            acquire=lambda: self.rd.get_history(**request),
+        )
+        with self.snapshots.accepted(observation):
+            df = observation.data.reset_index()
+            df = df.rename(columns={"Date": "dt", "CLOSE": "vix", "Close": "vix"})
+            df["dt"] = pd.to_datetime(df["dt"]).dt.strftime("%Y-%m-%d")
+            if "vix" not in df.columns:
+                raise ValueError("Selected VIX history has no close field")
+            if df.empty:
+                raise ValueError("Selected VIX history is empty")
+            result = df[["dt", "vix"]]
+            return result
 
     def get_treasury_yields(self, start: str, end: str) -> pd.DataFrame | None:
         """
@@ -358,33 +331,27 @@ class LSEGLoader:
         )
         return None
 
-    def get_series(self, ric: str, start: str, end: str, value_name: str) -> pd.DataFrame | None:
-        """
-        Fetch a single LSEG time series and normalize to [dt, value_name].
-
-        Uses historical close as the proxy value. Returns None if unavailable.
-        """
+    def get_series(self, ric: str, start: str, end: str, value_name: str) -> pd.DataFrame:
+        """Load one selected LSEG history and normalize to [dt, value_name]."""
         self._ensure_connected()
-        try:
-            raw = self.rd.get_history(universe=[ric], start=start, end=end, interval="1D")
-            if raw is None or len(raw) == 0:
-                return None
-            shaped = self._reshape_to_standard_format(raw)
+        request = {"universe": [ric], "start": start, "end": end, "interval": "1D"}
+        observation = self.snapshots.observe(
+            role=f"lseg.{value_name}",
+            source="lseg",
+            request=request,
+            acquire=lambda: self.rd.get_history(**request),
+        )
+        with self.snapshots.accepted(observation):
+            shaped = self._reshape_to_standard_format(observation.data)
             if "close" not in shaped.columns:
-                return None
-            series = shaped[["dt", "close"]].copy()
-            series = series.rename(columns={"close": value_name})
+                raise ValueError("Selected LSEG history has no close field")
+            series = shaped[["dt", "close"]].copy().rename(columns={"close": value_name})
             series[value_name] = pd.to_numeric(series[value_name], errors="coerce")
             series = series.dropna(subset=[value_name])
-            if len(series) == 0:
-                return None
-            return series.sort_values("dt").drop_duplicates(subset=["dt"], keep="last")
-        except Exception as e:
-            if self._is_permission_error(e):
-                logger.warning(f"  No permission for {ric}, skipping.")
-                return None
-            logger.warning(f"  Error fetching series {ric}: {e}")
-            return None
+            if series.empty:
+                raise ValueError("Selected LSEG series is empty")
+            result = series.sort_values("dt").drop_duplicates(subset=["dt"], keep="last")
+            return result
 
     def fetch_universe_data(
         self,

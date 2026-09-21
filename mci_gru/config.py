@@ -47,6 +47,11 @@ class DataConfig:
     filename: str = "data/raw/market/sp500_data.csv"
     experiment_mode: str = "stock_level"
     index_filename: str | None = None
+    # Explicit auxiliary selections are independent of the stock-panel source.
+    auxiliary_sources: dict[str, str] = field(default_factory=dict)
+    auxiliary_snapshot_mode: str = "source"
+    auxiliary_snapshot_directory: str | None = None
+    auxiliary_snapshot_references: dict[str, list[dict[str, str]]] = field(default_factory=dict)
     train_start: str = "2019-01-01"
     train_end: str = "2023-12-31"
     val_start: str = "2024-01-08"
