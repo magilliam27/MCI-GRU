@@ -424,6 +424,93 @@ python run_experiment.py data=csv_sp500
 
 **Solution:** Ensure `run_experiment.py` uses `HydraConfig.get().runtime.output_dir` and passes `output_path` to `train_multiple_models`.
 
+## Linux CPU reference environment
+
+Issue [#143](https://github.com/magilliam27/MCI-GRU/issues/143) defines a separate
+experimental CPU recipe for **Ubuntu 24.04, x86_64, CPython 3.12.11**. This is
+neither the repository's minimum/default interpreter nor a GPU/Colab profile.
+`pyproject.toml` remains the authority for package ranges; `requirements.txt`
+retains its Colab-facing ranges. Existing CI policy remains unchanged pending D3.
+
+The recipe consists of two files, installed in this order:
+
+| File | Role and package origins |
+| --- | --- |
+| `requirements-linux-cpu-bootstrap.lock` | Exact PyPI wheels for pip 25.0.1 and setuptools 80.9.0, with SHA-256 hashes |
+| `requirements-linux-cpu.lock` | Exact URLs and SHA-256 hashes for the 62 dev+fred dependency artifacts; PyPI distributions except the official PyTorch CPU wheel |
+
+The Linux recipe keeps all 61 non-torch versions from `requirements.lock` and
+explicitly selects **torch 2.12.1+cpu** instead of PyPI torch 2.12.1. Its official
+CPU wheel declares `setuptools<82`, satisfied by the bootstrap pin, and does not
+require the Linux CUDA packages. `wheel==0.47.0` is retained in the dependency
+lock; `antlr4-python3-runtime==4.9.3` is a hashed source archive built locally
+using the pinned tools without build isolation. Other artifacts are wheels.
+The recipe pins installed versions and downloaded inputs, not byte-identical
+outputs of a source build or bitwise training results.
+
+`requirements.lock` remains the separate Windows reference and is unchanged.
+The earlier [Windows-lock-on-Linux measurement](https://github.com/magilliam27/MCI-GRU/issues/143#issuecomment-5739448133)
+is negative evidence: its 62 pins installed, but eight missing Linux torch
+dependencies caused dependency-check failure, 37 test-collection errors and a
+smoke import failure. It must not be counted as a successful CPU rebuild.
+
+### Rebuild in two new environments
+
+Run from the intended clean checkout, with CPython **3.12.11** already available
+as `python3.12`. The command rejects another patch version. Keep the temporary
+directory as evidence; never synchronize, repair or relocate a shared venv.
+The locks use exact artifact URLs and `--require-hashes`; installation disables
+dependency resolution and build isolation. A missing artifact, hash mismatch or
+incompatible dependency is a failure, not permission to substitute another pin.
+
+```bash
+set -euo pipefail
+python3.12 -c 'import sys; assert sys.version_info[:3] == (3, 12, 11)'
+export CPU_SOURCE_ROOT="$(git rev-parse --show-toplevel)"
+cpu_root="$(mktemp -d)"
+git rev-parse HEAD > "$cpu_root/source-sha.txt"
+sha256sum requirements-linux-cpu-bootstrap.lock requirements-linux-cpu.lock \
+  > "$cpu_root/recipe-files.sha256"
+sha256sum "$cpu_root/recipe-files.sha256"
+for rebuild in 1 2; do
+  python3.12 -m venv "$cpu_root/venv-$rebuild"
+  cpu_python="$cpu_root/venv-$rebuild/bin/python"
+  "$cpu_python" -m pip install --no-cache-dir --no-deps --require-hashes \
+    --force-reinstall -r requirements-linux-cpu-bootstrap.lock \
+    --report "$cpu_root/bootstrap-$rebuild.json"
+  "$cpu_python" -m pip install --no-cache-dir --no-deps --no-build-isolation \
+    --require-hashes -r requirements-linux-cpu.lock \
+    --report "$cpu_root/install-$rebuild.json"
+  "$cpu_python" -m pip install --no-deps --no-build-isolation -e '.[dev,fred]' \
+    --report "$cpu_root/editable-$rebuild.json"
+  "$cpu_python" -m pip list --format=json > "$cpu_root/versions-$rebuild.json"
+  "$cpu_python" -m pip check
+  (cd "$cpu_root" && "$cpu_python" -c 'import os, pathlib, mci_gru, torch; assert pathlib.Path(mci_gru.__file__).resolve() == pathlib.Path(os.environ["CPU_SOURCE_ROOT"]) / "mci_gru/__init__.py"; assert torch.__version__ == "2.12.1+cpu" and torch.version.cuda is None; print(mci_gru.__file__)')
+  "$cpu_python" -m pytest tests/ -v -m "not requires_data and not requires_lseg" \
+    --timeout=120 --junitxml="$cpu_root/pytest-$rebuild.xml"
+  "$cpu_python" scripts/ci_smoke.py
+done
+diff -u "$cpu_root/versions-1.json" "$cpu_root/versions-2.json"
+printf 'Retained rebuild evidence: %s\n' "$cpu_root"
+```
+
+The dedicated `.github/workflows/lock-stack-linux.yml` performs the same rebuild
+in two independent hosted jobs without package caching, then compares the
+installed version sets, package download origins/hashes, source SHA, combined
+recipe digest, exact Python version and CPU identity. Both jobs must pass
+`pip check`, project build/core/dev/fred constraint checks, the existing
+capability-independent suite, smoke and outside-checkout editable import check.
+The combined recipe digest is SHA-256 of the ordered `sha256sum` output for the
+bootstrap lock followed by the dependency lock, using repository-relative names.
+
+Per-run artifacts retain both recipe files, interpreter and runner identity,
+installation reports with package origins, complete installed versions, logs,
+JUnit and failed/skipped step outcomes for 30 days. Qualification requires two
+successful rebuilds and a successful comparison for the same submitted head;
+failed historical attempts remain separate. Optional MLflow, real market data,
+LSEG credentials and GPU coverage are outside this dev+fred CPU profile. The
+synthetic smoke explicitly disables tracking and external data access.
+
 ## Further Reading
 
 - `FEATURES.md`, `QUICK_REFERENCE.md`, `OUTPUT_MANAGEMENT.md`, Hydra: https://hydra.cc/

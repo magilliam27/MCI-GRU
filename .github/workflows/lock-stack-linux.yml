@@ -1,0 +1,281 @@
+name: Linux CPU locked rebuilds
+
+# Separate CPU reference for #143; repository interpreter/CI policy is unchanged.
+on:
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    if: github.head_ref == 'codex/143-linux-lock-qualification'
+    name: Linux CPU / Python 3.12.11 / rebuild ${{ matrix.rebuild }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        rebuild: [1, 2]
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PIP_NO_INPUT: "1"
+      PIP_NO_CACHE_DIR: "1"
+      CUDA_VISIBLE_DEVICES: ""
+
+    steps:
+      - name: Set disposable measurement paths
+        run: |
+          echo "EVIDENCE_DIR=$RUNNER_TEMP/lock-stack-evidence" >> "$GITHUB_ENV"
+          echo "MEASUREMENT_VENV=$RUNNER_TEMP/lock-stack-venv" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+        with:
+          # Measure the submitted source, including on pull_request events.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Record source and committed recipe
+        id: source
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          mkdir -p "$EVIDENCE_DIR"
+          git rev-parse HEAD | tee "$EVIDENCE_DIR/source-sha.txt"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          git status --porcelain > "$EVIDENCE_DIR/source-status.txt"
+          cp requirements-linux-cpu*.lock "$EVIDENCE_DIR/"
+          sha256sum requirements-linux-cpu-bootstrap.lock requirements-linux-cpu.lock \
+            | tee "$EVIDENCE_DIR/recipe-files.sha256"
+          sha256sum "$EVIDENCE_DIR/recipe-files.sha256" | cut -d ' ' -f 1 > "$EVIDENCE_DIR/recipe-sha256.txt"
+          sha256sum requirements.lock > "$EVIDENCE_DIR/windows-reference-sha256.txt"
+          cp /etc/os-release "$EVIDENCE_DIR/os-release.txt"
+          uname -a > "$EVIDENCE_DIR/uname.txt"
+          printf '%s\n' "$ImageOS" "$ImageVersion" > "$EVIDENCE_DIR/runner-image.txt"
+
+      - uses: actions/setup-python@v5
+        with:
+          # Match the Windows reference measured in #143, not a floating patch.
+          python-version: "3.12.11"
+          architecture: x64
+
+      - name: Create disposable environment
+        id: environment
+        run: |
+          python -m venv "$MEASUREMENT_VENV"
+          echo "$MEASUREMENT_VENV/bin" >> "$GITHUB_PATH"
+          "$MEASUREMENT_VENV/bin/python" -VV | tee "$EVIDENCE_DIR/python.txt"
+          "$MEASUREMENT_VENV/bin/python" -m platform > "$EVIDENCE_DIR/platform.txt"
+          "$MEASUREMENT_VENV/bin/python" -m pip --version > "$EVIDENCE_DIR/pip.txt"
+          "$MEASUREMENT_VENV/bin/python" -c 'import sys; assert sys.version_info[:3] == (3, 12, 11); assert sys.prefix != sys.base_prefix; print(sys.executable, sys.prefix, sys.base_prefix, sep="\n")' \
+            > "$EVIDENCE_DIR/interpreter-paths.txt"
+
+      - name: Install pinned bootstrap from exact hashed artifacts
+        id: bootstrap
+        run: |
+          python -m pip install --no-deps --require-hashes --force-reinstall \
+            -r requirements-linux-cpu-bootstrap.lock \
+            --report "$EVIDENCE_DIR/bootstrap-install-report.json" 2>&1 | tee "$EVIDENCE_DIR/bootstrap.log"
+          python -m pip list --format=json > "$EVIDENCE_DIR/bootstrap-versions.json"
+
+      - name: Install Linux CPU lock without resolving dependencies
+        id: lock
+        run: |
+          python -m pip install --no-deps --no-build-isolation --require-hashes -r requirements-linux-cpu.lock \
+            --report "$EVIDENCE_DIR/lock-install-report.json" 2>&1 | tee "$EVIDENCE_DIR/lock-install.log"
+
+      - name: Install editable source without resolving dependencies
+        id: editable
+        run: |
+          python -m pip install --no-deps --no-build-isolation -e '.[dev,fred]' \
+            --report "$EVIDENCE_DIR/editable-install-report.json" 2>&1 | tee "$EVIDENCE_DIR/editable-install.log"
+
+      - name: Record actual installed versions even after installation failure
+        id: versions
+        if: always() && steps.environment.outcome == 'success'
+        run: |
+          python -m pip list --format=json > "$EVIDENCE_DIR/installed-versions.json"
+          python -m pip freeze --all > "$EVIDENCE_DIR/installed-freeze.txt"
+          python -m pip inspect > "$EVIDENCE_DIR/installed-metadata.json"
+
+      - name: Check installed dependency consistency
+        id: pipcheck
+        if: always() && steps.environment.outcome == 'success'
+        run: python -m pip check 2>&1 | tee "$EVIDENCE_DIR/pip-check.log"
+
+      - name: Verify editable source location from outside the checkout
+        id: import_source
+        if: always() && steps.editable.outcome == 'success'
+        run: |
+          cd "$RUNNER_TEMP"
+          python - <<'PY' 2>&1 | tee "$EVIDENCE_DIR/import-source.log"
+          import os
+          from pathlib import Path
+
+          import mci_gru
+
+          actual = Path(mci_gru.__file__).resolve()
+          expected = Path(os.environ["GITHUB_WORKSPACE"]).resolve() / "mci_gru" / "__init__.py"
+          print(f"mci_gru source: {actual}")
+          if actual != expected:
+              raise SystemExit(f"Editable source mismatch: expected {expected}")
+          PY
+
+      - name: Run existing capability-independent tests
+        id: tests
+        if: always() && steps.editable.outcome == 'success' && steps.import_source.outcome == 'success'
+        run: |
+          python -m pytest tests/ -v -m "not requires_data and not requires_lseg" --timeout=120 \
+            --junitxml="$EVIDENCE_DIR/pytest.xml" 2>&1 | tee "$EVIDENCE_DIR/pytest.log"
+
+      - name: Run existing end-to-end smoke
+        id: smoke
+        if: always() && steps.editable.outcome == 'success' && steps.import_source.outcome == 'success'
+        run: python scripts/ci_smoke.py 2>&1 | tee "$EVIDENCE_DIR/ci-smoke.log"
+
+      - name: Verify CPU profile, exact pins and project constraints
+        id: profile
+        if: always() && steps.editable.outcome == 'success'
+        run: |
+          python - <<'PY' 2>&1 | tee "$EVIDENCE_DIR/profile-check.log"
+          import importlib.metadata
+          import json
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          import torch
+          from packaging.requirements import Requirement
+          from packaging.utils import canonicalize_name
+
+          evidence = Path(os.environ["EVIDENCE_DIR"])
+          identity = {"torch_version": torch.__version__, "cuda_version": torch.version.cuda,
+                      "cuda_available": torch.cuda.is_available()}
+          (evidence / "cpu-identity.json").write_text(json.dumps(identity, indent=2) + "\n")
+          if identity != {"torch_version": "2.12.1+cpu", "cuda_version": None, "cuda_available": False}:
+              raise SystemExit(f"Unexpected CPU profile: {identity}")
+          project = tomllib.loads(Path("pyproject.toml").read_text())
+          expected = {canonicalize_name(project["project"]["name"]): project["project"]["version"]}
+          for filename in ("requirements-linux-cpu-bootstrap.lock", "requirements-linux-cpu.lock"):
+              for name, version in re.findall(r"^# ([\w-]+)==(\S+)$", Path(filename).read_text(), re.M):
+                  expected[canonicalize_name(name)] = version
+          installed = {canonicalize_name(item["name"]): item["version"]
+                       for item in json.loads((evidence / "installed-versions.json").read_text())}
+          if installed != expected:
+              raise SystemExit(f"Installed versions differ from recipe: {installed} != {expected}")
+          requirements = project["build-system"]["requires"] + project["project"]["dependencies"]
+          for extra in ("dev", "fred"):
+              requirements += project["project"]["optional-dependencies"][extra]
+          for text in requirements:
+              requirement = Requirement(text)
+              if requirement.marker is None or requirement.marker.evaluate():
+                  version = importlib.metadata.version(requirement.name)
+                  if version not in requirement.specifier:
+                      raise SystemExit(f"Project constraint unsatisfied: {text}; installed {version}")
+          origins = {}
+          for filename in ("bootstrap-install-report.json", "lock-install-report.json"):
+              for item in json.loads((evidence / filename).read_text())["install"]:
+                  origins[canonicalize_name(item["metadata"]["name"])] = {
+                      "version": item["metadata"]["version"],
+                      "url": item["download_info"]["url"],
+                      "sha256": item["download_info"]["archive_info"]["hashes"]["sha256"],
+                  }
+          if set(origins) != set(installed) - {canonicalize_name(project["project"]["name"])}:
+              raise SystemExit("Install reports do not cover every external distribution")
+          (evidence / "package-origins.json").write_text(json.dumps(origins, sort_keys=True, indent=2) + "\n")
+          print(f"CPU profile, all {len(expected)} installed versions and project constraints verified")
+          PY
+
+      - name: Record outcomes including failed and skipped steps
+        if: always()
+        env:
+          STEP_OUTCOMES: ${{ toJSON(steps) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          mkdir -p "$EVIDENCE_DIR"
+          printf '%s\n' "$STEP_OUTCOMES" > "$EVIDENCE_DIR/step-outcomes.json"
+          printf '%s\n' "$RUN_URL" > "$EVIDENCE_DIR/run-url.txt"
+          {
+            printf 'Source: `%s`\n\n' "$SOURCE_SHA"
+            printf 'Two fresh Linux CPU rebuilds on Python 3.12.11; this artifact records one rebuild.\n\n'
+            printf 'Installation, pip check, test and smoke failures are evidence; no pin fallback is applied.\n\n'
+            printf 'A skipped test or smoke step is unmeasured. See step-outcomes.json and logs in the artifact.\n\n'
+            printf 'This run does not decide D3 or complete #143.\n'
+          } | tee "$EVIDENCE_DIR/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain measurement evidence on success or failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-cpu-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.rebuild }}
+          path: ${{ runner.temp }}/lock-stack-evidence
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    name: Compare independent CPU rebuilds
+    needs: measure
+    if: always() && github.head_ref == 'codex/143-linux-lock-qualification'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.11"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: linux-cpu-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-*
+          path: ${{ runner.temp }}/cpu-rebuilds
+      - name: Require two successful identical rebuilds
+        if: always()
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          REBUILDS_RESULT: ${{ needs.measure.result }}
+        shell: bash
+        run: |
+          python - <<'PY' 2>&1 | tee "$RUNNER_TEMP/cpu-rebuild-comparison.log"
+          import json
+          import os
+          from pathlib import Path
+
+          roots = sorted(Path(os.environ["RUNNER_TEMP"], "cpu-rebuilds").glob("linux-cpu-*"))
+          if os.environ["REBUILDS_RESULT"] != "success" or len(roots) != 2:
+              raise SystemExit("Both fresh rebuild jobs and both evidence artifacts must succeed")
+          required = ("source", "environment", "bootstrap", "lock", "editable", "versions",
+                      "pipcheck", "import_source", "tests", "smoke", "profile")
+          for root in roots:
+              outcomes = json.loads((root / "step-outcomes.json").read_text())
+              if any(outcomes.get(step, {}).get("outcome") != "success" for step in required):
+                  raise SystemExit(f"Incomplete or failed rebuild: {root.name}")
+              if (root / "source-sha.txt").read_text().strip() != os.environ["EXPECTED_SOURCE_SHA"]:
+                  raise SystemExit("Rebuild source does not match submitted head")
+          for filename in ("source-sha.txt", "recipe-sha256.txt", "recipe-files.sha256", "python.txt",
+                           "package-origins.json", "cpu-identity.json"):
+              if (roots[0] / filename).read_bytes() != (roots[1] / filename).read_bytes():
+                  raise SystemExit(f"Rebuilds differ: {filename}")
+          versions = [{item["name"]: item["version"]
+                       for item in json.loads((root / "installed-versions.json").read_text())}
+                      for root in roots]
+          if versions[0] != versions[1]:
+              raise SystemExit(f"Installed versions differ: {versions}")
+          print(f"Both fresh rebuilds passed all required checks; {len(versions[0])} installed versions match")
+          print(f"Source: {os.environ['EXPECTED_SOURCE_SHA']}")
+          print(f"Recipe: {(roots[0] / 'recipe-sha256.txt').read_text().strip()}")
+          print("Package artifact origins, hashes, exact Python and CPU identity also match")
+          PY
+      - name: Retain comparison result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-comparison-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cpu-rebuild-comparison.log
+          if-no-files-found: error
+          retention-days: 30
