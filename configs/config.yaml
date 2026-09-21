@@ -10,6 +10,14 @@ defaults:
   - features: with_momentum
   - _self_
 
+# Auxiliary acquisition is explicitly selected per enabled role (vix, credit,
+# regime, index). A missing file never selects a provider automatically.
+data:
+  auxiliary_sources: {}
+  auxiliary_snapshot_mode: source  # source | capture | replay
+  auxiliary_snapshot_directory: null
+  auxiliary_snapshot_references: {}
+
 # Model configuration
 model:
   his_t: 10                    # Historical lookback (days)

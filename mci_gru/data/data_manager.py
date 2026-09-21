@@ -14,6 +14,7 @@ import warnings
 from datetime import datetime
 from functools import partial
 from io import BytesIO
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pandas as pd
@@ -21,7 +22,9 @@ import torch
 from pandas.io.common import infer_compression
 from torch.utils.data import Dataset
 
-from mci_gru.data.input_observations import InputObservationContext
+from mci_gru.data import fred_loader, lseg_loader
+from mci_gru.data.input_observations import InputObservationContext, InputObservationError
+from mci_gru.data.input_snapshots import InputSnapshotError, InputSnapshots, SnapshotReference
 from mci_gru.data.path_resolver import resolve_project_data_path
 from mci_gru.data.pit import filter_edges_by_stock_mask
 from mci_gru.graph.schedule import canonical_date
@@ -80,11 +83,71 @@ class DataManager:
         self.input_observations = (
             input_observations if input_observations is not None else InputObservationContext()
         )
+        self.input_snapshots = InputSnapshots(
+            mode=config.auxiliary_snapshot_mode,
+            directory=Path(config.auxiliary_snapshot_directory)
+            if config.auxiliary_snapshot_directory
+            else None,
+            references={
+                key: [
+                    SnapshotReference(Path(item["manifest_path"]), item["manifest_sha256"])
+                    for item in values
+                ]
+                for key, values in config.auxiliary_snapshot_references.items()
+            },
+            input_observations=self.input_observations,
+        )
         self.df: pd.DataFrame | None = None
         self.vix_df: pd.DataFrame | None = None
         self.credit_df: pd.DataFrame | None = None
         self.regime_df: pd.DataFrame | None = None
         self.kdcode_list: list[str] | None = None
+
+    def required_input_failure(
+        self, error: Exception, *, role: str, source: str, configured_path: str | None = None
+    ) -> InputObservationError:
+        """Carry terminal safe failure facts with this window's sealed observations."""
+        observations = self.input_observations.freeze()
+        if isinstance(error, InputObservationError) and hasattr(error, "facts"):
+            failure = error
+        else:
+            events = observations.to_dict()["observations"]
+            failed = next(
+                (
+                    event
+                    for event in reversed(events)
+                    if event["outcome"] == "error"
+                    and (
+                        event.get("role") == role
+                        or configured_path is not None
+                        and event.get("configured_path") == configured_path
+                    )
+                ),
+                {},
+            )
+            stage = failed.get(
+                "stage", "resolve" if isinstance(error, FileNotFoundError) else "read"
+            )
+            details = InputSnapshotError(
+                role=failed.get("role", role),
+                source=source,
+                request={"configured_path": configured_path} if configured_path else {},
+                stage=stage,
+                reason=type(error).__name__,
+                **({"identity": failed["identity"]} if "identity" in failed else {}),
+            )
+            if isinstance(error, InputObservationError):
+                failure = error
+                failure.facts = details.facts
+            else:
+                failure = details
+        failure.facts["action"] = (
+            "Check the selected required input and its declared identity before retrying preparation."
+        )
+        if configured_path is not None:
+            failure.facts["configured_path"] = configured_path
+        failure.input_observations = observations
+        return failure
 
     def load(self) -> pd.DataFrame:
         if self.config.source == "csv":
@@ -99,7 +162,7 @@ class DataManager:
         Load a single index series for index-level experiment mode (no survivorship bias).
 
         Uses index_filename CSV if set (columns: dt, close; optional open, high, low, volume),
-        otherwise FRED SP500 with 1-day lag. Returns DataFrame with kdcode='INDEX' and
+        otherwise explicitly selected FRED SP500 with 1-day lag. Returns DataFrame with kdcode='INDEX' and
         standard OHLCV columns so feature pipeline can run unchanged.
         """
         start_ts = pd.Timestamp(self.config.train_start) - pd.Timedelta(days=365 * 2)
@@ -121,10 +184,20 @@ class DataManager:
                 df["turnover"] = df["volume"] * df["close"]
             df = df[["dt", "open", "high", "low", "close", "volume", "turnover"]]
         else:
-            from mci_gru.data.fred_loader import FRED_SERIES_SP500, FREDLoader
-
-            fred = FREDLoader()
-            s = fred.get_series(FRED_SERIES_SP500, start, end, "close", lag_days=1)
+            selected = self.config.auxiliary_sources.get("index", "file")
+            try:
+                if selected != "fred":
+                    raise InputSnapshotError(
+                        role="index",
+                        source=selected,
+                        request={},
+                        stage="resolve",
+                        reason="source_not_selected",
+                    )
+                fred = fred_loader.FREDLoader(snapshots=self.input_snapshots)
+                s = fred.get_series(fred_loader.FRED_SERIES_SP500, start, end, "close", lag_days=1)
+            except Exception as error:
+                raise self.required_input_failure(error, role="index", source=selected) from None
             df = s.copy()
             df["open"] = df["close"]
             df["high"] = df["close"]
@@ -181,10 +254,17 @@ class DataManager:
             loader.disconnect()
 
     def load_vix(self) -> pd.DataFrame:
-        if self.config.source == "lseg":
-            from mci_gru.data.lseg_loader import LSEGLoader
-
-            loader = LSEGLoader()
+        selected = self.config.auxiliary_sources.get("vix", "file")
+        if selected not in {"file", "lseg"}:
+            raise InputSnapshotError(
+                role="vix",
+                source=selected,
+                request={},
+                stage="resolve",
+                reason="unsupported_vix_source",
+            )
+        if selected == "lseg":
+            loader = lseg_loader.LSEGLoader(snapshots=self.input_snapshots)
             try:
                 loader.connect()
                 vix_df = loader.get_vix(self.config.train_start, self.config.test_end)
@@ -194,14 +274,22 @@ class DataManager:
                 loader.disconnect()
         else:
             try:
-                vix_path = resolve_project_data_path("vix_data.csv")
+                vix_path = (
+                    None
+                    if self.input_snapshots.mode == "replay"
+                    else resolve_project_data_path("vix_data.csv")
+                )
             except FileNotFoundError as e:
                 raise FileNotFoundError(
                     "VIX data not found. Create vix_data.csv under data/raw/market "
-                    "or use source='lseg'"
+                    "or explicitly select data.auxiliary_sources.vix='lseg'"
                 ) from e
-            vix_df = self.input_observations.read_csv(
-                vix_path, role="implicit.vix_csv", configured_path="vix_data.csv"
+            vix_df = self.input_snapshots.read_file(
+                vix_path,
+                role="implicit.vix_csv",
+                configured_path="vix_data.csv",
+                parse=lambda content: pd.read_csv(BytesIO(content)),
+                parser={"name": "pandas.read_csv", "options": {"compression": None}},
             )
             self.vix_df = vix_df
             return vix_df
@@ -210,14 +298,22 @@ class DataManager:
         """
         Load credit spread data (IG/HY OAS) from FRED API.
 
-        Requires FRED_API_KEY environment variable. If the key is missing or
-        the fetch fails, raises an exception; the caller should catch and
-        soft-fail (e.g. continue without credit features).
+        Select data.auxiliary_sources.credit='fred'. Source/capture modes
+        require FRED_API_KEY; replay uses retained observations without a key.
+        A required-input failure stops preparation.
 
         Returns:
             DataFrame with columns [dt, ig_spread, hy_spread]
         """
-        from mci_gru.data.fred_loader import FREDLoader
+        selected = self.config.auxiliary_sources.get("credit", "file")
+        if selected != "fred":
+            raise InputSnapshotError(
+                role="credit",
+                source=selected,
+                request={},
+                stage="resolve",
+                reason="source_not_selected",
+            )
 
         # Align credit history to the earliest loaded stock date when available.
         # This avoids large pre-merge gaps (and zero fallback fills) when the
@@ -232,7 +328,7 @@ class DataManager:
                 # Fall back to configured train_start on unexpected date parsing issues.
                 credit_start = self.config.train_start
 
-        loader = FREDLoader()
+        loader = fred_loader.FREDLoader(snapshots=self.input_snapshots)
         credit_df = loader.get_credit_spreads(
             start=credit_start,
             end=self.config.test_end,
@@ -253,10 +349,11 @@ class DataManager:
         end: str | None = None,
     ) -> pd.DataFrame:
         """
-        Load Phase-1 global regime input series with hybrid sourcing.
+        Load the selected FRED regime inputs or explicit legacy regime CSV.
 
-        The live FRED/LSEG path is canonical. If regime_inputs_csv is set, load
-        the deprecated CSV escape hatch (and optionally apply lag).
+        Set data.auxiliary_sources.regime='fred' for provider capture/replay.
+        LSEG regime routes and overrides are unsupported on this reference
+        path and are rejected explicitly. No provider substitution occurs.
 
         Args:
             end: Optional override for the fetch end date (ISO string). When None,
@@ -270,15 +367,19 @@ class DataManager:
         """
         if regime_inputs_csv:
             warnings.warn(
-                "regime_inputs_csv is deprecated; use the live FRED/LSEG regime input path "
-                "with FRED_API_KEY instead. If this legacy escape hatch is used, the CSV "
+                "regime_inputs_csv is deprecated; explicitly select the FRED regime input path "
+                "for provider capture/replay. If this legacy escape hatch is used, the CSV "
                 "must contain dt plus all seven regime variables.",
                 DeprecationWarning,
                 stacklevel=2,
             )
-            resolved = resolve_project_data_path(regime_inputs_csv)
-            compression = infer_compression(str(resolved), "infer")
-            base = self.input_observations.read_file(
+            resolved = (
+                None
+                if self.input_snapshots.mode == "replay"
+                else resolve_project_data_path(regime_inputs_csv)
+            )
+            compression = infer_compression(regime_inputs_csv, "infer")
+            base = self.input_snapshots.read_file(
                 resolved,
                 role="features.regime_inputs_csv",
                 configured_path=regime_inputs_csv,
@@ -293,132 +394,71 @@ class DataManager:
             self.regime_df = base
             return base
 
-        from mci_gru.data.fred_loader import (
-            FRED_SERIES_3M,
-            FRED_SERIES_10Y,
-            FRED_SERIES_COPPER,
-            FRED_SERIES_OIL_WTI,
-            FRED_SERIES_SP500,
-            FRED_SERIES_VIX,
-            FREDLoader,
+        selected = self.config.auxiliary_sources.get("regime", "file")
+        ric_options = (
+            lseg_market_ric,
+            lseg_copper_ric,
+            lseg_yield_10y_ric,
+            lseg_yield_3m_ric,
+            lseg_oil_ric,
+            lseg_vix_ric,
         )
-
+        if ric_options != (".SPX", ".MXCOPPFE", "US10YT=RR", "US3MT=RR", "CLc1", "VIX"):
+            raise InputSnapshotError(
+                role="regime",
+                source=selected,
+                request={},
+                stage="resolve",
+                reason="unsupported_lseg_regime_configuration",
+            )
+        if selected != "fred":
+            raise InputSnapshotError(
+                role="regime",
+                source=selected,
+                request={},
+                stage="resolve",
+                reason="source_not_selected" if selected == "file" else "unsupported_regime_source",
+            )
         start_ts = pd.Timestamp(self.config.train_start) - pd.Timedelta(days=365 * 15)
         start = start_ts.strftime("%Y-%m-%d")
         end = end if end is not None else self.config.test_end
+        fred = fred_loader.FREDLoader(snapshots=self.input_snapshots)
 
-        fred = None
-        try:
-            fred = FREDLoader()
-        except Exception:
-            fred = None
-
-        def _env_int(name: str, default: int) -> int:
+        def env_number(name, default, parse):
             try:
-                return int(os.environ.get(name, str(default)))
+                return parse(os.environ.get(name, str(default)))
             except ValueError:
                 return default
 
-        def _env_float(name: str, default: float) -> float:
-            try:
-                return float(os.environ.get(name, str(default)))
-            except ValueError:
-                return default
+        attempts = max(1, env_number("MCI_GRU_FRED_MAX_ATTEMPTS", 1, int))
+        retry_seconds = max(0.0, env_number("MCI_GRU_FRED_RETRY_SECONDS", 0.0, float))
 
-        fred_max_attempts = max(1, _env_int("MCI_GRU_FRED_MAX_ATTEMPTS", 1))
-        fred_retry_seconds = max(0.0, _env_float("MCI_GRU_FRED_RETRY_SECONDS", 0.0))
-
-        def try_fred(series_id: str, value_name: str):
-            if fred is None:
-                return None
-            for attempt in range(1, fred_max_attempts + 1):
+        def fetch(series_id, value_name):
+            for attempt in range(attempts):
                 try:
                     return fred.get_series(series_id, start, end, value_name, lag_days=1)
-                except Exception as exc:
-                    if attempt >= fred_max_attempts:
-                        logger.warning(
-                            f"FRED fetch failed for {value_name} ({series_id}) "
-                            f"after {fred_max_attempts} attempt(s): "
-                            f"{type(exc).__name__}: {exc}"
-                        )
-                        return None
-                    logger.warning(
-                        f"FRED fetch failed for {value_name} ({series_id}) "
-                        f"on attempt {attempt}/{fred_max_attempts}: "
-                        f"{type(exc).__name__}: {exc}. Retrying..."
+                except Exception as error:
+                    retryable = isinstance(error, (TimeoutError, ConnectionError)) or (
+                        isinstance(error, InputSnapshotError)
+                        and error.facts["reason"] == "acquisition_failed"
+                        and error.facts.get("error_code") in {"TimeoutError", "ConnectionError"}
                     )
-                    if fred_retry_seconds > 0:
-                        time.sleep(fred_retry_seconds)
-            return None
+                    if (
+                        self.input_snapshots.mode == "replay"
+                        or not retryable
+                        or attempt + 1 == attempts
+                    ):
+                        raise
+                    if retry_seconds:
+                        time.sleep(retry_seconds)
+            raise AssertionError("Unreachable retry loop")
 
-        # FRED-primary variables.
-        yield_10y = try_fred(FRED_SERIES_10Y, "yield_10y")
-        yield_3m = try_fred(FRED_SERIES_3M, "yield_3m")
-        oil = try_fred(FRED_SERIES_OIL_WTI, "regime_oil")
-        volatility = try_fred(FRED_SERIES_VIX, "regime_volatility")
-
-        # FRED fallback candidates.
-        market_fallback = try_fred(FRED_SERIES_SP500, "regime_market")
-        copper_fallback = try_fred(FRED_SERIES_COPPER, "regime_copper")
-
-        market = None
-        copper = None
-        lseg_yield_10y = None
-        lseg_yield_3m = None
-        lseg_oil = None
-        lseg_volatility = None
-
-        if self.config.source == "lseg":
-            from mci_gru.data.lseg_loader import LSEGLoader
-
-            loader = LSEGLoader()
-            try:
-                loader.connect()
-                market = loader.get_series(lseg_market_ric, start, end, "regime_market")
-                copper = loader.get_series(lseg_copper_ric, start, end, "regime_copper")
-                if yield_10y is None:
-                    lseg_yield_10y = loader.get_series(lseg_yield_10y_ric, start, end, "yield_10y")
-                if yield_3m is None:
-                    lseg_yield_3m = loader.get_series(lseg_yield_3m_ric, start, end, "yield_3m")
-                if oil is None:
-                    lseg_oil = loader.get_series(lseg_oil_ric, start, end, "regime_oil")
-                if volatility is None:
-                    lseg_volatility = loader.get_series(
-                        lseg_vix_ric, start, end, "regime_volatility"
-                    )
-            finally:
-                loader.disconnect()
-
-        if yield_10y is None:
-            yield_10y = lseg_yield_10y
-        if yield_3m is None:
-            yield_3m = lseg_yield_3m
-        if oil is None:
-            oil = lseg_oil
-        if volatility is None:
-            volatility = lseg_volatility
-
-        if market is None:
-            market = market_fallback
-        if copper is None:
-            copper = copper_fallback
-
-        required_series = {
-            "yield_10y": yield_10y,
-            "yield_3m": yield_3m,
-            "regime_oil": oil,
-            "regime_market": market,
-            "regime_copper": copper,
-            "regime_volatility": volatility,
-        }
-        missing = [
-            name for name, value in required_series.items() if value is None or len(value) == 0
-        ]
-        if missing:
-            raise ValueError(
-                "Unable to load required regime input series. Missing: "
-                f"{missing}. Provide FRED_API_KEY and/or LSEG entitlements for configured RICs."
-            )
+        yield_10y = fetch(fred_loader.FRED_SERIES_10Y, "yield_10y")
+        yield_3m = fetch(fred_loader.FRED_SERIES_3M, "yield_3m")
+        oil = fetch(fred_loader.FRED_SERIES_OIL_WTI, "regime_oil")
+        volatility = fetch(fred_loader.FRED_SERIES_VIX, "regime_volatility")
+        market = fetch(fred_loader.FRED_SERIES_SP500, "regime_market")
+        copper = fetch(fred_loader.FRED_SERIES_COPPER, "regime_copper")
 
         base = (
             yield_10y.merge(yield_3m, on="dt", how="outer")

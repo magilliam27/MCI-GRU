@@ -304,9 +304,13 @@ def test_failed_optional_csv_parse_is_recorded_without_changing_continuation(tmp
     config = _native_config(str(source))
     config.features.include_global_regime = True
     config.features.regime_inputs_csv = "regime.csv"
-    data = prepare_data(config, FeatureEngineer(config.features))
-
-    metadata = _saved_metadata(tmp_path, config, data)
+    with pytest.raises(InputObservationError) as caught:
+        prepare_data(config, FeatureEngineer(config.features))
+    observations = caught.value.input_observations
+    metadata = {
+        "input_observations": observations.to_dict(),
+        "data_inputs": observations.data_inputs(),
+    }
 
     events = metadata["input_observations"]["observations"]
     failed = [event for event in events if event["outcome"] == "error"]
@@ -331,6 +335,7 @@ def test_preparation_propagates_observation_integrity_errors_but_preserves_ordin
     error_type = InputObservationError if integrity else ValueError
     if route == "credit":
         config.features.include_credit_spread = True
+        config.data.auxiliary_sources = {"credit": "fred"}
         monkeypatch.setenv("FRED_API_KEY", "synthetic-never-sent")
 
         class FaultingFred:
@@ -361,13 +366,11 @@ def test_preparation_propagates_observation_integrity_errors_but_preserves_ordin
     if integrity:
         with pytest.raises(InputObservationError, match="synthetic input failure"):
             prepare_data(config, FeatureEngineer(config.features))
-    elif route == "vix":
-        with pytest.raises(ValueError, match="vix_df not provided"):
-            prepare_data(config, FeatureEngineer(config.features))
     else:
-        data = prepare_data(config, FeatureEngineer(config.features))
-        metadata = _saved_metadata(tmp_path, config, data)
-        assert set(metadata["data_inputs"]) == {"data.filename"}
+        with pytest.raises(InputObservationError) as caught:
+            prepare_data(config, FeatureEngineer(config.features))
+        assert set(caught.value.input_observations.data_inputs()) == {"data.filename"}
+        assert caught.value.facts["required"] is True
 
 
 @pytest.mark.parametrize("invalid", ["columns", "date"])
@@ -385,8 +388,13 @@ def test_rejected_regime_csv_remains_an_observation_without_a_consumption_link(t
     config.features.include_global_regime = True
     config.features.regime_strict = False
     config.features.regime_inputs_csv = str(regime)
-    data = prepare_data(config, FeatureEngineer(config.features))
-    metadata = _saved_metadata(tmp_path, config, data)
+    with pytest.raises(InputObservationError) as caught:
+        prepare_data(config, FeatureEngineer(config.features))
+    observations = caught.value.input_observations
+    metadata = {
+        "input_observations": observations.to_dict(),
+        "data_inputs": observations.data_inputs(),
+    }
 
     assert set(metadata["data_inputs"]) == {"data.filename"}
     events = metadata["input_observations"]["observations"]
