@@ -1,12 +1,12 @@
 import numpy as np
 import pytest
 
+from mci_gru.evaluation.metrics import compute_metrics
 from mci_gru.evaluation.statistics import (
     daily_ic_series,
     moving_block_bootstrap_ci,
     newey_west_sharpe,
 )
-from mci_gru.training.metrics import compute_metrics
 
 
 def test_daily_ic_series_computes_per_day_correlations():

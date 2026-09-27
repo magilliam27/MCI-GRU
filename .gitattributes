@@ -1,0 +1,2 @@
+# Manifest identities refer to exact bytes, including their terminal LF.
+data/manifests/*.json -text
