@@ -1,5 +1,45 @@
 # Data load path audit (2026-09-05)
 
+## Status as of 2026-09-27
+
+This note was added when the report landed on main. Everything after it is the dated 2026-09-05 measurement of `125abda`, unchanged.
+
+**Re-run on 2026-09-27**
+
+All seven reproduction scripts were re-run against the merged tree (main at `0ecf723` plus this branch). The scripts were unmodified apart from two changes: the worktree name in the header assertion, and a guard around the one call that now raises. The environment was Linux, Python 3.11 and pandas 3.0.6. The original run used Windows, Python 3.12 and pandas 2.3.3.
+
+- **31 of the 32 silent or warning-only failures give the same result.** The remaining differences are environmental and change no finding:
+  - pandas 3 reports text columns as `str`, not `object`;
+  - paths, the em-dash and tqdm output render differently.
+- **S8 is the exception.** `add_vix_features` calls `fillna(method="ffill")`, which pandas 3 removed. With `features.include_vix: true`, a run now stops with a `TypeError` instead of silently filling 20. `requirements.lock` pins pandas 3.0.3. The code is unchanged, so on pandas 2.x S8 still behaves as reported.
+
+**Addressed by later work**
+
+- **One observation carrier for every file read.** #191 / PR #201 (merged 2026-09-21) routes every file read on this path through a single carrier. For each read it records the role, configured path, resolved absolute path, SHA-256, size and parser. The files covered are `data.filename`, `data.index_filename`, `data.pit_universe_csv` (both read sites), `graph.sector_map_csv`, `features.regime_inputs_csv` and the implicit `vix_data.csv`. The records are written to `run_metadata.json` as `input_observations`, projected per role as `data_inputs`.
+  - **"Only `data.filename` is fingerprinted" is addressed for file inputs.** Live FRED and LSEG series are not file reads. Capturing them is #206 (PR #226, not merged).
+  - **S15 is addressed through the new fields.** Re-checked 2026-09-27 with a configured `data/processed/<name>` loaded through the basename fallback: `data_inputs["data.filename"]` names the resolved `data/raw/market/<name>` and the SHA-256 of the bytes actually loaded. The legacy `data_file_*` keys keep their cwd-relative behaviour by design, so S14, S15 and S16 still reproduce for those keys. Those keys are no longer the only record.
+  - **S7, S12 and S13 are recorded, not prevented.** The resolved path now appears in `data_inputs`, but `path_resolver.py` is unchanged. The owner's single-source ruling, recorded on #187 and #193, forbids substituting a same-named file for a required selected input. Enforcing it in the resolver is reserved to #223.
+- **The data-quality policy was ruled on #193 (finished 2026-09-21).** It sets four rules:
+  - a market-panel structural contract: one row per stock and date, valid daily dates, finite positive prices, nonnegative volume;
+  - a whole-history frozen-price predicate;
+  - stop and report before training on any violation;
+  - one selected source, with no fallback.
+
+  These are policy decisions, not code.
+
+**Still open (code unchanged since `125abda`)**
+
+Some modules on this path are unchanged: `path_resolver.py`, `preprocessing.py` and `transforms.py`. Others changed only to route reads through the observation carrier and to re-raise observation-integrity errors, apart from one docstring edit made by the #212 retirement: `data_manager.py`, `pit.py`, `sector_edges.py` and `pipeline.py`. Implementing the ruled policy is split three ways:
+
+- **#223, raw validation and stop-before-training reporting.** It covers:
+  - S1-S4 and S28-S32, the market panel and preprocessing;
+  - S23-S27, the sector map, whose rules are still to be ruled;
+  - the no-substitution rule for S7, S12 and S13.
+- **#224, auxiliary and index validity, timing, lag and fill.** It covers S5 and S6 (index), S7 and S8 (VIX content and fill), S9 and S10 (regime CSV), and S11 (credit soft-fail).
+- **#225, dated PIT eligibility and label coverage.** It covers S17-S22, the PIT intervals, with the interval structural rules coordinated with #223.
+
+The fail-closed precedents in item 7 are unchanged and still reproduce.
+
 Research report for GitHub issue #189: "Audit what the data load path checks today, with reproductions of its silent failures". This is a measurement of `origin/main @ 125abda`. Nothing was fixed, and no tracked file was modified.
 
 ## Question

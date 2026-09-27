@@ -35,7 +35,7 @@ The `docs/` root holds the canonical guides only. Research evidence lives under
 | Document | Purpose |
 | --- | --- |
 | [research/README.md](research/README.md) | The status map: which reports are current evidence, which are superseded, and where the artifacts behind them live. |
-| [research/current/](research/current/) | Current evidence: the point-in-time universe and masked-panel reports, the graph-specification evidence, the loss-path notes, the volatility-targeting reads, the active research scan, and the saved-prediction report method. |
+| [research/current/](research/current/) | Current evidence: the point-in-time universe and masked-panel reports, the graph-specification evidence, the loss-path notes, the volatility-targeting reads, the data-engineering evidence (data input inventory, load-path audit, identity mechanisms), the active research scan, and the saved-prediction report method. |
 | [research/archive/README.md](research/archive/README.md) | Superseded evidence with one status line per report saying what replaced it and what still stands as background. |
 | [research-paper-evaluations/](research-paper-evaluations/) | Research-to-implementation briefs written by the research skill. |
 

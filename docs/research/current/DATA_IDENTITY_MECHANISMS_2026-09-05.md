@@ -1,5 +1,35 @@
 # Dataset identity mechanisms compared (2026-09-05)
 
+## Status as of 2026-09-27
+
+This note was added when the report landed on main. Everything after it is dated 2026-09-05 and unchanged, including the findings and the vendor facts. The vendor facts were not re-checked.
+
+**Addressed by later work**
+
+- **The owner has ruled.** This report left the choice to the grilling on #192, where the owner ruled on 2026-09-07. The choice is option A: SHA-256 declarations with byte sizes and portable paths, with raw data kept outside Git. That is the family this report's final paragraph says "the facts favour". The owner added requirements this report did not assess:
+  - verified retrieval, from Google Drive as the off-machine home plus an independent local preservation copy;
+  - one extensible manifest per dataset package;
+  - storage locations kept separate from identity;
+  - scope limited to the July 31 110-name package.
+
+  The contract is `docs/agents/data-input-contract.md` (PR #209).
+- **Observation 1, the missing expected value and relative-path writer, is addressed.** Observation 1 said "what is missing is an expected value ... and a writer that emits it with relative paths". #205 / PR #210 (merged 2026-09-20) added three things:
+  - `mci_gru/data/input_manifest.py`, a versioned package-manifest reader, validator and writer that rejects absolute, traversal and duplicate paths;
+  - `scripts/data/write_input_manifest.py`;
+  - `data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731.r1.json`.
+- **The manifest is a separate file, not a hardened sidecar.** The implemented form is a separate Git-tracked package manifest. It does not add checksum fields inside the existing `*meta.json` sidecars, which are kept unchanged as package files.
+- **`sha256_file` has moved.** It now lives in `mci_gru/utils/hashing.py`, and `run_bundle.py` re-exports it. The `run_bundle.py` line numbers under Prior art therefore describe the 2026-09-05 file.
+- **Consumer-side identity is recorded.** #191 / PR #201 (merged 2026-09-21) records the observed SHA-256 of every file a run actually loads.
+
+**Still open**
+
+- **Nothing checks a file against its declared hash yet.** Neither the loader nor the notebook generators read the manifest, and the generators still hash after copying without comparing. Verify-before-use retrieval is #207. Attaching the manifest snapshot to saved runs is #208.
+- **The pull scripts still write sidecars without checksums.** They also still store `str(path)`, which is the cause of the absolute paths recorded under Constraints. Pull hardening is #194.
+
+**Reference surface changed**
+
+#212 (PR #217) retired 10 of the 19 notebook generators. It also retired `scripts/data/export_sp500_pit_membership.py`, one of the four sidecar writers. Both are readable at tag `archive/pre-cleanup-2026-09`. The blast-radius counts below describe the 2026-09-05 tree. On main today there are 9 generators, all staging from `MyDrive/MCI_GRU_shared/data`, and 3 sidecar-writing pull scripts.
+
 Research report for GitHub issue #190. Every vendor fact carries a source tag
 [Sn] resolved in the Sources section, each read on 2026-09-05. Facts observed
 on this machine rather than in vendor documentation are tagged [Ln] and listed
