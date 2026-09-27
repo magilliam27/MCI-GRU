@@ -59,8 +59,10 @@ workstyle holds on a cold start without anyone typing a command:
 - **`work-the-map`** — the AFK half of `wayfinder`: load a map, recompute the
   frontier, claim, resolve, record, fold state back into the body. It refuses
   to chart, **stops at any HITL ticket** rather than answering its own grilling
-  questions, and resolves at most one ticket per session — research tickets
-  excepted, which the skill may fan out.
+  questions, and claims the next ticket only after the previous one has landed
+  (its pull request merged by you, or for a no-code ticket its resolution
+  recorded and the ticket closed) — research tickets excepted, which the skill
+  may fan out.
 - **`implement-ticket`** — the implementation loop: claim before branching with
   owned paths declared, `/mattpocock-skills:tdd` at seams confirmed with you,
   mutation-checking, `/mattpocock-skills:code-review`, draft pull request.
@@ -190,6 +192,21 @@ as expected rather than as a violation.
   root quotes the correct policy while running the wrong skill set, with no
   warning. Start at the workspace root. `claude --setting-sources user` and SDK
   entrypoints load neither file regardless of directory.
+- **`.claude/skills/` does not follow the settings rule above, and the
+  placement works: the skills do load** (observed in the skill listing, #168).
+  The "skill set" in that bullet is the plugin set `.claude/settings.json`
+  enables, read from the working directory only (in a linked worktree,
+  project-scope plugins from the main checkout also load, v2.1.200 or later).
+  Documented (`code.claude.com/docs/en/skills` and `/docs/en/worktrees`, read
+  2026-09-27), not yet reproduced on this machine: project skills load from
+  `.claude/skills/` in the starting directory and each parent up to the
+  repository root, or the worktree root in a linked worktree; a worktree with no
+  `.claude/skills/` of its own loads the main checkout's (v2.1.277 or later); a
+  skills directory created after start is not watched, so run `/reload-skills`
+  after each change there. Observed on #168 and unexplained by those pages: the
+  skills appeared mid-session in a worktree that held no copy. A missing skill is
+  never a reason to move content out of `.claude/skills/`; record any repeat on
+  the tracker.
 - Load-bearing tests are mutation-checked: break the behaviour, confirm the test
   fails, restore, confirm it passes, and report the table. Three shipped defects
   in this repository survived because their guarding tests were vacuous.
@@ -222,8 +239,10 @@ as expected rather than as a violation.
     protected checkout's venv, and the shared mapping is what lets every
     worktree use one environment.
 - Any branch that adds or renames a test must regenerate `docs/TEST_REGISTRY.md`
-  or CI lint fails. Run the suite with `--junitxml=test_reports\junit.xml` first
-  so statuses are recorded rather than blank.
+  or CI lint fails. The committed registry records the test inventory only, so no
+  suite run is needed first; last-run status goes to a separate, gitignored
+  report with `--junit test_reports\junit.xml`. On a registry merge conflict,
+  take either side and regenerate.
 - `gh issue edit` and `gh pr create`: always `--body-file` pointing at a
   UTF-8-without-BOM file. `--body` mangles non-ASCII on Windows PowerShell and
   the corruption compounds across successive edits.
