@@ -109,7 +109,7 @@ _LEGACY_CROSS_SECTION_KEYS = {
 
 
 def test_default_config_keeps_the_pre_change_checkpoint_shape() -> None:
-    """Frozen paper-trade checkpoints must keep loading, so the default may not move.
+    """Checkpoints saved before this change must keep loading, so the default may not move.
 
     The expected values are literals measured on ``origin/main`` before this
     change, not quantities recomputed the way the code computes them.
@@ -163,6 +163,52 @@ def _residual_model(num_features: int = 7):
         num_features,
         {**_BASE_MODEL_CONFIG, "cross_section_block": "residual"},
     )
+
+
+# Scores of the default model, measured on origin/main at 0ecf723 and again at
+# 125abda (identical at both), before this change existed: torch.manual_seed(0),
+# create_model(7, _BASE_MODEL_CONFIG), eval mode, _forward_inputs(). Literals
+# rather than a second model built by today's code, so a regression in the
+# default path cannot appear on both sides and cancel out.
+_LEGACY_SCORES_UNMASKED = [0.0462127551, 0.0462127551, 0.0462319329, 0.0461926572]
+_LEGACY_SCORES_MASKED = [0.0189649239, 0.0189649239, 0.0189655237, 0.0]
+
+
+def test_default_model_scores_match_the_pre_change_model() -> None:
+    """With the flag off, the model must compute exactly what it computed before.
+
+    The key and parameter-count guards above catch a change of module graph.
+    They cannot catch a default path that keeps the same parameters but uses
+    them differently (a residual add with no new weights, a mask applied in a
+    different place) or that consumes the initialisation RNG differently. The
+    scores can. The tolerance is float32 round-off, far below the cross-stock
+    spread of the pinned scores.
+    """
+    torch.manual_seed(0)
+    model = create_model(7, dict(_BASE_MODEL_CONFIG))
+    model.eval()
+    time_series, graph_features, edge_index, edge_weight = _forward_inputs()
+    mask = torch.tensor([[True, True, True, False]])
+
+    with torch.no_grad():
+        unmasked = model(time_series, graph_features, edge_index, edge_weight, 4)
+        masked = model(time_series, graph_features, edge_index, edge_weight, 4, stock_mask=mask)
+
+    expected_unmasked = torch.tensor([_LEGACY_SCORES_UNMASKED])
+    expected_masked = torch.tensor([_LEGACY_SCORES_MASKED])
+    torch.testing.assert_close(unmasked, expected_unmasked, rtol=1e-5, atol=1e-7)
+    torch.testing.assert_close(masked, expected_masked, rtol=1e-5, atol=1e-7)
+
+
+def test_create_model_rejects_an_unknown_cross_section_block() -> None:
+    """A misspelt form must not quietly build the legacy block.
+
+    ``ModelConfig`` validates the field, but ``create_model`` also accepts a
+    plain dict such as a checkpoint's ``config.yaml``, which never passes
+    through ``ModelConfig``.
+    """
+    with pytest.raises(ValueError, match="cross_section_block"):
+        create_model(8, {**_BASE_MODEL_CONFIG, "cross_section_block": "Residual"})
 
 
 def test_residual_model_zeroes_inactive_nodes_end_to_end() -> None:

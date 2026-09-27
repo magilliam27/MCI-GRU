@@ -46,6 +46,10 @@ _EDGE_DROPOUT_SEED_MODULUS = 1 << 63
 _EDGE_DROPOUT_STREAM_CORRELATION = 0
 _EDGE_DROPOUT_STREAM_SECTOR = 1
 _EDGE_DROPOUT_STREAMS_PER_STEP = 2
+#: Forms of the cross-stock block. ``ModelConfig`` validates the same set, but
+#: ``create_model`` also takes plain dicts (checkpoint ``config.yaml`` files), so
+#: the trunk refuses an unknown value rather than quietly building ``legacy``.
+_CROSS_SECTION_BLOCKS = ("legacy", "residual")
 #: Device types whose generator ``_forked_dropout_edge`` knows how to reseed.
 #: Anything else would seed the CPU generator while ``dropout_edge`` drew from
 #: the accelerator's, so isolation would silently become a no-op -- which is the
@@ -143,6 +147,11 @@ class StockPredictionModel(nn.Module):
         cross_section_block: str = "legacy",
     ):
         super().__init__()
+        if cross_section_block not in _CROSS_SECTION_BLOCKS:
+            raise ValueError(
+                f"cross_section_block must be one of {_CROSS_SECTION_BLOCKS}, "
+                f"got {cross_section_block!r}"
+            )
         if gru_hidden_sizes is None:
             gru_hidden_sizes = [32, 10]
 
