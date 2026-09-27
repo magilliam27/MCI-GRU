@@ -7,7 +7,7 @@ This note was added when the report landed on main. Everything after it is the d
 **Addressed by later work**
 
 - **Identity mechanism and scope.** The owner ruled on #192 from 2026-09-07. The mechanism is Git-tracked SHA-256 manifests with byte sizes and package-relative paths, with the data kept outside Git. Preservation covers one package only, the July 31 110-name pull `sp500_pit_gics_top10_mcap_monthly_20160104_20260731`. Older stock datasets are excluded from preservation and backfill, and none are deleted. The contract is `docs/agents/data-input-contract.md` (PR #209).
-- **The selected package now has a checksum declaration.** This bears on "0 of 12 sidecars carry a checksum" and "5 of 10 config files are covered only by a manifest outside the repository". #205 / PR #210 (merged 2026-09-20) added `data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731.r1.json`. It declares SHA-256, size and purpose for all 10 files of that package, and keeps its two original sidecars unchanged as package files. Checked 2026-09-27: all 10 declared SHA-256 values equal the hashes in rows 17-19 and 39-45 of the table below.
+- **The selected package now has a checksum declaration.** This bears on "0 of 12 sidecars carry a checksum" and "5 of 10 config files are covered only by a manifest outside the repository". #205 / PR #210 (merged 2026-09-20) added `data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731.r1.json`. It declares SHA-256, size and purpose for all 10 files of that package, and keeps its two original sidecars unchanged as package files. Checked 2026-09-27: all 10 declared SHA-256 values equal the hashes in rows 17-19 and 39-45 of the table below [Verified].
 - **Run-time fingerprinting now covers every file a run reads.** At 2026-09-05 it covered one input (summary answer 3, Observation 11). #191 / PR #201 (merged 2026-09-21) records the resolved path, SHA-256 and size of each file the loaders read, under `data_inputs` and `input_observations` in `run_metadata.json`. The files covered are `data.filename`, `data.index_filename`, `data.pit_universe_csv`, `graph.sector_map_csv`, `features.regime_inputs_csv` and the implicit `vix_data.csv`. The legacy `data_file_*` keys are kept alongside.
 
 **Still open**
@@ -24,13 +24,13 @@ This note was added when the report landed on main. Everything after it is the d
 
 #212 (PR #217) retired the following, all readable at tag `archive/pre-cleanup-2026-09`:
 - `seed_results/` and `docs/handoffs/`;
-- 10 of the 19 notebook generators and 21 of the 30 notebooks;
-- five of the eight `scripts/data/` scripts;
+- 10 of the 19 notebook generators and 21 of the 30 notebooks [Verified];
+- five of the eight `scripts/data/` scripts [Verified];
 - several configs.
 
 Read any path in the "referenced by" column that no longer exists on main at that tag. No data file was touched.
 
-Recounted 2026-09-27 with command 1 on the merged tree: live configs now name 9 distinct files, not 10. `sp500_yf_download.csv` left with `configs/data/training_10yr.yaml`. So 3 of the 9 have no sidecar: `sp500_data.csv`, `sp500_2016_universe_data.csv` and `sp500_2019_universe_data_through_2026.csv`.
+Recounted 2026-09-27 with command 1 on the merged tree: live configs now name 9 distinct files, not 10 [Verified]. `sp500_yf_download.csv` left with `configs/data/training_10yr.yaml`. So 3 of the 9 have no sidecar: `sp500_data.csv`, `sp500_2016_universe_data.csv` and `sp500_2019_universe_data_through_2026.csv`.
 
 Research report for GitHub issue #188 ("Inventory every data input MCI-GRU reads, and its identity state today"), child of map #187 (data engineering: dataset identity, quality contracts, and safe pulls). Read-only: nothing under `C:\Users\magil\MCI-GRU` or the worktree was written. All punctuation is plain ASCII.
 

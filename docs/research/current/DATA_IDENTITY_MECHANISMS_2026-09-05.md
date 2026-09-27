@@ -28,7 +28,7 @@ This note was added when the report landed on main. Everything after it is dated
 
 **Reference surface changed**
 
-#212 (PR #217) retired 10 of the 19 notebook generators. It also retired `scripts/data/export_sp500_pit_membership.py`, one of the four sidecar writers. Both are readable at tag `archive/pre-cleanup-2026-09`. The blast-radius counts below describe the 2026-09-05 tree. On main today there are 9 generators, all staging from `MyDrive/MCI_GRU_shared/data`, and 3 sidecar-writing pull scripts.
+#212 (PR #217) retired 10 of the 19 notebook generators. It also retired `scripts/data/export_sp500_pit_membership.py`, one of the four sidecar writers. Both are readable at tag `archive/pre-cleanup-2026-09`. The blast-radius counts below describe the 2026-09-05 tree. On main today there are 9 generators, all staging from `MyDrive/MCI_GRU_shared/data`, and 3 sidecar-writing pull scripts [Verified].
 
 Research report for GitHub issue #190. Every vendor fact carries a source tag
 [Sn] resolved in the Sources section, each read on 2026-09-05. Facts observed
