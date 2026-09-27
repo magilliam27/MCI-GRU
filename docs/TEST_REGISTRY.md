@@ -4,11 +4,7 @@
 > Regenerate with:
 > `.\.venv\Scripts\python.exe scripts/generate_test_registry.py`
 
-Generated: 2026-09-27
-Test files: 82
-Test functions: 597 (parametrized cases collapsed)
-<!-- test-inventory-sha256: 4a32761e5399bf54711039e1dec26a08fca8b3b4f797a0b694479fa2e72a1748 -->
-No junit results found. Run the suite with `--junitxml=test_reports/junit.xml` to include last-run status.
+This file records the test inventory only, with no counts, dates, or last-run status, so each line depends on one test file. `--check` compares it with `tests/`; last-run status goes to a separate report (see `docs/TESTING_GUIDE.md`).
 
 ## `tests/test_backtest_engine_golden.py`
 
@@ -105,6 +101,32 @@ Pin the Claude Code harness so it cannot be severed silently.
 | `test_claude_md_imports_agents_md` |  |  |
 | `test_claude_settings_select_the_pocock_skill_set` |  |  |
 | `test_gitignore_covers_session_worktrees` | Session worktrees must not be able to dirty the protected checkout. |  |
+
+## `tests/test_cross_section_block.py`
+
+Cross-stock block behaviour: cross-section survival, masking, and compatibility.
+
+**Exercises:** `mci_gru.config`, `mci_gru.models`, `mci_gru.models.attention`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_residual_block_preserves_the_cross_section` | Most of the across-stock variation must survive the block. | parametrize |
+| `test_residual_block_zeroes_inactive_nodes` | PIT-inactive names must leave the block at exactly zero. |  |
+| `test_residual_block_inactive_node_cannot_influence_active_ones` | Changing a PIT-inactive name must not move any active name. |  |
+| `test_residual_block_active_nodes_influence_each_other` | Positive control for the test above: moving other active names moves this one. |  |
+| `test_default_config_keeps_the_pre_change_checkpoint_shape` | Checkpoints saved before this change must keep loading, so the default may not move. |  |
+| `test_config_without_the_new_key_keeps_the_pre_change_checkpoint_shape` | A ``config.yaml`` written before this change has no such key at all. |  |
+| `test_residual_flag_changes_the_cross_section_parameters` | Selecting the residual form must actually reach the built model. |  |
+| `test_default_model_scores_match_the_pre_change_model` | With the flag off, the model must compute exactly what it computed before. |  |
+| `test_create_model_rejects_an_unknown_cross_section_block` | A misspelt form must not quietly build the legacy block. |  |
+| `test_residual_model_zeroes_inactive_nodes_end_to_end` |  |  |
+| `test_residual_model_inactive_stock_cannot_move_active_scores` |  |  |
+| `test_residual_block_parameters_receive_gradients` | Every block parameter must receive a real gradient, not merely a tensor. |  |
+| `test_residual_model_is_finite_under_autocast` |  |  |
+| `test_attention_correction_ignores_a_per_stock_constant_offset` | The pre-norm must make the correction depend on shape, not on level. |  |
+| `test_base_config_yaml_ships_the_legacy_block` | Real runs take the default from ``configs/config.yaml``, not from ``ModelConfig``. |  |
+| `test_model_config_rejects_an_unknown_cross_section_block` |  |  |
+| `test_model_config_round_trips_the_new_field` |  |  |
 
 ## `tests/test_data_input_identity.py`
 
@@ -331,10 +353,16 @@ Contract tests for scripts/generate_test_registry.py.
 | `test_parse_test_module_extracts_tests_docs_markers_and_imports` |  |  |
 | `test_load_junit_results_collapses_parametrized_cases_and_ranks_status` |  |  |
 | `test_build_registry_writes_markdown_with_and_without_junit` |  |  |
-| `test_build_registry_preview_records_digest_without_writing` |  |  |
+| `test_build_registry_preview_matches_the_written_file_without_writing` |  |  |
 | `test_registry_is_current_detects_inventory_drift` |  |  |
 | `test_check_mode_reports_staleness_through_exit_code` |  |  |
-| `test_inventory_digest_ignores_run_metadata_and_location` |  |  |
+| `test_parsed_inventory_ignores_run_status_but_not_markers` |  |  |
+| `test_parse_registry_round_trips_every_real_test_file` | Every real test, with its description and markers, survives render then parse. |  |
+| `test_committed_registry_carries_no_run_or_whole_inventory_lines` | No line may depend on more than one test file, or on when it was generated. |  |
+| `test_registries_from_concurrent_test_additions_merge_cleanly` | Two branches that each add a test must three-way merge with no registry conflict. | skipif, parametrize |
+| `test_check_rejects_known_bad_registries` |  | parametrize |
+| `test_check_ignores_order_formatting_and_preamble` |  |  |
+| `test_junit_status_goes_to_a_separate_report_not_the_committed_registry` |  |  |
 | `test_registry_covers_every_real_test_file` | The committed registry generator must see every test file in tests/. |  |
 
 ## `tests/test_gics_top10_110_2016_config.py`
@@ -926,7 +954,10 @@ Contract tests for the repository's own skills under .claude/skills/.
 | `test_the_frontmatter_parser_rejects_what_it_should` | Control: without this, every structural test passes for a parser that never fails. |  |
 | `test_a_bom_does_not_defeat_the_frontmatter_check` | Control for `_read`: a BOM must not read as a missing fence. |  |
 | `test_the_gating_check_catches_every_truthy_spelling` | Control for the model-invocable assertion. | parametrize |
-| `test_work_the_map_states_its_hard_stops` | The three refusals are why this skill is safe to auto-invoke. |  |
+| `test_work_the_map_states_its_hard_stops` | The refusals are why this skill is safe to auto-invoke. |  |
+| `test_the_ticket_sequencing_rule_is_stated_in_full` | Next ticket only after the previous one lands, research excepted, HITL still stops. | parametrize |
+| `test_the_retired_one_ticket_per_session_cap_is_stated_nowhere` | The flat cap was the most-violated rule here; it must not return beside its replacement. | parametrize |
+| `test_the_prose_normaliser_ignores_wrapping_and_emphasis_but_not_words` | Control for `_normalised`: without it, both guards above could pass on a normaliser that erases text. |  |
 
 ## `tests/test_regime_features.py`
 

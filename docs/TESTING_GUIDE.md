@@ -89,23 +89,36 @@ checks before pushing shared pipeline, graph, or model changes.
 
 ## Test Registry And Run Reports
 
-`docs/TEST_REGISTRY.md` lists every test file, its test functions, markers, the
-first-party modules each file exercises, and (when available) the last-run
-status and duration per test. It is auto-generated — do not edit by hand.
+`docs/TEST_REGISTRY.md` lists every test file, its test functions with their
+descriptions and markers, and the first-party modules each file exercises. It is
+auto-generated — do not edit by hand. It records that inventory only, with no
+counts, dates, or last-run status, so each line depends on one test file and
+branches that add tests to different files change different sections of it.
 
-To capture a viewable report on Windows, forward
-`--junitxml=test_reports/junit.xml` through the isolated launcher, then
-regenerate the registry to merge the results:
+Regenerate it whenever tests are added, renamed, or removed, or a test's
+docstring or markers change. CI lint runs `--check`, which regenerates the
+registry in memory and fails on any difference in the inventory, ignoring order
+and formatting. On a merge conflict in the registry, take either side and
+regenerate; do not hand-merge it.
+
+```powershell
+.\.venv\Scripts\python.exe scripts/generate_test_registry.py
+.\.venv\Scripts\python.exe scripts/generate_test_registry.py --check
+```
+
+To capture a viewable last-run report on Windows, forward
+`--junitxml=test_reports/junit.xml` through the isolated launcher, then pass it
+to the generator. The status goes to `test_reports/TEST_REGISTRY_STATUS.md`,
+never to the committed registry:
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/run_pytest_isolated.py tests/ -v --junitxml=test_reports\junit.xml
-.\.venv\Scripts\python.exe scripts/generate_test_registry.py
+.\.venv\Scripts\python.exe scripts/generate_test_registry.py --junit test_reports\junit.xml
 ```
 
 `test_reports/` is gitignored (per-run artifact); `docs/TEST_REGISTRY.md` is
-committed so the registry stays browsable. Regenerate it whenever tests are
-added, renamed, or removed. `tests/test_generate_test_registry.py` guards the
-generator's contract.
+committed so the registry stays browsable and reviewable.
+`tests/test_generate_test_registry.py` guards the generator's contract.
 
 ## Verification Ladder
 

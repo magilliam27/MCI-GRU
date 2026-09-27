@@ -245,6 +245,14 @@ optionally mixed across stocks by `SelfAttention`
 score per stock. `model.output_activation` selects identity, ELU, ReLU, or
 sigmoid.
 
+`model.cross_section_block` selects how that cross-stock mixing is applied.
+`legacy`, the default, replaces the concatenated vector with the attention
+output. `residual` wraps the same attention in `ResidualCrossSectionBlock` as
+`z + SelfAttention(LayerNorm(z))`, so the attention corrects the vector rather
+than replacing it, and re-applies the stock mask after the add. The two forms
+have disjoint parameter names, so a checkpoint loads only into the form that
+produced it.
+
 During training, `graph.drop_edge_p` drops correlation and sector edges through
 `torch_geometric.utils.dropout_edge`. When a stock mask is supplied, masked nodes
 are zeroed before and after each major stage so they neither contribute features
