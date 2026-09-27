@@ -916,6 +916,11 @@ def test_stage_keyed_paths_use_the_smoke_aware_slug() -> None:
     Read off the assignment and call nodes: a cell that merely mentions
     ``STAGE_SLUG`` in a comment, or that computes it and then keeps using
     ``RUN_STAGE`` for the paths, would pass a substring search.
+
+    The slug must also be fed the session's own ``SMOKE_MODE``, and every
+    stage-keyed artifact under the run root must spell the slug: a constant or
+    inverted flag, or a results file left on the raw stage, would undo the
+    separation while the checks on the directory and the resume key stayed green.
     """
     jobs_cell = next(
         source for source in _code_cell_sources() if "TRAINING_OUTPUT_DIR = " in source
@@ -924,6 +929,11 @@ def test_stage_keyed_paths_use_the_smoke_aware_slug() -> None:
     slug_value = _assigned_value(jobs_cell, "STAGE_SLUG")
     assert isinstance(slug_value, ast.Call), ast.dump(slug_value)
     assert isinstance(slug_value.func, ast.Name) and slug_value.func.id == "stage_slug"
+    # Exactly (RUN_STAGE, SMOKE_MODE), as bare names: stage_slug(RUN_STAGE, False)
+    # or stage_slug(RUN_STAGE, not SMOKE_MODE) would still be a stage_slug call.
+    assert not slug_value.keywords, ast.dump(slug_value)
+    assert all(isinstance(arg, ast.Name) for arg in slug_value.args), ast.dump(slug_value)
+    assert [arg.id for arg in slug_value.args] == ["RUN_STAGE", "SMOKE_MODE"], ast.dump(slug_value)
 
     # The training directory -- which is the resume directory -- keys on the slug.
     training_dir = _assigned_value(jobs_cell, "TRAINING_OUTPUT_DIR")
@@ -945,6 +955,26 @@ def test_stage_keyed_paths_use_the_smoke_aware_slug() -> None:
     manifest_path = _assigned_value(jobs_cell, "MANIFEST_PATH")
     assert "STAGE_SLUG" in _name_ids(manifest_path), ast.dump(manifest_path)
     assert "RUN_STAGE" not in _name_ids(manifest_path), ast.dump(manifest_path)
+
+    # And every other stage-keyed artifact, in every cell: the results, the
+    # disclosures, the GPU log and the post-inference files are overwritten just
+    # as silently as the manifest would be. Each is a ``<path> / f"..._{stage}..."``
+    # join, so read every such join rather than a hand-kept list of names.
+    slug_keyed = []
+    for source in _code_cell_sources():
+        for node in ast.walk(ast.parse(source)):
+            if (
+                isinstance(node, ast.BinOp)
+                and isinstance(node.op, ast.Div)
+                and isinstance(node.right, ast.JoinedStr)
+            ):
+                names = _name_ids(node.right)
+                assert "RUN_STAGE" not in names, ast.unparse(node)
+                if "STAGE_SLUG" in names:
+                    slug_keyed.append(ast.unparse(node.right))
+    # Eighteen at ticket 185. A floor rather than an exact count: a new artifact
+    # does not fail this, but one quietly losing its stage does.
+    assert len(slug_keyed) >= 18, slug_keyed
 
 
 def test_analysis_gate_still_reads_the_semantic_stage() -> None:
