@@ -923,7 +923,10 @@ Contract tests for the repository's own skills under .claude/skills/.
 | `test_the_frontmatter_parser_rejects_what_it_should` | Control: without this, every structural test passes for a parser that never fails. |  |
 | `test_a_bom_does_not_defeat_the_frontmatter_check` | Control for `_read`: a BOM must not read as a missing fence. |  |
 | `test_the_gating_check_catches_every_truthy_spelling` | Control for the model-invocable assertion. | parametrize |
-| `test_work_the_map_states_its_hard_stops` | The three refusals are why this skill is safe to auto-invoke. |  |
+| `test_work_the_map_states_its_hard_stops` | The refusals are why this skill is safe to auto-invoke. |  |
+| `test_the_ticket_sequencing_rule_is_stated_in_full` | Next ticket only after the previous one lands, research excepted, HITL still stops. | parametrize |
+| `test_the_retired_one_ticket_per_session_cap_is_stated_nowhere` | The flat cap was the most-violated rule here; it must not return beside its replacement. | parametrize |
+| `test_the_prose_normaliser_ignores_wrapping_and_emphasis_but_not_words` | Control for `_normalised`: without it, both guards above could pass on a normaliser that erases text. |  |
 
 ## `tests/test_regime_features.py`
 

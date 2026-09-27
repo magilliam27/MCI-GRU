@@ -22,9 +22,18 @@ refusals below and the routing under them.
    needs them. Being able to follow those steps is not authorisation to. If the
    work needs charting, say so and stop.
 
-2. **Never resolve more than one ticket in a session**, research tickets
-   excepted — `wayfinder/SKILL.md` § *Invocation*: *"never resolve more than one
-   ticket per session — with the exception of research tickets."*
+2. **Claim the next ticket only after the previous ticket has landed.** One
+   ticket at a time. A code ticket has landed when its pull request has been
+   merged into `main` by the maintainer; a no-code ticket (decision, grilling,
+   or research) when its resolution comment is recorded and the ticket is
+   closed. A draft awaiting review has not landed — when that is where your
+   last ticket stands, stop and hand back rather than claiming another.
+   Research tickets keep their exception.
+
+   This is a deliberate divergence from `wayfinder/SKILL.md` § *Invocation*
+   (*"never resolve more than one ticket per session — with the exception of
+   research tickets"*), made by the maintainer and recorded with its reason in
+   `docs/agents/issue-tracker.md` § Wayfinding operations. Read the rule there.
 
 3. **Stop at any HITL ticket.** `wayfinder:grilling` and `wayfinder:prototype`
    resolve only through live exchange — `wayfinder/SKILL.md` § *Ticket Types*:
@@ -33,6 +42,8 @@ refusals below and the routing under them.
 
    Claim it if you like, then **hand back with the question stated**. Do not
    answer it yourself, and do not treat your own reasoning as the exchange.
+   Hard stop 2 does not loosen this: a landed predecessor permits claiming the
+   next ticket, never answering a HITL one.
 
    `wayfinder:research` is AFK. `wayfinder:task` is either — read it and judge:
    **if it turns on a decision the maintainer has not made, treat it as HITL.**

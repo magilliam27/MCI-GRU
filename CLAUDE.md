@@ -59,8 +59,10 @@ workstyle holds on a cold start without anyone typing a command:
 - **`work-the-map`** — the AFK half of `wayfinder`: load a map, recompute the
   frontier, claim, resolve, record, fold state back into the body. It refuses
   to chart, **stops at any HITL ticket** rather than answering its own grilling
-  questions, and resolves at most one ticket per session — research tickets
-  excepted, which the skill may fan out.
+  questions, and claims the next ticket only after the previous one has landed
+  (its pull request merged by you, or for a no-code ticket its resolution
+  recorded and the ticket closed) — research tickets excepted, which the skill
+  may fan out.
 - **`implement-ticket`** — the implementation loop: claim before branching with
   owned paths declared, `/mattpocock-skills:tdd` at seams confirmed with you,
   mutation-checking, `/mattpocock-skills:code-review`, draft pull request.
