@@ -12,12 +12,17 @@ entropy, or effective rank: those are diagnostics, and asserting on them would
 couple the suite to the implementation.
 """
 
+from pathlib import Path
+
 import pytest
 import torch
+from hydra import compose, initialize_config_dir
 
 from mci_gru.config import ModelConfig
 from mci_gru.models import SelfAttention, create_model
 from mci_gru.models.attention import ResidualCrossSectionBlock
+
+CONFIG_DIR = Path(__file__).resolve().parents[1] / "configs"
 
 _BASE_MODEL_CONFIG = {
     "gru_hidden_sizes": [4, 4],
@@ -93,6 +98,30 @@ def test_residual_block_inactive_node_cannot_influence_active_ones() -> None:
     assert torch.allclose(before[:, :3, :], after[:, :3, :], atol=1e-6)
 
 
+def test_residual_block_active_nodes_influence_each_other() -> None:
+    """Positive control for the test above: moving other active names moves this one.
+
+    An inert attention branch, multiplied by zero or fed a constant, turns the
+    block into a masked identity. That passes every isolation, retention, and
+    offset test in this file trivially, because an identity lets nothing
+    influence anything. This test fails for it.
+    """
+    torch.manual_seed(0)
+    block = ResidualCrossSectionBlock(SelfAttention(embed_dim=8, align_dim=2), embed_dim=8)
+    x = torch.randn(1, 4, 8)
+    mask = torch.tensor([[True, True, True, False]])
+
+    before = block(x, stock_mask=mask)
+    changed = x.clone()
+    generator = torch.Generator().manual_seed(7)
+    changed[:, 1:3, :] = 3.0 * torch.randn(1, 2, 8, generator=generator)
+    after = block(changed, stock_mask=mask)
+
+    assert torch.equal(changed[:, 0, :], x[:, 0, :])
+    # Measured at about 0.33; an inert branch moves it by exactly 0.
+    assert (after[:, 0, :] - before[:, 0, :]).abs().max() > 1e-2
+
+
 # Measured on origin/main at 125abda, before this change, for _BASE_MODEL_CONFIG with
 # input_size=8. Pinned literals rather than a value recomputed from today's code, so
 # this guard can actually disagree with a regression in the default path.
@@ -158,10 +187,15 @@ def _forward_inputs(num_stocks: int = 4, num_features: int = 7, seq_len: int = 4
 
 
 def _residual_model(num_features: int = 7):
+    # Without an explicit head activation the head inherits ReLU from
+    # ``activation``, and a negative score would then pass no gradient. The
+    # scores happen to be positive at this seed; the tests should not rely on it.
+    # ``_BASE_MODEL_CONFIG`` keeps the inherited head, because the legacy
+    # literals below were measured with it.
     torch.manual_seed(0)
     return create_model(
         num_features,
-        {**_BASE_MODEL_CONFIG, "cross_section_block": "residual"},
+        {**_BASE_MODEL_CONFIG, "cross_section_block": "residual", "output_activation": "none"},
     )
 
 
@@ -239,15 +273,36 @@ def test_residual_model_inactive_stock_cannot_move_active_scores() -> None:
     assert torch.allclose(before[:, :3], after[:, :3], atol=1e-5)
 
 
+# ``inner.W_k.bias`` adds the same term, q_i . b_k, to every key's score for a
+# given query. Softmax is shift-invariant, so its gradient is zero up to rounding
+# (measured 1.5e-8) and it is exempt from the nonzero requirement below.
+_SOFTMAX_SHIFT_INVARIANT_PARAMETERS = {"inner.W_k.bias"}
+# The smallest real gradient here is about 2e-2 (``inner.W_q.bias``).
+_MIN_GRADIENT = 1e-4
+
+
 def test_residual_block_parameters_receive_gradients() -> None:
+    """Every block parameter must receive a real gradient, not merely a tensor.
+
+    A branch multiplied by zero, or fed a constant, still leaves a finite
+    gradient on every parameter: it is just zero. Existence and finiteness
+    therefore cannot tell a working block from an inert one, so each parameter
+    must carry a gradient well above rounding.
+    """
     model = _residual_model()
     time_series, graph_features, edge_index, edge_weight = _forward_inputs()
 
     model(time_series, graph_features, edge_index, edge_weight, 4).sum().backward()
 
     grads = {name: p.grad for name, p in model.self_attention.named_parameters()}
-    assert grads
+    assert set(grads) > _SOFTMAX_SHIFT_INVARIANT_PARAMETERS
     assert all(g is not None and torch.isfinite(g).all() for g in grads.values())
+    too_small = {
+        name: g.abs().max().item()
+        for name, g in grads.items()
+        if name not in _SOFTMAX_SHIFT_INVARIANT_PARAMETERS and g.abs().max() <= _MIN_GRADIENT
+    }
+    assert not too_small
 
 
 def test_residual_model_is_finite_under_autocast() -> None:
@@ -279,6 +334,17 @@ def test_attention_correction_ignores_a_per_stock_constant_offset() -> None:
     shifted_correction = block(x + per_stock_offset) - (x + per_stock_offset)
 
     assert torch.allclose(correction, shifted_correction, atol=1e-5)
+
+
+def test_base_config_yaml_ships_the_legacy_block() -> None:
+    """Real runs take the default from ``configs/config.yaml``, not from ``ModelConfig``.
+
+    The "no default change" criterion rests on this YAML value, and no other
+    test reads it.
+    """
+    with initialize_config_dir(config_dir=str(CONFIG_DIR), version_base=None):
+        cfg = compose(config_name="config", overrides=[])
+    assert cfg.model.cross_section_block == "legacy"
 
 
 def test_model_config_rejects_an_unknown_cross_section_block() -> None:
