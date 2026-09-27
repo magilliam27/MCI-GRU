@@ -35,6 +35,7 @@ model:
   temporal_encoder: gru_attn    # legacy | gru_attn | transformer
   use_a1_a2_cross_attention: false
   cross_a2_num_heads: 4
+  cross_section_block: legacy  # legacy | residual (issue #197; legacy replaces z, residual corrects it)
 
 # Graph configuration
 graph:
