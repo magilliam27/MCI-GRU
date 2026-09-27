@@ -74,6 +74,14 @@ quality contracts, and safe pulls" (issue #187).
 | `docs/research/current/LOSS_PATH_DECISION_2026-06-04.md` | Current June 4 conservative loss-path decision note; read with later handoffs before making LambdaRankIC readiness claims. |
 | `docs/research/current/LOSS_PATH_EXPERIMENTAL_SEARCH_2026-06-04.md` | Current exploratory companion for uncertainty-adjusted ranking, distributional heads, and deferred optimizer-style losses. |
 
+### Trunk Architecture Evidence
+
+Evidence behind the two trunk construction defects filed as issues #197 and #198.
+
+| Report | Status |
+| --- | --- |
+| `docs/research/current/MCI_GRU_TRUNK_ARCHITECTURE_OPPORTUNITIES_2026-09-05.md` | Current trunk-architecture map: information-flow diagnostics on the four-stream trunk, and a pre-registered trunk-hygiene ablation (arms C0 to C5: no cross-stock block, a residual cross-stock block, a market-state gate, data-dependent latents, capacity-matched widths) under the paired protocol ruled on #181. Section 3.7 is the authoritative measurement. On the 110-name PIT universe with trained checkpoints, the shipped cross-stock block cuts the cross-sectional variance share from 0.433 to 0.024 and effective rank from 3.6 to 1.6; the residual form keeps 0.329 of 0.403. Mechanics-level, not performance evidence: section 3.8 shows every IC ordering inverting between two seeds. Read the correction note in section 3.6 before quoting any step-time cost. The scripts and raw outputs behind the figures are in `trunk_architecture_diagnostics_2026-09-05/` beside it. The looped-transformer brief that started the investigation is `docs/research-paper-evaluations/2026-09-05-looped-transformers-recurrent-depth.md`. |
+
 ### Point-In-Time Universe And Evaluation Evidence
 
 | Report | Status |
