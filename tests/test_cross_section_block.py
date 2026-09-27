@@ -288,6 +288,6 @@ def test_model_config_rejects_an_unknown_cross_section_block() -> None:
 
 def test_model_config_round_trips_the_new_field() -> None:
     assert ModelConfig().to_dict()["cross_section_block"] == "legacy"
-    assert (
-        ModelConfig(cross_section_block="residual").to_dict()["cross_section_block"] == "residual"
-    )
+    serialised = ModelConfig(cross_section_block="residual").to_dict()
+    assert serialised["cross_section_block"] == "residual"
+    assert ModelConfig(**serialised).cross_section_block == "residual"
