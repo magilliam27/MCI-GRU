@@ -42,7 +42,7 @@ Draft: merging is the maintainer's call.
 
 ## Verification
 
-<!-- Interpreter, working directory, each command, and its exit status. The full suite runs through the isolated launcher with a junit report whenever the test registry is regenerated. -->
+<!-- Interpreter, working directory, each command, and its exit status. The full suite runs through the isolated launcher whenever the test registry is regenerated. -->
 
 -
 

@@ -136,8 +136,8 @@ tests/               ← pytest suite and golden fixtures
 Tests verify: no-lookahead invariants, dynamic graph wiring, momentum blend modes,
 regime data contracts, backtest fairness, output management, MLflow tracking.
 
-`docs/TEST_REGISTRY.md` is the auto-generated registry of all tests (with
-last-run status when `test_reports/junit.xml` exists). Regenerate after adding
+`docs/TEST_REGISTRY.md` is the auto-generated registry of all tests, their
+descriptions, and markers; it carries no last-run status. Regenerate after adding
 or renaming tests: `.\.venv\Scripts\python.exe scripts/generate_test_registry.py`.
 
 ## Correlation graph

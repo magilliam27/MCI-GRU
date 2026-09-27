@@ -486,6 +486,11 @@ class ModelConfig:
             fast path (with a ``gru_attn`` slow branch in multi-scale mode).
         use_a1_a2_cross_attention: Fuse graph stream with temporal sequence via MHA (Q=A2, KV=A1).
         cross_a2_num_heads: Heads for A1–A2 cross-attention (must divide ``hidden_size_gat1``).
+        cross_section_block: How the cross-stock attention is applied. ``"legacy"``
+            replaces ``z`` with the attention output, which discards most of the
+            across-stock variation (issue #197). ``"residual"`` applies it as
+            ``z + Attn(LayerNorm(z))`` so the attention corrects ``z`` instead.
+            Defaults to ``"legacy"`` for checkpoint compatibility.
         market_latent_mode: What the B1/B2 latent states are. ``"static"`` keeps
             the shipped behaviour, where ``R1``/``R2`` are frozen parameters and
             the streams cannot observe the date's market (issue #198).
@@ -518,10 +523,12 @@ class ModelConfig:
     temporal_encoder: str = "legacy"
     use_a1_a2_cross_attention: bool = False
     cross_a2_num_heads: int = 4
+    cross_section_block: str = "legacy"
     market_latent_mode: str = "static"
 
     _VALID_OUTPUT_ACTIVATIONS = ("none", "elu", "relu", "sigmoid")
     _VALID_TEMPORAL_ENCODERS = ("legacy", "gru_attn", "transformer")
+    _VALID_CROSS_SECTION_BLOCKS = ("legacy", "residual")
     _VALID_MARKET_LATENT_MODES = ("static", "data_dependent")
 
     def __post_init__(self):
@@ -536,6 +543,11 @@ class ModelConfig:
             raise ValueError(
                 f"temporal_encoder must be one of {self._VALID_TEMPORAL_ENCODERS}, "
                 f"got {self.temporal_encoder!r}"
+            )
+        if self.cross_section_block not in self._VALID_CROSS_SECTION_BLOCKS:
+            raise ValueError(
+                f"cross_section_block must be one of {self._VALID_CROSS_SECTION_BLOCKS}, "
+                f"got {self.cross_section_block!r}"
             )
         if self.market_latent_mode not in self._VALID_MARKET_LATENT_MODES:
             raise ValueError(
@@ -584,6 +596,7 @@ class ModelConfig:
             "temporal_encoder": self.temporal_encoder,
             "use_a1_a2_cross_attention": self.use_a1_a2_cross_attention,
             "cross_a2_num_heads": self.cross_a2_num_heads,
+            "cross_section_block": self.cross_section_block,
             "market_latent_mode": self.market_latent_mode,
         }
 

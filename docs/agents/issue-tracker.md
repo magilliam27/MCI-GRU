@@ -175,7 +175,8 @@ Claude Code sessions should see `CLAUDE.md`. Either way this section is written
 to stand alone:
 
 - **If the skill is in play**, follow it, and prefer it over this section
-  wherever the two differ.
+  wherever the two differ, except where a divergence below is recorded as
+  deliberate.
 - **If it is not**, this section is the operative substitute and is what the
   session actually follows. It is deliberately kept close to the skill.
 
@@ -208,8 +209,34 @@ the divergence is recorded here as deliberate, with its reason.
   `wayfinder:grilling` and `wayfinder:prototype` are **HITL** and resolve only
   through live exchange with the human — **an agent must never answer its own
   grilling questions.** `wayfinder:task` is either, depending on the ticket.
-- **One ticket per session.** Never resolve more than one ticket in a session,
-  except research tickets. This bounds how much unreviewed change lands at once.
+- **Next ticket only after the previous one lands.** A session resolves one
+  ticket at a time, and claims the next ticket only after the previous ticket
+  has landed. This bounds how much unreviewed change is in flight at once.
+  - A **code ticket** has landed when its pull request has been merged into
+    `main` by the maintainer. A draft awaiting review has not landed, however
+    complete it is, and neither has a pull request that is ready but unmerged.
+  - A **no-code ticket** (decision, grilling, or research) has landed when its
+    resolution comment is recorded and the ticket is closed.
+  - **Research tickets keep their exception.** A session may still fan out
+    several research tickets without waiting for each to land.
+  - **HITL tickets still stop the session for the human.** The amendment
+    changes when the next ticket may be claimed, not who may resolve it: a
+    landed predecessor never lets an agent chain into a grilling or prototype
+    ticket and answer it. Claim it at most, and hand back with the question
+    stated.
+  - The landing condition is spelled out because the flat per-session cap it
+    replaced was the most-violated rule here: an audit in September 2026 found
+    four tickets taken in one session, two chained 59 seconds apart, three run
+    back to back, and a claim that rewrote the cap ad hoc to count only
+    implementation tickets.
+  - **Deliberate divergence from `wayfinder/SKILL.md`.** Upstream § *Invocation*
+    says *"never resolve more than one ticket per session — with the exception
+    of research tickets."* The maintainer amended that here on 2026-09-27. Work
+    in this repository is reviewed and merged ticket by ticket, so what bounds
+    unreviewed change is what is still unmerged, not how many tickets one
+    session touched; the per-session cap was being worked around rather than
+    followed. Recorded here so that the `SKILL.md`-wins rule above does not
+    silently void the amendment.
 - **Child ticket:** Prefer a native GitHub sub-issue linked to the map and label
   it with exactly one type:
   `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling`, or
