@@ -1,4 +1,4 @@
-"""Feature drift calculations for paper-trade monitoring."""
+"""Feature drift calculations for frozen-inference monitoring."""
 
 from __future__ import annotations
 

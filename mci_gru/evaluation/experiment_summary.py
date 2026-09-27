@@ -95,6 +95,45 @@ def data_file_fingerprint(relative_path: str, logger: logging.Logger) -> dict[st
     }
 
 
+def build_run_metadata(
+    config: ExperimentConfig,
+    data: dict[str, Any],
+    *,
+    walkforward_window: int,
+    resolved_config_identity: dict[str, str],
+    logger: logging.Logger,
+) -> dict[str, Any]:
+    """One walk-forward window's ``run_metadata.json`` payload.
+
+    Consumed identities come from the sealed preparation result; their sources
+    are never reopened here. The separate legacy ``data_file_*`` keys still
+    fingerprint the cwd-relative configured path at metadata time, preserving
+    notebook compatibility. ``input_observations`` retains every observed read
+    and use; ``data_inputs`` projects the first consumed identity per role with
+    links to all of its consumed reads.
+    """
+    return {
+        "norm_means": {k: float(v) for k, v in data["norm_means"].items()},
+        "norm_stds": {k: float(v) for k, v in data["norm_stds"].items()},
+        "feature_cols": data["feature_cols"],
+        "kdcode_list": data["kdcode_list"],
+        "his_t": config.model.his_t,
+        "label_t": config.model.label_t,
+        "seed": config.seed,
+        "train_end": config.data.train_end,
+        "data_file": config.data.filename,
+        "walkforward_window": walkforward_window,
+        **resolved_config_identity,
+        "graph_static_valid_from": data.get("graph_static_valid_from"),
+        "feature_reference_path": "feature_reference.json",
+        "pit_universe_mode": data.get("pit_universe_mode"),
+        "pit_breadth": data.get("pit_breadth"),
+        **data_file_fingerprint(config.data.filename, logger),
+        "data_inputs": data["input_observations"].data_inputs(),
+        "input_observations": data["input_observations"].to_dict(),
+    }
+
+
 def resolved_evaluation_kwargs(config: ExperimentConfig) -> dict[str, Any]:
     eval_cfg = config.evaluation
     return {

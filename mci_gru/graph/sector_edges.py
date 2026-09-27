@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import logging
+from io import BytesIO, TextIOWrapper
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -11,6 +12,8 @@ import torch
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from mci_gru.data.input_observations import InputObservationContext
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +28,9 @@ def _is_missing(value: str) -> bool:
     return value.strip().lower() in _MISSING_SECTOR_VALUES
 
 
-def load_sector_map_csv(path: str) -> dict[str, str]:
+def load_sector_map_csv(
+    path: str, *, input_observations: InputObservationContext | None = None
+) -> dict[str, str]:
     """Load ``kdcode -> sector`` from a curated map or a universe metadata export.
 
     Two schemas are accepted:
@@ -43,7 +48,23 @@ def load_sector_map_csv(path: str) -> dict[str, str]:
     p = Path(path)
     if not p.is_file():
         raise FileNotFoundError(f"sector_map_csv not found: {path}")
-    with p.open(newline="", encoding="utf-8") as f:
+
+    if input_observations is not None:
+        out = input_observations.read_file(
+            p,
+            role="graph.sector_map_csv",
+            configured_path=path,
+            parse=lambda content: _parse_sector_map_csv(content, path),
+            parser={"name": "csv.DictReader", "options": {"encoding": "utf-8", "newline": ""}},
+        )
+    else:
+        out = _parse_sector_map_csv(p.read_bytes(), path)
+    logger.info(f"Sector map: {len(out)} kdcode(s) with a known sector from {p.name}")
+    return out
+
+
+def _parse_sector_map_csv(content: bytes, path: str) -> dict[str, str]:
+    with TextIOWrapper(BytesIO(content), newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         if reader.fieldnames is None:
             raise ValueError(f"Empty CSV: {path}")
@@ -77,7 +98,6 @@ def load_sector_map_csv(path: str) -> dict[str, str]:
             f"Sector map: {len(conflicts)} kdcode(s) carry more than one sector across "
             f"snapshots (newest wins), e.g. {sorted(conflicts)[:5]}"
         )
-    logger.info(f"Sector map: {len(out)} kdcode(s) with a known sector from {p.name}")
     return out
 
 

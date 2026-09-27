@@ -426,7 +426,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--min-rank-drop",
         type=int,
         default=30,
-        help="Normal rank-drop gate threshold used by paper-trade portfolio logic.",
+        help="Normal rank-drop gate threshold (the shared portfolio gate).",
     )
     parser.add_argument("--num-tests", type=int, default=1)
     parser.add_argument(

@@ -7,7 +7,7 @@ This project supports **local MLflow tracking** for training and backtesting (en
 MLflow is **additive**:
 
 - it does **not** replace the existing Hydra output folders
-- it does **not** change the files used by paper-trade inference
+- it does **not** change the files used by frozen inference
 - it does **not** move checkpoints, predictions, or run metadata
 
 The existing local filesystem outputs remain the source of truth for downstream workflows.

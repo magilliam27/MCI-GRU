@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from mci_gru.evaluation.artifacts import write_json_artifact
+from mci_gru.utils.hashing import sha256_file as sha256_file
 
 CORE_ARTIFACTS = [
     "run_metadata.json",
@@ -45,14 +46,6 @@ GRAPH_CANDIDATES = [
     "graph_policy.json",
 ]
 CHECKPOINT_PATTERNS = ["*.pt", "*.pth", "*.ckpt"]
-
-
-def sha256_file(path: str | Path) -> str:
-    digest = hashlib.sha256()
-    with Path(path).open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def sha256_directory(path: str | Path, pattern: str = "*.csv") -> dict[str, Any]:

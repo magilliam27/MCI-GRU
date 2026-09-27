@@ -4,7 +4,7 @@
 **Ticket:** magilliam27/MCI-GRU issue #167 (`wayfinder:task`, AFK with maintainer-supervised compute), child of map #157
 **Protocol:** issue #164 resolution, executed through the issue #166 harness (`notebooks/graph_specification_ablation_colab.ipynb` at commit `46ea7b0`)
 **Status:** Current research evidence. Live Colab execution with Drive-backed artifacts; no code change, no config change, no recipe change.
-**Prior result reconciled:** `docs/ABLATION_NOTEBOOK_RESULTS_REPORT_2026-04-30.md`, on `top_k=20` specifically (section 8).
+**Prior result reconciled:** `docs/research/archive/ABLATION_NOTEBOOK_RESULTS_REPORT_2026-04-30.md`, on `top_k=20` specifically (section 8).
 
 Every figure is labelled `[Verified]` (read from a run artifact on Drive, or reproduced from
 one) or `[Inferred]` (reasoning on top of those figures). Section 10 is entirely
@@ -374,7 +374,7 @@ not a substitution, and it should be opened before `D1` is taken.
 
 ## 8. Reconciliation with the April 2026 report on `top_k=20`
 
-`docs/ABLATION_NOTEBOOK_RESULTS_REPORT_2026-04-30.md` reported, for `top_k=20`, a mean
+`docs/research/archive/ABLATION_NOTEBOOK_RESULTS_REPORT_2026-04-30.md` reported, for `top_k=20`, a mean
 decision score of **−1.3704**, avg IC **0.0314**, and top-20 return CI lower **−0.0024**,
 called it *"materially worse than threshold graphs"*, and ruled *"do not promote top-K graph
 variants yet."* Those runs used `sp500_2019_universe_data_through_2026.csv` — a different
