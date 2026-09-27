@@ -66,11 +66,18 @@ As of 2026-09-02. Each item links the report it is read from; the caveats are th
 - **The point-in-time panel runs end to end at full breadth.** Rolling yearly trainings
   for 2022 through 2025 on the roughly 700-name point-in-time union completed with every
   breadth check passed and every prediction file matching the same-day scoreable mask.
-  Point-in-time daily top-K replays show strong positive excess return in 2023, 2024 and
+  That is one run (`20260514_043539`, a 20-model ensemble per test year). Its
+  point-in-time daily top-K replays show strong positive excess return in 2023, 2024 and
   2025 and a weak 2022; compounded across the four windows the model returns about 92%
   against 20% for the benchmark, with no transaction costs, no rank gate, and no single
-  year significant on its own.
+  year significant on its own. A later repeated-seed replication names that run as its
+  reference and reran its recipe on the same panel with three seeds, transaction costs,
+  and the rank-drop gate: "2023 and 2025 are robustly positive, 2024 is effectively flat
+  across seeds, and 2022 remains a repeatable failure regime." "The pooled all-seed daily
+  excess result is directionally strong and raw-significant, but the BHY-adjusted p-value
+  does not clear 0.05." Its pooled BHY-adjusted p-value is 0.2260.
   [`PIT_MASKED_PANEL_2022_2025_FULL_RUN_REPORT_2026-05-16`](docs/research/current/PIT_MASKED_PANEL_2022_2025_FULL_RUN_REPORT_2026-05-16.md)
+  · [`PIT_REPEATED_SEED_OPTION_A_RESULTS_2026-05-21`](docs/research/current/PIT_REPEATED_SEED_OPTION_A_RESULTS_2026-05-21.md)
 - **The reduced universe is promising and not uniformly robust.** On the 110-name GICS
   top-10 universe extended back to 2016, out-of-sample test IC was +0.056 in 2023 and
   +0.039 in 2024, with 30 and 23 points of excess return over the benchmark, and −0.058

@@ -186,6 +186,10 @@ def test_caveats_are_the_reports_words_and_the_caption_carries_them():
     assert scope in caption
     assert f"`{full_panel['run_tag']}`" in caption, "the caption names the one run"
     assert f"{full_panel['replication']['pooled']['bhy_p']:.4f}" in caption
+    # The line's strongest year is what the replication qualifies, so a replication caveat
+    # must name it: dropping that sentence from the JSON and the caption together fails here.
+    strongest = max(full_panel["rows"], key=lambda row: row["model_total_pct"])["year"]
+    assert any(str(strongest) in s for s in full_panel["replication"]["caveats"]), strongest
 
     # The image carries its own qualifiers, and the report sentences behind them are
     # among the caveats checked above.
