@@ -1,0 +1,20 @@
+# @package _global_
+# Ablation arm A4 (issue 164 protocol): the exact, estimation-free sector
+# relation with the correlation edges zeroed. Phase 0 measured the shipped
+# graph's deployment-window edges as 100% twin-or-intra-sector, so this arm is
+# the direct control for "does estimated correlation add anything beyond known
+# sector structure". Disclosed asymmetry: use_sector_relation instantiates the
+# dual-GAT fuse path, so this arm carries extra parameters; its comparison is
+# specification-level, not parameter-matched.
+#
+# The sector map derives from the universe metadata export, per the note in
+# configs/data/gics_top10_110_2016.yaml (206/206 names mapped, 11 sectors,
+# 3706 directed edges measured against that vintage). load_sector_map_csv
+# consumes the export directly; no curated map is maintained.
+
+experiment_name: graph_sector_only
+
+graph:
+  zero_edges: true
+  use_sector_relation: true
+  sector_map_csv: data/raw/constituents/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_all_metadata_snapshots.csv

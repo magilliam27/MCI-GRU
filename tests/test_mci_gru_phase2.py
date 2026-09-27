@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from mci_gru.models import GRUWithAttention, ImprovedGRU, MarketLatentStateLearner, create_model
-from mci_gru.models.mci_gru import CausalTransformerEncoder, MultiScaleTemporalEncoder
+from mci_gru.models.temporal import CausalTransformerEncoder, MultiScaleTemporalEncoder
 
 
 def test_group_type_embed_on_has_embedding_params():

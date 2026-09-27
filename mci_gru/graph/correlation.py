@@ -1,5 +1,7 @@
 """Pure correlation-matrix and edge-selection math for graph construction."""
 
+from collections.abc import Sequence
+
 import numpy as np
 import pandas as pd
 import torch
@@ -50,6 +52,7 @@ def build_edges(
     use_lead_lag_features: bool,
     lead_lag_days: list[int],
     admissible_mask: np.ndarray | None = None,
+    exclude_pairs: Sequence[Sequence[str]] | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Build edge tensors from a correlation matrix using vectorised numpy ops.
 
@@ -82,6 +85,13 @@ def build_edges(
     neighbours than configured and a ``rank_pct`` ranked against a contaminated
     candidate set. Excluding candidates up front is the only place that is
     repairable.
+
+    *exclude_pairs* names kdcode pairs to exclude from the adjacency (issue 164
+    hygiene rule: the GOOG.OQ/GOOGL.OQ same-company twin). It rides the same
+    candidate-level mechanism for the same reason: the pair's entries are set
+    to NaN before selection, so the excluded name can never spend a top-K slot
+    and the node's budget is refilled by its next clean candidate. Names absent
+    from *kdcode_list* are ignored here; the caller owns any warning.
     """
     corr = corr_matrix.values
 
@@ -95,6 +105,21 @@ def build_edges(
         corr = corr.astype(float, copy=True)
         corr[~admissible_mask, :] = np.nan
         corr[:, ~admissible_mask] = np.nan
+
+    if exclude_pairs:
+        index_by_code = {code: idx for idx, code in enumerate(kdcode_list)}
+        positions = [
+            (index_by_code[a], index_by_code[b])
+            for a, b in exclude_pairs
+            if a in index_by_code and b in index_by_code
+        ]
+        if positions:
+            if admissible_mask is None:
+                # Not yet copied above; never NaN the caller's matrix in place.
+                corr = corr.astype(float, copy=True)
+            for i, j in positions:
+                corr[i, j] = np.nan
+                corr[j, i] = np.nan
 
     if top_k > 0:
         rows, cols, kept_corr, rank_pct = _select_edges_topk(corr, top_k, top_k_metric)

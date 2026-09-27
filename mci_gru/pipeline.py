@@ -3,8 +3,8 @@ Data pipeline for MCI-GRU experiments.
 
 Consolidates the data loading → feature engineering → normalisation →
 tensor construction flow that was previously split across run_experiment.py
-(``prepare_data`` / ``prepare_data_index_level``) and
-paper_trade/scripts/infer.py.
+(``prepare_data`` / ``prepare_data_index_level``) and the
+retired paper-trade inference script.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ import pandas as pd
 import torch
 
 from mci_gru.data.data_manager import DataManager
+from mci_gru.data.input_observations import InputObservationContext, InputObservationError
 from mci_gru.data.pit import (
     active_kdcodes_in_period,
     apply_label_mask,
@@ -69,6 +70,7 @@ class PitContext:
     intervals: pd.DataFrame | None
     masked_panel: bool
     csv_path: str | None
+    input_observations: InputObservationContext | None = None
 
 
 @dataclass(frozen=True)
@@ -153,6 +155,8 @@ def load_auxiliary_data(
         try:
             vix_df = data_manager.load_vix()
             logger.info(f"Loaded VIX data: {len(vix_df)} observations")
+        except InputObservationError:
+            raise
         except Exception as exc:
             logger.warning(f"Warning: Could not load VIX data: {exc}")
 
@@ -160,6 +164,8 @@ def load_auxiliary_data(
         try:
             credit_df = data_manager.load_credit_spreads()
             logger.info(f"Loaded credit spread data: {len(credit_df)} observations")
+        except InputObservationError:
+            raise
         except Exception as exc:
             logger.warning(f"Warning: Could not load credit spread data: {exc}")
 
@@ -176,6 +182,8 @@ def load_auxiliary_data(
                 regime_enforce_lag_days=config.features.regime_enforce_lag_days,
             )
             logger.info(f"Loaded regime input data: {len(regime_df)} observations")
+        except InputObservationError:
+            raise
         except Exception as exc:
             if config.features.regime_strict:
                 raise
@@ -223,9 +231,17 @@ def _build_feature_reference(
     return {"features": features}
 
 
-def _apply_pit_universe(df: pd.DataFrame, csv_path: str) -> pd.DataFrame:
+def _apply_pit_universe(
+    df: pd.DataFrame, csv_path: str, input_observations: InputObservationContext | None = None
+) -> pd.DataFrame:
     """Filter rows to kdcode/date pairs covered by [valid_from, valid_to] in *csv_path*."""
-    pit = pd.read_csv(csv_path)
+    pit = (
+        input_observations.read_csv(
+            csv_path, role="data.pit_universe_csv", configured_path=csv_path
+        )
+        if input_observations is not None
+        else pd.read_csv(csv_path)
+    )
     pit.columns = [str(c).strip().lower() for c in pit.columns]
     if not {"kdcode", "valid_from", "valid_to"}.issubset(pit.columns):
         raise ValueError("pit_universe_csv must have columns kdcode, valid_from, valid_to")
@@ -450,15 +466,24 @@ def engineer_features(
     return df, feature_cols
 
 
-def resolve_pit_context(config: ExperimentConfig) -> PitContext:
+def resolve_pit_context(
+    config: ExperimentConfig, input_observations: InputObservationContext | None = None
+) -> PitContext:
     masked_panel = config.data.use_pit_universe and config.data.pit_universe_mode == "masked_panel"
     csv_path = config.data.pit_universe_csv if config.data.use_pit_universe else None
     intervals: pd.DataFrame | None = None
     if config.data.use_pit_universe:
         if not config.data.pit_universe_csv:
             raise ValueError("data.use_pit_universe=true requires data.pit_universe_csv")
-        intervals = load_pit_intervals(config.data.pit_universe_csv)
-    return PitContext(intervals=intervals, masked_panel=masked_panel, csv_path=csv_path)
+        intervals = load_pit_intervals(
+            config.data.pit_universe_csv, input_observations=input_observations
+        )
+    return PitContext(
+        intervals=intervals,
+        masked_panel=masked_panel,
+        csv_path=csv_path,
+        input_observations=input_observations,
+    )
 
 
 def fit_normalisation(
@@ -472,14 +497,14 @@ def fit_normalisation(
     if mode == "zscore":
         norm_source = df_filled
         if pit.masked_panel:
-            norm_source = _apply_pit_universe(df_filled, pit.csv_path)
+            norm_source = _apply_pit_universe(df_filled, pit.csv_path, pit.input_observations)
         means, stds = _compute_norm_stats(norm_source, feature_cols, train_end)
         df_norm = _apply_normalisation(df_filled, feature_cols, means, stds)
     elif mode == "rank_gauss":
         logger.info("Applying rank-Gaussian normalisation (train fit)...")
         rank_source = df_filled
         if pit.masked_panel:
-            rank_source = _apply_pit_universe(df_filled, pit.csv_path)
+            rank_source = _apply_pit_universe(df_filled, pit.csv_path, pit.input_observations)
         train_mask = rank_source["dt"] <= train_end
         train_slice = rank_source.loc[train_mask]
         rank_gauss_reference = fit_rank_gaussian_reference(train_slice, feature_cols)
@@ -669,6 +694,24 @@ def apply_pit_masks_to_tensors(
     return masked, pit_breadth
 
 
+def _build_sector_relation(
+    graph_config: GraphConfig,
+    kdcode_list: list[str],
+    input_observations: InputObservationContext | None = None,
+) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+    """Sector edges for the configured relation, or ``(None, None)`` when off."""
+    if not (graph_config.use_sector_relation and graph_config.sector_map_csv):
+        return None, None
+    sector_map = load_sector_map_csv(
+        graph_config.sector_map_csv, input_observations=input_observations
+    )
+    return build_sector_edges(
+        kdcode_list,
+        sector_map,
+        exclude_pairs=graph_config.exclude_edge_pairs or None,
+    )
+
+
 def build_correlation_graph(
     frames: PipelineFrames,
     kdcode_list: list[str],
@@ -677,7 +720,45 @@ def build_correlation_graph(
     test_end: str,
     first_sample_date: str | None = None,
     pit_intervals: pd.DataFrame | None = None,
+    input_observations: InputObservationContext | None = None,
 ) -> GraphArtifacts:
+    if graph_config.exclude_edge_pairs:
+        # Checked here, once per build and on every branch (the zeroed A4
+        # branch constructs no GraphBuilder), so a misspelled kdcode cannot
+        # become a silent no-op.
+        axis = set(kdcode_list)
+        for pair in graph_config.exclude_edge_pairs:
+            if pair[0] not in axis or pair[1] not in axis:
+                logger.warning(
+                    "graph.exclude_edge_pairs: %s is not fully on this node axis; "
+                    "exclusion is a no-op for it",
+                    pair,
+                )
+
+    if graph_config.zero_edges:
+        # Ablation control arm A0 (issue 164 protocol): suppress every
+        # correlation edge at build time. The empty tensor mirrors
+        # build_edges' empty branch exactly -- same width logic -- so collate
+        # and edge_feature_dim stay in agreement, and the GAT then runs on
+        # its default self-loops only. The sector branch (arm A4) is still
+        # honoured below.
+        logger.info("graph.zero_edges=true: correlation edges suppressed (zeroed control arm)")
+        if graph_config.use_multi_feature_edges:
+            n_extra = 2 if graph_config.use_lead_lag_features else 0
+            empty_weight = torch.zeros((0, 4 + n_extra), dtype=torch.float)
+        else:
+            empty_weight = torch.zeros(0, dtype=torch.float)
+        edge_index_sector, edge_weight_sector = _build_sector_relation(
+            graph_config, kdcode_list, input_observations
+        )
+        return GraphArtifacts(
+            edge_index=torch.zeros((2, 0), dtype=torch.long),
+            edge_weight=empty_weight,
+            graph_schedule=None,
+            edge_index_sector=edge_index_sector,
+            edge_weight_sector=edge_weight_sector,
+        )
+
     logger.info("Building correlation graph...")
     graph_builder = GraphBuilder(
         judge_value=graph_config.judge_value,
@@ -688,6 +769,7 @@ def build_correlation_graph(
         use_multi_feature_edges=graph_config.use_multi_feature_edges,
         use_lead_lag_features=graph_config.use_lead_lag_features,
         lead_lag_days=graph_config.lead_lag_days,
+        exclude_edge_pairs=graph_config.exclude_edge_pairs or None,
     )
     # Static graph: PIT-restrict selection at its single build date. This is a
     # coarser guarantee than the dynamic path gets - one graph built at
@@ -712,11 +794,9 @@ def build_correlation_graph(
             pit_intervals=pit_intervals,
         )
 
-    edge_index_sector = None
-    edge_weight_sector = None
-    if graph_config.use_sector_relation and graph_config.sector_map_csv:
-        sector_map = load_sector_map_csv(graph_config.sector_map_csv)
-        edge_index_sector, edge_weight_sector = build_sector_edges(kdcode_list, sector_map)
+    edge_index_sector, edge_weight_sector = _build_sector_relation(
+        graph_config, kdcode_list, input_observations
+    )
 
     return GraphArtifacts(
         edge_index=edge_index,
@@ -750,13 +830,13 @@ def prepare_data(
     df_filled = impute_feature_nans_by_day(df, feature_cols)
     gc.collect()
 
-    pit = resolve_pit_context(config)
+    pit = resolve_pit_context(config, data_manager.input_observations)
     if pit.intervals is not None:
         if pit.masked_panel:
             logger.info("Using true PIT masked-panel mode (fixed union axis + daily masks)...")
         else:
             logger.info("Applying legacy PIT universe row filter...")
-            df_filled = _apply_pit_universe(df_filled, pit.csv_path)
+            df_filled = _apply_pit_universe(df_filled, pit.csv_path, pit.input_observations)
 
     norm_fit, df_norm = fit_normalisation(
         df_filled,
@@ -832,11 +912,13 @@ def prepare_data(
         # because the graph reads frames.raw, which the row filter never
         # touches. See #123 decision D6.
         pit_intervals=pit.intervals if pit.masked_panel else None,
+        input_observations=data_manager.input_observations,
     )
 
     return {
         "kdcode_list": kdcode_list,
         **tensor_bundle.to_dict(),
+        "input_observations": data_manager.input_observations.freeze(),
         "edge_index": graphs.edge_index,
         "edge_weight": graphs.edge_weight,
         "feature_cols": feature_cols,
@@ -948,6 +1030,7 @@ def prepare_data_index_level(
     return {
         "kdcode_list": kdcode_list,
         **tensors,
+        "input_observations": data_manager.input_observations.freeze(),
         "edge_index": edge_index,
         "edge_weight": edge_weight,
         "feature_cols": feature_cols,

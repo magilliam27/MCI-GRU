@@ -4,9 +4,16 @@ from __future__ import annotations
 
 import csv
 import logging
+from io import BytesIO, TextIOWrapper
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import torch
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from mci_gru.data.input_observations import InputObservationContext
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +28,9 @@ def _is_missing(value: str) -> bool:
     return value.strip().lower() in _MISSING_SECTOR_VALUES
 
 
-def load_sector_map_csv(path: str) -> dict[str, str]:
+def load_sector_map_csv(
+    path: str, *, input_observations: InputObservationContext | None = None
+) -> dict[str, str]:
     """Load ``kdcode -> sector`` from a curated map or a universe metadata export.
 
     Two schemas are accepted:
@@ -39,7 +48,23 @@ def load_sector_map_csv(path: str) -> dict[str, str]:
     p = Path(path)
     if not p.is_file():
         raise FileNotFoundError(f"sector_map_csv not found: {path}")
-    with p.open(newline="", encoding="utf-8") as f:
+
+    if input_observations is not None:
+        out = input_observations.read_file(
+            p,
+            role="graph.sector_map_csv",
+            configured_path=path,
+            parse=lambda content: _parse_sector_map_csv(content, path),
+            parser={"name": "csv.DictReader", "options": {"encoding": "utf-8", "newline": ""}},
+        )
+    else:
+        out = _parse_sector_map_csv(p.read_bytes(), path)
+    logger.info(f"Sector map: {len(out)} kdcode(s) with a known sector from {p.name}")
+    return out
+
+
+def _parse_sector_map_csv(content: bytes, path: str) -> dict[str, str]:
+    with TextIOWrapper(BytesIO(content), newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         if reader.fieldnames is None:
             raise ValueError(f"Empty CSV: {path}")
@@ -73,13 +98,13 @@ def load_sector_map_csv(path: str) -> dict[str, str]:
             f"Sector map: {len(conflicts)} kdcode(s) carry more than one sector across "
             f"snapshots (newest wins), e.g. {sorted(conflicts)[:5]}"
         )
-    logger.info(f"Sector map: {len(out)} kdcode(s) with a known sector from {p.name}")
     return out
 
 
 def build_sector_edges(
     kdcode_list: list[str],
     sector_by_kdcode: dict[str, str],
+    exclude_pairs: Sequence[Sequence[str]] | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Directed sector edges: every ordered pair of distinct names sharing a sector.
 
@@ -92,12 +117,19 @@ def build_sector_edges(
     all. Bucketing them together under a shared ``UNKNOWN`` label would wire every
     unmapped name to every other one, which is pure noise.
 
+    *exclude_pairs* names kdcode pairs whose edges are withheld in both
+    directions (issue 164 hygiene rule: a same-company twin shares a sector by
+    construction, so the correlation-side exclusion alone would leave the pair
+    wired here).
+
     Returns ``(edge_index (2, E), edge_weight (E,))`` with scalar weight 1.0.
     """
     n = len(kdcode_list)
     if n == 0:
         z = torch.zeros((2, 0), dtype=torch.long)
         return z, torch.zeros(0, dtype=torch.float)
+
+    excluded = {frozenset(pair) for pair in exclude_pairs} if exclude_pairs else set()
 
     buckets: dict[str, list[int]] = {}
     isolated = 0
@@ -110,17 +142,23 @@ def build_sector_edges(
 
     rows: list[int] = []
     cols: list[int] = []
+    skipped = 0
     for group in buckets.values():
         for src in group:
             for dst in group:
-                if src != dst:
-                    rows.append(src)
-                    cols.append(dst)
+                if src == dst:
+                    continue
+                if excluded and frozenset((kdcode_list[src], kdcode_list[dst])) in excluded:
+                    skipped += 1
+                    continue
+                rows.append(src)
+                cols.append(dst)
 
     logger.info(
         f"Sector edges: {n - isolated}/{n} name(s) mapped "
         f"({100.0 * (n - isolated) / n:.1f}% coverage) across {len(buckets)} sector(s); "
         f"{isolated} name(s) isolated with no sector edges; {len(rows)} directed edge(s)"
+        + (f"; {skipped} excluded-pair edge(s) withheld" if skipped else "")
     )
 
     if not rows:

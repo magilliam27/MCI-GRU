@@ -39,6 +39,7 @@ def create_model(input_size: int, config: dict[str, Any]) -> StockPredictionMode
         use_nn_multihead_attention=config.get("use_nn_multihead_attention", False),
         temporal_encoder=config.get("temporal_encoder", "legacy"),
         drop_edge_p=float(config.get("drop_edge_p", 0.0)),
+        isolate_edge_dropout_rng=bool(config.get("isolate_edge_dropout_rng", False)),
         use_sector_relation=bool(config.get("use_sector_relation", False)),
         use_a1_a2_cross_attention=bool(config.get("use_a1_a2_cross_attention", False)),
         cross_a2_num_heads=int(config.get("cross_a2_num_heads", 4)),

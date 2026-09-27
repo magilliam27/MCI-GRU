@@ -1,0 +1,11 @@
+# @package _global_
+# Ablation control arm A0 (issue 164 protocol): the frozen recipe with the
+# correlation graph's contribution suppressed. GAT layers and parameters stay
+# in place; the built edge tensor is empty, so every node aggregates only its
+# own self-loop. Everything else inherits the base config unchanged, which is
+# what makes this a control rather than a different model.
+
+experiment_name: graph_zeroed_control
+
+graph:
+  zero_edges: true

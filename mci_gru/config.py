@@ -340,6 +340,21 @@ class GraphConfig:
             (E, 4+) edge feature tensor [corr, |corr|, corr^2, rank_pct] plus optional
             lead–lag columns; snapshot age is appended in collate when enabled.
         drop_edge_p: Train-time edge dropout probability for GAT (0 disables).
+        isolate_edge_dropout_rng: Draw train-time edge dropout from a forked
+            random stream instead of the global one (ticket 181 section 4).
+            ``dropout_edge`` (PyG 2.7.0) takes no generator argument and draws
+            from the global torch RNG, so how far a training step advances that
+            stream depends on how many edges the arm has. The zeroed control
+            (``zero_edges``) has none, so its stream and every populated arm's
+            diverge after the first step and the divergence lands inside the
+            paired ``sd(delta)`` of an arm-versus-control comparison. Under this
+            flag each ``dropout_edge`` call runs inside a fork seeded from the
+            member seed and the step, and the global stream is restored
+            afterwards, so the non-graph draws -- initialisation, feature
+            dropout, shuffling -- coincide across arms and only the graph
+            differs. Default False: shipped behaviour is unchanged, and the flag
+            is meant to be set uniformly across the arms of one comparison
+            rather than on a single run.
         append_snapshot_age_days: Append days (sample date − snapshot valid_from) per edge.
         use_lead_lag_features: Add best-lag normalised index and signed corr at that lag.
         lead_lag_days: Candidate lags in days for lead–lag edge features.
@@ -348,6 +363,24 @@ class GraphConfig:
         sector_map_csv: Curated ``kdcode, sector`` map or a universe metadata export
             carrying ``gics_sector``, required when ``use_sector_relation``. Sectors
             are fully connected internally; unmapped names get no sector edges.
+        zero_edges: Ablation control arm A0 (issue 164 protocol). When True, the
+            built correlation edge tensor is forced to shape (2, 0) with the
+            feature width the other flags imply, so the GAT runs on its default
+            self-loops only -- architecture and parameters unchanged, edges
+            suppressed. ``judge_value`` / ``top_k`` become inert (no edges are
+            selected) but still validate. Composes with ``use_sector_relation``
+            (arm A4: sector edges only). Incompatible with a dynamic schedule:
+            precomputing snapshots of an always-empty graph would silently
+            pretend to update, so ``update_frequency_months`` must be 0.
+        exclude_edge_pairs: Kdcode pairs excluded from every constructed
+            adjacency -- threshold, top-K, dynamic snapshots, and the sector
+            relation (issue 164 hygiene rule: the GOOG.OQ/GOOGL.OQ same-company
+            twin). Exclusion is candidate-level: the pair's correlation entries
+            are masked before selection, so on the top-K path the excluded name
+            never spends a neighbour slot and ``rank_pct`` ranks against a clean
+            candidate set. Each entry names two distinct non-empty kdcodes;
+            names absent from a run's node axis are a logged no-op. Default
+            empty: shipped behaviour is unchanged.
     """
 
     judge_value: float = 0.8
@@ -358,11 +391,14 @@ class GraphConfig:
     use_multi_feature_edges: bool = True
     # Default 0: legacy-safe; set in configs/config.yaml for train-time regularisation
     drop_edge_p: float = 0.0
+    isolate_edge_dropout_rng: bool = False
     append_snapshot_age_days: bool = False
     use_lead_lag_features: bool = False
     lead_lag_days: list[int] = field(default_factory=lambda: [1, 2, 3, 5])
     use_sector_relation: bool = False
     sector_map_csv: str | None = None
+    zero_edges: bool = False
+    exclude_edge_pairs: list[list[str]] = field(default_factory=list)
 
     _VALID_TOP_K_METRICS = ("corr", "abs_corr")
 
@@ -390,6 +426,24 @@ class GraphConfig:
             raise ValueError("lead_lag_days must contain only positive integers")
         if self.use_sector_relation and not self.sector_map_csv:
             raise ValueError("use_sector_relation=True requires graph.sector_map_csv")
+        if self.zero_edges and self.update_frequency_months > 0:
+            raise ValueError(
+                "zero_edges=True suppresses all correlation edges, so a dynamic "
+                "schedule is meaningless; got "
+                f"update_frequency_months={self.update_frequency_months}. "
+                "Set update_frequency_months=0 for the zeroed control arm."
+            )
+        for pair in self.exclude_edge_pairs:
+            if (
+                not isinstance(pair, (list, tuple))
+                or len(pair) != 2
+                or not all(isinstance(name, str) and name.strip() for name in pair)
+                or pair[0] == pair[1]
+            ):
+                raise ValueError(
+                    "exclude_edge_pairs entries must each name two distinct "
+                    f"non-empty kdcodes, got {pair!r}"
+                )
 
 
 @dataclass

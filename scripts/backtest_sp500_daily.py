@@ -5,8 +5,7 @@ This CLI exposes the historical daily subset of flags (20 shared flags from
 the pre-merge fork) and delegates to the engine with ``holding_period=1``,
 default ``rebalance_style``, and MLflow tracking disabled.
 
-Python importers (e.g. ``tests/backtest_sp500_daily.py``) may import public
-symbols re-exported from the engine module.
+Python importers may import public symbols re-exported from the engine module.
 """
 
 from __future__ import annotations

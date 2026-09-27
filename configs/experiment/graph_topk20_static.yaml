@@ -1,0 +1,15 @@
+# @package _global_
+# Ablation arm A3 (issue 164 protocol): per-node top-K=20 by signed correlation
+# on the static cadence the frozen recipe pins. Its 6-month dynamic sibling was
+# retired in 2026-09 (tag archive/pre-cleanup-2026-09). Depth 20 is deliberate: it re-litigates April 2026's anti-top-K
+# result under the corrected protocol (PIT-admissible candidate selection, a
+# populated rank-4 edge tensor), and the density child showed top-K depths are
+# a nested ladder that data grounds cannot separate until one beats the
+# control.
+
+experiment_name: graph_topk20_static
+
+graph:
+  update_frequency_months: 0
+  top_k: 20
+  top_k_metric: corr
