@@ -21,7 +21,7 @@ from mci_gru.data.pit import (
     filter_edges_by_stock_mask,
 )
 from mci_gru.evaluation.portfolio import top_k_returns
-from mci_gru.models.mci_gru import SelfAttention
+from mci_gru.models.attention import SelfAttention
 from mci_gru.pipeline import prepare_data
 from mci_gru.training.losses import ICLoss, MaskedMSELoss, mean_information_coefficient
 from mci_gru.training.trainer import prediction_rows_for_date

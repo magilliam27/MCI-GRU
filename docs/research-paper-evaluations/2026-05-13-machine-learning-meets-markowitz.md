@@ -55,7 +55,7 @@ Repo evidence:
 - `mci_gru/training/trainer.py`: current trainer consumes batches independently and optimizes per-batch prediction loss.
 - `mci_gru/data/data_manager.py`: static training shuffles by default; dynamic graph mode disables shuffle, which matters for sequential cost-aware training.
 - `mci_gru/evaluation/portfolio.py`: rank, top-k, turnover, and rank-drop primitives already exist.
-- `docs/BACKTEST_FAIRNESS_AUDIT.md`: execution timing and return attribution must be explicit.
+- `docs/research/archive/BACKTEST_FAIRNESS_AUDIT.md`: execution timing and return attribution must be explicit.
 - `paper_trade/scripts/infer.py`: paper-trade uses frozen checkpoints and frozen graph data.
 
 ## Invariant Check

@@ -32,7 +32,7 @@ Use this as a compact style example for Harvey and Siddique, "Conditional Skewne
 | `mci_gru/features/` | Secondary | Rolling stock-level skewness or coskewness features are derivable from returns but need warmup, missing-data, and no-lookahead tests. |
 | `configs/experiment/` | Secondary | A feature or diagnostic experiment should have Hydra presets and baseline comparisons. |
 | `mci_gru/graph/builder.py` | Long-term | Coskewness edge attributes are plausible but interact with graph timing, edge dimensions, and noisy estimates. |
-| `paper_trade/` | Rejected for now | Paper-trade uses frozen artifacts; skewness ideas need offline validation before inference changes. |
+| `paper_trade/` | Rejected | Retired surface (tag `archive/pre-cleanup-2026-09`); live execution is out of scope for any brief. |
 
 ## Feasibility Examples
 

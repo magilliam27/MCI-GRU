@@ -13,15 +13,19 @@ import time
 import warnings
 from datetime import datetime
 from functools import partial
+from io import BytesIO
 from typing import TYPE_CHECKING
 
 import pandas as pd
 import torch
+from pandas.io.common import infer_compression
 from torch.utils.data import Dataset
 
+from mci_gru.data.input_observations import InputObservationContext
 from mci_gru.data.path_resolver import resolve_project_data_path
 from mci_gru.data.pit import filter_edges_by_stock_mask
 from mci_gru.graph.schedule import canonical_date
+from mci_gru.regime_contract import REGIME_VARIABLES
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +39,33 @@ STOCK_BOND_CORR_WINDOW_DAYS = 756
 STOCK_BOND_CORR_MIN_PERIODS = STOCK_BOND_CORR_WINDOW_DAYS
 
 
+def _parse_regime_inputs_csv(
+    content: bytes, configured_path: str, compression: str | None, lag_days: int
+) -> pd.DataFrame:
+    """Accept the legacy regime override before linking it as a consumed input."""
+    base = pd.read_csv(BytesIO(content), compression=compression)
+    base["dt"] = pd.to_datetime(base["dt"])
+    base = base.sort_values("dt").drop_duplicates(subset=["dt"], keep="last")
+    required = {"dt"} | set(REGIME_VARIABLES)
+    missing = sorted(required - set(base.columns))
+    if missing:
+        raise ValueError(
+            f"Regime CSV {configured_path} is missing required columns: {missing}. "
+            "CSV regime inputs are deprecated; if used as a legacy override, "
+            "they must provide the full seven-variable contract. "
+            "See docs/REGIME_DATA_CONTRACT.md."
+        )
+    base = base[["dt"] + REGIME_VARIABLES].copy()
+    for col in REGIME_VARIABLES:
+        base[col] = pd.to_numeric(base[col], errors="coerce")
+    if lag_days > 0:
+        base[REGIME_VARIABLES] = base[REGIME_VARIABLES].shift(lag_days)
+    # Forward-fill only; backfill would leak future values into leading lag gaps.
+    base[REGIME_VARIABLES] = base[REGIME_VARIABLES].ffill()
+    base["dt"] = base["dt"].dt.strftime("%Y-%m-%d")
+    return base
+
+
 class DataManager:
     """
     Unified data manager for loading and preparing stock data.
@@ -42,8 +73,13 @@ class DataManager:
     Supports loading from CSV files or LSEG/Refinitiv API.
     """
 
-    def __init__(self, config: DataConfig):
+    def __init__(
+        self, config: DataConfig, *, input_observations: InputObservationContext | None = None
+    ) -> None:
         self.config = config
+        self.input_observations = (
+            input_observations if input_observations is not None else InputObservationContext()
+        )
         self.df: pd.DataFrame | None = None
         self.vix_df: pd.DataFrame | None = None
         self.credit_df: pd.DataFrame | None = None
@@ -72,7 +108,9 @@ class DataManager:
 
         if self.config.index_filename:
             resolved = resolve_project_data_path(self.config.index_filename)
-            df = pd.read_csv(resolved)
+            df = self.input_observations.read_csv(
+                resolved, role="data.index_filename", configured_path=self.config.index_filename
+            )
             df["dt"] = pd.to_datetime(df["dt"]).dt.strftime("%Y-%m-%d")
             if "close" not in df.columns:
                 raise ValueError(f"Index CSV must have 'close' column: {resolved}")
@@ -107,7 +145,9 @@ class DataManager:
         resolved_path = resolve_project_data_path(self.config.filename)
         logger.info(f"Loading data from {resolved_path}...")
 
-        df = pd.read_csv(resolved_path)
+        df = self.input_observations.read_csv(
+            resolved_path, role="data.filename", configured_path=self.config.filename
+        )
 
         logger.info(f"  Loaded {len(df)} rows")
         logger.info(f"  Date range: {df['dt'].min()} to {df['dt'].max()}")
@@ -160,7 +200,9 @@ class DataManager:
                     "VIX data not found. Create vix_data.csv under data/raw/market "
                     "or use source='lseg'"
                 ) from e
-            vix_df = pd.read_csv(vix_path)
+            vix_df = self.input_observations.read_csv(
+                vix_path, role="implicit.vix_csv", configured_path="vix_data.csv"
+            )
             self.vix_df = vix_df
             return vix_df
 
@@ -226,8 +268,6 @@ class DataManager:
             dt, regime_market, regime_yield_curve, regime_oil, regime_copper,
             regime_stock_bond_corr, regime_monetary_policy, regime_volatility
         """
-        from mci_gru.regime_contract import REGIME_VARIABLES
-
         if regime_inputs_csv:
             warnings.warn(
                 "regime_inputs_csv is deprecated; use the live FRED/LSEG regime input path "
@@ -237,26 +277,19 @@ class DataManager:
                 stacklevel=2,
             )
             resolved = resolve_project_data_path(regime_inputs_csv)
-            base = pd.read_csv(resolved)
-            base["dt"] = pd.to_datetime(base["dt"])
-            base = base.sort_values("dt").drop_duplicates(subset=["dt"], keep="last")
-            required = {"dt"} | set(REGIME_VARIABLES)
-            missing = sorted(required - set(base.columns))
-            if missing:
-                raise ValueError(
-                    f"Regime CSV {regime_inputs_csv} is missing required columns: {missing}. "
-                    "CSV regime inputs are deprecated; if used as a legacy override, "
-                    "they must provide the full seven-variable contract. "
-                    "See docs/REGIME_DATA_CONTRACT.md."
-                )
-            base = base[["dt"] + REGIME_VARIABLES].copy()
-            for col in REGIME_VARIABLES:
-                base[col] = pd.to_numeric(base[col], errors="coerce")
-            if regime_enforce_lag_days > 0:
-                base[REGIME_VARIABLES] = base[REGIME_VARIABLES].shift(regime_enforce_lag_days)
-            # Forward-fill only; backfill would leak future values into leading lag gaps.
-            base[REGIME_VARIABLES] = base[REGIME_VARIABLES].ffill()
-            base["dt"] = base["dt"].dt.strftime("%Y-%m-%d")
+            compression = infer_compression(str(resolved), "infer")
+            base = self.input_observations.read_file(
+                resolved,
+                role="features.regime_inputs_csv",
+                configured_path=regime_inputs_csv,
+                parse=lambda content: _parse_regime_inputs_csv(
+                    content, regime_inputs_csv, compression, regime_enforce_lag_days
+                ),
+                parser={
+                    "name": "regime_inputs_csv",
+                    "options": {"compression": compression, "lag_days": regime_enforce_lag_days},
+                },
+            )
             self.regime_df = base
             return base
 
