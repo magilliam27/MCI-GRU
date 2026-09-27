@@ -102,6 +102,32 @@ Pin the Claude Code harness so it cannot be severed silently.
 | `test_claude_settings_select_the_pocock_skill_set` |  |  |
 | `test_gitignore_covers_session_worktrees` | Session worktrees must not be able to dirty the protected checkout. |  |
 
+## `tests/test_cross_section_block.py`
+
+Cross-stock block behaviour: cross-section survival, masking, and compatibility.
+
+**Exercises:** `mci_gru.config`, `mci_gru.models`, `mci_gru.models.attention`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_residual_block_preserves_the_cross_section` | Most of the across-stock variation must survive the block. | parametrize |
+| `test_residual_block_zeroes_inactive_nodes` | PIT-inactive names must leave the block at exactly zero. |  |
+| `test_residual_block_inactive_node_cannot_influence_active_ones` | Changing a PIT-inactive name must not move any active name. |  |
+| `test_residual_block_active_nodes_influence_each_other` | Positive control for the test above: moving other active names moves this one. |  |
+| `test_default_config_keeps_the_pre_change_checkpoint_shape` | Checkpoints saved before this change must keep loading, so the default may not move. |  |
+| `test_config_without_the_new_key_keeps_the_pre_change_checkpoint_shape` | A ``config.yaml`` written before this change has no such key at all. |  |
+| `test_residual_flag_changes_the_cross_section_parameters` | Selecting the residual form must actually reach the built model. |  |
+| `test_default_model_scores_match_the_pre_change_model` | With the flag off, the model must compute exactly what it computed before. |  |
+| `test_create_model_rejects_an_unknown_cross_section_block` | A misspelt form must not quietly build the legacy block. |  |
+| `test_residual_model_zeroes_inactive_nodes_end_to_end` |  |  |
+| `test_residual_model_inactive_stock_cannot_move_active_scores` |  |  |
+| `test_residual_block_parameters_receive_gradients` | Every block parameter must receive a real gradient, not merely a tensor. |  |
+| `test_residual_model_is_finite_under_autocast` |  |  |
+| `test_attention_correction_ignores_a_per_stock_constant_offset` | The pre-norm must make the correction depend on shape, not on level. |  |
+| `test_base_config_yaml_ships_the_legacy_block` | Real runs take the default from ``configs/config.yaml``, not from ``ModelConfig``. |  |
+| `test_model_config_rejects_an_unknown_cross_section_block` |  |  |
+| `test_model_config_round_trips_the_new_field` |  |  |
+
 ## `tests/test_data_input_identity.py`
 
 Actual native reads remain identifiable in each saved preparation result.

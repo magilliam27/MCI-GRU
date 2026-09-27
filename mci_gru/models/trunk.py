@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch_geometric.utils import dropout_edge
 
-from mci_gru.models.attention import SelfAttention
+from mci_gru.models.attention import ResidualCrossSectionBlock, SelfAttention
 from mci_gru.models.graph import GATBlock
 from mci_gru.models.latent import MarketLatentStateLearner
 from mci_gru.models.temporal import (
@@ -46,6 +46,10 @@ _EDGE_DROPOUT_SEED_MODULUS = 1 << 63
 _EDGE_DROPOUT_STREAM_CORRELATION = 0
 _EDGE_DROPOUT_STREAM_SECTOR = 1
 _EDGE_DROPOUT_STREAMS_PER_STEP = 2
+#: Forms of the cross-stock block. ``ModelConfig`` validates the same set, but
+#: ``create_model`` also takes plain dicts (checkpoint ``config.yaml`` files), so
+#: the trunk refuses an unknown value rather than quietly building ``legacy``.
+_CROSS_SECTION_BLOCKS = ("legacy", "residual")
 #: Device types whose generator ``_forked_dropout_edge`` knows how to reseed.
 #: Anything else would seed the CPU generator while ``dropout_edge`` drew from
 #: the accelerator's, so isolation would silently become a no-op -- which is the
@@ -140,8 +144,14 @@ class StockPredictionModel(nn.Module):
         use_sector_relation: bool = False,
         use_a1_a2_cross_attention: bool = False,
         cross_a2_num_heads: int = 4,
+        cross_section_block: str = "legacy",
     ):
         super().__init__()
+        if cross_section_block not in _CROSS_SECTION_BLOCKS:
+            raise ValueError(
+                f"cross_section_block must be one of {_CROSS_SECTION_BLOCKS}, "
+                f"got {cross_section_block!r}"
+            )
         if gru_hidden_sizes is None:
             gru_hidden_sizes = [32, 10]
 
@@ -227,10 +237,15 @@ class StockPredictionModel(nn.Module):
         self.drop_z = _maybe_drop(tdrop, tr)
 
         if use_self_attention:
-            self.self_attention: SelfAttention | None = SelfAttention(
+            cross_section_attn = SelfAttention(
                 embed_dim=self.concat_size,
                 align_dim=self.align_dim,
                 use_group_type_embed=use_group_type_embed,
+            )
+            self.self_attention: nn.Module | None = (
+                ResidualCrossSectionBlock(cross_section_attn, embed_dim=self.concat_size)
+                if cross_section_block == "residual"
+                else cross_section_attn
             )
         else:
             self.self_attention = None
