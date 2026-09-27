@@ -147,6 +147,53 @@ def test_snapshot_keeps_sdk_observation_types_axes_order_and_missingness(
         assert replay.data.iloc[2, 1] is pd.NA
 
 
+@pytest.mark.parametrize("kind", ["series", "frame"])
+@pytest.mark.parametrize("text", ["object", "str"])
+def test_snapshot_keeps_object_text_apart_from_the_pandas_3_string_dtype(
+    tmp_path: Path, text: str, kind: str
+) -> None:
+    if text == "object":
+        dtype = np.dtype(object)
+    else:
+        try:
+            dtype = pd.StringDtype(na_value=np.nan)
+        except TypeError:
+            pytest.skip("pandas before 2.3 has no NaN-missing string dtype")
+    # The shape of an LSEG history: text labels, and text values with a gap.
+    index = pd.Index([".VIX", ".SPX", ".VIX"], dtype=dtype, name="Instrument")
+    data = pd.Series(["17.5", None, "18.25"], index=index, dtype=dtype, name="CLOSE")
+    if kind == "frame":
+        data = pd.DataFrame(
+            {"CLOSE": data, "COUNT": pd.Series([1, 2, 3], index=index, dtype="Int64")}
+        )
+        data.columns = pd.Index(["CLOSE", "COUNT"], dtype=dtype, name="Field")
+    reference = save_snapshot(
+        tmp_path / "retained",
+        data,
+        package_id="synthetic",
+        package_revision="r1",
+        role="lseg.vix",
+        source="lseg",
+        request={"operation": "get_history"},
+        acquired_at="2020-02-01T12:00:00+00:00",
+    )
+    replay = load_snapshot(
+        reference, role="lseg.vix", source="lseg", request={"operation": "get_history"}
+    )
+    if kind == "series":
+        pd.testing.assert_series_equal(replay.data, data, check_exact=True)
+        missing = replay.data.iloc[1]
+    else:
+        pd.testing.assert_frame_equal(replay.data, data, check_exact=True)
+        assert replay.data.columns.dtype == dtype
+        missing = replay.data.iloc[1, 0]
+    assert replay.data.index.dtype == dtype
+    if text == "object":
+        assert missing is None
+    else:
+        assert np.isnan(missing)
+
+
 @pytest.mark.parametrize("fault", ["version", "codec", "missing_member", "missing_manifest"])
 def test_snapshot_rejects_missing_or_incompatible_packages(tmp_path: Path, fault: str) -> None:
     reference = save_snapshot(

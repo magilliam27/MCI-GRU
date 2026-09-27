@@ -442,7 +442,7 @@ def _array(values: Any) -> dict[str, Any]:
             "dtype": array.dtype.str,
             "bytes": base64.b64encode(array.tobytes()).decode("ascii"),
         }
-    if str(values.dtype) not in {"object", "Int64", "Float64", "boolean", "string"}:
+    if str(values.dtype) not in {"object", "Int64", "Float64", "boolean", "string", "str"}:
         raise ValueError("Unsupported SDK array type")
     return {"dtype": str(values.dtype), "values": [_scalar(value) for value in values.tolist()]}
 
@@ -453,9 +453,12 @@ def _restore_array(payload: dict[str, Any]) -> Any:
         if dtype.kind not in "biufcmM":
             raise ValueError("Unsupported SDK binary dtype")
         return np.frombuffer(base64.b64decode(payload["bytes"], validate=True), dtype=dtype).copy()
-    if payload["dtype"] not in {"object", "Int64", "Float64", "boolean", "string"}:
+    if payload["dtype"] not in {"object", "Int64", "Float64", "boolean", "string", "str"}:
         raise ValueError("Unsupported SDK array type")
-    return pd.array([_restore_scalar(value) for value in payload["values"]], dtype=payload["dtype"])
+    # "str" is pandas 3's default NaN-missing string dtype. pandas 2 reads that
+    # alias as NumPy text, which would turn a missing value into "nan".
+    dtype = pd.StringDtype(na_value=np.nan) if payload["dtype"] == "str" else payload["dtype"]
+    return pd.array([_restore_scalar(value) for value in payload["values"]], dtype=dtype)
 
 
 def _axis(index: pd.Index) -> dict[str, Any]:
@@ -504,7 +507,8 @@ def _restore_axis(payload: dict[str, Any]) -> pd.Index:
     if kind == "range":
         return pd.RangeIndex(payload["start"], payload["stop"], payload["step"], name=name)
     if kind == "index":
-        return pd.Index(_restore_array(payload["array"]), name=name, tupleize_cols=False)
+        values = _restore_array(payload["array"])
+        return pd.Index(values, dtype=values.dtype, name=name, tupleize_cols=False)
     raise ValueError("Unsupported SDK index encoding")
 
 
@@ -532,13 +536,20 @@ def _decode(codec: str, content: bytes) -> bytes | pd.Series | pd.DataFrame:
         raise ValueError("Unsupported observation codec")
     payload = json.loads(content)
     index = _restore_axis(payload["index"])
+    # Pin each restored dtype: pandas 3 would otherwise re-infer object text as "str".
     if payload["kind"] == "series":
+        values = _restore_array(payload["array"])
         data = pd.Series(
-            _restore_array(payload["array"]), index=index, name=_restore_scalar(payload["name"])
+            values, index=index, dtype=values.dtype, name=_restore_scalar(payload["name"])
         )
     elif payload["kind"] == "frame":
+        columns = [_restore_array(array) for array in payload["arrays"]]
         data = pd.DataFrame(
-            {i: _restore_array(array) for i, array in enumerate(payload["arrays"])}, index=index
+            {
+                i: pd.Series(values, index=index, dtype=values.dtype)
+                for i, values in enumerate(columns)
+            },
+            index=index,
         )
         data.columns = _restore_axis(payload["columns"])
     else:

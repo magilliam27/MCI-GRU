@@ -87,6 +87,37 @@ def test_fred_replay_uses_original_sdk_series_before_fill_and_lag(
     assert replay_record["identity"] == record["identity"]
 
 
+def test_replay_returns_repeated_identical_requests_in_captured_order(
+    tmp_path: Path, monkeypatch
+) -> None:
+    dates = pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-03"])
+    responses = [
+        pd.Series([1.0, 2.0, 3.0], index=dates),
+        pd.Series([7.0, 8.0, 9.0], index=dates),
+    ]
+
+    class Fred:
+        def __init__(self, api_key):
+            pass
+
+        def get_series(self, series_id, **request):
+            return responses.pop(0)
+
+    monkeypatch.setitem(sys.modules, "fredapi", SimpleNamespace(Fred=Fred))
+    store = InputSnapshots(mode="capture", directory=tmp_path / "snapshots")
+    loader = FREDLoader(api_key="test-only", snapshots=store)
+    request = ("DGS10", "2020-01-02", "2020-01-03", "yield_10y")
+    first, second = loader.get_series(*request), loader.get_series(*request)
+    assert first["yield_10y"].tolist() != second["yield_10y"].tolist()
+    monkeypatch.delenv("FRED_API_KEY", raising=False)
+    monkeypatch.setitem(sys.modules, "fredapi", None)
+    replay_loader = FREDLoader(snapshots=InputSnapshots(mode="replay", references=store.references))
+    pd.testing.assert_frame_equal(replay_loader.get_series(*request), first)
+    pd.testing.assert_frame_equal(replay_loader.get_series(*request), second)
+    with pytest.raises(InputObservationError, match="missing_snapshot"):
+        replay_loader.get_series(*request)
+
+
 def test_credit_replay_keeps_both_original_series_and_the_existing_lag(
     tmp_path: Path, monkeypatch
 ) -> None:
