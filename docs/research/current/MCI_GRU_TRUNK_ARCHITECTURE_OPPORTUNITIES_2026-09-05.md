@@ -2,11 +2,34 @@
 
 Date: 2026-09-05
 
-Status: research map with mechanics-level diagnostics. The diagnostics in
-section 3 are scratchpad measurements on synthetic inputs and a short CPU smoke
-on the anchored 2019 snapshot universe; they prove information-flow facts about
-the trunk, not model performance. Nothing here changes a default, a recipe, or
-a config file.
+Status: research map with mechanics-level diagnostics. Sections 3.1 to 3.6
+are scratchpad measurements on synthetic inputs and short CPU smokes on the
+anchored 2019 snapshot universe. Sections 3.7 and 3.8 repeat the central
+measurements on the real 110-name PIT universe with trained checkpoints. All of
+them prove information-flow facts about the trunk, not model performance.
+Nothing here changes a default, a recipe, or a config file.
+
+Evidence status: the measured figures in sections 2 and 3 come from the scripts
+preserved in `docs/research/current/trunk_architecture_diagnostics_2026-09-05/`.
+A figure that appears in that folder's `raw_outputs.md` is `[Verified]` against
+it, and the section 2 parameter counts reproduce from `create_model` on the
+code this report describes. The step-time figures are the exception: the
+preserved record does not support them, and section 3.6 carries the
+correction. Readings, costs, and expected outcomes in sections 1, 4, and 5 are
+`[Inferred]`. The runs were local CPU smokes, so there is no Drive run folder
+or run tag; the preserved raw outputs are the record.
+
+Refresh note, 2026-09-27 (#228). This report predates the 2026-09 cleanup
+(map #211). Paths it names that #212 or #213 moved now point at their new
+homes, and retired ones are cited at tag `archive/pre-cleanup-2026-09`, as #213
+did for other inbound references. The same cleanup retired `paper_trade/`.
+Where this report names paper-trade checkpoints, read "any frozen checkpoint
+folder": the rule it states still applies, that a new `ModelConfig` field
+defaults to the legacy behaviour and is serialised by `to_dict`. The refresh
+also cross-checked every figure against `raw_outputs.md`. It corrects two
+readings (sections 3.7 and 3.8) that misread the no-block arm's epoch-1 peak
+and one arm label (section 4.2) in place, each marked where it occurs, and
+flags the step-time figures in section 3.6.
 
 Purpose: answer "what kind of architecture change would make sense for this
 model" from the inside out. The looped-transformer brief
@@ -17,16 +40,18 @@ comparing that against what the repo's own ablations and the cross-sectional
 literature say matters.
 
 Repo anchors reviewed: `AGENTS.md`, `docs/ARCHITECTURE.md`,
-`docs/ARCHITECTURE_REVIEW.md`, `docs/ABLATION_NOTEBOOK_RESULTS_REPORT_2026-04-30.md`,
-`docs/research/current/MCI_GRU_PROGRAM_MAP_2026-06-19.md`,
+`archive/pre-cleanup-2026-09:docs/ARCHITECTURE_REVIEW.md`,
+`docs/research/archive/ABLATION_NOTEBOOK_RESULTS_REPORT_2026-04-30.md`,
+`docs/research/archive/MCI_GRU_PROGRAM_MAP_2026-06-19.md`,
 `docs/research/current/MCI_GRU_TOP_UNIVERSITY_RESEARCH_SCAN_2026-06-21.md`,
 `docs/research/current/GRAPH_SPECIFICATION_ABLATION_2026-09-01.md` and
 `GRAPH_PAIRED_REANALYSIS_2026-09-02.md` (both read from their branch refs at the
-time of writing), the phase-2 and phase-3 trunk plans under
-`docs/agent_references/cursor/plans/`, `mci_gru/models/*.py`,
-`mci_gru/training/losses.py`, `mci_gru/training/trainer.py`,
-`references/2410.20679v3.txt` (the MCI-GRU paper), and issues #131, #157,
-#164, #167, #179, #181.
+time of writing; both are on `main` now), the phase-2 and phase-3 trunk plans
+under `archive/pre-cleanup-2026-09:docs/agent_references/cursor/plans/`,
+`mci_gru/models/*.py`, `mci_gru/training/losses.py`,
+`mci_gru/training/trainer.py`,
+`archive/pre-cleanup-2026-09:references/2410.20679v3.txt` (the MCI-GRU paper,
+arXiv:2410.20679), and issues #131, #157, #164, #167, #179, #181.
 
 ## 1. Summary and ranked recommendations
 
@@ -109,8 +134,9 @@ worth revisiting.
   broadcasting them back, the Set Transformer induced-set construction; it is
   the principled version and it repairs Defect 1 too when placed in the
   cross-stock position. But section 3.6 reprices it: at 110 names it costs 58
-  percent more step time and twice the parameters, and the `O(N*k)` efficiency
-  argument that motivated it only bites at 500 names. The cheaper **market
+  percent more step time (a figure section 3.6 now flags as unverified) and
+  twice the parameters, and the `O(N*k)` efficiency argument that motivated it
+  only bites at 500 names. The cheaper **market
   gate** conditions the inputs on a per-date market vector for a few hundred
   parameters, and at this universe size it is the sensible thing to test first.
 - **Structural choice.** The cross-sectional stream A2 is squeezed to four
@@ -128,7 +154,7 @@ Ranked recommendations, best-supported first:
 | 0 | **Delete the cross-stock block**: `model.use_self_attention=false` | Not a change to write, a flag that already exists. It is first because it is free to test and because three structural arguments favour it: the graph ablation's control-first result, the block's 56 percent parameter share, and its measured 94 percent variance destruction. Its smoke lead did **not** replicate on a second seed (section 3.8), so this is a cheap thing to test, not a finding | **-49,664 params**; faster | Arm C5, in the first wave |
 | 1 | **Fix A, section 4.1.** Residual pre-norm cross-stock block: `z + Attn(LN(z))`, four heads, optional FFN | The right repair *if* the block is kept. Stops the variance destruction (0.433-to-0.024 becomes 0.403-to-0.329 on real data) and is stable at learning rates where the shipped block spikes then decays. But it lands below the shipped block on test IC in the one real-universe smoke, so it is a correctness fix without demonstrated value | +256 params; step time inside the noise | Arm C1 |
 | 2 | **Market gate.** MASTER-style softmax gate on the input features, built from a per-date masked market vector | The cheap route to Defect 2. Conditions inputs on the market for a few hundred parameters, where Fix B conditions representations for 137,000. At 110 names the cheap route is the sensible first test | A few hundred params; one masked mean per batch | Arm C2 |
-| 3 | **Fix B, section 4.2.** Data-dependent latents: gather the 32 latents from the date's cross-section, then broadcast back (Set Transformer ISAB) | The principled repair of the cross-attention, and in the cross-stock position it repairs Defect 1 too. **Repriced down by section 3.6**: at 110 names its efficiency argument is gone and it costs 58 percent more step time and 2x parameters, with no smoke benefit | +136,960 params (89K to 177K); +58% step time at 110 names | Arm C3, only if C2 shows promise |
+| 3 | **Fix B, section 4.2.** Data-dependent latents: gather the 32 latents from the date's cross-section, then broadcast back (Set Transformer ISAB) | The principled repair of the cross-attention, and in the cross-stock position it repairs Defect 1 too. **Repriced down by section 3.6**: at 110 names its efficiency argument is gone and it costs 58 percent more step time (unverified, see 3.6) and 2x parameters, with no smoke benefit | +136,960 params (89K to 177K); +58% step time at 110 names (unverified, see 3.6) | Arm C3, only if C2 shows promise |
 | 3 | Capacity-matched widths: raise `output_gat1` toward `hidden_size_gat1`, drop the 4-to-32 re-projection, and fix the `gru_hidden_sizes` reinterpretation from #131 so encoders are comparable | Removes a rank-3 bottleneck on the only cross-sectional stream; makes encoder ablations mean what they say | Tens of thousands of parameters, still tiny | Arm C4, only after #131 is resolved |
 | 4 | Feed the graph stream a temporal summary instead of one day of raw features (the roadmap's graph-input summariser) | The graph stream is the only one that sees neighbours and it sees them through a keyhole | Small | Blocked on map #157 deciding what the graph is |
 | 5 | Initial-residual skip into the score head (GCNII style) and `GATv2Conv` in place of `GATConv` | The final GAT is effectively an MLP for isolated names; a skip from `z` protects against over-smoothing if the graph ever densifies; GATv2 is a one-line expressivity fix | Trivial | Bundle with whichever graph arm map #157 keeps |
@@ -480,9 +506,11 @@ through the graph.
 | Fix A, `z + Attn(LN(z))` | 49,920 | 0.225 | 9.0 | 0.185 | **0.534** | 0.33 s |
 | Fix B, two-way latents | 136,960 | 0.261 | 11.1 | 0.038 | **0.511** | 0.34 s |
 
-`z` entering the block: cs var share 0.189, effective rank 5.5. Every variant
-passed both masking checks: inactive nodes exactly zero at the output, and
-perturbing an inactive stock moved no active score at all (leakage 0.00e+00).
+The Step column is not supported by the preserved record; see the step-time
+correction in section 3.6. `z` entering the block: cs var share 0.189,
+effective rank 5.5. Every variant passed both masking checks: inactive nodes
+exactly zero at the output, and perturbing an inactive stock moved no active
+score at all (leakage 0.00e+00).
 
 Reading:
 
@@ -618,6 +646,21 @@ Fix A is unaffected by all of this. It remains 256 parameters and a step time
 inside the noise (0.39 s against 0.36 s), and it clears the centred-sensitivity
 floor at both scales.
 
+> **Step-time correction, recorded 2026-09-27 in the #228 refresh.** The Step
+> column in this table and in section 3.4 cannot be traced to the preserved
+> record. The only preserved timings are the `fwd+bwd` lines that
+> `fix_diag.py` prints, in `raw_outputs.md`. At the 110 shape they read 0.20 s
+> for the shipped block, 0.14 s with no block, 0.12 s for Fix A and 0.15 s for
+> Fix B; at 500 names, 0.30 s, 0.30 s, 0.28 s and 0.35 s. Each is the mean of
+> two repetitions with no warm-up, so neither set is a reliable timing. The
+> preserved 110-shape run has Fix B faster than the shipped block, not 58
+> percent slower. Treat every step-time figure in this report as unverified,
+> including the "+58%" repeated in sections 1 and 5 and the times quoted in
+> section 4.2. The rest of Fix B's repricing does not depend on it: 32 latents
+> against 110 active names is still a 3.4 to 1 compression with no efficiency
+> argument, and the parameter count still doubles. Step time needs a
+> warmed-up, repeated timing before it is quoted as a cost.
+
 ### 3.7 The authoritative measurement: real data, real universe, trained models
 
 Everything above is either synthetic or measured at the wrong universe size.
@@ -663,11 +706,14 @@ Four readings:
    entire ordering inverts.** Read the IC columns above as one draw from a
    distribution whose spread exceeds every gap in the table, not as a result.
 4. **The untrained gap shows why.** The no-block model starts at +0.0479
-   before any training and ends at +0.0513, gaining 0.003 from ten epochs. The
-   three attention variants all start slightly negative and climb to roughly
-   0.02. Almost all of the seed-1729 no-block lead was present at
+   before any training, peaks at +0.0513 after its first epoch, and declines to
+   +0.0316 by epoch 10, so its best checkpoint is the initialisation plus one
+   epoch. The three attention variants all start slightly negative and climb
+   to roughly 0.02. Almost all of the seed-1729 no-block lead was present at
    initialisation, which is the effect section 3.2 documented and section 3.8
-   confirms.
+   confirms. *(Corrected in the #228 refresh: this reading first said the
+   model "ends at +0.0513, gaining 0.003 from ten epochs". `raw_outputs.md`
+   shows +0.0513 is its epoch-1 peak.)*
 
 **Caveats, all of which cut against reading this as a result.** One seed. Ten
 epochs against the recipe's 100. One model against the recipe's 20-member
@@ -699,9 +745,13 @@ from first to third; the shipped block from second to last.
    times the paired protocol's 0.0035 bar. Every ordering in 3.7, including the
    one I briefly promoted to this document's headline, was a seed artifact.
 2. **The no-block arm's apparent dominance was one lucky initialisation.** Its
-   seed-1729 run started at +0.0513 before training and finished at +0.0513;
-   at seed 1730 it started at +0.0085 and reached 0.0335. Its mean is still the
-   highest of the four, but it rests on a draw that did not repeat.
+   seed-1729 run peaked at +0.0513 after its first epoch (+0.0479 untrained,
+   section 3.7) and declined from there; at seed 1730 its first epoch gave
+   +0.0085 and it climbed to 0.0335. Its mean is still the highest of the
+   four, but it rests on a draw that did not repeat. *(Corrected in the #228
+   refresh: this reading first said the seed-1729 run "started at +0.0513
+   before training and finished at +0.0513". The first column is epoch 1, and
+   +0.0513 was that run's peak, not its finish.)*
 3. **The dispersion hypothesis fails again, and more clearly.** Fix A was
    proposed partly on the argument that a residual path would stabilise members.
    It has the *largest* seed spread of any arm (0.0257) and the shipped block
@@ -878,7 +928,8 @@ asymptotic saving is real but does not show at this size: CPU step times were
 run-to-run spread seen across repeats, because at `N = 500` and `k = 32` the
 constant factors of two attention calls and three LayerNorms outweigh the
 `O(N^2)` to `O(N*k)` improvement. Treat it as cost-neutral in time and roughly
-double in parameters. Reducible by narrowing the latent width below
+double in parameters. (These step times are among those the correction in
+section 3.6 flags as unverified.) Reducible by narrowing the latent width below
 `concat_size` or sharing the two projections.
 
 Invariant exposure. The gather must exclude PIT-inactive names, which the
@@ -890,7 +941,9 @@ dates. Softmax in float32 under AMP. Paper-trade inference already has every
 input this needs; the new `ModelConfig` field must default to legacy and be
 serialised by `to_dict`.
 
-Test. Arm C2 in section 5.
+Test. Arm C3 in section 5; the cheaper market gate above is arm C2.
+*(Corrected in the #228 refresh: this line read "Arm C2", which section 5
+assigns to the market gate.)*
 
 ### 4.3 Capacity-matched widths
 
@@ -982,7 +1035,7 @@ the section 3 smokes.
 | **C5** | **No cross-stock block (`use_self_attention=false`)** | **-50K params, faster** | **run first** |
 | C1 | Fix A: residual pre-norm cross-stock block, four heads, mask re-applied per add | +256 params | run with C5 |
 | C2 | Fix A plus the market gate: MASTER-style softmax gate from a per-date masked market vector | +~600 params | second wave |
-| C3 | Fix B: two-way latent block in the cross-stock position | +137K params, +58% step | only if C2 promises |
+| C3 | Fix B: two-way latent block in the cross-stock position | +137K params, +58% step (unverified, see 3.6) | only if C2 promises |
 | C4 | Capacity-matched widths on top of whichever of C1 to C3 survives, after #131 | | last |
 
 C5 is in the first wave because it is free to test, needs no new code, and has
@@ -1010,7 +1063,7 @@ claim is a mean effect.
 Budget. The 110-name panel trains far faster than the S&P-scale runs the
 20-minute-per-fold figure came from, so cost that from a measured fold rather
 than from this map. Relative costs: C1, C2 and C5 are at or below C0; C3 adds
-about 58 percent to the step time.
+about 58 percent to the step time, a figure section 3.6 flags as unverified.
 
 Expected outcome, revised after the section 3.5 smoke rather than stated in
 advance of it, and weaker than the version this map first carried.
@@ -1022,7 +1075,8 @@ removing the block. So the pre-registered expectation is now **that no arm
 clears the 0.0035 bar**, and the arms exist to test a hypothesis the cheap
 evidence already declines to confirm. Section 3.6 adds a second reason to
 expect little from C3 specifically: at 110 names it buys no efficiency and
-costs 58 percent more step time, so it must earn its place on mechanism alone.
+costs 58 percent more step time (unverified; see the correction there), so it
+must earn its place on mechanism alone.
 
 C1's dispersion claim is withdrawn as a prediction. Two seeds put the fixes on
 the *more* dispersed side, which settles nothing at n = 2 but removes the basis
@@ -1077,12 +1131,13 @@ Repo evidence:
   the stock vector and nothing else enters.
 - `mci_gru/training/losses.py`: `ICLoss` centres per date.
 - `docs/research/current/GRAPH_SPECIFICATION_ABLATION_2026-09-01.md` and
-  `GRAPH_PAIRED_REANALYSIS_2026-09-02.md` (on their branch refs): control not
+  `GRAPH_PAIRED_REANALYSIS_2026-09-02.md` (read on their branch refs; both are
+  on `main` now): control not
   beaten; MDE 0.0035; 75 to 78 percent of names isolated; self-loops make the
   zeroed arm a two-layer MLP.
-- `docs/ABLATION_NOTEBOOK_RESULTS_REPORT_2026-04-30.md`: regime context a
+- `docs/research/archive/ABLATION_NOTEBOOK_RESULTS_REPORT_2026-04-30.md`: regime context a
   secondary dimension; pure IC loss the winner.
-- `docs/ARCHITECTURE_REVIEW.md` gaps 7 and 8; issue #131.
+- `archive/pre-cleanup-2026-09:docs/ARCHITECTURE_REVIEW.md` gaps 7 and 8; issue #131.
 
 External:
 
@@ -1106,4 +1161,6 @@ External:
 - Microsoft Qlib benchmark table, Alpha158 CSI300.
   https://github.com/microsoft/qlib/blob/main/examples/benchmarks/README.md
 - Wang et al., "MCI-GRU", Neurocomputing 2025, ablation Tables 11 and 12
-  (local text at `references/2410.20679v3.txt`).
+  (the full-text extraction is at
+  `archive/pre-cleanup-2026-09:references/2410.20679v3.txt`; `references/README.md`
+  carries the citation).
