@@ -1,7 +1,0 @@
-# @package _global_
-# Experiment: Enable Phase-1 global scalar regime features
-
-defaults:
-  - override /features: with_regime
-
-experiment_name: with_regime

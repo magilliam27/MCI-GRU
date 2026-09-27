@@ -23,7 +23,7 @@ DEFAULT_MARKET_CSV = Path("data/raw/market/sp500_pit_union_lseg_20150101_2026051
 DEFAULT_PIT_UNIVERSE_CSV = Path(
     "data/raw/constituents/sp500_pit_joiner_leaver_20160101_20260513_pit_universe.csv"
 )
-DEFAULT_OUTPUT = Path("docs/PIT_LSEG_ALIAS_COVERAGE_AUDIT_2026-05-16.md")
+DEFAULT_OUTPUT = Path("docs/research/current/PIT_LSEG_ALIAS_COVERAGE_AUDIT_2026-05-16.md")
 DEFAULT_UNRESOLVED_ORIGINALS = (
     "AABA.OQ",
     "ABMD.OQ",
