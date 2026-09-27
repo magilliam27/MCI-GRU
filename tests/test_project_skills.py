@@ -31,6 +31,54 @@ SKILLS_DIR = REPO_ROOT / ".claude" / "skills"
 
 EXPECTED_SKILLS = ("implement-ticket", "work-the-map")
 
+# The ticket-sequencing rule, amended by the maintainer on 2026-09-27 (issue 227):
+# the next ticket only after the previous one has landed. Each document that
+# states the rule must carry these clauses verbatim, up to line wrapping,
+# emphasis, code markers and case. See `_normalised`.
+SEQUENCING_CLAUSES = {
+    "docs/agents/issue-tracker.md": (
+        # landed before next
+        "claims the next ticket only after the previous ticket has landed",
+        "has landed when its pull request has been merged into main by the maintainer",
+        "has landed when its resolution comment is recorded and the ticket is closed",
+        "a draft awaiting review has not landed",
+        # the research exception
+        "research tickets keep their exception",
+        # the HITL stop
+        "hitl tickets still stop the session for the human",
+        # without this record the tracker's own SKILL.md-wins rule voids the amendment
+        "deliberate divergence from wayfinder/skill.md",
+    ),
+    ".claude/skills/work-the-map/SKILL.md": (
+        "claim the next ticket only after the previous ticket has landed",
+        "has landed when its pull request has been merged into main by the maintainer",
+        "when its resolution comment is recorded and the ticket is closed",
+        "a draft awaiting review has not landed",
+        "research tickets keep their exception",
+        "stop at any hitl ticket",
+        "never answering a hitl one",
+        "deliberate divergence from wayfinder/skill.md",
+    ),
+}
+
+# Wording of the flat per-session cap the amendment replaced. None of it may
+# return to a policy document, where it would contradict the amended rule.
+RETIRED_SEQUENCING_WORDING = (
+    "never resolve more than one ticket in a session",  # the tracker and the skill
+    "resolves at most one ticket per session",  # the CLAUDE.md summary
+    "one implementation ticket per session",  # an ad hoc rewrite found in a claim
+)
+
+POLICY_DOCUMENTS = (
+    "AGENTS.md",
+    "CLAUDE.md",
+    "CONTRIBUTING.md",
+    "docs/agents/guide.md",
+    "docs/agents/issue-tracker.md",
+    ".claude/skills/implement-ticket/SKILL.md",
+    ".claude/skills/work-the-map/SKILL.md",
+)
+
 
 def _skill_path(name: str) -> Path:
     return SKILLS_DIR / name / "SKILL.md"
@@ -44,6 +92,15 @@ def _read(path: Path) -> str:
     pointing at the wrong problem.
     """
     return path.read_text(encoding="utf-8-sig")
+
+
+def _normalised(text: str) -> str:
+    """Prose reduced to what a reader sees: one space, no emphasis or code markers, lower case.
+
+    Re-wrapping a paragraph or bolding a clause must not read as removing it.
+    Changing a word must.
+    """
+    return " ".join(text.replace("*", "").replace("`", "").split()).lower()
 
 
 def _split_frontmatter(text: str) -> tuple[str, str]:
@@ -165,18 +222,66 @@ def test_the_gating_check_catches_every_truthy_spelling(value: str, tmp_path):
 
 
 def test_work_the_map_states_its_hard_stops():
-    """The three refusals are why this skill is safe to auto-invoke.
+    """The refusals are why this skill is safe to auto-invoke.
 
     This is a presence check on prose and it is **weak by construction**: review
     proved it survives inverting the rules it names — "HITL tickets may be
-    resolved autonomously" and "You may resolve more than one ticket" both keep
-    the matched tokens. It is kept only as a tripwire against wholesale removal,
-    and deliberately does NOT claim to verify the prohibitions hold.
+    resolved autonomously" keeps the matched token. It is kept only as a
+    tripwire against wholesale removal of the charting and HITL stops, and
+    deliberately does NOT claim to verify the prohibitions hold.
 
-    Do not add assertions here hoping to make it verify meaning; a substring
-    search cannot. If the prohibitions move into `docs/agents/issue-tracker.md`,
-    delete this test rather than extending it.
+    Do not add assertions here hoping to make it verify meaning; a token search
+    cannot. The sequencing stop is not tokenised here at all: it has its own
+    clause-level guard, `test_the_ticket_sequencing_rule_is_stated_in_full`.
     """
     text = _read(_skill_path("work-the-map"))
-    for token in ("Never chart", "HITL", "one ticket"):
+    for token in ("Never chart", "HITL"):
         assert token.lower() in text.lower(), f"{token!r} missing from work-the-map"
+
+
+@pytest.mark.parametrize("relative", sorted(SEQUENCING_CLAUSES))
+def test_the_ticket_sequencing_rule_is_stated_in_full(relative: str):
+    """Next ticket only after the previous one lands, research excepted, HITL still stops.
+
+    Stronger than the tripwire above, and deliberately so: it pins whole clauses
+    rather than tokens, so deleting a clause fails it, and so does inverting one
+    in place ("has not landed" to "has landed", "still stop" to "no longer
+    stop"), because the inverted clause no longer matches.
+
+    What it cannot catch is a contradicting sentence added *elsewhere* while the
+    pinned clauses stay intact. No substring check can; the pull request's
+    mutation table records that as a surviving mutant rather than hiding it.
+    """
+    text = _normalised(_read(REPO_ROOT / relative))
+    missing = [clause for clause in SEQUENCING_CLAUSES[relative] if clause not in text]
+    assert not missing, f"{relative} no longer states the ticket-sequencing rule: {missing}"
+
+
+@pytest.mark.parametrize("relative", POLICY_DOCUMENTS)
+def test_the_retired_one_ticket_per_session_cap_is_stated_nowhere(relative: str):
+    """The flat cap was the most-violated rule here; it must not return beside its replacement.
+
+    Parametrized over a constant, and each path is read in the body, so a
+    renamed or missing document fails rather than dropping out of the sweep.
+    Upstream's own wording ("...more than one ticket per session...") stays
+    quotable: the divergence record has to cite it.
+    """
+    text = _normalised(_read(REPO_ROOT / relative))
+    present = [wording for wording in RETIRED_SEQUENCING_WORDING if wording in text]
+    assert not present, f"{relative} restates the retired one-ticket-per-session cap: {present}"
+
+
+def test_the_prose_normaliser_ignores_wrapping_and_emphasis_but_not_words():
+    """Control for `_normalised`: without it, both guards above could pass on a normaliser that erases text."""
+    wrapped = "- **Research tickets keep\n  their exception.** A `draft` awaiting\n  review has not landed."
+    text = _normalised(wrapped)
+
+    assert "research tickets keep their exception" in text
+    assert "a draft awaiting review has not landed" in text
+    # A one-word inversion must not survive normalisation.
+    assert "a draft awaiting review has landed" not in text
+    assert "research tickets lose their exception" not in text
+    # The retired wording must still be recognisable after the same treatment.
+    assert RETIRED_SEQUENCING_WORDING[0] in _normalised(
+        "**Never resolve\n  more than one ticket in a session**"
+    )
