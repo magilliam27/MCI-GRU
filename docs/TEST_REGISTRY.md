@@ -669,6 +669,7 @@ Market latent state behaviour: does the "market" stream see the market?
 | `test_gathered_latents_do_not_read_other_dates_in_the_batch` | A date's market state is gathered from that date's cross-section alone. | parametrize |
 | `test_each_date_in_the_batch_is_masked_by_its_own_row` | The PIT mask is per date: row ``d`` of ``stock_mask`` governs date ``d`` only. |  |
 | `test_a_date_with_no_active_names_does_not_produce_nan` | The gather's softmax would see every key masked; it must not divide by nothing. | parametrize |
+| `test_a_date_with_no_active_names_keeps_the_learned_latents` | With nothing to read, a date's latents must fall back on the learned ones. | parametrize |
 | `test_data_dependent_mode_refuses_to_guess_the_date_grouping` | Without num_stocks the flattened stream cannot be grouped by date. |  |
 | `test_unknown_mode_is_rejected` |  |  |
 | `test_static_mode_ignores_the_new_arguments` | Passing the new arguments must not change the shipped computation. |  |
@@ -690,6 +691,13 @@ Market latent state behaviour: does the "market" stream see the market?
 | `test_data_dependent_model_is_finite_under_autocast` |  |  |
 | `test_model_config_rejects_an_unknown_market_latent_mode` |  |  |
 | `test_model_config_round_trips_the_new_field` |  |  |
+| `test_base_config_yaml_ships_static_market_latents` | Real runs take the default from ``configs/config.yaml``, not from ``ModelConfig``. |  |
+| `test_both_switches_each_make_exactly_their_own_change` | Neither switch may suppress the other, or add anything when combined. |  |
+| `test_both_switches_keep_inactive_names_out` | Inactive names score exactly zero and cannot move an active name's score. |  |
+| `test_both_switches_do_not_read_other_dates_in_the_batch` | With both switches on, a date's scores come from that date's names alone. | parametrize |
+| `test_both_switches_train_both_new_components` | A backward pass must reach the gathers and the residual block, with real gradients. |  |
+| `test_both_switches_stay_finite_under_autocast_with_an_empty_date` |  |  |
+| `test_both_switches_train_through_a_batch_with_an_empty_date` | A few optimiser steps run, stay finite, and reduce the loss. |  |
 
 ## `tests/test_mci_gru_phase2.py`
 

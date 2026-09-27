@@ -7,15 +7,22 @@ latent states cannot observe the market on any date (issue #198).
 
 These tests specify that behaviour at the module and model seams the issue
 declared. They assert nothing about attention weights or the latent values.
+One test also reads ``configs/config.yaml`` through Hydra ``compose``, the
+boundary already used to pin the other model switches' YAML defaults.
 """
 
 import hashlib
+import math
+from pathlib import Path
 
 import pytest
 import torch
+from hydra import compose, initialize_config_dir
 
 from mci_gru.config import ModelConfig
 from mci_gru.models import MarketLatentStateLearner, create_model
+
+CONFIG_DIR = Path(__file__).resolve().parents[1] / "configs"
 
 _BASE_MODEL_CONFIG = {
     "gru_hidden_sizes": [4, 4],
@@ -282,6 +289,46 @@ def test_a_date_with_no_active_names_does_not_produce_nan(training: bool) -> Non
     assert torch.isfinite(b2).all()
 
 
+# Measured spread of B1 and B2 across the six names of an empty date for the
+# learner below: about 0.26. With the gather's residual dropped it is exactly 0.
+_EMPTY_DATE_MIN_SPREAD = 1e-3
+
+
+@pytest.mark.parametrize("training", [True, False])
+def test_a_date_with_no_active_names_keeps_the_learned_latents(training: bool) -> None:
+    """With nothing to read, a date's latents must fall back on the learned ones.
+
+    #198 specifies ``R_d = R + MHA(query=R, key/value=A_active)``: the gather
+    adds what the date's names say to the learned latents rather than replacing
+    them. On a date with no active names there is nothing to add, so the names
+    still read ``k`` distinct learned latents and keep distinct B1 and B2.
+    Replace the sum by the gather alone and the ``k`` latents collapse to one
+    vector, because every latent's query then gets the same answer from an empty
+    key set, and every name on the date receives the same state.
+
+    The latents start at unit scale so that the spread they give the names is
+    far from rounding; at the default ``0.02`` it is about ``1e-4``.
+    """
+    torch.manual_seed(0)
+    learner = MarketLatentStateLearner(
+        feature_dim=8,
+        num_latent_states=4,
+        num_heads=2,
+        latent_init_scale=1.0,
+        market_latent_mode="data_dependent",
+    )
+    learner.train(training)
+    a1, a2 = _stream_inputs()
+    mask = torch.zeros(1, 6, dtype=torch.bool)
+
+    with torch.set_grad_enabled(training):
+        b1, b2 = learner(a1, a2, num_stocks=6, stock_mask=mask)
+
+    for stream in (b1, b2):
+        spread = (stream - stream.mean(dim=0)).abs().max().item()
+        assert spread > _EMPTY_DATE_MIN_SPREAD
+
+
 def test_data_dependent_mode_refuses_to_guess_the_date_grouping() -> None:
     """Without num_stocks the flattened stream cannot be grouped by date."""
     learner = _data_dependent_learner()
@@ -384,7 +431,8 @@ _PRODUCTION_MODEL_CONFIG = {
 }
 
 # Captured by running origin/main's mci_gru package at 0ecf723, which does not
-# contain this change, through exactly the construction and forward below. The
+# contain this change, through exactly the construction and forward below, and
+# re-checked bitwise against abe1f81, which adds ``cross_section_block``. The
 # signature is the sha256 of the sorted ``key:shape`` lines of the state dict,
 # which is what ``load_state_dict(strict=True)`` checks, so matching it means a
 # checkpoint written by main loads here. ``legacy_empty`` is a config with no
@@ -764,5 +812,230 @@ def test_model_config_round_trips_the_new_field() -> None:
     data_dependent = ModelConfig(
         market_latent_mode="data_dependent", use_nn_multihead_attention=True
     )
+    serialised = data_dependent.to_dict()
 
-    assert data_dependent.to_dict()["market_latent_mode"] == "data_dependent"
+    assert serialised["market_latent_mode"] == "data_dependent"
+    assert ModelConfig(**serialised).market_latent_mode == "data_dependent"
+
+
+def test_base_config_yaml_ships_static_market_latents() -> None:
+    """Real runs take the default from ``configs/config.yaml``, not from ``ModelConfig``.
+
+    "No default changes" rests on this YAML value, and no other test reads it.
+    """
+    with initialize_config_dir(config_dir=str(CONFIG_DIR), version_base=None):
+        cfg = compose(config_name="config", overrides=[])
+    assert cfg.model.market_latent_mode == "static"
+
+
+# -- both switches on ---------------------------------------------------------
+#
+# ``model.cross_section_block`` (issue #197) can wrap the cross-stock attention
+# as a residual block. It and ``market_latent_mode`` edit the same trunk, and a
+# run may turn both on, so these tests build that model the way a run does,
+# through ``ModelConfig.to_dict()`` and ``create_model``, and check that each
+# switch keeps its guarantees with the other on.
+
+_SMALL_MODEL = {
+    "gru_hidden_sizes": [4, 4],
+    "hidden_size_gat1": 8,
+    "output_gat1": 4,
+    "gat_heads": 2,
+    "hidden_size_gat2": 8,
+    "num_hidden_states": 4,
+    "cross_attn_heads": 2,
+    "use_multi_scale": False,
+    "use_self_attention": True,
+    "activation": "relu",
+    "output_activation": "none",
+    "temporal_encoder": "legacy",
+    "use_nn_multihead_attention": True,
+}
+
+_NO_EDGES = (torch.empty((2, 0), dtype=torch.long), torch.empty((0, 1)))
+
+# Measured smallest of the per-component largest gradients below: about 0.14.
+_BOTH_SWITCHES_MIN_GRADIENT = 1e-4
+
+
+def _switched_model(
+    cross_section_block: str = "legacy", market_latent_mode: str = "static"
+) -> torch.nn.Module:
+    config = ModelConfig(
+        **_SMALL_MODEL,
+        cross_section_block=cross_section_block,
+        market_latent_mode=market_latent_mode,
+    ).to_dict()
+    torch.manual_seed(0)
+    return create_model(7, config)
+
+
+def _both_switches_model() -> torch.nn.Module:
+    return _switched_model(cross_section_block="residual", market_latent_mode="data_dependent")
+
+
+def _three_dates(seed: int = 3):
+    """Three dates of five names, one name inactive on each, and a ring graph per date."""
+    generator = torch.Generator().manual_seed(seed)
+    time_series = torch.randn(3, 5, 4, 7, generator=generator)
+    graph_features = torch.randn(15, 7, generator=generator)
+    ring = [(5 * d + i, 5 * d + (i + 1) % 5) for d in range(3) for i in range(5)]
+    src, dst = (list(side) for side in zip(*ring, strict=True))
+    edge_index = torch.tensor([src + dst, dst + src], dtype=torch.long)
+    edge_weight = torch.rand(edge_index.shape[1], 1, generator=generator)
+    stock_mask = torch.tensor(
+        [
+            [True, True, True, False, True],
+            [True, False, True, True, True],
+            [True, True, True, True, False],
+        ]
+    )
+    return time_series, graph_features, edge_index, edge_weight, stock_mask
+
+
+def _move_dates(time_series, graph_features, dates, first_name: int = 0):
+    """Shift every name from ``first_name`` onwards on each of ``dates``."""
+    moved_ts, moved_graph = time_series.clone(), graph_features.clone()
+    for date in dates:
+        moved_ts[date, first_name:] += 3.0
+        moved_graph[5 * date + first_name : 5 * date + 5] += 3.0
+    return moved_ts, moved_graph
+
+
+def test_both_switches_each_make_exactly_their_own_change() -> None:
+    """Neither switch may suppress the other, or add anything when combined.
+
+    The combined state dict must be the default one with the residual block's
+    edits and the data-dependent latents' edits both applied, and nothing else.
+    A factory or trunk that let one switch override the other builds a model
+    that is missing one set of edits.
+    """
+    default = set(_switched_model().state_dict())
+    residual = set(_switched_model(cross_section_block="residual").state_dict())
+    data_dependent = set(_switched_model(market_latent_mode="data_dependent").state_dict())
+
+    both = set(_both_switches_model().state_dict())
+
+    assert residual - default
+    assert data_dependent - default
+    kept = default & residual & data_dependent
+    assert both == kept | (residual - default) | (data_dependent - default)
+
+
+def test_both_switches_keep_inactive_names_out() -> None:
+    """Inactive names score exactly zero and cannot move an active name's score.
+
+    The graph is empty, so the gather and the residual block are the only
+    routes between names.
+    """
+    model = _both_switches_model()
+    model.eval()
+    time_series, graph_features, _, _, mask = _three_dates()
+    inactive = ~mask
+    moved_ts, moved_graph = time_series.clone(), graph_features.clone()
+    moved_ts[inactive] += 99.0
+    moved_graph[inactive.flatten()] += 99.0
+
+    with torch.no_grad():
+        before = model(time_series, graph_features, *_NO_EDGES, 5, stock_mask=mask)
+        after = model(moved_ts, moved_graph, *_NO_EDGES, 5, stock_mask=mask)
+
+    assert torch.all(before[inactive] == 0)
+    assert torch.allclose(before[mask], after[mask], atol=1e-5)
+
+
+@pytest.mark.parametrize("held_date", [0, 1, 2])
+def test_both_switches_do_not_read_other_dates_in_the_batch(held_date: int) -> None:
+    """With both switches on, a date's scores come from that date's names alone.
+
+    Both switches mix names: the gather reads the date's cross-section and the
+    residual block attends across it. Either one grouped by batch rather than by
+    date would let a date read the others, later ones included: lookahead. Every
+    other date's inputs and mask row are changed, and the held date must not
+    move. The graph is empty, so the two switches are the only routes between
+    names; moving the held date's other names must still reach its first name,
+    or this would pass with both routes inert.
+    """
+    model = _both_switches_model()
+    model.eval()
+    time_series, graph_features, _, _, mask = _three_dates()
+    others = [date for date in range(3) if date != held_date]
+    other_ts, other_graph = _move_dates(time_series, graph_features, others)
+    other_mask = mask.clone()
+    other_mask[others] = ~other_mask[others]
+    own_ts, own_graph = _move_dates(time_series, graph_features, [held_date], first_name=1)
+
+    with torch.no_grad():
+        before = model(time_series, graph_features, *_NO_EDGES, 5, stock_mask=mask)
+        after_others = model(other_ts, other_graph, *_NO_EDGES, 5, stock_mask=other_mask)
+        after_own = model(own_ts, own_graph, *_NO_EDGES, 5, stock_mask=mask)
+
+    assert torch.allclose(before[held_date], after_others[held_date], atol=1e-6)
+    assert (before[held_date, 0] - after_own[held_date, 0]).abs().item() > 1e-4
+
+
+def test_both_switches_train_both_new_components() -> None:
+    """A backward pass must reach the gathers and the residual block, with real gradients."""
+    model = _both_switches_model()
+    model.train()
+    time_series, graph_features, edge_index, edge_weight, mask = _three_dates()
+    weights = torch.linspace(-1.0, 1.0, int(mask.sum()))
+
+    scores = model(time_series, graph_features, edge_index, edge_weight, 5, stock_mask=mask)
+    (scores[mask] * weights).sum().backward()
+
+    grads = {name: p.grad for name, p in model.named_parameters()}
+    assert all(g is None or torch.isfinite(g).all() for g in grads.values())
+    for component in (
+        "latent_learner.gather1.",
+        "latent_learner.gather2.",
+        "self_attention.inner.",
+        "self_attention.norm.",
+    ):
+        component_grads = [g for name, g in grads.items() if name.startswith(component)]
+        assert component_grads
+        assert all(g is not None for g in component_grads)
+        largest = max(g.abs().max().item() for g in component_grads)
+        assert largest > _BOTH_SWITCHES_MIN_GRADIENT
+
+
+def test_both_switches_stay_finite_under_autocast_with_an_empty_date() -> None:
+    model = _both_switches_model()
+    model.train()
+    time_series, graph_features, edge_index, edge_weight, mask = _three_dates()
+    mask[1] = False
+
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        scores = model(time_series, graph_features, edge_index, edge_weight, 5, stock_mask=mask)
+    scores.float()[mask].sum().backward()
+
+    assert torch.isfinite(scores.float()).all()
+    assert torch.all(scores[1] == 0)
+    assert all(p.grad is None or torch.isfinite(p.grad).all() for p in model.parameters())
+
+
+def test_both_switches_train_through_a_batch_with_an_empty_date() -> None:
+    """A few optimiser steps run, stay finite, and reduce the loss.
+
+    The middle date has no active names, so its gather attends to nothing. That
+    must not reach the loss or the weights of the dates that do have names.
+    """
+    model = _both_switches_model()
+    model.train()
+    time_series, graph_features, edge_index, edge_weight, mask = _three_dates()
+    mask[1] = False
+    targets = torch.randn(3, 5, generator=torch.Generator().manual_seed(9))
+    optimiser = torch.optim.AdamW(model.parameters(), lr=1e-2)
+
+    losses = []
+    for _ in range(10):
+        optimiser.zero_grad()
+        scores = model(time_series, graph_features, edge_index, edge_weight, 5, stock_mask=mask)
+        loss = (scores - targets)[mask].pow(2).mean()
+        loss.backward()
+        optimiser.step()
+        losses.append(loss.item())
+
+    assert all(math.isfinite(value) for value in losses)
+    assert losses[-1] < losses[0]
+    assert all(torch.isfinite(p).all() for p in model.parameters())
