@@ -868,6 +868,14 @@ def test_seed_exception_is_disclosed_in_the_run_record(generator) -> None:
     assert isinstance(call, ast.Call), ast.dump(call)
     assert isinstance(call.func, ast.Name) and call.func.id == "fold_seed_exceptions"
 
+    # The manifest's per-fold seeds must come from fold_seed(), the same call
+    # the jobs' Hydra seed reads. The inline formula agrees with it on every
+    # fold but the bridge, so it would record 6729 while the jobs run at 1729.
+    fold_seeds = manifest_value.values[keys.index("fold_seeds")]
+    assert isinstance(fold_seeds, ast.DictComp), ast.dump(fold_seeds)
+    assert isinstance(fold_seeds.value, ast.Call), ast.dump(fold_seeds)
+    assert isinstance(fold_seeds.value.func, ast.Name) and fold_seeds.value.func.id == "fold_seed"
+
 
 def test_smoke_artifacts_cannot_satisfy_a_screen_or_confirm_resume(generator) -> None:
     """A 1 x 2 result must never be mistaken for a real stage's completed job.
