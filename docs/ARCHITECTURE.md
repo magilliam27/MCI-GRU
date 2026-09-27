@@ -236,6 +236,17 @@ matrices `R1` and `R2` of shape `(num_hidden_states, D)`. A1 and A2 query them
 independently. `model.use_nn_multihead_attention` switches between the legacy
 eight-`Linear` implementation and `nn.MultiheadAttention`.
 
+`model.market_latent_mode` decides what those states are:
+
+| Mode | Behaviour |
+|------|-----------|
+| `static` (default) | `R1` and `R2` are plain parameters, frozen after training. Each stock's output is a function of its own vector alone, so **these streams cannot observe the date's market** despite the name (issue #198). |
+| `data_dependent` | The latents first read the date's PIT-active cross-section, then every stock reads those date-conditioned latents (the Set Transformer induced-set construction). Each date in a batch gathers from its own cross-section only, so no date reads another date's names. Inactive names are excluded as attention keys, not merely zeroed, so the gathered state does not drift with the width of the PIT union axis. Requires `use_nn_multihead_attention=true`; the legacy eight-`Linear` path cannot take per-date keys. |
+
+The two modes hold different parameters, so a checkpoint belongs to the mode
+that produced it. `static` remains the default and the frozen recipe is
+unchanged.
+
 ### Prediction head
 
 `[A1, A2, B1, B2]` are concatenated in that order (the order `SelfAttention`'s
@@ -244,6 +255,14 @@ optionally mixed across stocks by `SelfAttention`
 (`mci_gru/models/attention.py`), then passed through a final `GATBlock` to one
 score per stock. `model.output_activation` selects identity, ELU, ReLU, or
 sigmoid.
+
+`model.cross_section_block` selects how that cross-stock mixing is applied.
+`legacy`, the default, replaces the concatenated vector with the attention
+output. `residual` wraps the same attention in `ResidualCrossSectionBlock` as
+`z + SelfAttention(LayerNorm(z))`, so the attention corrects the vector rather
+than replacing it, and re-applies the stock mask after the add. The two forms
+have disjoint parameter names, so a checkpoint loads only into the form that
+produced it.
 
 During training, `graph.drop_edge_p` drops correlation and sector edges through
 `torch_geometric.utils.dropout_edge`. When a stock mask is supplied, masked nodes

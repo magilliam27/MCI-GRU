@@ -2,40 +2,53 @@
 """Generate docs/TEST_REGISTRY.md: a registry of every pytest test in tests/.
 
 For each test file the registry records the module docstring, the first-party
-modules it exercises (mci_gru / scripts), pytest
-markers, and every test function. When test_reports/junit.xml exists (written
-by running pytest with --junitxml=test_reports/junit.xml), the last-run status
-and duration of each test are merged in.
+modules it exercises (mci_gru / scripts), and every test function with its
+description and pytest markers.
 
-The registry also records a deterministic digest of the test inventory (files,
-module docstrings, exercised modules, test names, markers). ``--check`` recomputes
-that digest and fails when the committed registry no longer matches the tests on
-disk, so CI can enforce freshness without needing a junit report. The digest
-deliberately excludes the generation date and the per-test last-run status and
-duration, because those vary per run and per machine while the inventory does not.
+The committed registry records that test inventory and nothing else: no counts,
+no digest, no generation date, and no last-run status. Every line therefore
+depends on a single test file, so branches that add tests to different files
+change different sections and merge without a registry conflict (#149). Git
+still reports one when both insert at the same point, for example two new files
+whose names sort next to each other; take either side and regenerate.
+
+``--check`` regenerates the registry in memory, parses the inventory back out of
+both the regenerated and the committed copy, and fails on any genuine
+difference: a test missing or left over, or a changed description, marker,
+module docstring, or exercised module. Section order, row order, cell padding,
+and the preamble are formatting and are ignored. It also fails when the
+committed copy carries last-run status columns, which belong in the separate
+report.
+
+With ``--junit``, the last-run status and duration of each test are merged from a
+junit XML report (written by running pytest with
+``--junitxml=test_reports/junit.xml``) into a separate status report under the
+gitignored ``test_reports/``, never into the committed registry.
 
 Usage:
     python scripts/generate_test_registry.py
     python scripts/generate_test_registry.py --check
-    python scripts/generate_test_registry.py --junit test_reports/junit.xml --out docs/TEST_REGISTRY.md
+    python scripts/generate_test_registry.py --junit test_reports/junit.xml
 """
 
 from __future__ import annotations
 
 import argparse
 import ast
-import datetime as dt
-import hashlib
-import json
+import re
 import sys
 import xml.etree.ElementTree as ET
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIRST_PARTY_PREFIXES = ("mci_gru", "scripts", "run_experiment")
-INVENTORY_DIGEST_PREFIX = "<!-- test-inventory-sha256: "
-INVENTORY_DIGEST_SUFFIX = " -->"
+INVENTORY_COLUMNS = ["Test", "Description", "Markers"]
+STATUS_COLUMNS = ["Last run", "Time (s)"]
+_SECTION_HEADING = re.compile(r"^## `(?P<path>[^`]+)`$")
+_TEST_ROW = re.compile(r"^\|\s*`(?P<name>[^`]+)`\s*\|(?P<rest>.*)\|$")
+_EXERCISES = "**Exercises:**"
 
 
 @dataclass
@@ -168,44 +181,136 @@ def load_junit_results(
     return results, module_skips
 
 
-def inventory_digest(modules: list[TestModule]) -> str:
-    """Return a stable sha256 over the test inventory only.
+@dataclass(frozen=True)
+class RegistryEntry:
+    """What the registry records for one test file, independent of formatting."""
 
-    File names are used instead of full paths, modules are ordered by name rather
-    than by directory enumeration, and no run metadata is included, so the digest
-    is identical on every machine that has the same tests checked out.
+    doc: str
+    covers: tuple[str, ...]
+    tests: tuple[tuple[str, str, tuple[str, ...]], ...]  # sorted (name, doc, markers)
+
+
+@dataclass
+class ParsedRegistry:
+    modules: dict[str, RegistryEntry]  # keyed by the section heading, e.g. tests/test_x.py
+    duplicates: list[str]  # headings that appear more than once
+    has_status_columns: bool
+
+
+@dataclass
+class _Section:
+    path: str
+    doc_lines: list[str] = field(default_factory=list)
+    covers: tuple[str, ...] = ()
+    tests: list[tuple[str, str, tuple[str, ...]]] = field(default_factory=list)
+    in_table: bool = False
+
+
+def _cells(line: str) -> list[str]:
+    return [cell.strip() for cell in line.strip().strip("|").split("|")]
+
+
+def parse_registry(content: str) -> ParsedRegistry:
+    """Read the test inventory back out of a rendered registry.
+
+    Section order, row order, blank lines, cell padding, and everything before the
+    first section are ignored. Rows are split from the right, because descriptions
+    may contain ``|`` while markers and status cells never do.
     """
-    payload = [
-        {
-            "file": module.path.name,
-            "doc": module.doc,
-            "covers": module.covers,
-            "tests": [
-                {"name": test.name, "doc": test.doc, "markers": test.markers}
-                for test in module.tests
-            ],
-        }
-        for module in sorted(modules, key=lambda item: item.path.name)
+    sections: list[_Section] = []
+    has_status_columns = False
+    status_cells = 0
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        heading = _SECTION_HEADING.match(line)
+        if heading:
+            sections.append(_Section(heading["path"]))
+            continue
+        if not sections or not line:
+            continue
+        section = sections[-1]
+        header = _cells(line) if line.startswith("|") else []
+        if header[: len(INVENTORY_COLUMNS)] == INVENTORY_COLUMNS:
+            section.in_table = True
+            status_cells = len(header) - len(INVENTORY_COLUMNS)
+            has_status_columns = has_status_columns or status_cells > 0
+        elif section.in_table:
+            row = _TEST_ROW.match(line)
+            if row:
+                cells = row["rest"].rsplit("|", 1 + status_cells)
+                cells += [""] * (2 + status_cells - len(cells))
+                markers = tuple(m.strip() for m in cells[1].split(",") if m.strip())
+                section.tests.append((row["name"], cells[0].strip(), markers))
+        elif line.startswith(_EXERCISES):
+            section.covers = tuple(sorted(re.findall(r"`([^`]+)`", line[len(_EXERCISES) :])))
+        else:
+            section.doc_lines.append(line)
+
+    modules: dict[str, RegistryEntry] = {}
+    duplicates: set[str] = set()
+    for section in sections:
+        if section.path in modules:
+            duplicates.add(section.path)
+        modules[section.path] = RegistryEntry(
+            " ".join(section.doc_lines), section.covers, tuple(sorted(section.tests))
+        )
+    return ParsedRegistry(modules, sorted(duplicates), has_status_columns)
+
+
+def inventory_differences(
+    expected: dict[str, RegistryEntry], recorded: dict[str, RegistryEntry]
+) -> list[str]:
+    """Describe every way the recorded inventory differs from the expected one."""
+    problems = [f"{path}: missing from the registry" for path in sorted(expected.keys() - recorded)]
+    problems += [
+        f"{path}: listed, but not in the tests directory"
+        for path in sorted(recorded.keys() - expected)
     ]
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    for path in sorted(expected.keys() & recorded.keys()):
+        want, have = expected[path], recorded[path]
+        if want.doc != have.doc:
+            problems.append(f"{path}: module description differs")
+        if want.covers != have.covers:
+            problems.append(f"{path}: exercised modules differ")
+        missing = Counter(want.tests) - Counter(have.tests)
+        extra = Counter(have.tests) - Counter(want.tests)
+        missing_names = Counter(name for name, _, _ in missing.elements())
+        extra_names = Counter(name for name, _, _ in extra.elements())
+        changed = missing_names & extra_names
+        problems += [
+            f"{path}::{name}: missing from the registry"
+            for name in sorted((missing_names - changed).elements())
+        ]
+        problems += [
+            f"{path}::{name}: listed, but not in the test file"
+            for name in sorted((extra_names - changed).elements())
+        ]
+        problems += [
+            f"{path}::{name}: description or markers differ" for name in sorted(changed.elements())
+        ]
+    return problems
 
 
-def recorded_inventory_digest(content: str) -> str | None:
-    """Return the digest recorded in a rendered registry, or None when absent."""
-    for line in content.splitlines():
-        if line.startswith(INVENTORY_DIGEST_PREFIX) and line.endswith(INVENTORY_DIGEST_SUFFIX):
-            return line[len(INVENTORY_DIGEST_PREFIX) : -len(INVENTORY_DIGEST_SUFFIX)]
-    return None
+def registry_problems(tests_dir: Path, out_path: Path) -> list[str]:
+    """Return why out_path does not record the tests now on disk; empty when current."""
+    if not out_path.is_file():
+        return [f"{out_path} does not exist"]
+    expected = parse_registry(build_registry(tests_dir, None, out_path, write=False))
+    recorded = parse_registry(out_path.read_text(encoding="utf-8"))
+    problems: list[str] = []
+    if recorded.has_status_columns:
+        problems.append(
+            "carries last-run status columns; the committed registry records the "
+            "inventory only, and status belongs in the --junit report"
+        )
+    problems += [f"{path}: listed more than once" for path in recorded.duplicates]
+    problems += inventory_differences(expected.modules, recorded.modules)
+    return problems
 
 
 def registry_is_current(tests_dir: Path, out_path: Path) -> bool:
-    """Return whether out_path records the digest of the tests now on disk."""
-    if not out_path.is_file():
-        return False
-    modules = [parse_test_module(path) for path in sorted(tests_dir.glob("test_*.py"))]
-    recorded = recorded_inventory_digest(out_path.read_text(encoding="utf-8"))
-    return recorded is not None and recorded == inventory_digest(modules)
+    """Return whether out_path records the inventory of the tests now on disk."""
+    return not registry_problems(tests_dir, out_path)
 
 
 def _display_junit_path(junit_path: Path) -> str:
@@ -223,7 +328,6 @@ def render_registry(
     display_root: Path,
     module_skips: set[str] | None = None,
 ) -> str:
-    total_tests = sum(len(m.tests) for m in modules)
     lines: list[str] = []
     lines.append("# Test Registry")
     lines.append("")
@@ -231,17 +335,14 @@ def render_registry(
     lines.append("> Regenerate with:")
     lines.append("> `.\\.venv\\Scripts\\python.exe scripts/generate_test_registry.py`")
     lines.append("")
-    stamp = dt.date.today().isoformat()
-    lines.append(f"Generated: {stamp}")
-    lines.append(f"Test files: {len(modules)}")
-    lines.append(f"Test functions: {total_tests} (parametrized cases collapsed)")
-    lines.append(f"{INVENTORY_DIGEST_PREFIX}{inventory_digest(modules)}{INVENTORY_DIGEST_SUFFIX}")
     if junit is not None and junit_path is not None:
         lines.append(f"Last-run results merged from `{_display_junit_path(junit_path)}`.")
     else:
         lines.append(
-            "No junit results found. Run the suite with "
-            "`--junitxml=test_reports/junit.xml` to include last-run status."
+            "This file records the test inventory only, with no counts, dates, or "
+            "last-run status, so each line depends on one test file. `--check` compares "
+            "it with `tests/`; last-run status goes to a separate report "
+            "(see `docs/TESTING_GUIDE.md`)."
         )
     lines.append("")
 
@@ -256,11 +357,9 @@ def render_registry(
             covered = ", ".join(f"`{c}`" for c in module.covers)
             lines.append(f"**Exercises:** {covered}")
             lines.append("")
-        header = "| Test | Description | Markers |"
-        divider = "|---|---|---|"
-        if junit is not None:
-            header += " Last run | Time (s) |"
-            divider += "---|---|"
+        columns = INVENTORY_COLUMNS + (STATUS_COLUMNS if junit is not None else [])
+        header = "| " + " | ".join(columns) + " |"
+        divider = "|" + "---|" * len(columns)
         lines.append(header)
         lines.append(divider)
         module_collection_skipped = module_skips is not None and module.path.stem in module_skips
@@ -317,28 +416,56 @@ def build_registry(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tests-dir", type=Path, default=REPO_ROOT / "tests")
-    parser.add_argument("--junit", type=Path, default=REPO_ROOT / "test_reports" / "junit.xml")
-    parser.add_argument("--out", type=Path, default=REPO_ROOT / "docs" / "TEST_REGISTRY.md")
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=REPO_ROOT / "docs" / "TEST_REGISTRY.md",
+        help="The committed registry. It never carries last-run status.",
+    )
+    parser.add_argument(
+        "--junit",
+        type=Path,
+        default=None,
+        help="Also write a last-run status report merged from this junit XML file.",
+    )
+    parser.add_argument(
+        "--status-out",
+        type=Path,
+        default=REPO_ROOT / "test_reports" / "TEST_REGISTRY_STATUS.md",
+        help="Where --junit writes the status report (default under gitignored test_reports/).",
+    )
     parser.add_argument(
         "--check",
         action="store_true",
-        help="Fail without writing when the recorded test inventory is stale.",
+        help="Fail without writing when the committed registry's inventory is stale.",
     )
     args = parser.parse_args(argv)
 
     if args.check:
-        if registry_is_current(args.tests_dir, args.out):
+        problems = registry_problems(args.tests_dir, args.out)
+        if not problems:
             print(f"Test registry inventory is current: {args.out}")
             return 0
+        print(f"Test registry inventory is stale: {args.out}", file=sys.stderr)
+        for problem in problems:
+            print(f"  {problem}", file=sys.stderr)
         print(
-            f"Test registry inventory is stale: {args.out}. "
-            "Regenerate with scripts/generate_test_registry.py.",
+            "Regenerate with scripts/generate_test_registry.py. On a merge conflict in "
+            "the registry, take either side and regenerate.",
             file=sys.stderr,
         )
         return 1
 
-    build_registry(args.tests_dir, args.junit, args.out)
-    print(f"Wrote {args.out}")
+    content = build_registry(args.tests_dir, None, args.out)
+    modules = parse_registry(content).modules
+    total_tests = sum(len(entry.tests) for entry in modules.values())
+    print(f"Wrote {args.out} ({len(modules)} test files, {total_tests} test functions)")
+    if args.junit is not None:
+        if not args.junit.is_file():
+            print(f"No status report written: {args.junit} does not exist.", file=sys.stderr)
+            return 0
+        build_registry(args.tests_dir, args.junit, args.status_out)
+        print(f"Wrote {args.status_out}")
     return 0
 
 
