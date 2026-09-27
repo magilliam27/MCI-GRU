@@ -192,6 +192,21 @@ as expected rather than as a violation.
   root quotes the correct policy while running the wrong skill set, with no
   warning. Start at the workspace root. `claude --setting-sources user` and SDK
   entrypoints load neither file regardless of directory.
+- **`.claude/skills/` does not follow the settings rule above, and the
+  placement works: the skills do load** (observed in the skill listing, #168).
+  The "skill set" in that bullet is the plugin set `.claude/settings.json`
+  enables, read from the working directory only (in a linked worktree,
+  project-scope plugins from the main checkout also load, v2.1.200 or later).
+  Documented (`code.claude.com/docs/en/skills` and `/docs/en/worktrees`, read
+  2026-09-27), not yet reproduced on this machine: project skills load from
+  `.claude/skills/` in the starting directory and each parent up to the
+  repository root, or the worktree root in a linked worktree; a worktree with no
+  `.claude/skills/` of its own loads the main checkout's (v2.1.277 or later); a
+  skills directory created after start is not watched, so run `/reload-skills`
+  after each change there. Observed on #168 and unexplained by those pages: the
+  skills appeared mid-session in a worktree that held no copy. A missing skill is
+  never a reason to move content out of `.claude/skills/`; record any repeat on
+  the tracker.
 - Load-bearing tests are mutation-checked: break the behaviour, confirm the test
   fails, restore, confirm it passes, and report the table. Three shipped defects
   in this repository survived because their guarding tests were vacuous.
