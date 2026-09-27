@@ -658,6 +658,52 @@ Native read-to-metadata guards for immutable consumed-input observations.
 | `test_evaluation_metrics_import_is_not_blocked_by_prediction_report_cycle` |  |  |
 | `test_long_history_docs_use_temporal_universe_set_for_non_pit_smoke` |  |  |
 
+## `tests/test_market_latent_state.py`
+
+Market latent state behaviour: does the "market" stream see the market?
+
+**Exercises:** `mci_gru.config`, `mci_gru.models`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_data_dependent_latents_respond_to_the_rest_of_the_cross_section` | A stock's market latent state must depend on the market it sits in. | parametrize |
+| `test_static_latents_ignore_the_rest_of_the_cross_section` | The shipped behaviour, pinned so the default path cannot drift. | parametrize |
+| `test_gathered_latents_ignore_pit_inactive_names` | An inactive union node must not reach the market state of an active one. |  |
+| `test_gathered_latents_read_the_active_names_not_the_inactive_ones` | With a mask supplied, the gather must still read the *active* cross-section. |  |
+| `test_gathered_latents_ignore_how_many_names_are_inactive` | Padding a date with more inactive names must not move the active ones. |  |
+| `test_gathered_latents_do_not_read_other_dates_in_the_batch` | A date's market state is gathered from that date's cross-section alone. | parametrize |
+| `test_each_date_in_the_batch_is_masked_by_its_own_row` | The PIT mask is per date: row ``d`` of ``stock_mask`` governs date ``d`` only. |  |
+| `test_a_date_with_no_active_names_does_not_produce_nan` | The gather's softmax would see every key masked; it must not divide by nothing. | parametrize |
+| `test_a_date_with_no_active_names_keeps_the_learned_latents` | With nothing to read, a date's latents must fall back on the learned ones. | parametrize |
+| `test_data_dependent_mode_refuses_to_guess_the_date_grouping` | Without num_stocks the flattened stream cannot be grouped by date. |  |
+| `test_unknown_mode_is_rejected` |  |  |
+| `test_static_mode_ignores_the_new_arguments` | Passing the new arguments must not change the shipped computation. |  |
+| `test_static_mode_reproduces_the_pre_change_outputs` | Static mode must be bitwise what it was, not merely self-consistent. | parametrize |
+| `test_default_model_is_unchanged_from_main` | Default-off must leave the whole model what ``main`` builds, not just the module. | parametrize, parametrize |
+| `test_a_static_checkpoint_loads_strictly_into_a_default_model` | A default-model checkpoint reloads with ``load_state_dict(strict=True)``. |  |
+| `test_model_config_refuses_data_dependent_without_multihead_attention` | The legacy 8-Linear path cannot take per-date keys, so refuse rather than override. |  |
+| `test_static_mode_keeps_the_pre_change_parameter_set` | Frozen checkpoints must keep loading, so the default may not move. |  |
+| `test_data_dependent_mode_holds_different_parameters` | The two modes are not checkpoint-interchangeable, and that is asserted. |  |
+| `test_default_config_still_builds_static_latents` |  |  |
+| `test_config_without_the_new_key_builds_static_latents` | A ``config.yaml`` written before this change has no such key at all. |  |
+| `test_data_dependent_flag_reaches_the_built_model` |  |  |
+| `test_model_latents_respond_to_other_stocks_end_to_end` | The trunk must pass the date grouping down, or the mode is inert. |  |
+| `test_data_dependent_model_zeroes_inactive_nodes` |  |  |
+| `test_data_dependent_model_inactive_stock_cannot_move_active_scores` |  |  |
+| `test_model_active_scores_ignore_how_many_names_are_inactive` | The trunk must hand the PIT mask to the gather, not just zero the streams. |  |
+| `test_model_scores_do_not_read_other_dates_in_the_batch` | End to end, the trunk must group the gather by date, not by batch. | parametrize |
+| `test_data_dependent_latent_parameters_receive_gradients` |  |  |
+| `test_data_dependent_model_is_finite_under_autocast` |  |  |
+| `test_model_config_rejects_an_unknown_market_latent_mode` |  |  |
+| `test_model_config_round_trips_the_new_field` |  |  |
+| `test_base_config_yaml_ships_static_market_latents` | Real runs take the default from ``configs/config.yaml``, not from ``ModelConfig``. |  |
+| `test_both_switches_each_make_exactly_their_own_change` | Neither switch may suppress the other, or add anything when combined. |  |
+| `test_both_switches_keep_inactive_names_out` | Inactive names score exactly zero and cannot move an active name's score. |  |
+| `test_both_switches_do_not_read_other_dates_in_the_batch` | With both switches on, a date's scores come from that date's names alone. | parametrize |
+| `test_both_switches_train_both_new_components` | A backward pass must reach the gathers and the residual block, with real gradients. |  |
+| `test_both_switches_stay_finite_under_autocast_with_an_empty_date` |  |  |
+| `test_both_switches_train_through_a_batch_with_an_empty_date` | A few optimiser steps run, stay finite, and reduce the loss. |  |
+
 ## `tests/test_mci_gru_phase2.py`
 
 Phase 2 model flags: self-attention type embed, MHA path shapes, encoders.

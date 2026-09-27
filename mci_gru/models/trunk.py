@@ -145,6 +145,7 @@ class StockPredictionModel(nn.Module):
         use_a1_a2_cross_attention: bool = False,
         cross_a2_num_heads: int = 4,
         cross_section_block: str = "legacy",
+        market_latent_mode: str = "static",
     ):
         super().__init__()
         if cross_section_block not in _CROSS_SECTION_BLOCKS:
@@ -231,6 +232,7 @@ class StockPredictionModel(nn.Module):
             latent_init_scale=latent_init_scale,
             use_nn_multihead_attention=use_nn_multihead_attention,
             attn_dropout=tdrop,
+            market_latent_mode=market_latent_mode,
         )
         self.concat_size = 4 * self.align_dim
         self.ln_z = _maybe_ln_ch(self.concat_size, tr)
@@ -383,7 +385,7 @@ class StockPredictionModel(nn.Module):
         if node_mask is not None:
             a2 = a2 * node_mask.to(a2.dtype)
 
-        b1, b2 = self.latent_learner(a1, a2)
+        b1, b2 = self.latent_learner(a1, a2, num_stocks=num_stocks, stock_mask=stock_mask)
         if node_mask is not None:
             b1 = b1 * node_mask.to(b1.dtype)
             b2 = b2 * node_mask.to(b2.dtype)
