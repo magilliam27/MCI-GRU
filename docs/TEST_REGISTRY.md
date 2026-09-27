@@ -1005,6 +1005,22 @@ Contract tests for the repository's own skills under .claude/skills/.
 | `test_the_retired_one_ticket_per_session_cap_is_stated_nowhere` | The flat cap was the most-violated rule here; it must not return beside its replacement. | parametrize |
 | `test_the_prose_normaliser_ignores_wrapping_and_emphasis_but_not_words` | Control for `_normalised`: without it, both guards above could pass on a normaliser that erases text. |  |
 
+## `tests/test_readme_figure.py`
+
+Contract tests for scripts/gen_readme_figure.py and the README evidence figure.
+
+**Exercises:** `scripts.gen_readme_figure`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_reduced_universe_rows_match_report` |  |  |
+| `test_full_panel_rows_and_compounded_figures_match_report` |  |  |
+| `test_paired_reanalysis_rows_and_labels_match_report` |  |  |
+| `test_caveats_are_the_reports_words_and_the_caption_carries_them` |  |  |
+| `test_generator_reproduces_committed_svg` |  |  |
+| `test_committed_svg_carries_both_themes_tabular_numerals_and_no_volatile_metadata` |  |  |
+| `test_readme_embeds_the_committed_figure_once` |  |  |
+
 ## `tests/test_regime_features.py`
 
 **Exercises:** `mci_gru.config`, `mci_gru.data.data_manager`, `mci_gru.features`, `mci_gru.features.regime`
