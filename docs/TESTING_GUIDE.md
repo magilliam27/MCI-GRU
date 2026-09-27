@@ -93,7 +93,7 @@ checks before pushing shared pipeline, graph, or model changes.
 descriptions and markers, and the first-party modules each file exercises. It is
 auto-generated — do not edit by hand. It records that inventory only, with no
 counts, dates, or last-run status, so each line depends on one test file and
-branches that add tests to different files do not conflict on it.
+branches that add tests to different files change different sections of it.
 
 Regenerate it whenever tests are added, renamed, or removed, or a test's
 docstring or markers change. CI lint runs `--check`, which regenerates the
