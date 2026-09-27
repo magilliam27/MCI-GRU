@@ -3,7 +3,6 @@ Training and evaluation for MCI-GRU experiments.
 
 Modules:
 - trainer: Training loop with early stopping and ensemble averaging
-- metrics: Evaluation metrics
 - losses: Custom loss functions and loss factory
 """
 
@@ -60,7 +59,7 @@ def __getattr__(name):
             "rank_information_coefficient_sum_count": rank_information_coefficient_sum_count,
         }[name]
     if name in {"compute_metrics", "evaluate_predictions"}:
-        from mci_gru.training.metrics import compute_metrics, evaluate_predictions
+        from mci_gru.evaluation.metrics import compute_metrics, evaluate_predictions
 
         return {
             "compute_metrics": compute_metrics,

@@ -21,9 +21,8 @@ Before mapping the paper, read the repo anchors needed for the target surfaces:
 
 - Always read `AGENTS.md`, `docs/ARCHITECTURE.md`, and `docs/CONFIGURATION_GUIDE.md`.
 - For features, read `mci_gru/features/registry.py`.
-- For graph ideas, read `mci_gru/graph/builder.py` and dynamic-graph notes in `AGENTS.md`.
-- For evaluation/backtests, read `mci_gru/evaluation/` and `docs/BACKTEST_FAIRNESS_AUDIT.md`.
-- For paper-trade ideas, read `paper_trade/scripts/infer.py` and `paper_trade/scripts/portfolio.py`.
+- For graph ideas, read `mci_gru/graph/builder.py`, `mci_gru/graph/correlation.py`, and the Graph section of `docs/ARCHITECTURE.md`.
+- For evaluation/backtests, read `mci_gru/evaluation/` and `docs/research/archive/BACKTEST_FAIRNESS_AUDIT.md`.
 
 Read `references/mci-gru-surfaces.md` for the surface taxonomy and invariant checklist. Read `references/conditional-skewness-example.md` when you need a calibrated example of higher-moment/coskewness translation.
 
@@ -65,7 +64,7 @@ source: "<local path, URL, or pasted text>"
 evaluated_on: "YYYY-MM-DD"
 status: "evaluated"
 decision: "pursue | defer | reject | blocked"
-primary_landing_zone: "<Feature | Graph | Model | Training/evaluation | Config/experiment | Notebook | Paper-trade | ADR | Data>"
+primary_landing_zone: "<Feature | Graph | Model | Training/evaluation | Config/experiment | Notebook | ADR | Data>"
 data_gate: "clear | partial | blocked"
 recommended_next_action: "<one short sentence>"
 github_issue_urls: []
@@ -88,6 +87,6 @@ Each GitHub-ready slice must include:
 - Always persist the evaluation document before claiming the paper has been evaluated. In the final response, link to the document and summarize only the decision, recommended next action, and any blocked data.
 - When GitHub issues are later created from the drafts, update the evaluation document's `github_issue_urls` list and the relevant slice text with the issue links.
 - Block missing-data ideas rather than inventing proxies.
-- Treat paper-trade as rejected or long-term until offline validation exists.
+- Treat live execution as out of scope: `paper_trade/` was retired in 2026-09 (tag `archive/pre-cleanup-2026-09`).
 - Do not treat research artifacts as source of truth when they conflict with no-lookahead, label embargo, dynamic graph timing, or backtest fairness.
 - Do not produce a generic literature summary. Every claim in the mapping must connect to MCI-GRU surfaces, data, invariants, or issue drafts.
