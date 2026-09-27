@@ -29,7 +29,13 @@ defaults to the legacy behaviour and is serialised by `to_dict`. The refresh
 also cross-checked every figure against `raw_outputs.md`. It corrects two
 readings (sections 3.7 and 3.8) that misread the no-block arm's epoch-1 peak
 and one arm label (section 4.2) in place, each marked where it occurs, and
-flags the step-time figures in section 3.6.
+flags the step-time figures in section 3.6. After the fresh-context review,
+every step-time claim for Fix A also points at that correction, and four
+derived-arithmetic slips that move no reading are corrected in place: 99 to 97
+percent (sections 1 and 3.3), 0.027 to 0.026 (sections 1 and 3.2), 0.37 to
+0.38 nats (section 3.3.1), and a 0.005 test gap to 0.002 (section 3.5).
+Section 3.3's "identical to three decimals" is looser than the record, which
+differs in the third decimal; it is left as written.
 
 Purpose: answer "what kind of architecture change would make sense for this
 model" from the inside out. The looped-transformer brief
@@ -89,7 +95,7 @@ worth revisiting.
   (section 3.1). This is the textbook rank-collapse failure of attention without
   skip connections. On real validation data the picture holds after training:
   ten epochs in, the block's attention is still uniform to within 0.06 nats,
-  it discards 99 percent of the cross-sectional variance, and the score head
+  it discards 97 percent of the cross-sectional variance, and the score head
   reaches its validation IC through a rank-1 residue (section 3.3). Even at six
   times the learning rate it sharpens only toward a date-level pattern and still
   passes 3 percent of the variance at rank 1.1 (section 3.3.1). The block is
@@ -100,18 +106,20 @@ worth revisiting.
   (section 3.4). Fifty-six percent of the model's parameters are computing a
   quantity the objective discards. **Fix A (section 4.1)** wraps the block in a
   pre-norm residual so its output corrects `z` instead of replacing it, which
-  restores that number to 0.534 for 256 extra parameters and no step-time cost.
-  What the fix does **not** come with is evidence that it helps. Sections 3.2
-  and 3.5 show it trains no better than the shipped block at the recipe rate,
-  and the two-seed spread runs mildly against the dispersion-reduction argument
-  I had pre-registered for it. Its case is that it is correct, that it is free,
-  and that it is stable where the shipped block is not at higher learning rates.
+  restores that number to 0.534 for 256 extra parameters and no step-time cost
+  (step time unverified, see the 3.6 correction, though its preserved timings
+  have Fix A no slower). What the fix does **not** come with is evidence that
+  it helps. Sections 3.2 and 3.5 show it trains no better than the shipped
+  block at the recipe rate, and the two-seed spread runs mildly against the
+  dispersion-reduction argument I had pre-registered for it. Its case is that
+  it is correct, that it is free (on step time, unverified; see 3.6), and that
+  it is stable where the shipped block is not at higher learning rates.
   Whether the block earns its place at all is a separate question the ablation
   has to settle, and on current evidence deleting it is the live alternative.
 - **The variance finding.** In the same smoke, models that share every initial
   weight except for one residual add landed 0.023 apart in validation IC before
   any training, and ten epochs at the recipe learning rate moved each model by
-  only 0.008 to 0.027. The initialisation lottery is as large as the training
+  only 0.008 to 0.026. The initialisation lottery is as large as the training
   gain over that horizon and an order of magnitude larger than the paired
   protocol's minimum detectable effect. That is the same story the graph
   re-analysis told through per-member IC and per-member output scale, and it
@@ -152,7 +160,7 @@ Ranked recommendations, best-supported first:
 | Rank | Change | Why | Cost | How to test |
 | --- | --- | --- | --- | --- |
 | 0 | **Delete the cross-stock block**: `model.use_self_attention=false` | Not a change to write, a flag that already exists. It is first because it is free to test and because three structural arguments favour it: the graph ablation's control-first result, the block's 56 percent parameter share, and its measured 94 percent variance destruction. Its smoke lead did **not** replicate on a second seed (section 3.8), so this is a cheap thing to test, not a finding | **-49,664 params**; faster | Arm C5, in the first wave |
-| 1 | **Fix A, section 4.1.** Residual pre-norm cross-stock block: `z + Attn(LN(z))`, four heads, optional FFN | The right repair *if* the block is kept. Stops the variance destruction (0.433-to-0.024 becomes 0.403-to-0.329 on real data) and is stable at learning rates where the shipped block spikes then decays. But it lands below the shipped block on test IC in the one real-universe smoke, so it is a correctness fix without demonstrated value | +256 params; step time inside the noise | Arm C1 |
+| 1 | **Fix A, section 4.1.** Residual pre-norm cross-stock block: `z + Attn(LN(z))`, four heads, optional FFN | The right repair *if* the block is kept. Stops the variance destruction (0.433-to-0.024 becomes 0.403-to-0.329 on real data) and is stable at learning rates where the shipped block spikes then decays. But it lands below the shipped block on test IC in the one real-universe smoke, so it is a correctness fix without demonstrated value | +256 params; step time inside the noise (unverified, see 3.6; its preserved timings have Fix A no slower) | Arm C1 |
 | 2 | **Market gate.** MASTER-style softmax gate on the input features, built from a per-date masked market vector | The cheap route to Defect 2. Conditions inputs on the market for a few hundred parameters, where Fix B conditions representations for 137,000. At 110 names the cheap route is the sensible first test | A few hundred params; one masked mean per batch | Arm C2 |
 | 3 | **Fix B, section 4.2.** Data-dependent latents: gather the 32 latents from the date's cross-section, then broadcast back (Set Transformer ISAB) | The principled repair of the cross-attention, and in the cross-stock position it repairs Defect 1 too. **Repriced down by section 3.6**: at 110 names its efficiency argument is gone and it costs 58 percent more step time (unverified, see 3.6) and 2x parameters, with no smoke benefit | +136,960 params (89K to 177K); +58% step time at 110 names (unverified, see 3.6) | Arm C3, only if C2 shows promise |
 | 3 | Capacity-matched widths: raise `output_gat1` toward `hidden_size_gat1`, drop the 4-to-32 re-projection, and fix the `gru_hidden_sizes` reinterpretation from #131 so encoders are comparable | Removes a rank-3 bottleneck on the only cross-sectional stream; makes encoder ablations mean what they say | Tens of thousands of parameters, still tiny | Arm C4, only after #131 is resolved |
@@ -296,7 +304,7 @@ Reading, in order of confidence:
 
 1. The four trajectories are near-parallel and never cross. The ordering at
    epoch 10 is the ordering at epoch 1. Under this schedule the models move
-   0.008 to 0.027 from wherever their initialisation lands; the smoke is an
+   0.008 to 0.026 from wherever their initialisation lands; the smoke is an
    initialisation lottery plus drift, and it is being reported as such.
 2. The shipped block and the residual variants share every initial weight.
    The single residual add moved the untrained validation IC from 0.023 to
@@ -429,7 +437,7 @@ Reading:
    sharpening, but slowly, and it has ten times the training ahead of it in
    a frozen-recipe run. Section 3.3.1 probes the higher-rate checkpoints to
    see where that sharpening leads.
-2. **Ninety-nine percent of the cross-sectional variance is discarded at the
+2. **Ninety-seven percent of the cross-sectional variance is discarded at the
    block, and the score head works from a rank-1 residue.** Before the block
    `z` carries 35 percent of its variance across stocks at effective rank 4;
    after it, 1 percent at effective rank 1.2. The trained model still reaches
@@ -465,7 +473,7 @@ residual block at its epoch-5 peak), same eight validation batches.
 Reading:
 
 1. Given six times the learning rate, the shipped block does sharpen: entropy
-   falls 0.37 nats below uniform and logit spread quadruples. But it sharpens
+   falls 0.38 nats below uniform and logit spread quadruples. But it sharpens
    toward a date-level pattern, not a stock-level one: the self-weight is
    still at the uniform level and five stocks together hold 4 percent of the
    mass. Even at its best checkpoint the block passes 3.4 percent of the
@@ -535,7 +543,9 @@ Reading:
    two `nn.MultiheadAttention` modules at 4 x 128^2 each, though the step time
    is unchanged since 32 latents are cheap against 500 stocks. If that cost is
    unwelcome the latent width can be cut below `concat_size`, or the two
-   projections shared, at some expressivity loss.
+   projections shared, at some expressivity loss. Both step-time statements
+   are unverified; see the correction in section 3.6, whose preserved timings
+   have Fix A no slower than the shipped block.
 
 ### 3.5 Training smoke on Fix B, and what it does not support
 
@@ -566,7 +576,7 @@ Reading, and three of these four points are negative for the fixes:
    under the masked PIT path, monotone improvement after epoch 1. The
    mechanics are confirmed; that was the purpose of the run.
 2. **Fix B and Fix A are indistinguishable at this budget.** They agree to
-   0.002 on validation and 0.005 on test on both seeds. Whatever the two-way
+   0.002 on validation and 0.002 on test on both seeds. Whatever the two-way
    block's extra 87K parameters buy, it does not show here. The information
    channel the diagnostics say it opens is not converting into IC in ten
    epochs on one universe.
@@ -628,8 +638,9 @@ inputs, not the original claim, were the unreliable element. Synthetic `z` here
 enters the block at effective rank 1.4 to 1.5, where real `z` enters at 3.5 to
 3.6, so the synthetic batches were already close to rank-collapsed before the
 block touched them and had little left to lose. **Treat section 3.7 as
-authoritative on variance and this table as authoritative only on parameters,
-step time and masking**, which do not depend on the input distribution.
+authoritative on variance and this table as authoritative only on parameters
+and masking**, which do not depend on the input distribution. Its Step column
+is unverified; see the correction at the end of this section.
 
 **What changes, second, and this is the one that moves a recommendation.**
 Fix B's efficiency argument dies at 110 names. Its case rested on replacing an
@@ -643,8 +654,9 @@ and 1.6x step time on the strength of its mechanism alone, with no efficiency
 argument and, from section 3.5, no smoke evidence of benefit.
 
 Fix A is unaffected by all of this. It remains 256 parameters and a step time
-inside the noise (0.39 s against 0.36 s), and it clears the centred-sensitivity
-floor at both scales.
+inside the noise (0.39 s against 0.36 s, both unverified; the correction below
+has its preserved timings, which put Fix A no slower), and it clears the
+centred-sensitivity floor at both scales.
 
 > **Step-time correction, recorded 2026-09-27 in the #228 refresh.** The Step
 > column in this table and in section 3.4 cannot be traced to the preserved
@@ -812,8 +824,9 @@ attention uses residual connections and layer normalisation, as does every
 production transformer. The repo's own phase-2 plan added LayerNorm and dropout
 *around* the trunk but stopped short of the block itself.
 
-Cost. 256 parameters, no measurable step-time change. Add about 33K if the FFN
-is included.
+Cost. 256 parameters, no measurable step-time change (unverified; see the
+step-time correction in section 3.6, whose preserved timings have Fix A no
+slower). Add about 33K if the FFN is included.
 
 Invariant exposure. None on data, labels, graph timing, or paper-trade,
 provided the new `ModelConfig` field defaults to the legacy block so old
@@ -1062,7 +1075,8 @@ claim is a mean effect.
 
 Budget. The 110-name panel trains far faster than the S&P-scale runs the
 20-minute-per-fold figure came from, so cost that from a measured fold rather
-than from this map. Relative costs: C1, C2 and C5 are at or below C0; C3 adds
+than from this map. Relative costs: C1, C2 and C5 are at or below C0 (for C1
+unverified, see 3.6, though its preserved timings have C1 no slower); C3 adds
 about 58 percent to the step time, a figure section 3.6 flags as unverified.
 
 Expected outcome, revised after the section 3.5 smoke rather than stated in
@@ -1093,8 +1107,10 @@ is independent of the cross-stock block.
 
 If nothing clears BHY, the honest branch is "undecidable at this universe and
 horizon". Fix A can still be adopted as the default for new experiments on
-correctness grounds, since it is free and the shipped block is unstable at
-higher learning rates, with the frozen recipe untouched.
+correctness grounds, since it is free (256 parameters; its step time is
+unverified, see 3.6, though the preserved timings have it no slower) and the
+shipped block is unstable at higher learning rates, with the frozen recipe
+untouched.
 
 One caution specific to Fix B. It roughly doubles the parameter count, and
 section 3.2 established that this trunk's run-to-run variance is already large

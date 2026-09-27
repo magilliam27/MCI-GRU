@@ -56,11 +56,12 @@ exclude = [
     "outputs/",
     "results/",
     ".hydra/",
-    # Preserved research diagnostics. Python under docs/research/ is a record of
-    # the script that produced a recorded result, kept so the numbers can be
-    # traced. Reformatting or "fixing" it would break that guarantee, so it is
-    # archived as-run rather than maintained. Same intent as seed_results/.
-    "docs/research/",
+    # The six diagnostic scripts behind the trunk-architecture report
+    # (MCI_GRU_TRUNK_ARCHITECTURE_OPPORTUNITIES_2026-09-05.md). They are kept
+    # as-run so the figures in its raw_outputs.md can be traced; reformatting
+    # them would break that. Only this folder is exempt, and the `*` keeps the
+    # entry valid after the report moves from current/ to archive/.
+    "docs/research/*/trunk_architecture_diagnostics_2026-09-05/",
 ]
 
 [tool.ruff.lint]
