@@ -507,6 +507,11 @@ Contract tests for the graph-specification ablation harness.
 | `test_density_disclosure_spans_follow_the_fold` | Ticket-166 pinned one hard-coded span table; spans are per fold now. |  |
 | `test_resume_is_keyed_on_fold_arm_and_stage` |  |  |
 | `test_smoke_tag_is_not_an_input` | The smoke stage proves wiring; nothing downstream may read its artifacts. |  |
+| `test_bridge_fold_carries_the_ticket_167_reference_seed` | The bridge fold's job is reproduction, so it carries the reference seed. |  |
+| `test_seed_exception_is_disclosed_in_the_run_record` | A seed deviating from a ruled formula must be visible in the manifest. |  |
+| `test_smoke_artifacts_cannot_satisfy_a_screen_or_confirm_resume` | A 1 x 2 result must never be mistaken for a real stage's completed job. |  |
+| `test_stage_keyed_paths_use_the_smoke_aware_slug` | The resume directory and key are built from the slug, not the raw stage. |  |
+| `test_analysis_gate_still_reads_the_semantic_stage` | Namespacing the smoke must not weaken the refusal that keeps it inert. |  |
 
 ## `tests/test_graph_zeroed_control.py`
 
