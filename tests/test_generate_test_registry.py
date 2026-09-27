@@ -432,6 +432,11 @@ def _fresh_fake_registry(tmp_path: Path) -> tuple[Path, Path, list[str]]:
             id="exercised-modules-changed",
         ),
         pytest.param(
+            lambda text: text[: text.index("## `tests/test_fake_module.py`")],
+            "tests/test_fake_module.py: missing from the registry",
+            id="test-file-missing-from-registry",
+        ),
+        pytest.param(
             lambda text: text.replace("## `tests/test_fake_module.py`", "## `tests/test_gone.py`"),
             "tests/test_gone.py: listed, but not in the tests directory",
             id="section-for-a-file-that-does-not-exist",
