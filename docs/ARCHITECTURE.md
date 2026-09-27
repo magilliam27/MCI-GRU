@@ -241,7 +241,7 @@ eight-`Linear` implementation and `nn.MultiheadAttention`.
 | Mode | Behaviour |
 |------|-----------|
 | `static` (default) | `R1` and `R2` are plain parameters, frozen after training. Each stock's output is a function of its own vector alone, so **these streams cannot observe the date's market** despite the name (issue #198). |
-| `data_dependent` | The latents first read the date's PIT-active cross-section, then every stock reads those date-conditioned latents (the Set Transformer induced-set construction). Inactive names are excluded as attention keys, not merely zeroed, so the gathered state does not drift with the width of the PIT union axis. Requires `use_nn_multihead_attention=true`; the legacy eight-`Linear` path cannot take per-date keys. |
+| `data_dependent` | The latents first read the date's PIT-active cross-section, then every stock reads those date-conditioned latents (the Set Transformer induced-set construction). Each date in a batch gathers from its own cross-section only, so no date reads another date's names. Inactive names are excluded as attention keys, not merely zeroed, so the gathered state does not drift with the width of the PIT union axis. Requires `use_nn_multihead_attention=true`; the legacy eight-`Linear` path cannot take per-date keys. |
 
 The two modes hold different parameters, so a checkpoint belongs to the mode
 that produced it. `static` remains the default and the frozen recipe is

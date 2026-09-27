@@ -9,6 +9,8 @@ These tests specify that behaviour at the module and model seams the issue
 declared. They assert nothing about attention weights or the latent values.
 """
 
+import hashlib
+
 import pytest
 import torch
 
@@ -26,6 +28,10 @@ _BASE_MODEL_CONFIG = {
     "use_multi_scale": False,
     "use_self_attention": True,
     "activation": "relu",
+    # Without this the head inherits ``activation`` and ends in a ReLU, which
+    # clamps these small models' scores to zero, and every model-level equality
+    # below would then hold whatever the latents did.
+    "output_activation": "none",
     "temporal_encoder": "legacy",
 }
 
@@ -78,12 +84,25 @@ def _move_every_stock_except_the_first(a1: torch.Tensor) -> torch.Tensor:
     return changed
 
 
-def test_data_dependent_latents_respond_to_the_rest_of_the_cross_section() -> None:
+def _move_one_stream(
+    a1: torch.Tensor, a2: torch.Tensor, stream: int
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Move every stock but the first in stream ``stream`` (0 for A1, 1 for A2) only."""
+    if stream == 0:
+        return _move_every_stock_except_the_first(a1), a2
+    return a1, _move_every_stock_except_the_first(a2)
+
+
+@pytest.mark.parametrize("stream", [0, 1], ids=["B1_reads_A1", "B2_reads_A2"])
+def test_data_dependent_latents_respond_to_the_rest_of_the_cross_section(stream: int) -> None:
     """A stock's market latent state must depend on the market it sits in.
 
     Stock 0's own inputs are held fixed and every other stock on the date is
-    moved. Its latent-state output must move, because the latents are gathered
-    from the date's cross-section before the stock reads them.
+    moved, in one stream at a time. That stream's latent-state output for stock
+    0 must move, because its latents are gathered from the date's cross-section
+    before the stock reads them. One stream at a time, so B1 must read A1's
+    cross-section and B2 must read A2's; a gather wired to the other stream, or
+    one that is inert for either, fails a case.
     """
     torch.manual_seed(0)
     learner = MarketLatentStateLearner(
@@ -94,28 +113,30 @@ def test_data_dependent_latents_respond_to_the_rest_of_the_cross_section() -> No
     )
     a1, a2 = _stream_inputs()
 
-    before, _ = learner(a1, a2, num_stocks=6)
-    after, _ = learner(_move_every_stock_except_the_first(a1), a2, num_stocks=6)
+    before = learner(a1, a2, num_stocks=6)
+    after = learner(*_move_one_stream(a1, a2, stream), num_stocks=6)
 
-    assert not torch.allclose(before[0], after[0], atol=1e-6)
+    assert not torch.allclose(before[stream][0], after[stream][0], atol=1e-6)
 
 
-def test_static_latents_ignore_the_rest_of_the_cross_section() -> None:
+@pytest.mark.parametrize("stream", [0, 1], ids=["A1_moved", "A2_moved"])
+def test_static_latents_ignore_the_rest_of_the_cross_section(stream: int) -> None:
     """The shipped behaviour, pinned so the default path cannot drift.
 
     In static mode the latents are fixed parameters, so a stock's output is a
     function of its own vector alone. This is the defect issue #198 describes;
     it is pinned because ``static`` remains the default and existing runs must
-    keep reproducing.
+    keep reproducing. Neither B1 nor B2 of stock 0 may move.
     """
     torch.manual_seed(0)
     learner = MarketLatentStateLearner(feature_dim=8, num_latent_states=4, num_heads=2)
     a1, a2 = _stream_inputs()
 
-    before, _ = learner(a1, a2, num_stocks=6)
-    after, _ = learner(_move_every_stock_except_the_first(a1), a2, num_stocks=6)
+    before_b1, before_b2 = learner(a1, a2, num_stocks=6)
+    after_b1, after_b2 = learner(*_move_one_stream(a1, a2, stream), num_stocks=6)
 
-    assert torch.allclose(before[0], after[0], atol=1e-6)
+    assert torch.allclose(before_b1[0], after_b1[0], atol=1e-6)
+    assert torch.allclose(before_b2[0], after_b2[0], atol=1e-6)
 
 
 def test_gathered_latents_ignore_pit_inactive_names() -> None:
@@ -174,13 +195,88 @@ def test_gathered_latents_ignore_how_many_names_are_inactive() -> None:
     assert torch.allclose(narrow[:5], wide[:5], atol=1e-5)
 
 
-def test_a_date_with_no_active_names_does_not_produce_nan() -> None:
-    """The gather's softmax would see every key masked; it must not divide by nothing."""
+def _two_dates(seed: int = 0) -> tuple[torch.Tensor, torch.Tensor]:
+    """Two dates of six names each, flattened date-major as the trunk passes them."""
+    generator = torch.Generator().manual_seed(seed)
+    a1 = torch.randn(12, 8, generator=generator)
+    a2 = torch.randn(12, 8, generator=generator)
+    return a1, a2
+
+
+@pytest.mark.parametrize(("moved_date", "held_date"), [(1, 0), (0, 1)])
+def test_gathered_latents_do_not_read_other_dates_in_the_batch(
+    moved_date: int, held_date: int
+) -> None:
+    """A date's market state is gathered from that date's cross-section alone.
+
+    A batch stacks several dates, so a gather over the whole batch would let one
+    date's latents read another date's names, a later one included: lookahead.
+    Moving the names on one date must leave the other date's outputs where they
+    were, in both directions. The same move must still reach the held-fixed
+    first name on its own date, or this would pass with the gather switched off.
+    """
     learner = _data_dependent_learner()
+    a1, a2 = _two_dates()
+    moved = slice(6 * moved_date, 6 * moved_date + 6)
+    held = slice(6 * held_date, 6 * held_date + 6)
+    moved_a1, moved_a2 = a1.clone(), a2.clone()
+    moved_a1[moved.start + 1 : moved.stop] += 3.0
+    moved_a2[moved.start + 1 : moved.stop] += 3.0
+
+    before_b1, before_b2 = learner(a1, a2, num_stocks=6)
+    after_b1, after_b2 = learner(moved_a1, moved_a2, num_stocks=6)
+
+    assert torch.allclose(before_b1[held], after_b1[held], atol=1e-6)
+    assert torch.allclose(before_b2[held], after_b2[held], atol=1e-6)
+    assert not torch.allclose(before_b1[moved.start], after_b1[moved.start], atol=1e-6)
+    assert not torch.allclose(before_b2[moved.start], after_b2[moved.start], atol=1e-6)
+
+
+def test_each_date_in_the_batch_is_masked_by_its_own_row() -> None:
+    """The PIT mask is per date: row ``d`` of ``stock_mask`` governs date ``d`` only.
+
+    Name 2 is inactive on the second date but active on the first. Moving it on
+    the second date must not reach that date's active names, while moving an
+    active name there must. A mask read from the wrong date's row gets at least
+    one of the two wrong.
+    """
+    learner = _data_dependent_learner()
+    a1, a2 = _two_dates()
+    mask = torch.tensor(
+        [[True, True, True, True, True, False], [True, True, False, True, True, True]]
+    )
+    second_date_active = [6, 7, 9, 10, 11]
+    before, _ = learner(a1, a2, num_stocks=6, stock_mask=mask)
+
+    def b1_after_moving(flat_row: int) -> torch.Tensor:
+        moved = a1.clone()
+        moved[flat_row] += 3.0
+        after, _ = learner(moved, a2, num_stocks=6, stock_mask=mask)
+        return after
+
+    after_inactive_move = b1_after_moving(8)
+    after_active_move = b1_after_moving(10)
+
+    assert torch.allclose(
+        before[second_date_active], after_inactive_move[second_date_active], atol=1e-6
+    )
+    assert not torch.allclose(before[6], after_active_move[6], atol=1e-6)
+
+
+@pytest.mark.parametrize("training", [True, False])
+def test_a_date_with_no_active_names_does_not_produce_nan(training: bool) -> None:
+    """The gather's softmax would see every key masked; it must not divide by nothing.
+
+    Both modes, because inference runs the attention under ``eval`` and
+    ``no_grad``, which can take a different kernel from training.
+    """
+    learner = _data_dependent_learner()
+    learner.train(training)
     a1, a2 = _stream_inputs()
     mask = torch.zeros(1, 6, dtype=torch.bool)
 
-    b1, b2 = learner(a1, a2, num_stocks=6, stock_mask=mask)
+    with torch.set_grad_enabled(training):
+        b1, b2 = learner(a1, a2, num_stocks=6, stock_mask=mask)
 
     assert torch.isfinite(b1).all()
     assert torch.isfinite(b2).all()
@@ -242,7 +338,8 @@ def test_static_mode_reproduces_the_pre_change_outputs(use_nn_multihead_attentio
     )
     a1, a2 = _stream_inputs()
 
-    b1, b2 = learner(a1, a2)
+    with torch.no_grad():
+        b1, b2 = learner(a1, a2)
 
     assert b1[0].tolist() == pytest.approx(
         _PRE_CHANGE_B1_ROW0[use_nn_multihead_attention], abs=1e-6
@@ -252,8 +349,150 @@ def test_static_mode_reproduces_the_pre_change_outputs(use_nn_multihead_attentio
     )
 
 
+# The production model block of configs/config.yaml at this change, plus the
+# graph-derived keys run_experiment.py adds before calling create_model. Written
+# out rather than read from the YAML so that a later, deliberate default change
+# does not silently move what this pins.
+_PRODUCTION_MODEL_CONFIG = {
+    "his_t": 10,
+    "label_t": 5,
+    "gru_hidden_sizes": [32, 10],
+    "hidden_size_gat1": 32,
+    "output_gat1": 4,
+    "gat_heads": 4,
+    "hidden_size_gat2": 32,
+    "num_hidden_states": 32,
+    "cross_attn_heads": 4,
+    "slow_kernel": 5,
+    "slow_stride": 2,
+    "use_multi_scale": True,
+    "use_self_attention": True,
+    "activation": "elu",
+    "output_activation": "none",
+    "latent_init_scale": 0.02,
+    "use_group_type_embed": True,
+    "use_trunk_regularisation": True,
+    "trunk_dropout": 0.1,
+    "use_nn_multihead_attention": True,
+    "temporal_encoder": "gru_attn",
+    "use_a1_a2_cross_attention": False,
+    "cross_a2_num_heads": 4,
+    "edge_feature_dim": 4,
+    "drop_edge_p": 0.1,
+    "isolate_edge_dropout_rng": False,
+    "use_sector_relation": False,
+}
+
+# Captured by running origin/main's mci_gru package at 0ecf723, which does not
+# contain this change, through exactly the construction and forward below. The
+# signature is the sha256 of the sorted ``key:shape`` lines of the state dict,
+# which is what ``load_state_dict(strict=True)`` checks, so matching it means a
+# checkpoint written by main loads here. ``legacy_empty`` is a config with no
+# model keys at all, the shape of a checkpoint directory older than every flag.
+_MAIN_DEFAULT_MODELS = {
+    "production": {
+        "config": _PRODUCTION_MODEL_CONFIG,
+        "edge_dim": 4,
+        "state_dict_keys": 75,
+        "parameters": 84026,
+        "signature": "3d03a4f34307fda6c9793a2ec366e921bd640e5173b0806c8777c8b6b4b5d96e",
+        "scores": [
+            -0.4530891,
+            -0.4530891,
+            -0.4535756,
+            -0.4535756,
+            0.0,
+            -0.428826,
+            -0.428826,
+            0.0,
+            -0.4347683,
+            -0.4341896,
+        ],
+    },
+    "legacy_empty": {
+        "config": {},
+        "edge_dim": 1,
+        "state_dict_keys": 112,
+        "parameters": 91915,
+        "signature": "0490ceb61e6d3cb1b112540ceabbff58685ca7044ff6355a1aaa985dd1a9fb61",
+        "scores": [
+            0.0883905,
+            0.0883905,
+            0.0884054,
+            0.0884054,
+            0.0,
+            0.0045736,
+            0.0045736,
+            0.0,
+            0.0044855,
+            0.0044812,
+        ],
+    },
+}
+
+
+def _state_dict_signature(model: torch.nn.Module) -> str:
+    lines = [f"{key}:{tuple(value.shape)}" for key, value in sorted(model.state_dict().items())]
+    return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
+
+
+def _two_date_masked_batch(edge_dim: int):
+    generator = torch.Generator().manual_seed(7)
+    time_series = torch.randn(2, 5, 10, 7, generator=generator)
+    graph_features = torch.randn(10, 7, generator=generator)
+    edge_index = torch.tensor([[0, 1, 2, 3, 5, 6, 8], [1, 0, 3, 2, 6, 5, 9]], dtype=torch.long)
+    edge_weight = torch.rand(7, edge_dim, generator=generator)
+    stock_mask = torch.tensor([[True, True, True, True, False], [True, True, False, True, True]])
+    return time_series, graph_features, edge_index, edge_weight, stock_mask
+
+
+@pytest.mark.parametrize("spell_out_static", [False, True])
+@pytest.mark.parametrize("case", sorted(_MAIN_DEFAULT_MODELS))
+def test_default_model_is_unchanged_from_main(case: str, spell_out_static: bool) -> None:
+    """Default-off must leave the whole model what ``main`` builds, not just the module.
+
+    The same seed must give the same state-dict signature, parameter count and
+    scores as ``main`` did, whether the new key is absent or spelled out as
+    ``static``. That covers checkpoint loading and the seeded initialisation
+    order, which the module-level golden values cannot see: a change that drew
+    one extra random number while building the trunk would move every later
+    layer's weights and still pass them.
+
+    The tolerance is about fifty times the float32 rounding measured for this
+    forward against float64, so it absorbs platform differences, and far below
+    what any change to initialisation or wiring moves these scores by. On the
+    machine that captured them, ``main`` and this branch agreed bitwise.
+    """
+    expected = _MAIN_DEFAULT_MODELS[case]
+    config = dict(expected["config"])
+    if spell_out_static:
+        config["market_latent_mode"] = "static"
+
+    torch.manual_seed(0)
+    model = create_model(7, config)
+    model.eval()
+    time_series, graph_features, edge_index, edge_weight, stock_mask = _two_date_masked_batch(
+        expected["edge_dim"]
+    )
+    with torch.no_grad():
+        scores = model(
+            time_series, graph_features, edge_index, edge_weight, 5, stock_mask=stock_mask
+        )
+
+    assert len(model.state_dict()) == expected["state_dict_keys"]
+    assert sum(p.numel() for p in model.parameters()) == expected["parameters"]
+    assert _state_dict_signature(model) == expected["signature"]
+    assert scores.flatten().tolist() == pytest.approx(expected["scores"], abs=1e-5)
+
+
 def test_a_static_checkpoint_loads_strictly_into_a_default_model() -> None:
-    """Frozen paper-trade bundles load by ``load_state_dict(strict=True)``."""
+    """A default-model checkpoint reloads with ``load_state_dict(strict=True)``.
+
+    This only shows the default model agrees with itself. Compatibility with a
+    checkpoint written *before* this change is pinned separately, against
+    ``origin/main``'s state-dict signature, in
+    ``test_default_model_is_unchanged_from_main``.
+    """
     saved = create_model(8, dict(_BASE_MODEL_CONFIG)).state_dict()
 
     reloaded = create_model(8, dict(_BASE_MODEL_CONFIG))
@@ -449,6 +688,45 @@ def test_model_active_scores_ignore_how_many_names_are_inactive() -> None:
     assert torch.allclose(score(4), score(6), atol=1e-5)
 
 
+@pytest.mark.parametrize(("moved_date", "held_date"), [(1, 0), (0, 1)])
+def test_model_scores_do_not_read_other_dates_in_the_batch(moved_date: int, held_date: int) -> None:
+    """End to end, the trunk must group the gather by date, not by batch.
+
+    Cross-stock attention is off and there are no edges, so the latent gather is
+    the only route between names, and any route between dates would have to run
+    through it. Moving names on one date must leave the other date's scores
+    untouched, including the earlier date when the later one moves. Moving the
+    other names on the moved date must still reach its held-fixed first name,
+    so the test cannot pass with the data-dependent path inert.
+    """
+    torch.manual_seed(0)
+    model = create_model(
+        7,
+        {
+            **_BASE_MODEL_CONFIG,
+            "use_self_attention": False,
+            "market_latent_mode": "data_dependent",
+        },
+    )
+    model.eval()
+    generator = torch.Generator().manual_seed(5)
+    time_series = torch.randn(2, 4, 4, 7, generator=generator)
+    graph_features = torch.randn(8, 7, generator=generator)
+    no_edges = torch.empty((2, 0), dtype=torch.long)
+    no_weights = torch.empty((0, 1))
+    moved_ts = time_series.clone()
+    moved_ts[moved_date, 1:] += 3.0
+    moved_graph = graph_features.clone()
+    moved_graph[4 * moved_date + 1 : 4 * moved_date + 4] += 3.0
+
+    with torch.no_grad():
+        before = model(time_series, graph_features, no_edges, no_weights, 4)
+        after = model(moved_ts, moved_graph, no_edges, no_weights, 4)
+
+    assert torch.allclose(before[held_date], after[held_date], atol=1e-6)
+    assert (before[moved_date, 0] - after[moved_date, 0]).abs().item() > 1e-4
+
+
 def test_data_dependent_latent_parameters_receive_gradients() -> None:
     model = _data_dependent_model()
     time_series, graph_features, edge_index, edge_weight = _forward_inputs()
@@ -458,6 +736,8 @@ def test_data_dependent_latent_parameters_receive_gradients() -> None:
     grads = {name: p.grad for name, p in model.latent_learner.named_parameters()}
     assert any(name.startswith("gather1.") for name in grads)
     assert all(g is not None and torch.isfinite(g).all() for g in grads.values())
+    for gather in ("gather1.", "gather2."):
+        assert any(g.abs().sum() > 0 for name, g in grads.items() if name.startswith(gather))
 
 
 def test_data_dependent_model_is_finite_under_autocast() -> None:
