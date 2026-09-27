@@ -14,6 +14,7 @@ The `docs/` root holds the canonical guides only. Research evidence lives under
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Current model, pipeline, graph, and data-flow map. |
 | [CONFIGURATION_GUIDE.md](CONFIGURATION_GUIDE.md) | Hydra config system, override patterns, and preset catalog. |
 | [DEFAULT_EXPERIMENT_RECIPE.md](DEFAULT_EXPERIMENT_RECIPE.md) | Frozen production-style recipe for confirmation notebooks and PIT validation. |
+| [FEATURES.md](FEATURES.md) | Every feature column, the window it is computed over, when its inputs are knowable, and the feature presets. |
 | [TESTING_GUIDE.md](TESTING_GUIDE.md) | Testing patterns, verification ladder, and test categories. |
 | [REGIME_DATA_CONTRACT.md](REGIME_DATA_CONTRACT.md) | Regime feature inputs, outputs, and no-lookahead guarantees. |
 | [NOTEBOOK_BEST_PRACTICES.md](NOTEBOOK_BEST_PRACTICES.md) | Colab notebook structure, Drive safety, outputs, and review checklist. |
