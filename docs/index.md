@@ -28,7 +28,7 @@ The `docs/` root holds the canonical guides only. Research evidence lives under
 | [OUTPUT_MANAGEMENT.md](OUTPUT_MANAGEMENT.md) | Output directory structure, naming, cleanup, and persistence. |
 | [MLFLOW_TRACKING.md](MLFLOW_TRACKING.md) | MLflow experiment tracking setup and usage. |
 | [evaluation/EVIDENCE_HARNESS.md](evaluation/EVIDENCE_HARNESS.md) | Additive run manifests, trial ledgers, saved-prediction audits, PIT availability reports, and capacity replay. |
-| [TEST_REGISTRY.md](TEST_REGISTRY.md) | Generated registry of every test with its last-run status. Do not edit by hand. |
+| [TEST_REGISTRY.md](TEST_REGISTRY.md) | Generated registry of every test, with its description and markers. Do not edit by hand. |
 
 ## Research Evidence
 

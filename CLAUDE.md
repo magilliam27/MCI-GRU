@@ -222,8 +222,10 @@ as expected rather than as a violation.
     protected checkout's venv, and the shared mapping is what lets every
     worktree use one environment.
 - Any branch that adds or renames a test must regenerate `docs/TEST_REGISTRY.md`
-  or CI lint fails. Run the suite with `--junitxml=test_reports\junit.xml` first
-  so statuses are recorded rather than blank.
+  or CI lint fails. The committed registry records the test inventory only, so no
+  suite run is needed first; last-run status goes to a separate, gitignored
+  report with `--junit test_reports\junit.xml`. On a registry merge conflict,
+  take either side and regenerate.
 - `gh issue edit` and `gh pr create`: always `--body-file` pointing at a
   UTF-8-without-BOM file. `--body` mangles non-ASCII on Windows PowerShell and
   the corruption compounds across successive edits.
