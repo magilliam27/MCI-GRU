@@ -9,16 +9,21 @@ figure needs no Drive access and anyone can regenerate it:
   700-name panel's return compounded across its four yearly test windows against the
   benchmark's beside it (PIT_MASKED_PANEL_2022_2025_FULL_RUN_REPORT_2026-05-16). The
   line's interior points are compounded from the printed per-year rows; its endpoints
-  are checked against the compounded figures the report prints.
+  are checked against the compounded figures the report prints. Both panels are single
+  runs with no transaction costs and no rank-drop gate, and the image says so itself
+  (LEFT_QUALIFIER), since the SVG may be seen without its README caption. A later
+  repeated-seed replication of the line's run
+  (PIT_REPEATED_SEED_OPTION_A_RESULTS_2026-05-21) qualifies it; the JSON and the caption
+  carry that report's sentences, and the figure does not draw it.
 * Right: the paired re-analysis (GRAPH_PAIRED_REANALYSIS_2026-09-02) as a forest plot:
   each arm's mean daily IC difference from the graph-zeroed control with its 95%
-  block-bootstrap interval.
+  block-bootstrap interval, over the report's one test year.
 
 The JSON carries every plotted number and label with the report, section, and column it
 is read from, and each panel's caveat in the report's own words.
 tests/test_readme_figure.py parses those reports and refuses a JSON value that differs,
-checks the README caption carries the caveats, and checks that this script reproduces
-the committed SVG byte for byte.
+checks the README caption carries the caveats, checks the image carries its in-image
+qualifiers, and checks that this script reproduces the committed SVG byte for byte.
 
 Determinism, so that reproduction holds across machines and matplotlib versions: axes
 are placed by figure fraction with no layout engine and no tight bounding box; every
@@ -91,8 +96,15 @@ NUMERIC_TEXT = re.compile(rf"^[{MINUS}+]?\d[\d.,]*%?$")
 
 RECT_BARS: Rect = (0.05, 0.19, 0.20, 0.58)
 RECT_LINE: Rect = (0.30, 0.19, 0.22, 0.58)
-RECT_FOREST: Rect = (0.715, 0.19, 0.205, 0.58)
+RECT_FOREST: Rect = (0.745, 0.19, 0.205, 0.58)
 X_RIGHT_BLOCK = 0.545  # where the right panel's title begins; its row labels end at the axes
+# Header baselines as figure fractions: the title, then subtitle lines one pitch apart.
+Y_TITLE, Y_SUB, SUB_PITCH = 0.94, 0.887, 0.04
+
+# The left panels' in-image qualifier. Both are single runs with transaction costs and the
+# rank-drop gate off (each report's run identity and caveats say so), and the image must
+# say it too: the SVG may be shown without its README caption, as a social preview.
+LEFT_QUALIFIER = "one run, no costs, no rank gate"
 
 SIZE_TITLE, SIZE_SUB, SIZE_LABEL, SIZE_TICK = 10.5, 9.0, 9.0, 8.5
 CAP = 0.72  # cap height of the sans, as a fraction of the font size
@@ -324,7 +336,9 @@ def draw_forest(fig: Figure, block: dict) -> None:
             ha="left",
         )
         panel.left_of(panel.xlim[0], y, row["label"], size=SIZE_LABEL, role="ink-secondary")
-    panel.x_ticks([-0.02, -0.01, 0, 0.01], [f"{MINUS}0.02", f"{MINUS}0.01", "0", "+0.01"])
+    # Every gridline, but not every label: at this width a "-0.02" and a "-0.01" collide
+    # in wider sans fallbacks (DejaVu Sans), so -0.01 goes unlabelled.
+    panel.x_ticks([-0.02, 0, 0.01], [f"{MINUS}0.02", "0", "+0.01"])
 
 
 def _fig_text(fig: Figure, x: float, y: float, s: str, *, size: float, role: str, **kwargs):
@@ -340,25 +354,31 @@ def draw_figure(spec: dict) -> Figure:
     draw_compounded(fig, spec["full_panel_compounded"])
     draw_forest(fig, forest)
 
-    y_title, y_sub1, y_sub2 = 0.915, 0.862, 0.822
     blocks = (
         (
             RECT_BARS[0],
             "Point-in-time replays against the benchmark",
-            "excess return by test year, 110-name universe (left)",
-            "compounded return, roughly 700-name panel (right)",
+            (
+                "excess return by test year, 110-name universe (left)",
+                "compounded return, roughly 700-name panel (right)",
+                LEFT_QUALIFIER,
+            ),
         ),
         (
             X_RIGHT_BLOCK,
-            "Graph specifications against the graph-zeroed control",
-            f"mean daily IC difference, {forest['test_days']} test days",
-            "95% block-bootstrap interval; none distinguishable from zero",
+            "Graph specifications vs. the graph-zeroed control",
+            (
+                f"mean daily IC difference, {forest['test_days']} test days in "
+                f"{forest['test_year']}",
+                "95% block-bootstrap interval; none distinguishable from zero",
+            ),
         ),
     )
-    for x, title, sub1, sub2 in blocks:
-        _fig_text(fig, x, y_title, title, size=SIZE_TITLE, role="ink-primary", weight="bold")
-        _fig_text(fig, x, y_sub1, sub1, size=SIZE_SUB, role="ink-secondary")
-        _fig_text(fig, x, y_sub2, sub2, size=SIZE_SUB, role="ink-secondary")
+    for x, title, subtitles in blocks:
+        _fig_text(fig, x, Y_TITLE, title, size=SIZE_TITLE, role="ink-primary", weight="bold")
+        for index, subtitle in enumerate(subtitles):
+            y = Y_SUB - index * SUB_PITCH
+            _fig_text(fig, x, y, subtitle, size=SIZE_SUB, role="ink-secondary")
     for rect, caption in (
         (RECT_BARS, "percentage points over the benchmark"),
         (RECT_LINE, "cumulative return, yearly test windows"),

@@ -25,6 +25,13 @@ from scripts.gen_readme_figure import (
 REPO_ROOT = Path(__file__).resolve().parent.parent
 YEAR_BLOCKS = ("reduced_universe_excess", "full_panel_compounded")
 
+# The image's own qualifiers. The SVG can be shown without its README caption (a social
+# preview, say), so the committed image must carry these, and each must rest on what the
+# reports print: the left one on both left panels' no-cost, no-gate caveats and the
+# full-panel line being one run; the right one on every interval straddling zero.
+LEFT_QUALIFIER = "one run, no costs, no rank gate"
+FOREST_QUALIFIER = "none distinguishable from zero"
+
 
 def _spec() -> dict:
     return json.loads((REPO_ROOT / DEFAULT_JSON).read_text(encoding="utf-8"))
@@ -35,8 +42,21 @@ def _report(block: dict) -> str:
 
 
 def _number(cell: str) -> float:
-    """Parse a report table cell: strips bold markers, percent signs, and the Unicode minus."""
-    return float(cell.strip().strip("*").replace("−", "-").replace("%", "").replace("+", ""))
+    """Parse a report table cell: strips bold and code markers, percent signs, the Unicode minus."""
+    return float(cell.strip().strip("*`").replace("−", "-").replace("%", "").replace("+", ""))
+
+
+def _identity(text: str, field: str) -> str:
+    """The value cell of a report's two-column `| Field | Value |` table, code markers stripped."""
+    match = re.search(rf"^\| {re.escape(field)} \| (.+?) \|$", text, re.M)
+    assert match, f"no {field!r} row"
+    return match.group(1).strip().strip("`")
+
+
+def _svg_text() -> list[str]:
+    """Every text run in the committed SVG."""
+    svg = (REPO_ROOT / DEFAULT_SVG).read_text(encoding="utf-8")
+    return re.findall(r"<text[^>]*>([^<]*)</text>", svg)
 
 
 def _table(text: str, column_names: list[str]) -> tuple[list[str], list[list[str]]]:
@@ -107,6 +127,23 @@ def test_full_panel_rows_and_compounded_figures_match_report():
     assert round(bench_path[-1], 1) == block["compounded_pct"]["benchmark"]
     assert model_path[0] == 0.0 and bench_path[0] == 0.0
 
+    # The line is one run, and the repeated-seed replication the caption cites is of that
+    # run: it names the run as its reference and used the same recipe and market file.
+    replication = block["replication"]
+    replicated = _report(replication)
+    assert _identity(text, "Run tag") == block["run_tag"]
+    assert _identity(replicated, "Reference run tag") == block["run_tag"]
+    assert replication["reference_run_tag"] == block["run_tag"]
+    assert _identity(replicated, "Recipe") == _identity(text, "Recipe")
+    assert _identity(replicated, "Market SHA256") == _identity(text, "Market file hash")
+    seeds = re.findall(r"\d+", _identity(replicated, "Base seeds"))
+    assert len(seeds) == replication["base_seeds"]
+    col, rows = _columns(replication)
+    pooled = replication["pooled"]
+    matching = [r for r in rows if r[col["scenario"]].strip("`") == pooled["scenario"]]
+    assert len(matching) == 1, pooled["scenario"]
+    assert _number(matching[0][col["bhy_p"]]) == pooled["bhy_p"]
+
 
 def test_paired_reanalysis_rows_and_labels_match_report():
     block = _spec()["paired_reanalysis"]
@@ -123,22 +160,45 @@ def test_paired_reanalysis_rows_and_labels_match_report():
         assert _number(cells[col["bhy_p"]]) == row["bhy_p"], row["arm"]
         low, high = cells[col["ci"]].strip("[]").split(",")
         assert _number(low) == row["ci_low"] and _number(high) == row["ci_high"], row["arm"]
-    days = re.search(r"\| Test days \| (\d+),", _report(block))
+        # The image says FOREST_QUALIFIER; that holds only while every interval straddles 0.
+        assert row["ci_low"] < 0 < row["ci_high"], row["arm"]
+    days = re.search(
+        r"\| Test days \| (\d+), (\d{4})-\d\d-\d\d \S+ (\d{4})-\d\d-\d\d,", _report(block)
+    )
     assert days and int(days.group(1)) == block["test_days"]
+    assert int(days.group(2)) == int(days.group(3)) == block["test_year"], "one test year"
 
 
 def test_caveats_are_the_reports_words_and_the_caption_carries_them():
     spec = _spec()
     caption = _caption()
-    for name in (*YEAR_BLOCKS, "paired_reanalysis"):
-        block = spec[name]
+    full_panel, forest = spec["full_panel_compounded"], spec["paired_reanalysis"]
+    blocks = [spec[name] for name in (*YEAR_BLOCKS, "paired_reanalysis")]
+    for block in (*blocks, full_panel["replication"]):
+        name = block["report"]
         report = re.sub(r"\s+", " ", _report(block).replace("**", ""))
         assert block["caveats"], name
         for sentence in block["caveats"]:
             assert sentence in report, (name, sentence)
             assert sentence in caption, (name, sentence)
         assert f"]({block['report']})" in caption, name
-    assert f"{spec['paired_reanalysis']['test_days']} test days" in caption
+    scope = f"{forest['test_days']} test days in {forest['test_year']}"
+    assert scope in caption
+    assert f"`{full_panel['run_tag']}`" in caption, "the caption names the one run"
+    assert f"{full_panel['replication']['pooled']['bhy_p']:.4f}" in caption
+
+    # The image carries its own qualifiers, and the report sentences behind them are
+    # among the caveats checked above.
+    svg_text = _svg_text()
+    for phrase in (LEFT_QUALIFIER, FOREST_QUALIFIER, scope):
+        assert any(phrase in text for text in svg_text), phrase
+    left_caveats = " ".join(spec["reduced_universe_excess"]["caveats"] + full_panel["caveats"])
+    for backing in (
+        "no transaction costs, no rank-drop gate",
+        "Transaction costs were disabled in the reviewed backtest artifact.",
+        "Rank-drop gating was disabled.",
+    ):
+        assert backing in left_caveats, backing
 
 
 def test_generator_reproduces_committed_svg(tmp_path):

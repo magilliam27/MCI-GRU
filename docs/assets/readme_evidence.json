@@ -1,5 +1,5 @@
 {
-  "_about": "Inputs to scripts/gen_readme_figure.py. Every number, label, and caveat is read from the current report named beside it; tests/test_readme_figure.py parses each report and refuses a value that differs, and checks the README caption carries the caveats. Regenerate the figure with: python scripts/gen_readme_figure.py",
+  "_about": "Inputs to scripts/gen_readme_figure.py. Every number, label, and caveat is read from the current report named beside it; tests/test_readme_figure.py parses each report and refuses a value that differs, and checks the README caption carries the caveats. The compounded line is one run; its replication is cited here and in the caption, not drawn. Regenerate the figure with: python scripts/gen_readme_figure.py",
   "reduced_universe_excess": {
     "report": "docs/research/current/SP500_PIT_GICS_TOP10_MULTIYEAR_BASELINE_2026-06-23.md",
     "section": "Results",
@@ -26,13 +26,27 @@
       {"year": 2024, "model_total_pct": 45.36, "benchmark_pct": 11.73, "excess_pct": 33.63},
       {"year": 2025, "model_total_pct": 32.15, "benchmark_pct": 7.14, "excess_pct": 25.01}
     ],
-    "compounded_pct": {"model": 91.9, "benchmark": 20.0, "section": "Cross-year read"}
+    "compounded_pct": {"model": 91.9, "benchmark": 20.0, "section": "Cross-year read"},
+    "run_tag": "20260514_043539",
+    "replication": {
+      "report": "docs/research/current/PIT_REPEATED_SEED_OPTION_A_RESULTS_2026-05-21.md",
+      "section": "Run Identity; Seed-Level Performance; Yearly Cross-Seed Read; Executive Summary",
+      "reference_run_tag": "20260514_043539",
+      "base_seeds": 3,
+      "pooled": {"scenario": "replication_all_seeds", "bhy_p": 0.2260},
+      "columns": {"scenario": "Scenario", "bhy_p": "BHY-adjusted p-value"},
+      "caveats": [
+        "2023 and 2025 are robustly positive, 2024 is effectively flat across seeds, and 2022 remains a repeatable failure regime.",
+        "The pooled all-seed daily excess result is directionally strong and raw-significant, but the BHY-adjusted p-value does not clear 0.05."
+      ]
+    }
   },
   "paired_reanalysis": {
     "report": "docs/research/current/GRAPH_PAIRED_REANALYSIS_2026-09-02.md",
     "section": "1.",
     "control": "A0, the graph-zeroed control",
     "test_days": 238,
+    "test_year": 2025,
     "columns": {"arm": "arm", "mean_delta": "mean Δ = IC_arm − IC_A0", "bhy_p": "BHY p", "ci": "95% block-bootstrap CI on the mean"},
     "caveats": ["every arm's mean daily difference is negative, none is distinguishable from zero, and the BHY-adjusted p-value is 1.00 for all four comparisons"],
     "rows": [
