@@ -10,6 +10,7 @@ formatting, and the preamble. Last-run status from a junit XML file goes to a
 separate report, never to the committed copy.
 """
 
+import datetime as dt
 import shutil
 import subprocess
 import textwrap
@@ -303,6 +304,8 @@ def test_committed_registry_carries_no_run_or_whole_inventory_lines(tmp_path):
     # Adding a test to test_other.py changes only test_other.py's section.
     changed = set(after.splitlines()) ^ set(before.splitlines())
     assert changed == {"| `test_two` | test_two checks a test_other behaviour. |  |"}
+    # A generation date changes on every regeneration on a new day.
+    assert dt.date.today().isoformat() not in after
 
 
 GIT = shutil.which("git")
@@ -408,6 +411,25 @@ def _fresh_fake_registry(tmp_path: Path) -> tuple[Path, Path, list[str]]:
             ),
             "tests/test_fake_module.py::test_alpha: description or markers differ",
             id="marker-invented",
+        ),
+        pytest.param(
+            lambda text: text.replace("| Checks alpha behavior. |", "| Checks nothing now. |"),
+            "tests/test_fake_module.py::test_alpha: description or markers differ",
+            id="test-description-changed",
+        ),
+        pytest.param(
+            lambda text: text.replace(
+                "Fake test module covering the data manager.", "Fake test module, reworded."
+            ),
+            "tests/test_fake_module.py: module description differs",
+            id="module-description-changed",
+        ),
+        pytest.param(
+            lambda text: text.replace(
+                "**Exercises:** `mci_gru.data.data_manager`", "**Exercises:** `mci_gru.pipeline`"
+            ),
+            "tests/test_fake_module.py: exercised modules differ",
+            id="exercised-modules-changed",
         ),
         pytest.param(
             lambda text: text.replace("## `tests/test_fake_module.py`", "## `tests/test_gone.py`"),
