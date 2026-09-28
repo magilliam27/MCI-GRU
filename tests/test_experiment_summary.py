@@ -139,13 +139,19 @@ def test_resolved_evaluation_kwargs_derives_defaults_from_label_t():
     assert kwargs["ci_level"] == config.evaluation.ci_level
 
 
-def test_resolved_evaluation_kwargs_label_t_one_floors():
-    config = create_config_from_dict({"model": {"label_t": 1}})
+def test_resolved_evaluation_kwargs_at_the_smallest_admissible_label_t():
+    """`ModelConfig` refuses label_t < 2 (issue 107), so 2 is the lowest horizon a run carries.
+
+    The label_t=1 case this replaced can no longer be constructed. What remains to pin
+    is that neither the `max(1, ...)` nor the `max(0, ...)` floor binds on a validated
+    config: at the lowest horizon the defaults are still label_t and label_t - 1.
+    """
+    config = create_config_from_dict({"model": {"label_t": 2}})
 
     kwargs = resolved_evaluation_kwargs(config)
 
-    assert kwargs["block_size"] == 1
-    assert kwargs["newey_west_lags"] == 0
+    assert kwargs["block_size"] == 2
+    assert kwargs["newey_west_lags"] == 1
 
 
 def test_resolved_evaluation_kwargs_explicit_values_win():

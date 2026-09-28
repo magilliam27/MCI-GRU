@@ -256,8 +256,8 @@ def test_prepare_data_masked_panel_keeps_union_axis_without_complete_stock_filte
             source="csv",
             filename=str(data_path),
             train_start="2020-01-01",
-            train_end="2020-01-06",
-            val_start="2020-01-07",
+            train_end="2020-01-07",
+            val_start="2020-01-08",
             val_end="2020-01-08",
             test_start="2020-01-09",
             test_end="2020-01-10",
@@ -273,7 +273,7 @@ def test_prepare_data_masked_panel_keeps_union_axis_without_complete_stock_filte
             include_weekly_momentum=False,
         ),
         graph=GraphConfig(judge_value=0.9999, use_multi_feature_edges=False),
-        model=ModelConfig(his_t=2, label_t=1),
+        model=ModelConfig(his_t=2, label_t=2),
         training=TrainingConfig(num_epochs=1, num_models=1, label_type="returns"),
         tracking=TrackingConfig(enabled=False),
     )
@@ -286,7 +286,8 @@ def test_prepare_data_masked_panel_keeps_union_axis_without_complete_stock_filte
     assert data["kdcode_list"] == ["AAA", "DROP", "NEW"]
     assert data["stock_features_train"].shape[1] == 3
     new_idx = data["kdcode_list"].index("NEW")
-    # 2020-01-06 is purged: with label_t=1 its label reads the 2020-01-07 close, which is val_start.
+    # 2020-01-06 and 2020-01-07 are purged: with label_t=2 the 2020-01-06 label reads the
+    # 2020-01-08 close, which is val_start.
     assert data["train_dates"] == ["2020-01-03", "2020-01-04", "2020-01-05"]
     assert data["train_feature_ready_mask"][:, new_idx].tolist() == [True, True, True]
     assert data["train_tradable_mask"][:, new_idx].tolist() == [False, False, True]

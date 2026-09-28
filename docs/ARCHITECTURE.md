@@ -89,8 +89,10 @@ preparation → training → prediction → evaluation sequence once per window.
 
    The formula makes `model.label_t=1` degenerate: the label becomes
    `close[t+1] / close[t+1] - 1`, identically zero for every stock and date.
-   Nothing in the config layer rejects that value; `scripts/ci_smoke.py` sets
-   `model.label_t=2` for this reason.
+   `ModelConfig` therefore rejects `label_t < 2` at construction (issue #107).
+   Values of 0 or below are rejected as well: they place the exit close at or
+   before the entry close, and the session embargo treats them as having no
+   horizon although the label still reads `close[t+1]`.
 
 8. **Masked-panel eligibility** — `mci_gru/data/pit.py` defines the mask algebra:
 

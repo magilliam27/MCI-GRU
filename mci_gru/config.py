@@ -488,7 +488,9 @@ class ModelConfig:
 
     Attributes:
         his_t: Historical lookback period (days)
-        label_t: Forward return period (days)
+        label_t: Forward return horizon in trading sessions. The label is
+            ``close[t + label_t] / close[t + 1] - 1``, so values below 2 are
+            rejected: 1 makes every label zero, and 0 or less exits before entry.
         gru_hidden_sizes: Encoder-dependent recurrent shape. ``legacy`` uses each
             entry as that layer's width; ``gru_attn`` uses the list length as
             the layer count and the final entry as the shared width. With
@@ -567,6 +569,15 @@ class ModelConfig:
     _VALID_MARKET_LATENT_MODES = ("static", "data_dependent")
 
     def __post_init__(self):
+        if self.label_t < 2:
+            # The session embargo returns early for label_t <= 0, although the
+            # label still reads close[t + 1], so those values are refused here too.
+            raise ValueError(
+                f"label_t must be >= 2, got {self.label_t}. The label is "
+                "close[t + label_t] / close[t + 1] - 1: label_t=1 divides the entry "
+                "close by itself, so every label is zero, and label_t <= 0 places the "
+                "exit at or before the entry."
+            )
         if self.activation not in ("elu", "relu"):
             raise ValueError(f"activation must be 'elu' or 'relu', got {self.activation!r}")
         if self.output_activation not in self._VALID_OUTPUT_ACTIVATIONS:
