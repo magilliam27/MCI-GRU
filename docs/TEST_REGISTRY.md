@@ -6,6 +6,34 @@
 
 This file records the test inventory only, with no counts, dates, or last-run status, so each line depends on one test file. `--check` compares it with `tests/`; last-run status goes to a separate report (see `docs/TESTING_GUIDE.md`).
 
+## `tests/test_auxiliary_input_replay.py`
+
+Public auxiliary loader and preparation capture/replay contracts.
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.data_manager`, `mci_gru.data.fred_loader`, `mci_gru.data.input_observations`, `mci_gru.data.input_snapshots`, `mci_gru.data.lseg_loader`, `mci_gru.features`, `mci_gru.pipeline`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_fred_replay_uses_original_sdk_series_before_fill_and_lag` |  |  |
+| `test_replay_returns_repeated_identical_requests_in_captured_order` |  |  |
+| `test_credit_replay_keeps_both_original_series_and_the_existing_lag` |  |  |
+| `test_lseg_replay_preserves_raw_history_without_opening_a_session` |  | parametrize |
+| `test_required_provider_failure_retains_safe_facts_without_fallback_or_use` |  | parametrize, parametrize |
+| `test_data_manager_regime_capture_and_replay_account_for_all_six_sources` |  |  |
+| `test_preparation_requires_selected_file_inputs_without_implicit_provider_setup` |  | parametrize |
+| `test_data_manager_replays_explicit_auxiliary_sources_with_a_csv_stock_config` |  | parametrize |
+| `test_preparation_returns_complete_replayable_input_identities_for_enabled_roles` |  | parametrize |
+| `test_data_manager_file_capture_replays_the_original_read_buffer` |  | parametrize |
+| `test_preparation_keeps_rejected_file_snapshot_without_consumption` |  |  |
+| `test_provider_capture_uses_the_retained_observation_if_sdk_buffer_changes` |  |  |
+| `test_preparation_does_not_reacquire_after_retention_failure` |  | parametrize |
+| `test_preparation_reports_the_current_rejected_series_after_an_earlier_retry` |  |  |
+| `test_explicit_unsupported_source_configuration_is_not_ignored` |  | parametrize |
+| `test_the_frozen_recipe_requests_its_six_fred_regime_series_without_a_source_override` | The recipe names no auxiliary source, so the base config's regime=fred must carry it. |  |
+| `test_the_base_config_declares_the_typed_default_auxiliary_sources` | Hydra runs read configs/config.yaml and direct callers read DataConfig(); both agree. |  |
+| `test_a_misspelt_auxiliary_source_role_is_rejected_when_the_config_is_built` |  |  |
+| `test_the_full_feature_preset_stops_at_the_unselected_credit_role` | features=full enables credit, which the base config leaves unselected. |  |
+
 ## `tests/test_backtest_engine_golden.py`
 
 Golden-output regression tests for legacy backtest CLIs (WS-N step 2).
@@ -610,6 +638,22 @@ Native read-to-metadata guards for immutable consumed-input observations.
 | `test_nonconsumed_and_foreign_observations_cannot_become_saved_uses` |  | parametrize |
 | `test_parser_integrity_failure_is_distinct_from_ordinary_parse_failure` |  |  |
 | `test_failed_native_read_records_only_known_facts_and_cannot_be_consumed` |  |  |
+
+## `tests/test_input_snapshots.py`
+
+Public exact-observation snapshot preservation and offline replay contracts.
+
+**Exercises:** `mci_gru.data.input_manifest`, `mci_gru.data.input_observations`, `mci_gru.data.input_snapshots`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_snapshot_round_trip_keeps_exact_file_bytes_and_original_provenance` |  |  |
+| `test_snapshot_rejects_changed_retained_bytes_without_repair` |  | parametrize |
+| `test_snapshot_refuses_a_different_selected_request` |  | parametrize |
+| `test_snapshot_keeps_sdk_observation_types_axes_order_and_missingness` |  | parametrize |
+| `test_snapshot_keeps_object_text_apart_from_the_pandas_3_string_dtype` |  | parametrize, parametrize |
+| `test_snapshot_rejects_missing_or_incompatible_packages` |  | parametrize |
+| `test_snapshot_keeps_literal_sdk_metadata_types` |  |  |
 
 ## `tests/test_lambdarank_ic_config.py`
 

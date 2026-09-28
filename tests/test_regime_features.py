@@ -314,6 +314,9 @@ def test_live_regime_stock_bond_corr_uses_three_year_window(monkeypatch):
     }
 
     class FakeFREDLoader:
+        def __init__(self, *, snapshots):
+            pass
+
         def get_series(self, _series_id, _start, _end, value_name, lag_days=1):
             return pd.DataFrame(
                 {
@@ -324,6 +327,7 @@ def test_live_regime_stock_bond_corr_uses_three_year_window(monkeypatch):
 
     monkeypatch.setattr("mci_gru.data.fred_loader.FREDLoader", FakeFREDLoader)
     config = DataConfig(
+        auxiliary_sources={"regime": "fred"},
         train_start="2020-01-01",
         train_end="2020-01-10",
         val_start="2020-01-11",
@@ -348,6 +352,9 @@ def test_live_regime_stock_bond_corr_handles_sparse_merged_panel(monkeypatch):
     odd_dates = dates[1::2]
 
     class FakeFREDLoader:
+        def __init__(self, *, snapshots):
+            pass
+
         def get_series(self, _series_id, _start, _end, value_name, lag_days=1):
             if value_name == "yield_10y":
                 return pd.DataFrame(
@@ -381,6 +388,7 @@ def test_live_regime_stock_bond_corr_handles_sparse_merged_panel(monkeypatch):
 
     monkeypatch.setattr("mci_gru.data.fred_loader.FREDLoader", FakeFREDLoader)
     config = DataConfig(
+        auxiliary_sources={"regime": "fred"},
         train_start="2000-01-01",
         train_end="2000-01-10",
         val_start="2000-01-11",
@@ -407,10 +415,13 @@ def test_live_regime_fetch_retries_transient_series_failure(monkeypatch):
     calls_by_name: dict[str, int] = {}
 
     class FakeFREDLoader:
+        def __init__(self, *, snapshots):
+            pass
+
         def get_series(self, _series_id, _start, _end, value_name, lag_days=1):
             calls_by_name[value_name] = calls_by_name.get(value_name, 0) + 1
             if value_name == "regime_oil" and calls_by_name[value_name] == 1:
-                raise RuntimeError("temporary FRED outage")
+                raise TimeoutError("temporary FRED outage")
             return pd.DataFrame(
                 {
                     "dt": dates.strftime("%Y-%m-%d"),
@@ -422,6 +433,7 @@ def test_live_regime_fetch_retries_transient_series_failure(monkeypatch):
     monkeypatch.setenv("MCI_GRU_FRED_MAX_ATTEMPTS", "2")
     monkeypatch.setenv("MCI_GRU_FRED_RETRY_SECONDS", "0")
     config = DataConfig(
+        auxiliary_sources={"regime": "fred"},
         train_start="2020-01-01",
         train_end="2020-01-10",
         val_start="2020-01-11",
