@@ -36,8 +36,11 @@ class DataConfig:
             (train / val / test) and intersect; mitigates full-calendar survivorship bias.
         use_pit_universe: If True, apply ``pit_universe_csv`` row validity when set.
         pit_universe_csv: Optional CSV with kdcode, valid_from, valid_to for PIT filtering.
-        pit_universe_mode: ``row_filter`` keeps the legacy row-filter flow;
-            ``masked_panel`` keeps a fixed PIT union axis and uses daily masks.
+        pit_universe_mode: ``masked_panel`` (the default and the only accepted
+            value) keeps a fixed PIT union axis and uses daily masks. The legacy
+            ``row_filter`` mode is rejected: it dropped rows outside PIT
+            membership while the correlation graph still linked names outside
+            the universe (#139).
         pit_min_scoreable_stocks: Minimum expected PIT-tradable candidates per normal date.
         pit_breadth_policy: ``error``, ``warn``, or ``off`` when candidate breadth is low.
     """
@@ -59,7 +62,7 @@ class DataConfig:
     filter_stocks_per_split: bool = False
     use_pit_universe: bool = False
     pit_universe_csv: str | None = None
-    pit_universe_mode: str = "row_filter"
+    pit_universe_mode: str = "masked_panel"
     pit_min_scoreable_stocks: int = 450
     pit_breadth_policy: str = "error"
 
@@ -83,10 +86,13 @@ class DataConfig:
             raise ValueError(
                 f"normalisation must be 'zscore' or 'rank_gauss', got {self.normalisation!r}"
             )
-        if self.pit_universe_mode not in ("row_filter", "masked_panel"):
+        if self.pit_universe_mode != "masked_panel":
             raise ValueError(
-                "pit_universe_mode must be 'row_filter' or 'masked_panel', "
-                f"got {self.pit_universe_mode!r}"
+                f"pit_universe_mode must be 'masked_panel', got {self.pit_universe_mode!r}. "
+                "'row_filter' is no longer accepted: it dropped rows outside PIT "
+                "membership while the correlation graph still linked names outside "
+                "the universe. Set 'masked_panel', or omit the key when "
+                "use_pit_universe is false."
             )
         if self.pit_breadth_policy not in ("error", "warn", "off"):
             raise ValueError(
