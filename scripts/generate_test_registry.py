@@ -5,6 +5,12 @@ For each test file the registry records the module docstring, the first-party
 modules it exercises (mci_gru / scripts), and every test function with its
 description and pytest markers.
 
+A test's markers start with its own mark decorators, as written. Then come the
+marks it inherits and does not already carry, first from the mark decorators and
+``pytestmark`` of its enclosing classes, closest first, then from its module's
+``pytestmark`` (#121). Marks applied any other way are not seen, such as through an
+alias, a computed value, a ``pytest.param`` case, or a conftest hook.
+
 The committed registry records that test inventory and nothing else: no counts,
 no digest, no generation date, and no last-run status. Every line therefore
 depends on a single test file, so branches that add tests to different files
@@ -72,13 +78,34 @@ def _first_line(docstring: str | None) -> str:
     return docstring.strip().splitlines()[0].strip()
 
 
-def _marker_names(decorators: list[ast.expr]) -> list[str]:
+def _marker_names(marks: list[ast.expr]) -> list[str]:
+    """Names of the pytest marks among decorators or ``pytestmark`` elements, in order."""
     names: list[str] = []
-    for deco in decorators:
-        target = deco.func if isinstance(deco, ast.Call) else deco
+    for mark in marks:
+        target = mark.func if isinstance(mark, ast.Call) else mark
         text = ast.unparse(target)
         if text.startswith("pytest.mark."):
             names.append(text.removeprefix("pytest.mark."))
+    return names
+
+
+def _pytestmark_names(body: list[ast.stmt]) -> list[str]:
+    """Names of the marks a module or class body assigns to ``pytestmark``.
+
+    pytest applies them to every test that module or class holds. The value is a
+    single mark or a list or tuple of them, each with or without arguments.
+    """
+    names: list[str] = []
+    for stmt in body:
+        if isinstance(stmt, ast.Assign):
+            targets, value = stmt.targets, stmt.value
+        elif isinstance(stmt, ast.AnnAssign) and stmt.value is not None:
+            targets, value = [stmt.target], stmt.value
+        else:
+            continue
+        if any(isinstance(target, ast.Name) and target.id == "pytestmark" for target in targets):
+            marks = value.elts if isinstance(value, (ast.List, ast.Tuple)) else [value]
+            names = _marker_names(marks)
     return names
 
 
@@ -102,27 +129,44 @@ def _first_party_imports(tree: ast.Module) -> list[str]:
     return sorted(modules)
 
 
-def _collect_tests(body: list[ast.stmt], prefix: str = "") -> list[TestCase]:
+def _collect_tests(
+    body: list[ast.stmt], prefix: str = "", inherited: tuple[str, ...] = ()
+) -> list[TestCase]:
+    """List the tests in body with their own marks and the marks they inherit.
+
+    ``inherited`` holds the marks of the enclosing classes and module, closest scope
+    first. A test lists its own decorator marks as written, then each inherited mark
+    it does not already carry.
+    """
     tests: list[TestCase] = []
     for node in body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith(
             "test_"
         ):
+            markers = _marker_names(node.decorator_list)
+            for mark in inherited:
+                if mark not in markers:
+                    markers.append(mark)
             tests.append(
                 TestCase(
                     name=f"{prefix}{node.name}",
                     doc=_first_line(ast.get_docstring(node)),
-                    markers=_marker_names(node.decorator_list),
+                    markers=markers,
                 )
             )
         elif isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
-            tests.extend(_collect_tests(node.body, prefix=f"{prefix}{node.name}."))
+            class_marks = _marker_names(node.decorator_list) + _pytestmark_names(node.body)
+            tests.extend(
+                _collect_tests(
+                    node.body, prefix=f"{prefix}{node.name}.", inherited=(*class_marks, *inherited)
+                )
+            )
     return tests
 
 
 def parse_test_module(path: Path) -> TestModule:
     tree = ast.parse(path.read_text(encoding="utf-8"))
-    tests = _collect_tests(tree.body)
+    tests = _collect_tests(tree.body, inherited=tuple(_pytestmark_names(tree.body)))
     return TestModule(
         path=path,
         doc=_first_line(ast.get_docstring(tree)),
