@@ -159,7 +159,11 @@ local test.
 
 - **Active regression tests**: saved tests that protect current behavior.
 - **Slow/data-dependent tests**: keep them marked with `slow`, `requires_data`,
-  `requires_fred`, or `requires_lseg`.
+  `requires_fred`, or `requires_lseg`. A capability marker belongs only on a test
+  that cannot pass without the capability. CI deselects `requires_data` and
+  `requires_lseg` by marker alone, so either marker on a test that does not need
+  it is a test CI never runs. `tests/test_capability_marker_guard.py` fails when
+  a test CI deselects passes with no market data, no LSEG client and no FRED key.
 - **Script-like harnesses**: files that launch experiments or backtests rather
   than asserting behavior. Recommend moving these to `scripts/`.
 - **Stale or contradictory tests**: tests whose assumptions conflict with the
