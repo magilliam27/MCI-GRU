@@ -5,7 +5,6 @@ source: lseg
 api_key: ${oc.env:LSEG_API_KEY}  # From environment variable
 use_pit_universe: false
 pit_universe_csv: null
-pit_universe_mode: row_filter
 pit_min_scoreable_stocks: 450
 pit_breadth_policy: error
 train_start: "2019-01-01"
