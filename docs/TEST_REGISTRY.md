@@ -372,6 +372,9 @@ Contract tests for scripts/generate_test_registry.py.
 | `test_registry_is_current_detects_inventory_drift` |  |  |
 | `test_check_mode_reports_staleness_through_exit_code` |  |  |
 | `test_parsed_inventory_ignores_run_status_but_not_markers` |  |  |
+| `test_module_pytestmark_fills_the_markers_column_of_every_test` | A module-level pytestmark marks every test in the file, so every row must show it (#121). | parametrize |
+| `test_check_notices_a_pytestmark_edit_that_changes_which_tests_run` | Editing a module-level pytestmark changes test selection, so --check must fail (#121). | parametrize |
+| `test_class_marks_reach_only_the_tests_that_class_encloses` | A class's mark decorators and pytestmark mark its own tests, nested ones included. |  |
 | `test_parse_registry_round_trips_every_real_test_file` | Every real test, with its description and markers, survives render then parse. |  |
 | `test_committed_registry_carries_no_run_or_whole_inventory_lines` | No line may depend on more than one test file, or on when it was generated. |  |
 | `test_registries_from_concurrent_test_additions_merge_cleanly` | Two branches that each add a test must three-way merge with no registry conflict. | skipif, parametrize |
@@ -664,14 +667,14 @@ Native read-to-metadata guards for immutable consumed-input observations.
 
 | Test | Description | Markers |
 |---|---|---|
-| `test_long_history_presets_pin_frozen_recipe_semantics` |  |  |
-| `test_long_history_presets_do_not_make_252_first_pass` |  |  |
-| `test_long_history_colab_notebook_is_generated_and_pit_scoped` |  |  |
-| `test_long_history_colab_writes_missing_pit_temporal_presets` |  |  |
-| `test_long_history_colab_setup_survives_existing_generated_presets` |  |  |
-| `test_long_history_colab_code_cells_parse` |  |  |
-| `test_evaluation_metrics_import_is_not_blocked_by_prediction_report_cycle` |  |  |
-| `test_long_history_docs_use_temporal_universe_set_for_non_pit_smoke` |  |  |
+| `test_long_history_presets_pin_frozen_recipe_semantics` |  | requires_data |
+| `test_long_history_presets_do_not_make_252_first_pass` |  | requires_data |
+| `test_long_history_colab_notebook_is_generated_and_pit_scoped` |  | requires_data |
+| `test_long_history_colab_writes_missing_pit_temporal_presets` |  | requires_data |
+| `test_long_history_colab_setup_survives_existing_generated_presets` |  | requires_data |
+| `test_long_history_colab_code_cells_parse` |  | requires_data |
+| `test_evaluation_metrics_import_is_not_blocked_by_prediction_report_cycle` |  | requires_data |
+| `test_long_history_docs_use_temporal_universe_set_for_non_pit_smoke` |  | requires_data |
 
 ## `tests/test_market_latent_state.py`
 
@@ -827,9 +830,9 @@ Phase 3: lead-lag toy, snapshot valid_from, walk-forward config, cross-attn smok
 
 | Test | Description | Markers |
 |---|---|---|
-| `test_alias_audit_finds_suffixed_candidates_with_market_rows` |  |  |
-| `test_alias_audit_quantifies_daily_active_and_scoreable_impact` |  |  |
-| `test_alias_audit_markdown_summarizes_candidate_coverage` |  |  |
+| `test_alias_audit_finds_suffixed_candidates_with_market_rows` |  | requires_lseg |
+| `test_alias_audit_quantifies_daily_active_and_scoreable_impact` |  | requires_lseg |
+| `test_alias_audit_markdown_summarizes_candidate_coverage` |  | requires_lseg |
 
 ## `tests/test_pit_availability_report.py`
 
@@ -880,10 +883,10 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 
 | Test | Description | Markers |
 |---|---|---|
-| `test_pit_masked_panel_notebook_uses_frozen_default_recipe` |  |  |
-| `test_pit_masked_panel_summary_text_reports_full_run_budget` |  |  |
-| `test_pit_masked_panel_summary_text_keeps_smoke_caveat` |  |  |
-| `test_pit_masked_panel_notebook_code_cells_parse` |  |  |
+| `test_pit_masked_panel_notebook_uses_frozen_default_recipe` |  | requires_fred |
+| `test_pit_masked_panel_summary_text_reports_full_run_budget` |  | requires_fred |
+| `test_pit_masked_panel_summary_text_keeps_smoke_caveat` |  | requires_fred |
+| `test_pit_masked_panel_notebook_code_cells_parse` |  | requires_fred |
 
 ## `tests/test_pit_membership_progression_audit.py`
 
@@ -909,16 +912,16 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 
 | Test | Description | Markers |
 |---|---|---|
-| `test_issue31_notebook_pins_repeated_seed_full_pit_replication` |  |  |
-| `test_issue31_notebook_writes_required_decision_artifacts` |  |  |
-| `test_issue31_notebook_can_resume_and_retry_transient_regime_fetch_failures` |  |  |
-| `test_issue31_notebook_uses_cost_rank_gate_promotion_path` |  |  |
-| `test_issue31_notebook_pastes_known_drive_locations_and_branch` |  |  |
-| `test_issue31_notebook_hardwires_colab_inputs_and_runtime_key` |  |  |
-| `test_issue31_notebook_includes_pooled_significance_for_issue29` |  |  |
-| `test_issue31_notebook_summarizes_three_seed_closeout_evidence` |  |  |
-| `test_issue31_notebook_runs_backtest_sensitivity_replay` |  |  |
-| `test_issue31_notebook_code_cells_parse` |  |  |
+| `test_issue31_notebook_pins_repeated_seed_full_pit_replication` |  | requires_lseg, requires_fred |
+| `test_issue31_notebook_writes_required_decision_artifacts` |  | requires_lseg, requires_fred |
+| `test_issue31_notebook_can_resume_and_retry_transient_regime_fetch_failures` |  | requires_lseg, requires_fred |
+| `test_issue31_notebook_uses_cost_rank_gate_promotion_path` |  | requires_lseg, requires_fred |
+| `test_issue31_notebook_pastes_known_drive_locations_and_branch` |  | requires_lseg, requires_fred |
+| `test_issue31_notebook_hardwires_colab_inputs_and_runtime_key` |  | requires_lseg, requires_fred |
+| `test_issue31_notebook_includes_pooled_significance_for_issue29` |  | requires_lseg, requires_fred |
+| `test_issue31_notebook_summarizes_three_seed_closeout_evidence` |  | requires_lseg, requires_fred |
+| `test_issue31_notebook_runs_backtest_sensitivity_replay` |  | requires_lseg, requires_fred |
+| `test_issue31_notebook_code_cells_parse` |  | requires_lseg, requires_fred |
 
 ## `tests/test_pit_saved_prediction_backtests.py`
 
@@ -1042,19 +1045,19 @@ Contract tests for scripts/gen_readme_figure.py and the README evidence figure.
 
 | Test | Description | Markers |
 |---|---|---|
-| `test_compute_regime_monthly_features_outputs_expected_columns` |  |  |
-| `test_compute_regime_monthly_features_adds_subsequent_return_signals` |  |  |
-| `test_compute_regime_monthly_features_no_lookahead_exclusion_effect` |  |  |
-| `test_regime_subsequent_return_horizon_excludes_future_window` |  |  |
-| `test_add_regime_features_broadcasts_without_row_change` |  |  |
-| `test_regime_input_contract_columns_present` |  |  |
-| `test_regime_csv_contract_is_deprecated_and_requires_full_seven_variable_surface` | Deprecated CSV override must not silently drop paper-guided variables. |  |
-| `test_regime_csv_loader_forward_fills_without_backfill` | Raw CSV gaps may use prior values only; leading gaps remain unavailable. |  |
-| `test_live_regime_stock_bond_corr_uses_three_year_window` |  |  |
-| `test_live_regime_stock_bond_corr_handles_sparse_merged_panel` |  |  |
-| `test_live_regime_fetch_retries_transient_series_failure` |  |  |
-| `test_transform_with_regime_df_produces_nonzero_regime_columns` | Regime columns must be non-constant when a real regime_df is passed to transform. |  |
-| `test_regime_csv_lag_safety` | Lagged CSV regime inputs must not backfill the leading unavailable row. |  |
+| `test_compute_regime_monthly_features_outputs_expected_columns` |  | requires_fred |
+| `test_compute_regime_monthly_features_adds_subsequent_return_signals` |  | requires_fred |
+| `test_compute_regime_monthly_features_no_lookahead_exclusion_effect` |  | requires_fred |
+| `test_regime_subsequent_return_horizon_excludes_future_window` |  | requires_fred |
+| `test_add_regime_features_broadcasts_without_row_change` |  | requires_fred |
+| `test_regime_input_contract_columns_present` |  | requires_fred |
+| `test_regime_csv_contract_is_deprecated_and_requires_full_seven_variable_surface` | Deprecated CSV override must not silently drop paper-guided variables. | requires_fred |
+| `test_regime_csv_loader_forward_fills_without_backfill` | Raw CSV gaps may use prior values only; leading gaps remain unavailable. | requires_fred |
+| `test_live_regime_stock_bond_corr_uses_three_year_window` |  | requires_fred |
+| `test_live_regime_stock_bond_corr_handles_sparse_merged_panel` |  | requires_fred |
+| `test_live_regime_fetch_retries_transient_series_failure` |  | requires_fred |
+| `test_transform_with_regime_df_produces_nonzero_regime_columns` | Regime columns must be non-constant when a real regime_df is passed to transform. | requires_fred |
+| `test_regime_csv_lag_safety` | Lagged CSV regime inputs must not backfill the leading unavailable row. | requires_fred |
 
 ## `tests/test_repository_retirement_guard.py`
 
@@ -1220,10 +1223,10 @@ Regression tests for the isolated pytest launcher.
 
 | Test | Description | Markers |
 |---|---|---|
-| `test_reduced_pit_baseline_notebook_pins_multiyear_windows_and_data_gate` |  |  |
-| `test_reduced_pit_baseline_notebook_uses_extended_selector_bundle` |  |  |
-| `test_reduced_pit_baseline_notebook_preserves_frozen_recipe_and_pit_contract` |  |  |
-| `test_reduced_pit_baseline_notebook_code_cells_parse` |  |  |
+| `test_reduced_pit_baseline_notebook_pins_multiyear_windows_and_data_gate` |  | requires_lseg |
+| `test_reduced_pit_baseline_notebook_uses_extended_selector_bundle` |  | requires_lseg |
+| `test_reduced_pit_baseline_notebook_preserves_frozen_recipe_and_pit_contract` |  | requires_lseg |
+| `test_reduced_pit_baseline_notebook_code_cells_parse` |  | requires_lseg |
 
 ## `tests/test_sp500_pit_gics_top10_mcap_export.py`
 
