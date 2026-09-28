@@ -326,11 +326,16 @@ Unit tests for mci_gru.evaluation.experiment_summary (WS-M M2 move).
 
 ## `tests/test_feature_config_yaml.py`
 
+Every feature group must accept the regime overrides that launchers pass, without ``+``.
+
 **Exercises:** `mci_gru.config`
 
 | Test | Description | Markers |
 |---|---|---|
 | `test_feature_yaml_declares_regime_subsequent_return_keys` | Regime ablation overrides must target keys declared in feature YAML groups. |  |
+| `test_regime_override_guard_discovers_the_default_group_and_ticket_keys` | The regime override guards are not vacuous: feature groups and regime keys are found. |  |
+| `test_april_regime_ablation_arms_compose_without_append_prefix` | Both April regime arms compose, without ``+``, and reach the typed config. | parametrize, parametrize |
+| `test_every_feature_group_declares_every_regime_key` | Each ``FeatureConfig`` regime key is declared, so its override needs no ``+``. | parametrize |
 
 ## `tests/test_feature_drift.py`
 
