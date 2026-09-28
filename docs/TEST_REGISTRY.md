@@ -67,6 +67,14 @@ Test script to verify backtest fairness fixes.
 |---|---|---|
 | `test_plot_equity_curve_uses_agg_backend_when_saving` |  |  |
 
+## `tests/test_capability_marker_guard.py`
+
+No test CI deselects by capability marker may pass without that capability.
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_no_test_ci_deselects_passes_without_its_capability` | Every test CI deselects fails or skips with the CI runner's capabilities. | skipif |
+
 ## `tests/test_capacity_replay.py`
 
 **Exercises:** `mci_gru.evaluation.capacity`, `scripts.run_saved_prediction_capacity_replay`
@@ -719,14 +727,14 @@ Public exact-observation snapshot preservation and offline replay contracts.
 
 | Test | Description | Markers |
 |---|---|---|
-| `test_long_history_presets_pin_frozen_recipe_semantics` |  | requires_data |
-| `test_long_history_presets_do_not_make_252_first_pass` |  | requires_data |
-| `test_long_history_colab_notebook_is_generated_and_pit_scoped` |  | requires_data |
-| `test_long_history_colab_writes_missing_pit_temporal_presets` |  | requires_data |
-| `test_long_history_colab_setup_survives_existing_generated_presets` |  | requires_data |
-| `test_long_history_colab_code_cells_parse` |  | requires_data |
-| `test_evaluation_metrics_import_is_not_blocked_by_prediction_report_cycle` |  | requires_data |
-| `test_long_history_docs_use_temporal_universe_set_for_non_pit_smoke` |  | requires_data |
+| `test_long_history_presets_pin_frozen_recipe_semantics` |  |  |
+| `test_long_history_presets_do_not_make_252_first_pass` |  |  |
+| `test_long_history_colab_notebook_is_generated_and_pit_scoped` |  |  |
+| `test_long_history_colab_writes_missing_pit_temporal_presets` |  |  |
+| `test_long_history_colab_setup_survives_existing_generated_presets` |  |  |
+| `test_long_history_colab_code_cells_parse` |  |  |
+| `test_evaluation_metrics_import_is_not_blocked_by_prediction_report_cycle` |  |  |
+| `test_long_history_docs_use_temporal_universe_set_for_non_pit_smoke` |  |  |
 
 ## `tests/test_market_latent_state.py`
 
@@ -896,9 +904,9 @@ Phase 3: lead-lag toy, snapshot valid_from, walk-forward config, cross-attn smok
 
 | Test | Description | Markers |
 |---|---|---|
-| `test_alias_audit_finds_suffixed_candidates_with_market_rows` |  | requires_lseg |
-| `test_alias_audit_quantifies_daily_active_and_scoreable_impact` |  | requires_lseg |
-| `test_alias_audit_markdown_summarizes_candidate_coverage` |  | requires_lseg |
+| `test_alias_audit_finds_suffixed_candidates_with_market_rows` |  |  |
+| `test_alias_audit_quantifies_daily_active_and_scoreable_impact` |  |  |
+| `test_alias_audit_markdown_summarizes_candidate_coverage` |  |  |
 
 ## `tests/test_pit_availability_report.py`
 
@@ -978,16 +986,16 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 
 | Test | Description | Markers |
 |---|---|---|
-| `test_issue31_notebook_pins_repeated_seed_full_pit_replication` |  | requires_lseg, requires_fred |
-| `test_issue31_notebook_writes_required_decision_artifacts` |  | requires_lseg, requires_fred |
-| `test_issue31_notebook_can_resume_and_retry_transient_regime_fetch_failures` |  | requires_lseg, requires_fred |
-| `test_issue31_notebook_uses_cost_rank_gate_promotion_path` |  | requires_lseg, requires_fred |
-| `test_issue31_notebook_pastes_known_drive_locations_and_branch` |  | requires_lseg, requires_fred |
-| `test_issue31_notebook_hardwires_colab_inputs_and_runtime_key` |  | requires_lseg, requires_fred |
-| `test_issue31_notebook_includes_pooled_significance_for_issue29` |  | requires_lseg, requires_fred |
-| `test_issue31_notebook_summarizes_three_seed_closeout_evidence` |  | requires_lseg, requires_fred |
-| `test_issue31_notebook_runs_backtest_sensitivity_replay` |  | requires_lseg, requires_fred |
-| `test_issue31_notebook_code_cells_parse` |  | requires_lseg, requires_fred |
+| `test_issue31_notebook_pins_repeated_seed_full_pit_replication` |  | requires_fred |
+| `test_issue31_notebook_writes_required_decision_artifacts` |  | requires_fred |
+| `test_issue31_notebook_can_resume_and_retry_transient_regime_fetch_failures` |  | requires_fred |
+| `test_issue31_notebook_uses_cost_rank_gate_promotion_path` |  | requires_fred |
+| `test_issue31_notebook_pastes_known_drive_locations_and_branch` |  | requires_fred |
+| `test_issue31_notebook_hardwires_colab_inputs_and_runtime_key` |  | requires_fred |
+| `test_issue31_notebook_includes_pooled_significance_for_issue29` |  | requires_fred |
+| `test_issue31_notebook_summarizes_three_seed_closeout_evidence` |  | requires_fred |
+| `test_issue31_notebook_runs_backtest_sensitivity_replay` |  | requires_fred |
+| `test_issue31_notebook_code_cells_parse` |  | requires_fred |
 
 ## `tests/test_pit_saved_prediction_backtests.py`
 
@@ -1304,10 +1312,10 @@ Regression tests for the isolated pytest launcher.
 
 | Test | Description | Markers |
 |---|---|---|
-| `test_reduced_pit_baseline_notebook_pins_multiyear_windows_and_data_gate` |  | requires_lseg |
-| `test_reduced_pit_baseline_notebook_uses_extended_selector_bundle` |  | requires_lseg |
-| `test_reduced_pit_baseline_notebook_preserves_frozen_recipe_and_pit_contract` |  | requires_lseg |
-| `test_reduced_pit_baseline_notebook_code_cells_parse` |  | requires_lseg |
+| `test_reduced_pit_baseline_notebook_pins_multiyear_windows_and_data_gate` |  |  |
+| `test_reduced_pit_baseline_notebook_uses_extended_selector_bundle` |  |  |
+| `test_reduced_pit_baseline_notebook_preserves_frozen_recipe_and_pit_contract` |  |  |
+| `test_reduced_pit_baseline_notebook_code_cells_parse` |  |  |
 
 ## `tests/test_sp500_pit_gics_top10_mcap_export.py`
 
