@@ -221,6 +221,23 @@ FOLDS: list[dict] = [
         "index": 5,
         "pool": "bridge",
         "test_year": 2025,
+        # The one seed that does not read off the ticket-181 s4 formula. That
+        # section and s2 pull in opposite directions here: s4 rules
+        # 1729 + 1000 x index, which is 6729 at index 5, while s2 admits this
+        # fold as the check that the harness reproduces the ticket-167 fold --
+        # and that run used 1729. At 6729 the check is distributional only,
+        # which is weak at twenty members. Overridden by the maintainer on
+        # 2026-09-05, before the Phase-3 smoke, which is where s4's carried
+        # defaults are overridable. Declared per fold so the formula stays
+        # readable, and disclosed by fold_seed_exceptions() in the manifest.
+        "seed_override": 1729,
+        "seed_override_reason": (
+            "Ticket 181 s2 admits this fold as the one check that the harness "
+            "reproduces the ticket-167 fold, and that run used seed 1729. The "
+            "s4 formula gives 6729 at index 5, which reproduces the fold "
+            "distributionally rather than member-for-member. Overridden by the "
+            "maintainer on 2026-09-05 before the Phase-3 smoke (ticket 185)."
+        ),
         "train_start": "2016-01-04",
         "train_end": "2023-12-31",
         "val_start": "2024-01-22",
@@ -294,8 +311,52 @@ def fold_seed(fold: dict) -> int:
 
     Member *i* of every arm therefore shares its initialisation with member *i*
     of the control, which is what makes the per-model secondary paired.
+
+    ``seed_override`` is the single declared exception to the ticket-181 s4
+    formula, carried on the fold rather than by bending the formula, so that
+    reading either one still tells the truth. See ``fold_seed_exceptions``.
     """
+    override = fold.get("seed_override")
+    if override is not None:
+        return override
     return BASE_SEED_ORIGIN + BASE_SEED_FOLD_STRIDE * fold["index"]
+
+
+def fold_seed_exceptions() -> dict:
+    """Folds whose seed deviates from the ruled formula, with the formula beside it.
+
+    Recorded in the manifest so a deviation is visible in the run's own record
+    and not only in a ticket. Computed rather than written, so adding or
+    dropping an override moves the disclosure with it.
+    """
+    return {
+        fold["key"]: {
+            "seed": fold_seed(fold),
+            "formula_seed": BASE_SEED_ORIGIN + BASE_SEED_FOLD_STRIDE * fold["index"],
+            "reason": fold["seed_override_reason"],
+        }
+        for fold in FOLDS
+        if fold.get("seed_override") is not None
+    }
+
+
+def stage_slug(stage: str, smoke: bool) -> str:
+    """How a stage is spelled in a path or a resume key.
+
+    ``RUN_STAGE`` accepts only ``screen`` or ``confirm``, so a smoke run would
+    otherwise write its 1 x 2 artifacts under a real stage's name. Inside a
+    fresh ``RUN_TAG`` that is harmless -- but the documented cross-session
+    resume path is ``RUN_TAG_OVERRIDE``, and a screen resumed into a smoke's
+    run tag would find the smoke's ``evaluation_summary.json``, skip the job
+    under ``RESUME_COMPLETED_TRAINING``, and then record ``smoke_mode`` from
+    the running session rather than from the one that wrote the file -- so the
+    manifest would not show the substitution either. Namespacing the smoke
+    makes it impossible rather than unlikely (ticket 185).
+
+    The *semantic* stage stays ``RUN_STAGE``: the budget dispatch, the
+    ticket-181 s8 analysis gate, and the manifest's ``run_stage`` all read it.
+    """
+    return f"smoke_{stage}" if smoke else stage
 
 
 def fold_overrides(fold: dict) -> list[str]:
@@ -586,6 +647,10 @@ def build_cells() -> list[dict]:
 
             {_embed_source(fold_seed)}
 
+            {_embed_source(fold_seed_exceptions)}
+
+            {_embed_source(stage_slug)}
+
             {_embed_source(fold_overrides)}
 
             {_embed_source(held_fixed_overrides)}
@@ -613,7 +678,8 @@ def build_cells() -> list[dict]:
             RUN_ROOT = Path("/content/drive/MyDrive/MCI-GRU-Ablations/graph_specification_ablation") / RUN_TAG
             if not IN_COLAB:
                 RUN_ROOT = REPO_DIR / "results" / "graph_specification_ablation" / RUN_TAG
-            TRAINING_OUTPUT_DIR = RUN_ROOT / "training" / RUN_STAGE
+            STAGE_SLUG = stage_slug(RUN_STAGE, SMOKE_MODE)
+            TRAINING_OUTPUT_DIR = RUN_ROOT / "training" / STAGE_SLUG
             RUN_ROOT.mkdir(parents=True, exist_ok=True)
 
             if SMOKE_MODE:
@@ -638,7 +704,7 @@ def build_cells() -> list[dict]:
             jobs = []
             for fold in folds_to_run:
                 for arm in arms_to_run:
-                    name = job_name(RUN_STAGE, fold, arm)
+                    name = job_name(STAGE_SLUG, fold, arm)
                     jobs.append(
                         {
                             "fold": fold["key"],
@@ -659,10 +725,11 @@ def build_cells() -> list[dict]:
                     )
 
             manifest = {
-                "issue": "ticket 183 (Wayfinder map 157)",
+                "issue": "ticket 185 run / ticket 183 harness (Wayfinder map 157)",
                 "protocol": "ticket-181 resolution (multi-year); ticket-164 defaults carried",
                 "run_tag": RUN_TAG,
                 "run_stage": RUN_STAGE,
+                "stage_slug": STAGE_SLUG,
                 "smoke_mode": SMOKE_MODE,
                 "num_models": num_models,
                 "num_epochs": num_epochs,
@@ -671,6 +738,9 @@ def build_cells() -> list[dict]:
                 "base_seed_origin": BASE_SEED_ORIGIN,
                 "base_seed_fold_stride": BASE_SEED_FOLD_STRIDE,
                 "fold_seeds": {fold["key"]: fold_seed(fold) for fold in FOLDS},
+                # A seed that does not read off the s4 formula is disclosed in
+                # the run's own record, not only in a ticket.
+                "fold_seed_exceptions": fold_seed_exceptions(),
                 "core_fold_keys": CORE_FOLD_KEYS,
                 "alongside_fold_keys": ALONGSIDE_FOLD_KEYS,
                 "twin_pair": list(TWIN_PAIR),
@@ -691,7 +761,7 @@ def build_cells() -> list[dict]:
                 "staged_files": {k: str(v) for k, v in staged.items()},
                 "staged_sha256": staged_sha256,
             }
-            MANIFEST_PATH = RUN_ROOT / f"graph_specification_ablation_manifest_{RUN_STAGE}.json"
+            MANIFEST_PATH = RUN_ROOT / f"graph_specification_ablation_manifest_{STAGE_SLUG}.json"
 
 
             def write_manifest() -> None:
@@ -711,8 +781,8 @@ def build_cells() -> list[dict]:
         md("## 5. Train The Jobs"),
         code(
             r"""
-            GPU_UTIL_PATH = RUN_ROOT / f"gpu_util_{RUN_STAGE}.csv"
-            GPU_UTIL_STOP_PATH = RUN_ROOT / f"gpu_util_{RUN_STAGE}.stop"
+            GPU_UTIL_PATH = RUN_ROOT / f"gpu_util_{STAGE_SLUG}.csv"
+            GPU_UTIL_STOP_PATH = RUN_ROOT / f"gpu_util_{STAGE_SLUG}.stop"
             RESUME_COMPLETED_TRAINING = True
 
             def start_gpu_sampler():
@@ -845,7 +915,7 @@ def build_cells() -> list[dict]:
                         "seed": job["seed"],
                         "run_dir": str(run_dir),
                         # Production per-run pooled daily IC with CI. The arbiter
-                        # is the paired difference in section 9; this is context.
+                        # is the paired difference in section 10; this is context.
                         "avg_ic": metrics.get("avg_ic"),
                         "avg_ic_ci_lower": metrics.get("avg_ic_ci_lower"),
                         "avg_ic_ci_upper": metrics.get("avg_ic_ci_upper"),
@@ -862,7 +932,7 @@ def build_cells() -> list[dict]:
                 )
 
             results_df = pd.DataFrame(rows)
-            results_path = RUN_ROOT / f"graph_specification_ablation_results_{RUN_STAGE}.csv"
+            results_path = RUN_ROOT / f"graph_specification_ablation_results_{STAGE_SLUG}.csv"
             results_df.to_csv(results_path, index=False)
             print("Results:", results_path)
             display(results_df.drop(columns=["hypothesis"]))
@@ -992,7 +1062,7 @@ def build_cells() -> list[dict]:
                 disclosure_rows.append(row)
 
             disclosure_df = pd.DataFrame(disclosure_rows)
-            disclosure_path = RUN_ROOT / f"graph_specification_ablation_density_disclosure_{RUN_STAGE}.csv"
+            disclosure_path = RUN_ROOT / f"graph_specification_ablation_density_disclosure_{STAGE_SLUG}.csv"
             disclosure_df.to_csv(disclosure_path, index=False)
             print("Density / isolation / staleness disclosure:", disclosure_path)
             display(disclosure_df)
@@ -1007,7 +1077,7 @@ def build_cells() -> list[dict]:
         md("## 8. Disclosure: Pooled Daily IC Per Year"),
         code(
             r"""
-            # Disclosure-grade per-year breakdown. Section 9's paired arbiter uses
+            # Disclosure-grade per-year breakdown. Section 10's paired arbiter uses
             # the production label `close[t+5]/close[t+1] - 1`; this cell keeps the
             # ticket-166 `close[t+5]/close[t] - 1` variant for continuity with the
             # earlier report, and the two sit 0.003-0.006 apart for that reason
@@ -1063,13 +1133,44 @@ def build_cells() -> list[dict]:
                     )
 
             per_year_df = pd.DataFrame(per_year_rows)
-            per_year_path = RUN_ROOT / f"graph_specification_ablation_per_year_ic_{RUN_STAGE}.csv"
+            per_year_path = RUN_ROOT / f"graph_specification_ablation_per_year_ic_{STAGE_SLUG}.csv"
             per_year_df.to_csv(per_year_path, index=False)
             print("Per-year pooled daily IC:", per_year_path)
             display(per_year_df)
             """
         ),
-        md("## 9. Paired Inference Against The Control"),
+        md("## 9. Mechanics Sanity Gate"),
+        code(
+            r"""
+            # There is no promotion gate, so this stage decides nothing. What it
+            # does is say whether the mechanics held: every job trained, the twin
+            # rule held everywhere, and each fold's arms shared one base seed.
+            #
+            # It sits above the paired-inference cell on purpose. That cell
+            # refuses a smoke (ticket 181 section 8), so a gate placed after it
+            # never ran on the one stage whose purpose is checking mechanics
+            # (issue 196). Everything it reads exists before the arbiter.
+            # `distinct_fold_seeds` is the most seeds any one fold's arms used,
+            # not a cross-fold check: the bridge fold shares F2022's seed.
+            sanity = {
+                "jobs_expected": len(jobs),
+                "jobs_completed": len(run_dirs),
+                "twin_edges_total": int(disclosure_df["twin_edge_count"].sum()),
+                "distinct_fold_seeds": int(results_df.groupby("fold")["seed"].nunique().max()),
+                "folds_present": sorted({fold_key for fold_key, _ in run_dirs}),
+                "arms_present": sorted({arm_key for _, arm_key in run_dirs}),
+            }
+            print(json.dumps(sanity, indent=2))
+            if sanity["jobs_completed"] != sanity["jobs_expected"]:
+                raise AssertionError("Not every job completed; the manifest records what landed.")
+            if sanity["twin_edges_total"] != 0:
+                raise AssertionError("Twin edge present; the hygiene rule failed.")
+            if sanity["distinct_fold_seeds"] != 1:
+                raise AssertionError("A fold's arms did not share one base seed.")
+            print("Mechanics sanity passed.")
+            """
+        ),
+        md("## 10. Paired Inference Against The Control"),
         code(
             r"""
             # The arbiter (ticket 181 sections 5, 6, 7 and 9), on the merged
@@ -1179,7 +1280,7 @@ def build_cells() -> list[dict]:
             paired_per_fold["pool"] = paired_per_fold["fold"].map(
                 {fold["key"]: fold["pool"] for fold in FOLDS}
             )
-            paired_per_fold.to_csv(RUN_ROOT / f"paired_per_fold_{RUN_STAGE}.csv", index=False)
+            paired_per_fold.to_csv(RUN_ROOT / f"paired_per_fold_{STAGE_SLUG}.csv", index=False)
 
             def fold_deltas(arm: str, method: str, fold_key: str):
                 # One fold's paired daily differences against the control.
@@ -1274,8 +1375,8 @@ def build_cells() -> list[dict]:
                     }
                 )
             outcome_df = pd.DataFrame(branches)
-            paired_pooled_core.to_csv(RUN_ROOT / f"paired_pooled_core_{RUN_STAGE}.csv", index=False)
-            outcome_df.to_csv(RUN_ROOT / f"paired_outcome_map_{RUN_STAGE}.csv", index=False)
+            paired_pooled_core.to_csv(RUN_ROOT / f"paired_pooled_core_{STAGE_SLUG}.csv", index=False)
+            outcome_df.to_csv(RUN_ROOT / f"paired_outcome_map_{STAGE_SLUG}.csv", index=False)
 
             # Secondary: seed-paired per-model IC, member i against member i,
             # twenty pairs per arm per fold, pooled over the core folds and
@@ -1310,7 +1411,7 @@ def build_cells() -> list[dict]:
                             }
                         )
             per_model_df = pd.DataFrame(per_model_rows)
-            per_model_df.to_csv(RUN_ROOT / f"per_model_ic_paired_{RUN_STAGE}.csv", index=False)
+            per_model_df.to_csv(RUN_ROOT / f"per_model_ic_paired_{STAGE_SLUG}.csv", index=False)
 
             def per_model_inference(frame: pd.DataFrame, scope: str) -> pd.DataFrame:
                 # Paired t over the member deltas -- the deltas are already
@@ -1352,7 +1453,7 @@ def build_cells() -> list[dict]:
                     ],
                     ignore_index=True,
                 )
-            per_model_stats.to_csv(RUN_ROOT / f"per_model_ic_inference_{RUN_STAGE}.csv", index=False)
+            per_model_stats.to_csv(RUN_ROOT / f"per_model_ic_inference_{STAGE_SLUG}.csv", index=False)
 
             # Secondary: median difference with a sign test, per fold and pooled
             # (ticket 181 section 7).
@@ -1395,7 +1496,7 @@ def build_cells() -> list[dict]:
             median_df["bhy_p"] = median_df.groupby("scope")["sign_test_p"].transform(
                 lambda s: bhy_adjusted_p_values(s.to_numpy())
             )
-            median_df.to_csv(RUN_ROOT / f"median_sign_test_{RUN_STAGE}.csv", index=False)
+            median_df.to_csv(RUN_ROOT / f"median_sign_test_{STAGE_SLUG}.csv", index=False)
 
             # Arm-versus-arm contrasts: reported paired with intervals, labelled
             # descriptive and unadjusted (ticket 181 section 6). They route D1 only
@@ -1432,7 +1533,7 @@ def build_cells() -> list[dict]:
                 )
                 descriptive_rows.append({"adjusted": False, "note": "descriptive", **result.__dict__})
             descriptive_df = pd.DataFrame(descriptive_rows)
-            descriptive_df.to_csv(RUN_ROOT / f"arm_vs_arm_descriptive_{RUN_STAGE}.csv", index=False)
+            descriptive_df.to_csv(RUN_ROOT / f"arm_vs_arm_descriptive_{STAGE_SLUG}.csv", index=False)
 
             print("=== primary: pooled over the core folds, Pearson on the arbiter label ===")
             display(paired_pooled_core[paired_pooled_core["method"] == "pearson"])
@@ -1447,7 +1548,7 @@ def build_cells() -> list[dict]:
             display(descriptive_df)
             """
         ),
-        md("## 10. Disclosure: Ensemble Scale, Sharpe Intervals, Basket Returns, April Composite"),
+        md("## 11. Disclosure: Ensemble Scale, Sharpe Intervals, Basket Returns, April Composite"),
         code(
             r"""
             from mci_gru.evaluation.paired_inference import sharpe_block_bootstrap_ci
@@ -1479,7 +1580,7 @@ def build_cells() -> list[dict]:
                     }
                 )
             ensemble_df = pd.DataFrame(ensemble_rows)
-            ensemble_df.to_csv(RUN_ROOT / f"ensemble_scale_audit_{RUN_STAGE}.csv", index=False)
+            ensemble_df.to_csv(RUN_ROOT / f"ensemble_scale_audit_{STAGE_SLUG}.csv", index=False)
 
             # Top-K Sharpe with block-bootstrap intervals, and the paired daily
             # basket returns by K. Disclosure only: at 238 days per fold the
@@ -1537,13 +1638,13 @@ def build_cells() -> list[dict]:
                         paired_basket_rows.append({"fold": fold_key, "top_k": top_k, **result.__dict__})
 
             sharpe_df = pd.DataFrame(sharpe_rows)
-            sharpe_df.to_csv(RUN_ROOT / f"sharpe_block_bootstrap_{RUN_STAGE}.csv", index=False)
+            sharpe_df.to_csv(RUN_ROOT / f"sharpe_block_bootstrap_{STAGE_SLUG}.csv", index=False)
             paired_basket_return_df = pd.DataFrame(paired_basket_rows)
-            paired_basket_return_df.to_csv(RUN_ROOT / f"paired_basket_returns_{RUN_STAGE}.csv", index=False)
+            paired_basket_return_df.to_csv(RUN_ROOT / f"paired_basket_returns_{STAGE_SLUG}.csv", index=False)
 
             # April 2026's composite decision score, computed alongside for
             # reconciliation with the historical ablation reports. The composite
-            # is not the arbiter; the paired difference in section 9 is.
+            # is not the arbiter; the paired difference in section 10 is.
             DECISION_SCORE_WEIGHTS = {
                 "avg_ic": 0.35,
                 "avg_spearman_corr": 0.25,
@@ -1559,7 +1660,7 @@ def build_cells() -> list[dict]:
                 standardised = (vals - grouped.transform("mean")) / grouped.transform("std")
                 score = score + weight * standardised.fillna(0.0)
             scored_df["decision_score"] = score
-            scored_df.to_csv(RUN_ROOT / f"april_composite_{RUN_STAGE}.csv", index=False)
+            scored_df.to_csv(RUN_ROOT / f"april_composite_{STAGE_SLUG}.csv", index=False)
 
             display(ensemble_df)
             display(sharpe_df)
@@ -1567,12 +1668,9 @@ def build_cells() -> list[dict]:
             display(scored_df[["fold", "arm", "avg_ic", "avg_ic_ci_lower", "avg_ic_ci_upper", "decision_score"]])
             """
         ),
-        md("## 11. Sanity Summary"),
+        md("## 12. Summary"),
         code(
             r"""
-            # There is no promotion gate, so this stage decides nothing. What it
-            # does is say whether the mechanics held: every job trained, the twin
-            # rule held everywhere, and each fold's arms shared one base seed.
             summary_lines = [
                 "# Graph-Specification Ablation Summary",
                 "",
@@ -1597,26 +1695,9 @@ def build_cells() -> list[dict]:
                     ["arm", "mean_delta", "bhy_p", "sign_consistent_core_folds", "realised_mde", "outcome_branch"]
                 ].to_markdown(index=False),
             ]
-            summary_path = RUN_ROOT / f"graph_specification_ablation_summary_{RUN_STAGE}.md"
+            summary_path = RUN_ROOT / f"graph_specification_ablation_summary_{STAGE_SLUG}.md"
             summary_path.write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
             print("Summary:", summary_path)
-
-            sanity = {
-                "jobs_expected": len(jobs),
-                "jobs_completed": len(run_dirs),
-                "twin_edges_total": int(disclosure_df["twin_edge_count"].sum()),
-                "distinct_fold_seeds": int(results_df.groupby("fold")["seed"].nunique().max()),
-                "folds_present": sorted({fold_key for fold_key, _ in run_dirs}),
-                "arms_present": sorted({arm_key for _, arm_key in run_dirs}),
-            }
-            print(json.dumps(sanity, indent=2))
-            if sanity["jobs_completed"] != sanity["jobs_expected"]:
-                raise AssertionError("Not every job completed; the manifest records what landed.")
-            if sanity["twin_edges_total"] != 0:
-                raise AssertionError("Twin edge present; the hygiene rule failed.")
-            if sanity["distinct_fold_seeds"] != 1:
-                raise AssertionError("A fold's arms did not share one base seed.")
-            print("Mechanics sanity passed.")
             """
         ),
     ]

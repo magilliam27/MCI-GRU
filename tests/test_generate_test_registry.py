@@ -1,21 +1,29 @@
 """Contract tests for scripts/generate_test_registry.py.
 
 The registry generator must list every test function in tests/, record which
-first-party modules each file exercises, merge last-run status from a junit XML
-file when one exists, and expose a deterministic inventory digest that ``--check``
-can use to prove the committed registry is fresh.
+first-party modules each file exercises, and keep the committed registry to the
+test inventory alone, so that every rendered line depends on one test file and
+branches that add tests to different files merge without a registry conflict
+(#149). ``--check`` regenerates the registry, parses the inventory back out of
+both copies, and fails on any genuine difference, while ignoring order,
+formatting, and the preamble. Last-run status from a junit XML file goes to a
+separate report, never to the committed copy.
 """
 
+import datetime as dt
+import shutil
+import subprocess
 import textwrap
 from pathlib import Path
 
+import pytest
+
 from scripts.generate_test_registry import (
     build_registry,
-    inventory_digest,
     load_junit_results,
     main,
+    parse_registry,
     parse_test_module,
-    recorded_inventory_digest,
     registry_is_current,
 )
 
@@ -56,6 +64,33 @@ def _write_fake_test_file(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     return test_file
+
+
+def _write_module(tests_dir: Path, stem: str, test_names: list[str]) -> Path:
+    body = "".join(
+        f'\n\ndef {name}():\n    """{name} checks a {stem} behaviour."""\n    assert True\n'
+        for name in test_names
+    )
+    path = tests_dir / f"{stem}.py"
+    path.write_text(f'"""Module {stem}."""\n{body}', encoding="utf-8")
+    return path
+
+
+def _append_test(path: Path, name: str) -> None:
+    path.write_text(
+        path.read_text(encoding="utf-8") + f"\n\ndef {name}():\n    assert True\n",
+        encoding="utf-8",
+    )
+
+
+def _junit_for_fake_module(path: Path, seconds: str, failed: bool) -> Path:
+    failure = "<failure message='boom'/>" if failed else ""
+    path.write_text(
+        '<testsuites><testsuite><testcase classname="tests.test_fake_module" '
+        f'name="test_alpha" time="{seconds}">{failure}</testcase></testsuite></testsuites>',
+        encoding="utf-8",
+    )
+    return path
 
 
 def test_parse_test_module_extracts_tests_docs_markers_and_imports(tmp_path):
@@ -121,7 +156,7 @@ def test_build_registry_writes_markdown_with_and_without_junit(tmp_path):
     assert "test_alpha" in content
     assert "mci_gru.data.data_manager" in content
     assert "## `tests/test_fake_module.py`" in content
-    assert "No junit results found" in content
+    assert "Last run" not in content
     assert content.endswith("\n")
     assert not content.endswith("\n\n")
     assert all(line == line.rstrip() for line in content.splitlines())
@@ -140,7 +175,7 @@ def test_build_registry_writes_markdown_with_and_without_junit(tmp_path):
     assert all(line == line.rstrip() for line in content.splitlines())
 
 
-def test_build_registry_preview_records_digest_without_writing(tmp_path):
+def test_build_registry_preview_matches_the_written_file_without_writing(tmp_path):
     tests_dir = tmp_path / "tests"
     tests_dir.mkdir()
     _write_fake_test_file(tests_dir)
@@ -149,7 +184,6 @@ def test_build_registry_preview_records_digest_without_writing(tmp_path):
     preview = build_registry(tests_dir, junit_path=None, out_path=out, write=False)
 
     assert not out.exists()
-    assert recorded_inventory_digest(preview) is not None
     assert preview == build_registry(tests_dir, junit_path=None, out_path=out)
     assert out.read_text(encoding="utf-8") == preview
     # Line endings must not depend on the host platform.
@@ -199,49 +233,503 @@ def test_check_mode_reports_staleness_through_exit_code(tmp_path):
     assert out.read_text(encoding="utf-8") == generated
 
 
-def test_inventory_digest_ignores_run_metadata_and_location(tmp_path):
-    first_dir = tmp_path / "first" / "tests"
-    second_dir = tmp_path / "second" / "renamed_tests"
-    for directory in (first_dir, second_dir):
-        directory.mkdir(parents=True)
-        _write_fake_test_file(directory)
+def test_parsed_inventory_ignores_run_status_but_not_markers(tmp_path):
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    _write_fake_test_file(tests_dir)
     out = tmp_path / "TEST_REGISTRY.md"
 
-    first_modules = [parse_test_module(p) for p in sorted(first_dir.glob("test_*.py"))]
-    second_modules = [parse_test_module(p) for p in sorted(second_dir.glob("test_*.py"))]
+    plain = build_registry(tests_dir, None, out, write=False)
+    fast = build_registry(
+        tests_dir, _junit_for_fake_module(tmp_path / "a.xml", "0.01", False), out, write=False
+    )
+    slow = build_registry(
+        tests_dir, _junit_for_fake_module(tmp_path / "b.xml", "9.99", True), out, write=False
+    )
 
-    digest = inventory_digest(first_modules)
-    assert digest == inventory_digest(first_modules)  # stable across repeated calls
-    assert digest == inventory_digest(second_modules)  # independent of the parent directory
+    # Durations and last-run status vary per run and machine; the rows differ,
+    # the inventory does not.
+    assert fast != slow
+    assert parse_registry(fast).modules == parse_registry(plain).modules
+    assert parse_registry(slow).modules == parse_registry(plain).modules
+    assert parse_registry(fast).has_status_columns
+    assert not parse_registry(plain).has_status_columns
 
-    # Durations and last-run status come from junit and vary per run and machine,
-    # so they must not move the digest.
-    def _junit(path: Path, seconds: str, failed: bool) -> Path:
-        failure = "<failure message='boom'/>" if failed else ""
-        path.write_text(
-            '<testsuites><testsuite><testcase classname="tests.test_fake_module" '
-            f'name="test_alpha" time="{seconds}">{failure}</testcase></testsuite></testsuites>',
-            encoding="utf-8",
-        )
-        return path
-
-    fast = build_registry(first_dir, _junit(tmp_path / "a.xml", "0.01", False), out, write=False)
-    slow = build_registry(first_dir, _junit(tmp_path / "b.xml", "9.99", True), out, write=False)
-
-    assert fast != slow  # the rendered rows do differ
-    assert recorded_inventory_digest(fast) == digest
-    assert recorded_inventory_digest(slow) == digest
-
-    # A marker change is part of the inventory and must move the digest.
-    marked = first_dir / "test_fake_module.py"
+    # A marker is inventory: adding one must change what is parsed.
+    marked = tests_dir / "test_fake_module.py"
     marked.write_text(
         marked.read_text(encoding="utf-8").replace(
             "def test_alpha", "@pytest.mark.requires_fred\ndef test_alpha"
         ),
         encoding="utf-8",
     )
-    changed = [parse_test_module(p) for p in sorted(first_dir.glob("test_*.py"))]
-    assert inventory_digest(changed) != digest
+    remarked = build_registry(tests_dir, None, out, write=False)
+    assert parse_registry(remarked).modules != parse_registry(plain).modules
+
+
+_INHERITING_MODULE = '''
+"""Fake module whose tests may inherit a module-level pytestmark."""
+
+import sys
+
+import pytest
+
+requires_data = pytest.mark.requires_data
+
+{assignment}
+
+
+def test_unmarked():
+    assert True
+
+
+@pytest.mark.slow
+def test_decorated():
+    assert True
+
+
+@pytest.mark.requires_fred
+def test_already_marked():
+    assert True
+
+
+class TestGroup:
+    def test_method(self):
+        assert True
+'''
+
+
+def _test_rows(content: str) -> set[str]:
+    return {line for line in content.splitlines() if line.startswith("| `")}
+
+
+@pytest.mark.parametrize(
+    ("assignment", "inherited"),
+    [
+        pytest.param("pytestmark = pytest.mark.requires_fred", ["requires_fred"], id="single-mark"),
+        pytest.param(
+            "pytestmark = [pytest.mark.requires_lseg, pytest.mark.requires_fred]",
+            ["requires_lseg", "requires_fred"],
+            id="list-of-marks",
+        ),
+        pytest.param(
+            "pytestmark = (pytest.mark.requires_lseg, pytest.mark.requires_fred)",
+            ["requires_lseg", "requires_fred"],
+            id="tuple-of-marks",
+        ),
+        pytest.param(
+            'pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX only")',
+            ["skipif"],
+            id="single-mark-with-arguments",
+        ),
+        pytest.param(
+            "pytestmark = ["
+            'pytest.mark.filterwarnings("ignore::UserWarning"), pytest.mark.requires_fred]',
+            ["filterwarnings", "requires_fred"],
+            id="list-of-marks-with-arguments",
+        ),
+        pytest.param(
+            "pytestmark: list = [pytest.mark.requires_lseg]",
+            ["requires_lseg"],
+            id="annotated-assignment",
+        ),
+        pytest.param("", [], id="no-pytestmark"),
+    ],
+)
+def test_module_pytestmark_fills_the_markers_column_of_every_test(tmp_path, assignment, inherited):
+    """A module-level pytestmark marks every test in the file, so every row must show it (#121).
+
+    Each row lists the test's own decorator marks first, then each inherited mark
+    it does not already carry. A mark assigned to any other name, like the unused
+    ``requires_data`` alias here, marks nothing.
+    """
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_inheriting.py").write_text(
+        _INHERITING_MODULE.format(assignment=assignment), encoding="utf-8"
+    )
+
+    content = build_registry(tests_dir, None, tmp_path / "TEST_REGISTRY.md", write=False)
+
+    def row(name: str, markers: list[str]) -> str:
+        return f"| `{name}` |  | {', '.join(markers)} |"
+
+    assert _test_rows(content) == {
+        row("test_unmarked", inherited),
+        row("test_decorated", ["slow", *inherited]),
+        row(
+            "test_already_marked",
+            ["requires_fred", *(m for m in inherited if m != "requires_fred")],
+        ),
+        row("TestGroup.test_method", inherited),
+    }
+
+
+_CAPABILITY_MODULE = textwrap.dedent(
+    """
+    import pytest
+
+    pytestmark = pytest.mark.requires_lseg
+
+
+    def test_needs_lseg():
+        assert True
+
+
+    def test_offline():
+        assert True
+    """
+)
+
+
+@pytest.mark.parametrize(
+    ("edit", "changed"),
+    [
+        pytest.param(
+            lambda source: source.replace("pytestmark = pytest.mark.requires_lseg\n", ""),
+            {"test_needs_lseg", "test_offline"},
+            id="pytestmark-removed",
+        ),
+        pytest.param(
+            lambda source: source.replace("pytestmark = pytest.mark.requires_lseg\n", "").replace(
+                "def test_needs_lseg", "@pytest.mark.requires_lseg\ndef test_needs_lseg"
+            ),
+            {"test_offline"},
+            id="pytestmark-moved-onto-one-test",
+        ),
+    ],
+)
+def test_check_notices_a_pytestmark_edit_that_changes_which_tests_run(
+    tmp_path, capsys, edit, changed
+):
+    """Editing a module-level pytestmark changes test selection, so --check must fail (#121).
+
+    It must name exactly the tests whose markers changed: a test that keeps its
+    mark through a decorator is not stale.
+    """
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    test_file = tests_dir / "test_capability.py"
+    test_file.write_text(_CAPABILITY_MODULE, encoding="utf-8")
+    out = tmp_path / "TEST_REGISTRY.md"
+    argv = ["--tests-dir", str(tests_dir), "--out", str(out)]
+    assert main(argv) == 0
+    assert main([*argv, "--check"]) == 0
+
+    edited = edit(_CAPABILITY_MODULE)
+    assert edited != _CAPABILITY_MODULE  # the edit must actually change the file
+    test_file.write_text(edited, encoding="utf-8")
+    capsys.readouterr()
+
+    assert main([*argv, "--check"]) == 1
+    err = capsys.readouterr().err
+    for name in ("test_needs_lseg", "test_offline"):
+        message = f"tests/test_capability.py::{name}: description or markers differ"
+        assert (message in err) == (name in changed), name
+
+
+def test_class_marks_reach_only_the_tests_that_class_encloses(tmp_path):
+    """A class's mark decorators and pytestmark mark its own tests, nested ones included."""
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_classes.py").write_text(
+        textwrap.dedent(
+            """
+            import pytest
+
+            pytestmark = pytest.mark.requires_fred
+
+
+            def test_module_level():
+                assert True
+
+
+            @pytest.mark.slow
+            class TestMarked:
+                pytestmark = [pytest.mark.requires_lseg]
+
+                def test_method(self):
+                    assert True
+
+                class TestNested:
+                    pytestmark = pytest.mark.requires_data
+
+                    @pytest.mark.parametrize("value", [1])
+                    def test_deep(self, value):
+                        assert value
+
+
+            class TestUnmarked:
+                def test_sibling(self):
+                    assert True
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    content = build_registry(tests_dir, None, tmp_path / "TEST_REGISTRY.md", write=False)
+
+    # Own marks first, then the closest enclosing scope's, out to the module's.
+    assert _test_rows(content) == {
+        "| `test_module_level` |  | requires_fred |",
+        "| `TestMarked.test_method` |  | slow, requires_lseg, requires_fred |",
+        "| `TestMarked.TestNested.test_deep` |  "
+        "| parametrize, requires_data, slow, requires_lseg, requires_fred |",
+        "| `TestUnmarked.test_sibling` |  | requires_fred |",
+    }
+
+
+def test_parse_registry_round_trips_every_real_test_file():
+    """Every real test, with its description and markers, survives render then parse.
+
+    Real descriptions contain ``|``, so a parser that splits rows naively would
+    lose or misread them, and ``--check`` would stop seeing changes to them.
+    """
+    tests_dir = REPO_ROOT / "tests"
+    modules = [parse_test_module(p) for p in sorted(tests_dir.glob("test_*.py"))]
+    parsed = parse_registry(
+        build_registry(tests_dir, None, REPO_ROOT / "unused.md", write=False)
+    ).modules
+
+    assert set(parsed) == {f"tests/{m.path.name}" for m in modules}
+    for module in modules:
+        entry = parsed[f"tests/{module.path.name}"]
+        assert entry.doc == module.doc
+        assert entry.covers == tuple(module.covers)
+        assert sorted(entry.tests) == sorted(
+            (test.name, test.doc, tuple(test.markers)) for test in module.tests
+        )
+
+
+def test_committed_registry_carries_no_run_or_whole_inventory_lines(tmp_path):
+    """No line may depend on more than one test file, or on when it was generated."""
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    _write_fake_test_file(tests_dir)
+    _write_module(tests_dir, "test_other", ["test_one"])
+    out = tmp_path / "TEST_REGISTRY.md"
+
+    before = build_registry(tests_dir, None, out, write=False)
+    _write_module(tests_dir, "test_other", ["test_one", "test_two"])
+    after = build_registry(tests_dir, None, out, write=False)
+
+    # Adding a test to test_other.py changes only test_other.py's section.
+    changed = set(after.splitlines()) ^ set(before.splitlines())
+    assert changed == {"| `test_two` | test_two checks a test_other behaviour. |  |"}
+    # A generation date changes on every regeneration on a new day.
+    assert dt.date.today().isoformat() not in after
+
+
+GIT = shutil.which("git")
+
+
+@pytest.mark.skipif(GIT is None, reason="git is required to perform a real three-way merge")
+@pytest.mark.parametrize(
+    ("ours_change", "theirs_change"),
+    [
+        pytest.param(
+            ("append", "test_alpha_mod", "test_added_on_ours"),
+            ("append", "test_zeta_mod", "test_added_on_theirs"),
+            id="tests-added-to-two-existing-files",
+        ),
+        pytest.param(
+            ("create", "test_beta_new", "test_new_on_ours"),
+            ("create", "test_omega_new", "test_new_on_theirs"),
+            id="two-new-test-files",
+        ),
+    ],
+)
+def test_registries_from_concurrent_test_additions_merge_cleanly(
+    tmp_path, ours_change, theirs_change
+):
+    """Two branches that each add a test must three-way merge with no registry conflict.
+
+    ``git merge-file`` is the same line merge ``git merge`` applies to the file,
+    so a header count, digest, or date line that both sides rewrite fails here.
+    """
+
+    def tree(changes: list[tuple[str, str, str]], name: str) -> Path:
+        tests_dir = tmp_path / name / "tests"
+        tests_dir.mkdir(parents=True)
+        for stem in ("test_alpha_mod", "test_mid_mod", "test_zeta_mod"):
+            _write_module(tests_dir, stem, ["test_first", "test_second"])
+        for kind, stem, test_name in changes:
+            if kind == "append":
+                _append_test(tests_dir / f"{stem}.py", test_name)
+            else:
+                _write_module(tests_dir, stem, [test_name])
+        return tests_dir
+
+    def registry(tests_dir: Path) -> Path:
+        out = tests_dir.parent / "TEST_REGISTRY.md"
+        build_registry(tests_dir, None, out)
+        return out
+
+    base = registry(tree([], "base"))
+    ours = registry(tree([ours_change], "ours"))
+    theirs = registry(tree([theirs_change], "theirs"))
+    merged_tests = tree([ours_change, theirs_change], "merged")
+
+    result = subprocess.run(
+        [GIT, "merge-file", "-p", str(ours), str(base), str(theirs)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+
+    assert result.returncode == 0, f"registry conflict:\n{result.stdout}"
+    merged = tmp_path / "merged" / "TEST_REGISTRY.md"
+    merged.write_text(result.stdout, encoding="utf-8", newline="\n")
+    assert registry_is_current(merged_tests, merged)
+    # Nothing is left to regenerate: the clean merge is what the generator writes.
+    assert result.stdout == build_registry(merged_tests, None, merged, write=False)
+
+
+def _fresh_fake_registry(tmp_path: Path) -> tuple[Path, Path, list[str]]:
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    _write_fake_test_file(tests_dir)
+    out = tmp_path / "TEST_REGISTRY.md"
+    assert main(["--tests-dir", str(tests_dir), "--out", str(out)]) == 0
+    return tests_dir, out, ["--tests-dir", str(tests_dir), "--out", str(out), "--check"]
+
+
+@pytest.mark.parametrize(
+    ("corrupt", "expected_message"),
+    [
+        pytest.param(
+            lambda text: text.replace("| `test_beta` |  | slow |\n", ""),
+            "tests/test_fake_module.py::test_beta: missing from the registry",
+            id="test-missing-from-registry",
+        ),
+        pytest.param(
+            lambda text: text.replace(
+                "| `test_beta` |  | slow |\n",
+                "| `test_beta` |  | slow |\n| `test_removed_long_ago` |  |  |\n",
+            ),
+            "tests/test_fake_module.py::test_removed_long_ago: listed, but not in the test file",
+            id="removed-test-still-listed",
+        ),
+        pytest.param(
+            lambda text: text.replace("| `test_beta` |  | slow |", "| `test_beta` |  |  |"),
+            "tests/test_fake_module.py::test_beta: description or markers differ",
+            id="marker-dropped",
+        ),
+        pytest.param(
+            lambda text: text.replace(
+                "| `test_alpha` | Checks alpha behavior. |  |",
+                "| `test_alpha` | Checks alpha behavior. | slow |",
+            ),
+            "tests/test_fake_module.py::test_alpha: description or markers differ",
+            id="marker-invented",
+        ),
+        pytest.param(
+            lambda text: text.replace("| Checks alpha behavior. |", "| Checks nothing now. |"),
+            "tests/test_fake_module.py::test_alpha: description or markers differ",
+            id="test-description-changed",
+        ),
+        pytest.param(
+            lambda text: text.replace(
+                "Fake test module covering the data manager.", "Fake test module, reworded."
+            ),
+            "tests/test_fake_module.py: module description differs",
+            id="module-description-changed",
+        ),
+        pytest.param(
+            lambda text: text.replace(
+                "**Exercises:** `mci_gru.data.data_manager`", "**Exercises:** `mci_gru.pipeline`"
+            ),
+            "tests/test_fake_module.py: exercised modules differ",
+            id="exercised-modules-changed",
+        ),
+        pytest.param(
+            lambda text: text[: text.index("## `tests/test_fake_module.py`")],
+            "tests/test_fake_module.py: missing from the registry",
+            id="test-file-missing-from-registry",
+        ),
+        pytest.param(
+            lambda text: text.replace("## `tests/test_fake_module.py`", "## `tests/test_gone.py`"),
+            "tests/test_gone.py: listed, but not in the tests directory",
+            id="section-for-a-file-that-does-not-exist",
+        ),
+        pytest.param(
+            lambda text: text + "\n" + text[text.index("## `tests/test_fake_module.py`") :],
+            "tests/test_fake_module.py: listed more than once",
+            id="duplicated-section",
+        ),
+        pytest.param(
+            lambda text: text.replace(
+                "| Test | Description | Markers |\n|---|---|---|",
+                "| Test | Description | Markers | Last run | Time (s) |\n|---|---|---|---|---|",
+            ).replace(
+                "| `test_beta` |  | slow |",
+                "| `test_beta` |  | slow | PASSED | 0.01 |",
+            ),
+            "carries last-run status columns",
+            id="status-columns-committed",
+        ),
+    ],
+)
+def test_check_rejects_known_bad_registries(tmp_path, capsys, corrupt, expected_message):
+    tests_dir, out, check_argv = _fresh_fake_registry(tmp_path)
+    good = out.read_text(encoding="utf-8")
+    assert main(check_argv) == 0  # control: the untouched registry passes
+
+    bad = corrupt(good)
+    assert bad != good  # the corruption must actually change the file
+    out.write_text(bad, encoding="utf-8", newline="\n")
+    capsys.readouterr()
+
+    assert main(check_argv) == 1
+    assert expected_message in capsys.readouterr().err
+    assert out.read_text(encoding="utf-8") == bad  # --check never rewrites
+
+
+def test_check_ignores_order_formatting_and_preamble(tmp_path):
+    tests_dir, out, check_argv = _fresh_fake_registry(tmp_path)
+    _write_module(tests_dir, "test_second_module", ["test_one", "test_two"])
+    assert main(["--tests-dir", str(tests_dir), "--out", str(out)]) == 0
+    text = out.read_text(encoding="utf-8")
+
+    # Swap the two sections, reverse one table's rows, pad cells, and rewrite
+    # the preamble. None of it changes the inventory, so none of it may fail.
+    first_heading = text.index("## `tests/test_fake_module.py`")
+    second_heading = text.index("## `tests/test_second_module.py`")
+    preamble = text[:first_heading]
+    first = text[first_heading:second_heading]
+    second = text[second_heading:]
+    rows = [line for line in second.splitlines() if line.startswith("| `")]
+    second = second.replace("\n".join(rows), "\n".join(reversed(rows)))
+    reshuffled = (
+        preamble.replace("do not edit by hand", "hand edits are overwritten")
+        + second.rstrip("\n")
+        + "\n\n"
+        + first.replace("| `test_beta` |  | slow |", "|  `test_beta`  |   |  slow  |")
+    )
+    out.write_text(reshuffled, encoding="utf-8", newline="\n")
+
+    assert main(check_argv) == 0
+
+
+def test_junit_status_goes_to_a_separate_report_not_the_committed_registry(tmp_path):
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    _write_fake_test_file(tests_dir)
+    out = tmp_path / "TEST_REGISTRY.md"
+    status_out = tmp_path / "reports" / "TEST_REGISTRY_STATUS.md"
+    junit = _junit_for_fake_module(tmp_path / "junit.xml", "0.01", False)
+
+    argv = ["--tests-dir", str(tests_dir), "--out", str(out)]
+    assert main([*argv, "--junit", str(junit), "--status-out", str(status_out)]) == 0
+
+    committed = out.read_text(encoding="utf-8")
+    assert "Last run" not in committed
+    assert "PASSED" not in committed
+    assert not parse_registry(committed).has_status_columns
+    report = status_out.read_text(encoding="utf-8")
+    assert "| `test_alpha` | Checks alpha behavior. |  | PASSED | 0.01 |" in report
+    assert main([*argv, "--check"]) == 0
 
 
 def test_registry_covers_every_real_test_file():

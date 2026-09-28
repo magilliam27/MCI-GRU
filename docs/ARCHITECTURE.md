@@ -48,9 +48,11 @@ preparation → training → prediction → evaluation sequence once per window.
    whatever remains.
 
 4. **PIT mode resolution** — with `data.use_pit_universe=true`, membership
-   intervals are loaded from `data.pit_universe_csv`. `row_filter` (the default
-   mode) drops rows outside `[valid_from, valid_to]`. `masked_panel` keeps every
-   row and defers eligibility to daily masks (step 8).
+   intervals are loaded from `data.pit_universe_csv`. `masked_panel`, the default
+   and the only mode `DataConfig` accepts, keeps every row and defers
+   eligibility to daily masks (step 8). The former `row_filter` mode, which
+   dropped rows outside `[valid_from, valid_to]` but left the correlation graph
+   unrestricted, is rejected at validation (#139).
 
 5. **Normalization** — `data.normalisation=zscore` fits per-feature mean and
    standard deviation on rows with `dt <= data.train_end` only, then applies a
@@ -87,8 +89,10 @@ preparation → training → prediction → evaluation sequence once per window.
 
    The formula makes `model.label_t=1` degenerate: the label becomes
    `close[t+1] / close[t+1] - 1`, identically zero for every stock and date.
-   Nothing in the config layer rejects that value; `scripts/ci_smoke.py` sets
-   `model.label_t=2` for this reason.
+   `ModelConfig` therefore rejects `label_t < 2` at construction (issue #107).
+   Values of 0 or below are rejected as well: they place the exit close at or
+   before the entry close, and the session embargo treats them as having no
+   horizon although the label still reads `close[t+1]`.
 
 8. **Masked-panel eligibility** — `mci_gru/data/pit.py` defines the mask algebra:
 
@@ -236,6 +240,17 @@ matrices `R1` and `R2` of shape `(num_hidden_states, D)`. A1 and A2 query them
 independently. `model.use_nn_multihead_attention` switches between the legacy
 eight-`Linear` implementation and `nn.MultiheadAttention`.
 
+`model.market_latent_mode` decides what those states are:
+
+| Mode | Behaviour |
+|------|-----------|
+| `static` (default) | `R1` and `R2` are plain parameters, frozen after training. Each stock's output is a function of its own vector alone, so **these streams cannot observe the date's market** despite the name (issue #198). |
+| `data_dependent` | The latents first read the date's PIT-active cross-section, then every stock reads those date-conditioned latents (the Set Transformer induced-set construction). Each date in a batch gathers from its own cross-section only, so no date reads another date's names. Inactive names are excluded as attention keys, not merely zeroed, so the gathered state does not drift with the width of the PIT union axis. Requires `use_nn_multihead_attention=true`; the legacy eight-`Linear` path cannot take per-date keys. |
+
+The two modes hold different parameters, so a checkpoint belongs to the mode
+that produced it. `static` remains the default and the frozen recipe is
+unchanged.
+
 ### Prediction head
 
 `[A1, A2, B1, B2]` are concatenated in that order (the order `SelfAttention`'s
@@ -244,6 +259,14 @@ optionally mixed across stocks by `SelfAttention`
 (`mci_gru/models/attention.py`), then passed through a final `GATBlock` to one
 score per stock. `model.output_activation` selects identity, ELU, ReLU, or
 sigmoid.
+
+`model.cross_section_block` selects how that cross-stock mixing is applied.
+`legacy`, the default, replaces the concatenated vector with the attention
+output. `residual` wraps the same attention in `ResidualCrossSectionBlock` as
+`z + SelfAttention(LayerNorm(z))`, so the attention corrects the vector rather
+than replacing it, and re-applies the stock mask after the add. The two forms
+have disjoint parameter names, so a checkpoint loads only into the form that
+produced it.
 
 During training, `graph.drop_edge_p` drops correlation and sector edges through
 `torch_geometric.utils.dropout_edge`. When a stock mask is supplied, masked nodes
@@ -372,8 +395,11 @@ fails closed**: IC metrics are `None` rather than `0.0` when no rows are
 eligible, and `ValidationObservation.selection_value()` raises `ValueError` when
 the configured `training.selection_metric` has fewer than
 `training.minimum_selection_rows` eligible rows. Early stopping and checkpointing
-both use that single metric; the co-metrics recorded in `TrainingResult` come
-from the selected epoch whenever they are available on it.
+both use that single metric. `TrainingResult.best_val_loss`, `best_val_ic`, and
+`best_val_rank_ic` are the selected checkpoint's own validation observation,
+the epoch saved at `best_model_path`; a metric unavailable on that epoch is
+`None`, never a value carried over from another epoch or an infinite sentinel
+(`tests/test_checkpoint_metrics.py`).
 
 `mci_gru/training/ensemble.py` implements the ensemble contract.
 `train_multiple_models()` builds `training.num_models` independent models; member
@@ -383,6 +409,15 @@ from the selected epoch whenever they are available on it.
 mean across members. Prediction CSVs have `kdcode,dt,score` rows, round scores to
 five decimal places, and omit masked or non-finite names — so in masked PIT mode
 a date's CSV contains only that date's tradable candidates.
+
+`run_experiment.py` writes the members' selected-checkpoint metrics to
+`training_summary.json` through `build_training_summary()`
+(`mci_gru/training/summary.py`). `best_val_losses`, `best_val_ics`, and
+`best_val_rank_ics` keep one slot per member, `null` where the metric was
+unavailable at that member's selected checkpoint. Each `mean_best_val_*`
+averages only the available finite member values, is `null` when none is
+available, and `member_coverage` records the available and total member counts
+(`tests/test_training_summary.py`).
 
 ## Walk-Forward Windows
 
@@ -400,8 +435,13 @@ sections with only `data.*` dates rewritten, so per-window evaluation uses the
 configured `EvaluationConfig` rather than defaults
 (`tests/test_walkforward_config_propagation.py`).
 
-`merge_walkforward_summary()` aggregates per-window training summaries and the
-mean of each numeric evaluation metric across windows;
+`merge_walkforward_summary()` aggregates per-window training summaries with
+equal weight per window: each `mean_best_val_*_across_windows` averages the
+windows whose own `mean_best_val_*` is available, `window_coverage` records the
+available and total window counts separately from each window's
+`member_coverage`, non-finite values from older summaries (such as `-inf`)
+count as unavailable, and an aggregate with no available window is `null`. It
+also takes the mean of each numeric evaluation metric across windows;
 `select_training_objective_value()` returns the aggregate matching
 `training.selection_metric`.
 

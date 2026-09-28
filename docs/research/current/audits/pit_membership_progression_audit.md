@@ -7,7 +7,7 @@ This audit makes the Joiner/Leaver point-in-time membership progression visible 
 - Changes: `data/raw/constituents/sp500_pit_joiner_leaver_20160101_20260513_changes.csv`
 - Snapshots: `data/raw/constituents/sp500_pit_joiner_leaver_20160101_20260513_snapshots.csv`
 - PIT-union market panel: `data/raw/market/sp500_pit_union_lseg_20150101_20260513.csv`
-- Snapshot progression CSV: `docs/audits/pit_membership_progression_snapshot_counts.csv`
+- Snapshot progression CSV: `docs/research/current/audits/pit_membership_progression_snapshot_counts.csv`
 
 ## Summary
 

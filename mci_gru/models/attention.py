@@ -3,6 +3,40 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+def _apply_stock_mask(values: torch.Tensor, stock_mask: torch.Tensor) -> torch.Tensor:
+    """Zero the rows of ``values`` belonging to PIT-inactive stocks."""
+    mask = stock_mask.to(dtype=torch.bool, device=values.device)
+    return values * mask.unsqueeze(-1).to(values.dtype)
+
+
+class ResidualCrossSectionBlock(nn.Module):
+    """Pre-norm residual wrapper around a cross-stock attention module.
+
+    ``SelfAttention`` alone *replaces* the trunk vector ``z`` with its output.
+    When its attention is close to uniform, that hands every stock the same
+    cross-sectional average and a stock's own features stop reaching the score
+    head. Wrapping it as ``z + Attn(LayerNorm(z))`` makes the attention a
+    correction to ``z`` rather than a substitute for it.
+
+    The LayerNorm is unconditional: it is what makes the attention's correction
+    depend on a stock's shape rather than on its level, so a per-stock constant
+    offset leaves that correction unchanged.
+    """
+
+    def __init__(self, inner: nn.Module, embed_dim: int):
+        super().__init__()
+        self.inner = inner
+        self.norm = nn.LayerNorm(embed_dim)
+
+    def forward(self, x: torch.Tensor, stock_mask: torch.Tensor | None = None) -> torch.Tensor:
+        out = x + self.inner(self.norm(x), stock_mask=stock_mask)
+        if stock_mask is not None:
+            # The residual reintroduces the raw input, including rows the inner
+            # module zeroed, so the mask has to be applied again after the add.
+            out = _apply_stock_mask(out, stock_mask)
+        return out
+
+
 class SelfAttention(nn.Module):
     """
     Self-attention over the cross-section (stocks) for each batch item.
@@ -61,5 +95,5 @@ class SelfAttention(nn.Module):
             attn = attn / attn.sum(dim=-1, keepdim=True).clamp_min(1e-12)
         out = torch.matmul(attn, v)
         if stock_mask is not None:
-            out = out * mask.to(out.dtype)[:, :, None]
+            out = _apply_stock_mask(out, mask)
         return out

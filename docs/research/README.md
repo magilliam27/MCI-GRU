@@ -1,9 +1,10 @@
 # Research Evidence
 
-This directory defines the lifecycle for MCI-GRU research evidence. Existing
-reports in the docs root are not moved in this first organization pass; this
-file is the status map that tells agents which reports are current evidence and
-which need later archive review.
+This directory defines the lifecycle for MCI-GRU research evidence. Reports live
+under `current/` or `archive/`; the `docs/` root holds canonical guides only, and
+`scripts/check_docs_sot.py` refuses a dated report placed there. This file is the
+status map that tells agents which reports are current evidence and which are
+superseded.
 
 ## Lifecycle
 
@@ -11,9 +12,10 @@ which need later archive review.
   validation, data, or experiment decisions.
 - **Superseded Research Evidence**: a report whose facts remain useful history
   but whose conclusion has been replaced by newer evidence.
-- **Research Archive**: the future home for superseded summary reports. Bulky
-  artifacts, raw results, checkpoints, and run folders should stay in Drive or
-  external artifact storage, with links or run IDs recorded in the summary.
+- **Research Archive**: the home for superseded summary reports, with one
+  status line per report in `archive/README.md`. Bulky artifacts, raw results,
+  checkpoints, and run folders stay in Drive or external artifact storage, with
+  links or run IDs recorded in the summary.
 
 Current evidence must be traceable to a real run, reviewed source, or explicit
 decision record. Synthetic fixtures, example values, and files generated under
@@ -28,8 +30,9 @@ label them as synthetic rather than promoting them into `current/`.
 | Report | Status |
 | --- | --- |
 | `docs/research/current/MCI_GRU_TOP_UNIVERSITY_RESEARCH_SCAN_2026-06-21.md` | Promoted active research map for implementation planning. Use this June 21 top-university-gated scan before the broader June 19 opportunity scan when prioritizing testing, backtesting, evidence-harness, data, model, loss, or paper-trade work. |
-| `docs/research/current/MCI_GRU_PROGRAM_MAP_2026-06-19.md` | Current structural companion map for MCI-GRU components and safe tweak surfaces. |
-| `docs/research/current/MCI_GRU_RESEARCH_OPPORTUNITY_SCAN_2026-06-19.md` | Superseded as the main prioritization map by the June 21 top-university-gated scan; keep as broader background and source-lead history. |
+
+The June 19 program map and opportunity scan are archived; `docs/agents/guide.md`
+now carries the routing role, and the status lines are in `archive/README.md`.
 
 ### PIT, Backtest, And Volatility-Targeting Evidence
 
@@ -52,6 +55,17 @@ chosen on measured evidence" (issue #157).
 | `docs/research/current/GRAPH_SPECIFICATION_ABLATION_2026-09-01.md` | Current result of the graph-specification ablation run under the ticket-164 protocol (ticket 167): five arms — graph-zeroed control, shipped threshold 0.8, threshold 0.5, top-K 20, sector-relation-only — at screen (3 × 20) and frozen-recipe confirm (20 × 100) on the PIT 110-name 2016 universe. The graph-zeroed control ranks first on the decided arbiter (test-span pooled daily IC) at both stages, no arm separates from it, and every 95% CI contains zero. Read before quoting any arm-against-arm result; read its section 7 before quoting Sharpe, rank-IC, or composite figures, which order the arms differently from the arbiter. |
 | `docs/research/current/GRAPH_PAIRED_REANALYSIS_2026-09-02.md` | Current paired re-analysis of the 2026-09-01 graph-specification ablation (ticket 179, Phase 0 of the multi-year protocol proposal on issue #157): every arm scored against the graph-zeroed control on the same 238 test days with overlap-aware HAC and block-bootstrap inference and BHY across the four comparisons; Spearman, winsorised, and median sensitivity; Sharpe with bootstrap error bars; seed-paired per-model IC; the ensemble-scale audit; and the power table (`sd(Δ)` per arm and the minimum detectable effect by pooled test days). No arm separates from the control on any variant, and every 2025 gap is below its arm's four-fold minimum detectable effect. Read before sizing or designing any multi-year graph protocol; read its section 6 before quoting a detectable-effect figure, and its section 3 before quoting the per-year IC table from the ablation report, which used a different label. |
 
+### Data Engineering Evidence
+
+Evidence produced under the Wayfinder map "MCI-GRU data engineering: dataset identity,
+quality contracts, and safe pulls" (issue #187).
+
+| Report | Status |
+| --- | --- |
+| `docs/research/current/DATA_INPUT_INVENTORY_2026-09-05.md` | Current inventory of every data input MCI-GRU can read (ticket 188): 83 rows covering the 70 files present under the protected checkout's `data/raw/` (1,013,195,582 bytes, every one SHA-256 hashed read-only) plus 13 referenced-but-absent paths. Live configs depend on 10 distinct files; 4 of those have no sidecar; 0 of 12 sidecars carry a checksum; 5 of the 10 are covered by an external preservation manifest, all 20 manifest rows matching the bytes on disk. Read before quoting any count of data files, sidecars, or manifests, and before choosing which files a manifest backfill must cover. Its status note of 2026-09-27 records what later work addressed: the selected package's Git-tracked manifest (#205), consumed-input identity (#191), and the #212 retirement, after which live configs name 9 files. |
+| `docs/research/current/DATA_LOAD_PATH_AUDIT_2026-09-05.md` | Current audit of what the data load path checks today (ticket 189), traced from config to tensors with a scripted reproduction for each finding against synthetic CSVs: 32 silent or warning-only failure modes (27 fully silent, 5 warning-only) across `_load_from_csv`, the index, VIX, credit and regime loaders, `resolve_project_data_path`, `data_file_fingerprint`, the PIT interval loader and masks, `load_sector_map_csv`, and preprocessing, plus the three fail-closed precedents a contract would follow. Read before implementing the data quality contract ruled on #193 (now split across #223, #224 and #225), and before asserting that any load-time check exists. Its status note of 2026-09-27 records a re-run on the merged tree, in which 31 of 32 failure modes reproduce and S8 now raises under pandas 3. It also records what #191 addressed and the split of the remaining failure modes across #223, #224 and #225. |
+| `docs/research/current/DATA_IDENTITY_MECHANISMS_2026-09-05.md` | Current comparison of the four dataset-identity mechanisms (ticket 190): hardened sidecars, DVC, Git LFS, and a home-grown content-addressed store, assessed against this repository's corpus, hosting, Drive staging, worktree and Windows constraints from 31 primary sources read on 2026-09-05. Records the GitHub LFS free-tier quota (10 GiB storage, 10 GiB per month bandwidth, metered overage), DVC's MD5-only hash and blocked default Google Drive app, and the blast radius of each option. Read before revisiting the identity mechanism, which was ruled on #192, and read its Sources section before quoting any vendor quota or version. Its status note of 2026-09-27 records the owner's #192 ruling (option A, SHA-256 package manifests) and what #205 and #191 implemented. |
+
 ### Loss-Path Evidence
 
 | Report | Status |
@@ -60,29 +74,39 @@ chosen on measured evidence" (issue #157).
 | `docs/research/current/LOSS_PATH_DECISION_2026-06-04.md` | Current June 4 conservative loss-path decision note; read with later handoffs before making LambdaRankIC readiness claims. |
 | `docs/research/current/LOSS_PATH_EXPERIMENTAL_SEARCH_2026-06-04.md` | Current exploratory companion for uncertainty-adjusted ranking, distributional heads, and deferred optimizer-style losses. |
 
-Keep these root-level reports easy to find until a follow-up pass moves or
-reclassifies them:
+### Trunk Architecture Evidence
+
+Evidence behind the two trunk construction defects filed as issues #197 and #198.
 
 | Report | Status |
 | --- | --- |
-| `docs/PIT_UNIVERSE_REPORT.md` | Current evidence for PIT universe construction and membership behavior. |
-| `docs/PIT_LSEG_ALIAS_COVERAGE_AUDIT_2026-05-16.md` | Current evidence for PIT/LSEG alias coverage. |
-| `docs/PIT_MASKED_PANEL_2022_2025_FULL_RUN_REPORT_2026-05-16.md` | Current evidence for masked-panel full-run interpretation. |
-| `docs/LONG_HISTORY_PIT_EVAL_RESULTS_2026-05-18.md` | Current evidence for long-history PIT evaluation. |
-| `docs/PIT_REPEATED_SEED_OPTION_A_RESULTS_2026-05-21.md` | Current evidence for repeated-seed PIT replication, if present in the worktree. |
-| `docs/TSFM_PREDICTION_REPORT.md` | Current method reference for saved-prediction evaluation reports. |
+| `docs/research/current/MCI_GRU_TRUNK_ARCHITECTURE_OPPORTUNITIES_2026-09-05.md` | Current trunk-architecture map: information-flow diagnostics on the four-stream trunk, and a pre-registered trunk-hygiene ablation (arms C0 to C5: no cross-stock block, a residual cross-stock block, a market-state gate, data-dependent latents, capacity-matched widths) under the paired protocol ruled on #181. Section 3.7 is the authoritative measurement. On the 110-name PIT universe with trained checkpoints, the shipped cross-stock block cuts the cross-sectional variance share from 0.433 to 0.024 and effective rank from 3.6 to 1.6; the residual form keeps 0.329 of 0.403. Mechanics-level, not performance evidence: section 3.8 shows every IC ordering inverting between two seeds. Read the correction note in section 3.6 before quoting any step-time cost. The scripts and raw outputs behind the figures are in `trunk_architecture_diagnostics_2026-09-05/` beside it. The looped-transformer brief that started the investigation is `docs/research-paper-evaluations/2026-09-05-looped-transformers-recurrent-depth.md`. |
 
-## Archive Review Queue
+### Point-In-Time Universe And Evaluation Evidence
 
-These reports should be reviewed before any move. Do not archive them just
-because they are dated.
-
-| Report | Review note |
+| Report | Status |
 | --- | --- |
-| `docs/ABLATION_NOTEBOOK_RESULTS_REPORT_2026-04-30.md` | Decide whether newer PIT evidence supersedes its recommendations. |
-| `docs/FULL_FEATURE_FACTORIAL_ABLATION.md` | Decide whether it is an active experiment design or historical planning note. |
-| `docs/MODERN_DEFAULTS_HANDOFF_2026.md` | Handoff-like status document; keep separate from research evidence if retained. |
-| `docs/BACKTEST_FAIRNESS_AUDIT.md` | Historical fairness audit with useful caveats; canonical status should be checked against current code. |
+| `docs/research/current/PIT_UNIVERSE_REPORT.md` | Current evidence for PIT universe construction and membership behavior. Its alias-coverage companion and two CSVs sit beside it. |
+| `docs/research/current/PIT_LSEG_ALIAS_COVERAGE_AUDIT_2026-05-16.md` | Current evidence for PIT/LSEG alias coverage. |
+| `docs/research/current/PIT_MASKED_PANEL_2022_2025_FULL_RUN_REPORT_2026-05-16.md` | Current evidence for masked-panel full-run interpretation. Its membership-progression audit and CSV are under `current/audits/`. |
+| `docs/research/current/LONG_HISTORY_PIT_EVAL_RESULTS_2026-05-18.md` | Current evidence for long-history PIT evaluation. |
+| `docs/research/current/PIT_REPEATED_SEED_OPTION_A_RESULTS_2026-05-21.md` | Current evidence for repeated-seed PIT replication. |
+| `docs/research/current/TSFM_PREDICTION_REPORT.md` | Current method reference for saved-prediction evaluation reports. |
+
+## Archive
+
+Superseded reports live under `archive/`. `archive/README.md` carries one status
+line per report saying what replaced it, which artifacts support it, and what
+still stands as background; it is the only list of archived reports.
+
+## Drive Links
+
+Run folders and artifacts cited by these reports live in the maintainer's Google
+Drive, which is private; a link there is a permission wall for anyone else. The
+tables and figures inside each report are the public record. Run-backed reports
+carry their run identity (run tag and Drive folder, and where recorded the commit
+and data hash) so a maintainer can locate the artifact; literature scans and
+method notes cite their sources instead.
 
 ## Handoffs
 

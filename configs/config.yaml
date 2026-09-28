@@ -10,6 +10,30 @@ defaults:
   - features: with_momentum
   - _self_
 
+# Auxiliary acquisition is explicitly selected per enabled role (vix, credit,
+# regime, index). A missing file never selects a provider automatically.
+# regime and index are declared fred (maintainer decision of 2026-09-28 on
+# #206), so the frozen recipe still requests its six FRED regime series. The
+# typed DataConfig default is the same mapping.
+# credit stays unselected: FRED's ICE BofA OAS history is reportedly only about
+# three years long, and the credit features zero-fill missing history instead
+# of stopping. vix stays undeclared because an absent vix key already means the
+# implicit vix_data.csv file.
+# A legacy features.regime_inputs_csv or data.index_filename takes precedence
+# over these selections.
+# Overrides: ++data.auxiliary_sources.<role>=<source> works for every role; +
+# fails for a declared role and the bare form for an undeclared one.
+# ~data.auxiliary_sources.<role> removes a declared role. Neither
+# data.auxiliary_sources={} (Hydra merges it into this mapping) nor
+# ~data.auxiliary_sources (the typed default then applies) clears the mapping.
+data:
+  auxiliary_sources:
+    regime: fred
+    index: fred
+  auxiliary_snapshot_mode: source  # source | capture | replay
+  auxiliary_snapshot_directory: null
+  auxiliary_snapshot_references: {}
+
 # Model configuration
 model:
   his_t: 10                    # Historical lookback (days)
@@ -35,6 +59,8 @@ model:
   temporal_encoder: gru_attn    # legacy | gru_attn | transformer
   use_a1_a2_cross_attention: false
   cross_a2_num_heads: 4
+  cross_section_block: legacy  # legacy | residual (issue #197; legacy replaces z, residual corrects it)
+  market_latent_mode: static  # static | data_dependent (issue #198; static latents cannot see the date)
 
 # Graph configuration
 graph:

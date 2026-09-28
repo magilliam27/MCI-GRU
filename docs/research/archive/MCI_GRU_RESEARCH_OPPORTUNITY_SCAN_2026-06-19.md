@@ -1,6 +1,6 @@
 # MCI-GRU Research Opportunity Scan - 2026-06-19
 
-Companion document: `docs/research/current/MCI_GRU_PROGRAM_MAP_2026-06-19.md`.
+Companion document: `docs/research/archive/MCI_GRU_PROGRAM_MAP_2026-06-19.md`.
 
 This scan fans out from the program map into 17 component lanes. Each lane was
 handled as a read-only research task, with emphasis on practical techniques that

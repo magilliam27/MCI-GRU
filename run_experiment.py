@@ -35,7 +35,6 @@ from time import perf_counter
 from typing import Any
 
 import hydra
-import numpy as np
 import torch
 from omegaconf import DictConfig, OmegaConf
 
@@ -44,8 +43,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mci_gru.config import create_config_from_dict
 from mci_gru.data.data_manager import create_data_loaders
 from mci_gru.evaluation.experiment_summary import (
+    build_run_metadata,
     compute_evaluation_summary,
-    data_file_fingerprint,
     select_training_objective_value,
     write_resolved_config,
 )
@@ -55,6 +54,7 @@ from mci_gru.models import create_model
 from mci_gru.pipeline import prepare_data, prepare_data_index_level
 from mci_gru.tracking import MLflowTrackingManager
 from mci_gru.training import train_multiple_models
+from mci_gru.training.summary import build_training_summary
 from mci_gru.utils.seeding import set_seed
 from mci_gru.walkforward import generate_walkforward_configs, merge_walkforward_summary
 
@@ -175,24 +175,13 @@ def main(cfg: DictConfig):
                 data = prepare_data(cfg_w, feature_engineer)
             timing_summary["phases"]["prepare_data_seconds"] = perf_counter() - phase_started
 
-            metadata = {
-                "norm_means": {k: float(v) for k, v in data["norm_means"].items()},
-                "norm_stds": {k: float(v) for k, v in data["norm_stds"].items()},
-                "feature_cols": data["feature_cols"],
-                "kdcode_list": data["kdcode_list"],
-                "his_t": cfg_w.model.his_t,
-                "label_t": cfg_w.model.label_t,
-                "seed": cfg_w.seed,
-                "train_end": cfg_w.data.train_end,
-                "data_file": cfg_w.data.filename,
-                "walkforward_window": wi,
-                **resolved_config_identity,
-                "graph_static_valid_from": data.get("graph_static_valid_from"),
-                "feature_reference_path": "feature_reference.json",
-                "pit_universe_mode": data.get("pit_universe_mode"),
-                "pit_breadth": data.get("pit_breadth"),
-                **data_file_fingerprint(cfg_w.data.filename, logger),
-            }
+            metadata = build_run_metadata(
+                cfg_w,
+                data,
+                walkforward_window=wi,
+                resolved_config_identity=resolved_config_identity,
+                logger=logger,
+            )
             metadata_path = os.path.join(wpath, "run_metadata.json")
             with open(metadata_path, "w") as f:
                 json.dump(metadata, f, indent=2)
@@ -294,24 +283,11 @@ def main(cfg: DictConfig):
                     perf_counter() - phase_started
                 )
 
-                best_val_losses = [r.best_val_loss for r in results]
-                best_val_ics = [r.best_val_ic for r in results]
-                best_val_rank_ics = [r.best_val_rank_ic for r in results]
-                training_summary = {
-                    "experiment_name": cfg_w.experiment_name,
-                    "models_trained": len(results),
-                    "best_val_losses": best_val_losses,
-                    "best_val_ics": best_val_ics,
-                    "best_val_rank_ics": best_val_rank_ics,
-                    "mean_best_val_loss": float(np.mean(best_val_losses))
-                    if best_val_losses
-                    else None,
-                    "mean_best_val_ic": float(np.mean(best_val_ics)) if best_val_ics else None,
-                    "mean_best_val_rank_ic": (
-                        float(np.mean(best_val_rank_ics)) if best_val_rank_ics else None
-                    ),
-                    "walkforward_window": wi,
-                }
+                training_summary = build_training_summary(
+                    results,
+                    experiment_name=cfg_w.experiment_name,
+                    walkforward_window=wi,
+                )
                 training_summary_path = os.path.join(wpath, "training_summary.json")
                 with open(training_summary_path, "w") as f:
                     json.dump(training_summary, f, indent=2)

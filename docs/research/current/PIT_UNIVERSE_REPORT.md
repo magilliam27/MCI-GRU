@@ -147,9 +147,9 @@ unresolved originals against the PIT universe and the LSEG PIT-union market
 panel. The exported artifacts are:
 
 ```text
-docs/PIT_LSEG_ALIAS_COVERAGE_AUDIT_2026-05-16.md
-docs/PIT_LSEG_ALIAS_COVERAGE_AUDIT_2026-05-16_candidates.csv
-docs/PIT_LSEG_ALIAS_COVERAGE_AUDIT_2026-05-16_daily_impact.csv
+docs/research/current/PIT_LSEG_ALIAS_COVERAGE_AUDIT_2026-05-16.md
+docs/research/current/PIT_LSEG_ALIAS_COVERAGE_AUDIT_2026-05-16_candidates.csv
+docs/research/current/PIT_LSEG_ALIAS_COVERAGE_AUDIT_2026-05-16_daily_impact.csv
 ```
 
 Result:

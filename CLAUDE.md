@@ -59,8 +59,10 @@ workstyle holds on a cold start without anyone typing a command:
 - **`work-the-map`** — the AFK half of `wayfinder`: load a map, recompute the
   frontier, claim, resolve, record, fold state back into the body. It refuses
   to chart, **stops at any HITL ticket** rather than answering its own grilling
-  questions, and resolves at most one ticket per session — research tickets
-  excepted, which the skill may fan out.
+  questions, and claims the next ticket only after the previous one has landed
+  (its pull request merged by you, or for a no-code ticket its resolution
+  recorded and the ticket closed) — research tickets excepted, which the skill
+  may fan out.
 - **`implement-ticket`** — the implementation loop: claim before branching with
   owned paths declared, `/mattpocock-skills:tdd` at seams confirmed with you,
   mutation-checking, `/mattpocock-skills:code-review`, draft pull request.
@@ -190,6 +192,21 @@ as expected rather than as a violation.
   root quotes the correct policy while running the wrong skill set, with no
   warning. Start at the workspace root. `claude --setting-sources user` and SDK
   entrypoints load neither file regardless of directory.
+- **`.claude/skills/` does not follow the settings rule above, and the
+  placement works: the skills do load** (observed in the skill listing, #168).
+  The "skill set" in that bullet is the plugin set `.claude/settings.json`
+  enables, read from the working directory only (in a linked worktree,
+  project-scope plugins from the main checkout also load, v2.1.200 or later).
+  Documented (`code.claude.com/docs/en/skills` and `/docs/en/worktrees`, read
+  2026-09-27), not yet reproduced on this machine: project skills load from
+  `.claude/skills/` in the starting directory and each parent up to the
+  repository root, or the worktree root in a linked worktree; a worktree with no
+  `.claude/skills/` of its own loads the main checkout's (v2.1.277 or later); a
+  skills directory created after start is not watched, so run `/reload-skills`
+  after each change there. Observed on #168 and unexplained by those pages: the
+  skills appeared mid-session in a worktree that held no copy. A missing skill is
+  never a reason to move content out of `.claude/skills/`; record any repeat on
+  the tracker.
 - Load-bearing tests are mutation-checked: break the behaviour, confirm the test
   fails, restore, confirm it passes, and report the table. Three shipped defects
   in this repository survived because their guarding tests were vacuous.
@@ -213,7 +230,17 @@ as expected rather than as a violation.
   would have returned plausible, wrong numbers silently.
   - The isolated launcher is **unaffected**: it prepends `REPOSITORY_ROOT` to
     the child's `PYTHONPATH` (`scripts/run_pytest_isolated.py:220`, `:231`), and
-    that is guarded by `tests/test_run_pytest_isolated.py:151`.
+    that is guarded by `tests/test_run_pytest_isolated.py:151`. It is also why a
+    worktree with no `.venv` and no `data/raw/*.csv` of its own still runs the
+    suite green, though it looks unusable. From the worktree root, borrow the
+    protected checkout's interpreter:
+
+    ```powershell
+    C:\Users\magil\MCI-GRU\.venv\Scripts\python.exe scripts/run_pytest_isolated.py tests/ -v
+    ```
+
+    Keep the script path relative. `REPOSITORY_ROOT` comes from the launcher's
+    own location, so the protected checkout's copy would test that tree instead.
   - For an ad-hoc script, either run it through the launcher, or pin the
     worktree yourself with `sys.path.insert(0, <worktree root>)` or
     `PYTHONPATH`. When the answer matters, have the script print
@@ -222,8 +249,10 @@ as expected rather than as a violation.
     protected checkout's venv, and the shared mapping is what lets every
     worktree use one environment.
 - Any branch that adds or renames a test must regenerate `docs/TEST_REGISTRY.md`
-  or CI lint fails. Run the suite with `--junitxml=test_reports\junit.xml` first
-  so statuses are recorded rather than blank.
+  or CI lint fails. The committed registry records the test inventory only, so no
+  suite run is needed first; last-run status goes to a separate, gitignored
+  report with `--junit test_reports\junit.xml`. On a registry merge conflict,
+  take either side and regenerate.
 - `gh issue edit` and `gh pr create`: always `--body-file` pointing at a
   UTF-8-without-BOM file. `--body` mangles non-ASCII on Windows PowerShell and
   the corruption compounds across successive edits.
@@ -245,7 +274,13 @@ as expected rather than as a violation.
   correct by accident and the tracker recorded the wrong cause. The same applies
   to comments you post and to scripts that echo these strings: scan your own
   text for a closing keyword within a few words of a `#`-prefixed number before
-  publishing it.
+  publishing it. This scan caught three near-misses in one session, one of them
+  in a comment written about this trap. It should find nothing, except a
+  deliberate `Closes #<N>` on the pull request that implements ticket N:
+
+  ```powershell
+  [regex]::Matches($text,'(?i)\b(clos(e|es|ed)|fix(e[sd])?|resolv(e|es|ed))\b[^.\n]{0,40}#\d+')
+  ```
 - Retargeting a pull request's base fires an `edited` event, which is not in the
   default `pull_request` trigger set, so CI will not run. Close and reopen the
   pull request to trigger it. Never merge on "no checks reported".
@@ -253,8 +288,37 @@ as expected rather than as a violation.
   `ConvertFrom-Json` instead.
 - Pytest `addopts` overrides `-q`; use `-o addopts=` when you need clean node
   identifiers.
-- Piping `git archive` into `tar` corrupts the stream on Windows. Write the
-  archive to a file first.
+- **These traps fail in the direction that looks like success.** Each was caught
+  here only by a control; without one it would have been reported as a result.
+  - PowerShell variable names are case-insensitive: `$d` is `$D` and `$r` is
+    `$R`, so a loop variable silently overwrites a path held in its capitalised
+    twin. That cost twice in one session. A file comparison called five of six
+    identical files different, and a closing fingerprint read `dirty: 0` because
+    every later `git -C` ran against the mangled path.
+  - `$pid` is `$PID`, a read-only automatic variable. Assigning to it fails,
+    and under `$ErrorActionPreference = 'Continue'` the script carries on with
+    the process id in place. That broke a patch-id index: every commit fell
+    through to subject-line matching, weak evidence dressed as strong.
+  - PowerShell 5.1 wraps a native command's stderr in an ErrorRecord. So git's
+    expected `.pytest-tmp/` warning terminates any script that runs under
+    `$ErrorActionPreference = 'Stop'`. Use `'Continue'` with explicit
+    `$LASTEXITCODE` checks, and do not redirect native stderr.
+  - PowerShell 5.1 reads a `.ps1` without a BOM as ANSI, so every em-dash
+    becomes `â€”`. That corrupted issue-body text before it was posted. Keep
+    generated scripts ASCII-only, and check payloads for `Ã`, `â€`, and `Â`
+    before publishing.
+  - Piping one native command into another through PowerShell corrupts the
+    stream. That happens with `git archive` into `tar`, and with `git diff` into
+    `git patch-id`, where the symptom was an empty index rather than an error.
+    Write to a file first (`git diff --output=<file>`) and read that.
+  - `git rev-parse` echoes its argument when the object is missing, so a
+    non-empty result proves nothing. It produced a false `0 absent` in an audit
+    of which paths a backup ref covered. Use `git cat-file -e <rev>:<path>` and
+    test `$LASTEXITCODE`.
+  - `%(objectname:short)` is as long as git chooses, which was 7 characters.
+    Matching it against an 8-character SHA is therefore a false negative. It
+    reported a commit as referenced by nothing when it was the tip of a branch
+    on `origin`. Search refs by full object name.
 - `gh auth status --hostname github.com` must be run standalone. A sandboxed
   result is not authoritative on this machine.
 - The connected GitHub app is not usable from Claude Code. In CLI sessions no

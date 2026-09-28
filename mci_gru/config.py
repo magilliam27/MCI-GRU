@@ -22,6 +22,13 @@ class DataConfig:
         filename: Path to CSV file (used when source='csv')
         experiment_mode: 'stock_level' (cross-sectional stocks) or 'index_level' (single index series; no survivorship bias)
         index_filename: Path to index CSV with dt, close (used when experiment_mode='index_level'); if None, use FRED SP500
+        auxiliary_sources: Explicit source per auxiliary role (vix, credit, regime, index),
+            independent of ``source``. Defaults to {"regime": "fred", "index": "fred"}, the
+            same mapping as configs/config.yaml. An absent role selects no provider: vix
+            reads the implicit vix_data.csv, and credit, regime or index stops with
+            source_not_selected when used. A legacy regime_inputs_csv or index_filename
+            takes precedence over any selection. Unknown role keys fail here; an
+            unsupported source fails when its role loads.
         train_start: Training period start date
         train_end: Training period end date
         val_start: Validation period start date
@@ -36,8 +43,11 @@ class DataConfig:
             (train / val / test) and intersect; mitigates full-calendar survivorship bias.
         use_pit_universe: If True, apply ``pit_universe_csv`` row validity when set.
         pit_universe_csv: Optional CSV with kdcode, valid_from, valid_to for PIT filtering.
-        pit_universe_mode: ``row_filter`` keeps the legacy row-filter flow;
-            ``masked_panel`` keeps a fixed PIT union axis and uses daily masks.
+        pit_universe_mode: ``masked_panel`` (the default and the only accepted
+            value) keeps a fixed PIT union axis and uses daily masks. The legacy
+            ``row_filter`` mode is rejected: it dropped rows outside PIT
+            membership while the correlation graph still linked names outside
+            the universe (#139).
         pit_min_scoreable_stocks: Minimum expected PIT-tradable candidates per normal date.
         pit_breadth_policy: ``error``, ``warn``, or ``off`` when candidate breadth is low.
     """
@@ -47,6 +57,14 @@ class DataConfig:
     filename: str = "data/raw/market/sp500_data.csv"
     experiment_mode: str = "stock_level"
     index_filename: str | None = None
+    # Explicit auxiliary selections are independent of the stock-panel source.
+    # Same mapping as configs/config.yaml, so direct Python callers get it too.
+    auxiliary_sources: dict[str, str] = field(
+        default_factory=lambda: {"regime": "fred", "index": "fred"}
+    )
+    auxiliary_snapshot_mode: str = "source"
+    auxiliary_snapshot_directory: str | None = None
+    auxiliary_snapshot_references: dict[str, list[dict[str, str]]] = field(default_factory=dict)
     train_start: str = "2019-01-01"
     train_end: str = "2023-12-31"
     val_start: str = "2024-01-08"
@@ -59,7 +77,7 @@ class DataConfig:
     filter_stocks_per_split: bool = False
     use_pit_universe: bool = False
     pit_universe_csv: str | None = None
-    pit_universe_mode: str = "row_filter"
+    pit_universe_mode: str = "masked_panel"
     pit_min_scoreable_stocks: int = 450
     pit_breadth_policy: str = "error"
 
@@ -83,10 +101,13 @@ class DataConfig:
             raise ValueError(
                 f"normalisation must be 'zscore' or 'rank_gauss', got {self.normalisation!r}"
             )
-        if self.pit_universe_mode not in ("row_filter", "masked_panel"):
+        if self.pit_universe_mode != "masked_panel":
             raise ValueError(
-                "pit_universe_mode must be 'row_filter' or 'masked_panel', "
-                f"got {self.pit_universe_mode!r}"
+                f"pit_universe_mode must be 'masked_panel', got {self.pit_universe_mode!r}. "
+                "'row_filter' is no longer accepted: it dropped rows outside PIT "
+                "membership while the correlation graph still linked names outside "
+                "the universe. Set 'masked_panel', or omit the key when "
+                "use_pit_universe is false."
             )
         if self.pit_breadth_policy not in ("error", "warn", "off"):
             raise ValueError(
@@ -95,6 +116,14 @@ class DataConfig:
             )
         if self.pit_min_scoreable_stocks < 0:
             raise ValueError("pit_min_scoreable_stocks must be >= 0")
+        # Role keys only: each role checks its source value when it loads.
+        roles = ("vix", "credit", "regime", "index")
+        unknown_roles = [role for role in self.auxiliary_sources if role not in roles]
+        if unknown_roles:
+            raise ValueError(
+                f"data.auxiliary_sources has unknown role(s) {unknown_roles}; "
+                f"expected keys among {list(roles)}"
+            )
 
 
 DEFAULT_VOLATILITY_TARGETING_COMPONENTS = [
@@ -165,14 +194,20 @@ class FeatureConfig:
         regime_exclusion_months: Exclusion window before matching historical months
         regime_similarity_quantile: Quantile size for similar/dissimilar buckets
         regime_min_history_months: Minimum history required before emitting non-zero regime features
-        regime_strict: If true, fail run when regime loading fails; otherwise soft-fill zeros
-        regime_lseg_market_ric: LSEG RIC for market proxy (LSEG-primary, FRED fallback)
-        regime_lseg_copper_ric: LSEG RIC for copper proxy (LSEG-primary, FRED fallback)
-        regime_lseg_yield_10y_ric: LSEG RIC for 10Y yield fallback
-        regime_lseg_yield_3m_ric: LSEG RIC for 3M yield fallback
-        regime_lseg_oil_ric: LSEG RIC for oil fallback
-        regime_lseg_vix_ric: LSEG RIC for volatility fallback
-        regime_inputs_csv: Deprecated legacy path to full seven-variable regime CSV (leave null to use live API)
+        regime_strict: Applies only when FeatureEngineer.transform receives no regime_df:
+            true raises, false zero-fills the regime columns. Through prepare_data a regime
+            input failure always stops preparation, whatever this is set to.
+        regime_lseg_market_ric: LSEG market RIC. There is no LSEG regime route or FRED
+            fallback: without a legacy regime_inputs_csv, loading the regime role rejects
+            any non-default value of this or the five RICs below; with one, they are ignored.
+        regime_lseg_copper_ric: LSEG copper RIC; see regime_lseg_market_ric
+        regime_lseg_yield_10y_ric: LSEG 10Y yield RIC; see regime_lseg_market_ric
+        regime_lseg_yield_3m_ric: LSEG 3M yield RIC; see regime_lseg_market_ric
+        regime_lseg_oil_ric: LSEG oil RIC; see regime_lseg_market_ric
+        regime_lseg_vix_ric: LSEG volatility RIC; see regime_lseg_market_ric
+        regime_inputs_csv: Deprecated legacy path to a full seven-variable regime CSV. When
+            set it takes precedence over data.auxiliary_sources.regime; leave null to load
+            the selected source (FRED by default)
         regime_enforce_lag_days: If deprecated regime_inputs_csv is set, shift dates by this many days (0 or 1) to avoid look-ahead
         regime_include_subsequent_returns: Whether to emit post-similarity return features
         regime_subsequent_return_horizons: Forward monthly return horizons used for similarity-conditioned features
@@ -453,7 +488,9 @@ class ModelConfig:
 
     Attributes:
         his_t: Historical lookback period (days)
-        label_t: Forward return period (days)
+        label_t: Forward return horizon in trading sessions. The label is
+            ``close[t + label_t] / close[t + 1] - 1``, so values below 2 are
+            rejected: 1 makes every label zero, and 0 or less exits before entry.
         gru_hidden_sizes: Encoder-dependent recurrent shape. ``legacy`` uses each
             entry as that layer's width; ``gru_attn`` uses the list length as
             the layer count and the final entry as the shared width. With
@@ -486,6 +523,17 @@ class ModelConfig:
             fast path (with a ``gru_attn`` slow branch in multi-scale mode).
         use_a1_a2_cross_attention: Fuse graph stream with temporal sequence via MHA (Q=A2, KV=A1).
         cross_a2_num_heads: Heads for A1–A2 cross-attention (must divide ``hidden_size_gat1``).
+        cross_section_block: How the cross-stock attention is applied. ``"legacy"``
+            replaces ``z`` with the attention output, which discards most of the
+            across-stock variation (issue #197). ``"residual"`` applies it as
+            ``z + Attn(LayerNorm(z))`` so the attention corrects ``z`` instead.
+            Defaults to ``"legacy"`` for checkpoint compatibility.
+        market_latent_mode: What the B1/B2 latent states are. ``"static"`` keeps
+            the shipped behaviour, where ``R1``/``R2`` are frozen parameters and
+            the streams cannot observe the date's market (issue #198).
+            ``"data_dependent"`` lets the latents read the date's active
+            cross-section before each stock reads them. Defaults to ``"static"``
+            for checkpoint compatibility.
     """
 
     his_t: int = 10
@@ -512,11 +560,24 @@ class ModelConfig:
     temporal_encoder: str = "legacy"
     use_a1_a2_cross_attention: bool = False
     cross_a2_num_heads: int = 4
+    cross_section_block: str = "legacy"
+    market_latent_mode: str = "static"
 
     _VALID_OUTPUT_ACTIVATIONS = ("none", "elu", "relu", "sigmoid")
     _VALID_TEMPORAL_ENCODERS = ("legacy", "gru_attn", "transformer")
+    _VALID_CROSS_SECTION_BLOCKS = ("legacy", "residual")
+    _VALID_MARKET_LATENT_MODES = ("static", "data_dependent")
 
     def __post_init__(self):
+        if self.label_t < 2:
+            # The session embargo returns early for label_t <= 0, although the
+            # label still reads close[t + 1], so those values are refused here too.
+            raise ValueError(
+                f"label_t must be >= 2, got {self.label_t}. The label is "
+                "close[t + label_t] / close[t + 1] - 1: label_t=1 divides the entry "
+                "close by itself, so every label is zero, and label_t <= 0 places the "
+                "exit at or before the entry."
+            )
         if self.activation not in ("elu", "relu"):
             raise ValueError(f"activation must be 'elu' or 'relu', got {self.activation!r}")
         if self.output_activation not in self._VALID_OUTPUT_ACTIVATIONS:
@@ -528,6 +589,25 @@ class ModelConfig:
             raise ValueError(
                 f"temporal_encoder must be one of {self._VALID_TEMPORAL_ENCODERS}, "
                 f"got {self.temporal_encoder!r}"
+            )
+        if self.cross_section_block not in self._VALID_CROSS_SECTION_BLOCKS:
+            raise ValueError(
+                f"cross_section_block must be one of {self._VALID_CROSS_SECTION_BLOCKS}, "
+                f"got {self.cross_section_block!r}"
+            )
+        if self.market_latent_mode not in self._VALID_MARKET_LATENT_MODES:
+            raise ValueError(
+                f"market_latent_mode must be one of {self._VALID_MARKET_LATENT_MODES}, "
+                f"got {self.market_latent_mode!r}"
+            )
+        if self.market_latent_mode == "data_dependent" and not self.use_nn_multihead_attention:
+            # Per-date latents need per-date keys, which the legacy 8-Linear
+            # cross-attention cannot express, so that path is unreachable in this
+            # mode. Refuse rather than silently overriding the flag the config
+            # asked for, which is the defect family recorded in #131.
+            raise ValueError(
+                "market_latent_mode='data_dependent' requires use_nn_multihead_attention=True; "
+                "the legacy 8-Linear cross-attention cannot take per-date keys."
             )
         if self.latent_init_scale <= 0:
             raise ValueError("latent_init_scale must be > 0")
@@ -562,6 +642,8 @@ class ModelConfig:
             "temporal_encoder": self.temporal_encoder,
             "use_a1_a2_cross_attention": self.use_a1_a2_cross_attention,
             "cross_a2_num_heads": self.cross_a2_num_heads,
+            "cross_section_block": self.cross_section_block,
+            "market_latent_mode": self.market_latent_mode,
         }
 
 
