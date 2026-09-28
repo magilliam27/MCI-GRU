@@ -39,6 +39,14 @@ Test script to verify backtest fairness fixes.
 |---|---|---|
 | `test_plot_equity_curve_uses_agg_backend_when_saving` |  |  |
 
+## `tests/test_capability_marker_guard.py`
+
+No test CI deselects by capability marker may pass without that capability.
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_no_test_ci_deselects_passes_without_its_capability` | Every test CI deselects fails or skips with the CI runner's capabilities. | skipif |
+
 ## `tests/test_capacity_replay.py`
 
 **Exercises:** `mci_gru.evaluation.capacity`, `scripts.run_saved_prediction_capacity_replay`
