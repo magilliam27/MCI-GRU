@@ -918,6 +918,21 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 | `test_resolve_year_jobs_remaps_stale_colab_paths_to_current_run_root` |  |  |
 | `test_write_summary_outputs_compares_cost_aware_rows_to_reviewed_artifact` |  |  |
 
+## `tests/test_pit_universe_mode_config.py`
+
+``row_filter`` can no longer be selected as ``data.pit_universe_mode`` (#139).
+
+**Exercises:** `mci_gru.config`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_default_pit_universe_mode_is_masked_panel` |  |  |
+| `test_row_filter_is_rejected_at_construction` |  | parametrize |
+| `test_command_line_override_to_row_filter_is_rejected` |  |  |
+| `test_discovery_covers_every_config_that_declared_row_filter` |  |  |
+| `test_shipped_data_config_composes_to_masked_panel` |  | parametrize |
+| `test_shipped_experiment_preset_composes_to_masked_panel` |  | parametrize |
+
 ## `tests/test_pit_universe_validation_notebook.py`
 
 | Test | Description | Markers |

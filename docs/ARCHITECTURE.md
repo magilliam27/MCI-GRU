@@ -48,9 +48,11 @@ preparation → training → prediction → evaluation sequence once per window.
    whatever remains.
 
 4. **PIT mode resolution** — with `data.use_pit_universe=true`, membership
-   intervals are loaded from `data.pit_universe_csv`. `row_filter` (the default
-   mode) drops rows outside `[valid_from, valid_to]`. `masked_panel` keeps every
-   row and defers eligibility to daily masks (step 8).
+   intervals are loaded from `data.pit_universe_csv`. `masked_panel`, the default
+   and the only mode `DataConfig` accepts, keeps every row and defers
+   eligibility to daily masks (step 8). The former `row_filter` mode, which
+   dropped rows outside `[valid_from, valid_to]` but left the correlation graph
+   unrestricted, is rejected at validation (#139).
 
 5. **Normalization** — `data.normalisation=zscore` fits per-feature mean and
    standard deviation on rows with `dt <= data.train_end` only, then applies a
