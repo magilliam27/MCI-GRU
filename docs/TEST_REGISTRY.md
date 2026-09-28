@@ -548,6 +548,9 @@ Contract tests for the graph-specification ablation harness.
 | `test_smoke_artifacts_cannot_satisfy_a_screen_or_confirm_resume` | A 1 x 2 result must never be mistaken for a real stage's completed job. |  |
 | `test_stage_keyed_paths_use_the_smoke_aware_slug` | The resume directory and key are built from the slug, not the raw stage. |  |
 | `test_analysis_gate_still_reads_the_semantic_stage` | Namespacing the smoke must not weaken the refusal that keeps it inert. |  |
+| `test_mechanics_sanity_gate_is_reached_on_every_stage_including_a_smoke` | The harness's own mechanics gate runs on every stage, the smoke first. | parametrize, parametrize |
+| `test_run_all_stops_at_the_paired_inference_refusal_only_on_a_smoke` | Reaching the gate must not weaken or bypass the s8 refusal. | parametrize, parametrize |
+| `test_mechanics_sanity_gate_checks_one_seed_per_fold_not_across_folds` | The gate's seed condition is within a fold, never across folds. |  |
 
 ## `tests/test_graph_zeroed_control.py`
 

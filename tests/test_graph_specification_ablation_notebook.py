@@ -21,6 +21,7 @@ import json
 import sys
 from pathlib import Path
 
+import pandas as pd
 import pytest
 import yaml
 from hydra import compose, initialize_config_dir
@@ -121,9 +122,10 @@ def test_notebook_cell_order_is_the_protocol_order() -> None:
         "## 6. Collect The Arbiter Metrics",
         "## 7. Disclosure: Twin Check, Per-Span Density / Isolation, Graph Staleness",
         "## 8. Disclosure: Pooled Daily IC Per Year",
-        "## 9. Paired Inference Against The Control",
-        "## 10. Disclosure: Ensemble Scale, Sharpe Intervals, Basket Returns, April Composite",
-        "## 11. Sanity Summary",
+        "## 9. Mechanics Sanity Gate",
+        "## 10. Paired Inference Against The Control",
+        "## 11. Disclosure: Ensemble Scale, Sharpe Intervals, Basket Returns, April Composite",
+        "## 12. Summary",
     ]
 
 
@@ -1004,3 +1006,182 @@ def test_analysis_gate_still_reads_the_semantic_stage() -> None:
     assert isinstance(gate.test.op, ast.Or), ast.dump(gate.test)
     assert "RUN_STAGE" in _name_ids(gate.test), ast.dump(gate.test)
     assert "STAGE_SLUG" not in _name_ids(gate.test), ast.dump(gate.test)
+
+
+# -- issue 196: the mechanics-sanity gate is reachable on a smoke -------------
+
+#: What a session's configuration fixes before any cell runs. A guard that reads
+#: only these names is decided by the stage and the smoke flag alone.
+_STAGE_GUARD_NAMES = frozenset({"RUN_STAGE", "SMOKE_MODE", "STAGES_FOR_ANALYSIS"})
+
+
+def _code_cell_trees() -> list[ast.Module]:
+    return [ast.parse(source) for source in _code_cell_sources()]
+
+
+def _run_all(
+    trees: list[ast.Module], run_stage: str, smoke_mode: bool
+) -> tuple[list[ast.stmt], ast.stmt | None]:
+    """Model "Run all" over the code cells, in notebook order.
+
+    Returns the statements reached, in order, and the top-level statement the
+    run stops at, or ``None`` when it reaches the end. Only guards the session's
+    configuration decides -- the stage dispatch and the ticket-181 s8 refusal --
+    are evaluated, and only the branch they select is entered. A guard over run
+    data (a failed job, a twin edge, a missing file) is taken not to fire: those
+    are what the gates exist to catch at run time. A statement under a branch
+    the configuration cannot decide is never counted as reached.
+    """
+    protocol_cell = next(
+        source for source in _code_cell_sources() if "STAGES_FOR_ANALYSIS = " in source
+    )
+    namespace = {
+        "RUN_STAGE": run_stage,
+        "SMOKE_MODE": smoke_mode,
+        "STAGES_FOR_ANALYSIS": ast.literal_eval(
+            _assigned_value(protocol_cell, "STAGES_FOR_ANALYSIS")
+        ),
+    }
+    reached: list[ast.stmt] = []
+
+    def stops(statements: list[ast.stmt]) -> bool:
+        for statement in statements:
+            reached.append(statement)
+            if isinstance(statement, ast.Raise):
+                return True
+            if isinstance(statement, ast.If) and _name_ids(statement.test) <= _STAGE_GUARD_NAMES:
+                taken = eval(ast.unparse(statement.test), {"__builtins__": {}}, dict(namespace))
+                if stops(statement.body if taken else statement.orelse):
+                    return True
+        return False
+
+    for tree in trees:
+        for statement in tree.body:
+            if stops([statement]):
+                return reached, statement
+    return reached, None
+
+
+def _assigned_names(statement: ast.stmt) -> set[str]:
+    if isinstance(statement, ast.Assign):
+        targets = statement.targets
+    elif isinstance(statement, ast.AnnAssign):
+        targets = [statement.target]
+    else:
+        return set()
+    return {
+        node.id for target in targets for node in ast.walk(target) if isinstance(node, ast.Name)
+    }
+
+
+@pytest.mark.parametrize("smoke_mode", [True, False], ids=["smoke", "real"])
+@pytest.mark.parametrize("run_stage", ["screen", "confirm"])
+def test_mechanics_sanity_gate_is_reached_on_every_stage_including_a_smoke(
+    run_stage: str, smoke_mode: bool
+) -> None:
+    """The harness's own mechanics gate runs on every stage, the smoke first.
+
+    It sat after the paired-inference cell, which refuses a smoke by design
+    (ticket 181 s8), so "Run all" on the one stage whose purpose is checking
+    mechanics stopped before reaching it, and the Phase-3 smoke's conditions
+    were checked by hand from its artifacts instead (issue 196). The contract
+    tests could not see that: the gate was present, parsed, and never ran.
+    """
+    trees = _code_cell_trees()
+    reached, _ = _run_all(trees, run_stage, smoke_mode)
+    position = {id(statement): index for index, statement in enumerate(reached)}
+
+    # The gate's checks, found by what they read rather than where they sit:
+    # every job trained, the twin rule held, and each fold's arms shared a seed.
+    checks = [
+        node
+        for tree in trees
+        for node in ast.walk(tree)
+        if isinstance(node, ast.If)
+        and "sanity" in _name_ids(node.test)
+        and any(isinstance(statement, ast.Raise) for statement in node.body)
+    ]
+    assert {
+        node.slice.value
+        for check in checks
+        for node in ast.walk(check.test)
+        if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant)
+    } == {"jobs_completed", "jobs_expected", "twin_edges_total", "distinct_fold_seeds"}
+    unreached = [ast.unparse(check.test) for check in checks if id(check) not in position]
+    assert not unreached, unreached
+
+    # Reached with its inputs already built. Everything it reads exists before
+    # the arbiter, so moving it up must not move it above what it reads.
+    first_check = min(position[id(check)] for check in checks)
+    assigned = {name for statement in reached[:first_check] for name in _assigned_names(statement)}
+    missing = {"sanity", "jobs", "run_dirs", "results_df", "disclosure_df"} - assigned
+    assert not missing, missing
+
+
+@pytest.mark.parametrize("smoke_mode", [True, False], ids=["smoke", "real"])
+@pytest.mark.parametrize("run_stage", ["screen", "confirm"])
+def test_run_all_stops_at_the_paired_inference_refusal_only_on_a_smoke(
+    run_stage: str, smoke_mode: bool
+) -> None:
+    """Reaching the gate must not weaken or bypass the s8 refusal.
+
+    On a smoke, "Run all" still ends at the paired-inference cell's refusal: not
+    at some earlier guard, and not past it, so nothing downstream of the arbiter
+    runs on a smoke. On a real screen or confirm nothing refuses and the arbiter
+    runs.
+    """
+    sources = _code_cell_sources()
+    trees = _code_cell_trees()
+    _, stop = _run_all(trees, run_stage, smoke_mode)
+
+    paired = trees[next(i for i, source in enumerate(sources) if "paired_pooled_core" in source)]
+    refusal = next(
+        statement
+        for statement in paired.body
+        if isinstance(statement, ast.If) and "SMOKE_MODE" in _name_ids(statement.test)
+    )
+    stopped_at = ast.unparse(stop).splitlines()[0] if stop is not None else None
+    if smoke_mode:
+        assert stop is refusal, stopped_at
+    else:
+        assert stop is None, stopped_at
+
+
+def test_mechanics_sanity_gate_checks_one_seed_per_fold_not_across_folds(generator) -> None:
+    """The gate's seed condition is within a fold, never across folds.
+
+    Ticket 185 put the bridge fold on F2022's seed on purpose, so a cross-fold
+    distinctness check would refuse every real run, and a vacuous one would pass
+    a fold whose arms split seeds. The rendered cell is executed on inputs shaped
+    like the protocol's jobs rather than read as text, so a rewrite that keeps
+    the meaning still passes.
+    """
+    gate_cell = next(source for source in _code_cell_sources() if "sanity = {" in source)
+    jobs = [
+        {"fold": fold["key"], "arm": arm["key"], "seed": generator.fold_seed(fold)}
+        for fold in generator.FOLDS
+        for arm in generator.ARMS
+    ]
+
+    def run_gate(rows: list[dict]) -> None:
+        exec(
+            gate_cell,
+            {
+                "json": json,
+                "jobs": jobs,
+                "run_dirs": {(job["fold"], job["arm"]): Path(job["arm"]) for job in jobs},
+                "results_df": pd.DataFrame(rows),
+                "disclosure_df": pd.DataFrame({"twin_edge_count": [0] * len(jobs)}),
+            },
+        )
+
+    # The protocol's own seeds pass, the bridge fold sharing F2022's included.
+    run_gate(jobs)
+
+    # One arm moved onto another fold's protocol seed fails: every seed used is
+    # still a protocol seed, but that fold's arms no longer share one.
+    split = [dict(job) for job in jobs]
+    moved = next(job for job in split if job["fold"] == "F2023")
+    moved["seed"] = next(job["seed"] for job in jobs if job["fold"] == "F2022")
+    with pytest.raises(AssertionError, match="share one base seed"):
+        run_gate(split)
