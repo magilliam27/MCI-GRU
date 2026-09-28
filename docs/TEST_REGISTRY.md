@@ -317,7 +317,7 @@ Unit tests for mci_gru.evaluation.experiment_summary (WS-M M2 move).
 | `test_data_file_fingerprint_hashes_existing_file` |  |  |
 | `test_data_file_fingerprint_missing_file_returns_nulls` |  |  |
 | `test_resolved_evaluation_kwargs_derives_defaults_from_label_t` |  |  |
-| `test_resolved_evaluation_kwargs_label_t_one_floors` |  |  |
+| `test_resolved_evaluation_kwargs_at_the_smallest_admissible_label_t` | `ModelConfig` refuses label_t < 2 (issue 107), so 2 is the lowest horizon a run carries. |  |
 | `test_resolved_evaluation_kwargs_explicit_values_win` |  |  |
 | `test_compute_evaluation_summary_shape_and_metrics` |  |  |
 | `test_select_training_objective_key_mapping_last_window` |  |  |
@@ -732,6 +732,20 @@ Phase 2 model flags: self-attention type embed, MHA path shapes, encoders.
 | `test_hydra_ingestion_seed_fallback_is_1729` | Regression pin: config dicts without a `seed` key fall back to 1729. |  |
 | `test_mlflow_manager_round_trip_logs_params_metrics_and_artifacts` |  |  |
 | `test_backtest_tracking_links_child_run_to_saved_training_run` |  |  |
+
+## `tests/test_model_config_label_t.py`
+
+Admissible range for `model.label_t` (issue 107).
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.preprocessing`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_label_t_below_two_is_rejected_naming_the_label_formula` | 1 is the all-zero panel; 0 and -1 are the backward labels the embargo skips. | parametrize |
+| `test_label_t_of_two_and_above_still_constructs` | Control. 2 is the smallest genuine forward label; 5 is the shipped value. | parametrize |
+| `test_a_cli_override_of_label_t_one_is_rejected` | `python run_experiment.py model.label_t=1` must stop at config construction. |  |
+| `test_the_shipped_hydra_config_and_the_smallest_override_still_build` | Control for the CLI path: the rejection is about the value, not the route. |  |
+| `test_the_boundary_sits_where_the_label_panel_degenerates` | Ties the guard to the formula it protects, measured through `compute_labels`. |  |
 
 ## `tests/test_momentum_blend_modes.py`
 
