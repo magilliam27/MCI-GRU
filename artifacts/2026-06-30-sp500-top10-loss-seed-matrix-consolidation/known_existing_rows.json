@@ -1,0 +1,67 @@
+[
+  {
+    "base_seed": 1729,
+    "loss_key": "pure_ic",
+    "loss_type": "ic",
+    "needs_backtest_replay": true,
+    "source": "sp500_gics_top10_baseline_multiyear/20260623_011810",
+    "year": 2022
+  },
+  {
+    "base_seed": 1729,
+    "loss_key": "pure_ic",
+    "loss_type": "ic",
+    "needs_backtest_replay": true,
+    "source": "sp500_gics_top10_baseline_multiyear/20260623_011810",
+    "year": 2023
+  },
+  {
+    "base_seed": 1729,
+    "loss_key": "pure_ic",
+    "loss_type": "ic",
+    "needs_backtest_replay": true,
+    "source": "sp500_gics_top10_baseline_multiyear/20260623_011810",
+    "year": 2024
+  },
+  {
+    "base_seed": 1729,
+    "loss_key": "pure_ic",
+    "loss_type": "ic",
+    "needs_backtest_replay": true,
+    "note": "Older 2018-start data family; counted per no-repeat instruction.",
+    "source": "sp500_gics_top10_baseline/20260622_043728",
+    "year": 2025
+  },
+  {
+    "base_seed": 314159,
+    "loss_key": "lambdarank_ic",
+    "loss_type": "lambdarank_ic",
+    "needs_backtest_replay": false,
+    "source": "sp500_gics_top10_lambdarank_ic_full/20260626_172316",
+    "year": 2022
+  },
+  {
+    "base_seed": 314159,
+    "loss_key": "lambdarank_ic",
+    "loss_type": "lambdarank_ic",
+    "needs_backtest_replay": false,
+    "source": "sp500_gics_top10_lambdarank_ic_full/20260626_172316",
+    "year": 2023
+  },
+  {
+    "base_seed": 314159,
+    "loss_key": "lambdarank_ic",
+    "loss_type": "lambdarank_ic",
+    "needs_backtest_replay": false,
+    "source": "sp500_gics_top10_lambdarank_ic_full/20260626_172316",
+    "year": 2024
+  },
+  {
+    "base_seed": 314159,
+    "loss_key": "lambdarank_ic",
+    "loss_type": "lambdarank_ic",
+    "needs_backtest_replay": false,
+    "source": "sp500_gics_top10_lambdarank_ic_2025/20260627_012647",
+    "year": 2025
+  }
+]
