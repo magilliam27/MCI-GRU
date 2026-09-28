@@ -265,9 +265,9 @@ class MLflowTrackingManager:
         val_loss: float,
         val_ic: float,
         val_rank_ic: float,
-        best_val_loss: float,
-        best_val_ic: float,
-        best_val_rank_ic: float,
+        best_val_loss: float | None,
+        best_val_ic: float | None,
+        best_val_rank_ic: float | None,
     ):
         """Standard per-epoch training metrics."""
         self.log_metrics(

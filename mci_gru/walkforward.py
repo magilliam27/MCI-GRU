@@ -13,6 +13,7 @@ from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
 
 from mci_gru.config import ExperimentConfig, WalkforwardConfig
+from mci_gru.training.summary import CHECKPOINT_METRICS, mean_of_available
 
 
 def _parse(d: str) -> date:
@@ -113,23 +114,25 @@ def _one_window_from_train_end(
 
 
 def merge_walkforward_summary(summaries: list[dict]) -> dict:
-    """Aggregate per-window training_summary dicts."""
+    """Aggregate per-window training_summary dicts.
+
+    Each ``mean_best_val_*_across_windows`` is the unweighted mean of the windows
+    whose own ``mean_best_val_*`` is available, so a window counts once whatever
+    its member count. ``window_coverage`` records how many windows contributed out
+    of the total; member coverage stays in each window's summary. Missing and
+    non-finite window values, including historical ``-inf`` sentinels, are
+    unavailable, and an aggregate with no available window is ``None``.
+    """
     if not summaries:
         return {}
-    losses = [s["mean_best_val_loss"] for s in summaries if s.get("mean_best_val_loss") is not None]
-    ics = [s["mean_best_val_ic"] for s in summaries if s.get("mean_best_val_ic") is not None]
-    rank_ics = [
-        s["mean_best_val_rank_ic"] for s in summaries if s.get("mean_best_val_rank_ic") is not None
-    ]
-    merged = {
-        "n_windows": len(summaries),
-        "mean_best_val_loss_across_windows": float(sum(losses) / len(losses)) if losses else None,
-        "mean_best_val_ic_across_windows": float(sum(ics) / len(ics)) if ics else None,
-        "mean_best_val_rank_ic_across_windows": (
-            float(sum(rank_ics) / len(rank_ics)) if rank_ics else None
-        ),
-        "windows": summaries,
-    }
+    merged: dict = {"n_windows": len(summaries)}
+    window_coverage: dict[str, dict[str, int]] = {}
+    for metric in CHECKPOINT_METRICS:
+        merged[f"mean_{metric}_across_windows"], window_coverage[metric] = mean_of_available(
+            [summary.get(f"mean_{metric}") for summary in summaries]
+        )
+    merged["window_coverage"] = window_coverage
+    merged["windows"] = summaries
     eval_keys: set[str] = set()
     for summary in summaries:
         eval_keys.update((summary.get("evaluation") or {}).keys())
