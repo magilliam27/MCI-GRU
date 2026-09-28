@@ -29,6 +29,10 @@ Public auxiliary loader and preparation capture/replay contracts.
 | `test_preparation_does_not_reacquire_after_retention_failure` |  | parametrize |
 | `test_preparation_reports_the_current_rejected_series_after_an_earlier_retry` |  |  |
 | `test_explicit_unsupported_source_configuration_is_not_ignored` |  | parametrize |
+| `test_the_frozen_recipe_requests_its_six_fred_regime_series_without_a_source_override` | The recipe names no auxiliary source, so the base config's regime=fred must carry it. |  |
+| `test_the_base_config_declares_the_typed_default_auxiliary_sources` | Hydra runs read configs/config.yaml and direct callers read DataConfig(); both agree. |  |
+| `test_a_misspelt_auxiliary_source_role_is_rejected_when_the_config_is_built` |  |  |
+| `test_the_full_feature_preset_stops_at_the_unselected_credit_role` | features=full enables credit, which the base config leaves unselected. |  |
 
 ## `tests/test_backtest_engine_golden.py`
 

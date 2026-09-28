@@ -282,7 +282,7 @@ class DataManager:
             except FileNotFoundError as e:
                 raise FileNotFoundError(
                     "VIX data not found. Create vix_data.csv under data/raw/market "
-                    "or explicitly select data.auxiliary_sources.vix='lseg'"
+                    "or explicitly select ++data.auxiliary_sources.vix=lseg"
                 ) from e
             vix_df = self.input_snapshots.read_file(
                 vix_path,
@@ -298,8 +298,9 @@ class DataManager:
         """
         Load credit spread data (IG/HY OAS) from FRED API.
 
-        Select data.auxiliary_sources.credit='fred'. Source/capture modes
-        require FRED_API_KEY; replay uses retained observations without a key.
+        Credit is unselected by default; select it with
+        ++data.auxiliary_sources.credit=fred. Source/capture modes require
+        FRED_API_KEY; replay uses retained observations without a key.
         A required-input failure stops preparation.
 
         Returns:
@@ -351,9 +352,12 @@ class DataManager:
         """
         Load the selected FRED regime inputs or explicit legacy regime CSV.
 
-        Set data.auxiliary_sources.regime='fred' for provider capture/replay.
-        LSEG regime routes and overrides are unsupported on this reference
-        path and are rejected explicitly. No provider substitution occurs.
+        The base config and the typed default both select regime=fred, the
+        only supported regime provider. The key is declared, so a Hydra
+        override of it takes the bare or ++ form; + fails. An explicit legacy
+        regime_inputs_csv takes precedence over that selection. LSEG regime
+        routes and overrides are unsupported on this reference path and are
+        rejected explicitly. No provider substitution occurs.
 
         Args:
             end: Optional override for the fetch end date (ISO string). When None,

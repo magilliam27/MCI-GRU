@@ -2,14 +2,17 @@
 
 import gzip
 import hashlib
+import re
 import sys
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import pytest
+from hydra import compose, initialize_config_dir
+from omegaconf import OmegaConf
 
 from mci_gru.config import DataConfig, create_config_from_dict
 from mci_gru.data.data_manager import DataManager
@@ -18,7 +21,10 @@ from mci_gru.data.input_observations import InputObservationContext, InputObserv
 from mci_gru.data.input_snapshots import InputSnapshots, load_snapshot
 from mci_gru.data.lseg_loader import LSEGLoader
 from mci_gru.features import FeatureEngineer
-from mci_gru.pipeline import prepare_data, prepare_data_index_level
+from mci_gru.pipeline import load_auxiliary_data, prepare_data, prepare_data_index_level
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+RECIPE_REGIME_SERIES = ["DGS10", "DGS3MO", "DCOILWTICO", "VIXCLS", "SP500", "PCOPPUSDM"]
 
 
 def test_fred_replay_uses_original_sdk_series_before_fill_and_lag(
@@ -363,6 +369,8 @@ def test_preparation_requires_selected_file_inputs_without_implicit_provider_set
         )
     if role == "regime":
         config.features.regime_inputs_csv = str(tmp_path / "missing-regime.csv")
+    if role == "index":
+        config.data.auxiliary_sources = {}  # The typed default selects fred for index.
     calls = []
 
     def deny(*args, **kwargs):
@@ -769,3 +777,105 @@ def test_explicit_unsupported_source_configuration_is_not_ignored(
             manager.load_regime_inputs()
     assert calls == []
     assert manager.input_observations.freeze().uses == ()
+
+
+def _compose(overrides: list[str]):
+    """Build the typed config the way run_experiment.py does."""
+    with initialize_config_dir(config_dir=str(REPO_ROOT / "configs"), version_base=None):
+        cfg = compose(config_name="config", overrides=overrides)
+    return create_config_from_dict(OmegaConf.to_container(cfg, resolve=True))
+
+
+def _recipe_overrides() -> list[str]:
+    text = (REPO_ROOT / "docs" / "DEFAULT_EXPERIMENT_RECIPE.md").read_text(encoding="utf-8")
+    block = re.search(r"^## Hydra Overrides\n+```text\n(.*?)^```", text, re.M | re.S)
+    assert block, "the recipe has no Hydra override block"
+    return [line.strip() for line in block.group(1).splitlines() if line.strip()]
+
+
+def test_the_frozen_recipe_requests_its_six_fred_regime_series_without_a_source_override(
+    monkeypatch,
+) -> None:
+    """The recipe names no auxiliary source, so the base config's regime=fred must carry it."""
+    overrides = _recipe_overrides()
+    assert "features.include_global_regime=true" in overrides
+    assert not [line for line in overrides if "auxiliary_sources" in line]
+    config = _compose(overrides)
+    assert config.data.auxiliary_sources["regime"] == "fred"
+    requested = []
+
+    class Fred:
+        def __init__(self, api_key):
+            requested.append("setup")
+
+        def get_series(self, series_id, observation_start, observation_end):
+            requested.append(series_id)
+            dates = pd.date_range(observation_start, observation_end)
+            return pd.Series(np.linspace(1.0, 2.0, len(dates)), index=dates)
+
+    # A placeholder value, not a credential: the loader refuses to start without one.
+    monkeypatch.setenv("FRED_API_KEY", "test-only")
+    monkeypatch.setitem(sys.modules, "fredapi", SimpleNamespace(Fred=Fred))
+    # Control: the same composition with the selection emptied stops before any call.
+    emptied = replace(config, data=replace(config.data, auxiliary_sources={}))
+    with pytest.raises(InputObservationError) as caught:
+        load_auxiliary_data(DataManager(emptied.data), emptied)
+    assert caught.value.facts["role"] == "regime"
+    assert caught.value.facts["reason_code"] == "source_not_selected"
+    assert requested == []
+    vix_df, credit_df, regime_df = load_auxiliary_data(DataManager(config.data), config)
+    assert requested == ["setup", *RECIPE_REGIME_SERIES]
+    assert vix_df is None and credit_df is None and not regime_df.empty
+
+
+def test_the_base_config_declares_the_typed_default_auxiliary_sources() -> None:
+    """Hydra runs read configs/config.yaml and direct callers read DataConfig(); both agree.
+
+    The composed YAML value is read before it reaches DataConfig: an absent key would fall
+    back to the typed default there and make the comparison vacuous.
+    """
+    with initialize_config_dir(config_dir=str(REPO_ROOT / "configs"), version_base=None):
+        composed = OmegaConf.to_container(compose(config_name="config", overrides=[]))
+    declared = composed["data"]["auxiliary_sources"]
+    assert declared == DataConfig().auxiliary_sources == {"regime": "fred", "index": "fred"}
+
+
+def test_a_misspelt_auxiliary_source_role_is_rejected_when_the_config_is_built() -> None:
+    with pytest.raises(ValueError, match="regme"):
+        DataConfig(auxiliary_sources={"regme": "fred"})
+    # Control: every real role key is accepted. Values are checked only when a role loads,
+    # so unsupported ones still construct here.
+    DataConfig(
+        auxiliary_sources={"vix": "fred", "credit": "fred", "regime": "lseg", "index": "fred"}
+    )
+
+
+def test_the_full_feature_preset_stops_at_the_unselected_credit_role(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """features=full enables credit, which the base config leaves unselected.
+
+    VIX is satisfied by the implicit file, so the stop is credit's, and it comes before any
+    provider call, the regime role's FRED requests included.
+    """
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("mci_gru.data.path_resolver.PROJECT_ROOT", tmp_path)
+    (tmp_path / "vix_data.csv").write_text("dt,vix\n2020-01-01,20\n", encoding="utf-8")
+    config = _compose(["features=full"])
+    assert config.features.include_vix and config.features.include_credit_spread
+    assert config.features.include_global_regime
+    calls = []
+
+    def deny(*args, **kwargs):
+        calls.append("provider")
+        raise AssertionError("An unselected role started a provider")
+
+    monkeypatch.setenv("FRED_API_KEY", "test-only")
+    monkeypatch.setitem(sys.modules, "fredapi", SimpleNamespace(Fred=deny))
+    monkeypatch.setitem(sys.modules, "refinitiv.data", SimpleNamespace(open_session=deny))
+    with pytest.raises(InputObservationError) as caught:
+        load_auxiliary_data(DataManager(config.data), config)
+    assert caught.value.facts["role"] == "credit"
+    assert caught.value.facts["reason_code"] == "source_not_selected"
+    assert calls == []
+    assert set(caught.value.input_observations.data_inputs()) == {"implicit.vix_csv"}

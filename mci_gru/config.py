@@ -22,6 +22,13 @@ class DataConfig:
         filename: Path to CSV file (used when source='csv')
         experiment_mode: 'stock_level' (cross-sectional stocks) or 'index_level' (single index series; no survivorship bias)
         index_filename: Path to index CSV with dt, close (used when experiment_mode='index_level'); if None, use FRED SP500
+        auxiliary_sources: Explicit source per auxiliary role (vix, credit, regime, index),
+            independent of ``source``. Defaults to {"regime": "fred", "index": "fred"}, the
+            same mapping as configs/config.yaml. An absent role selects no provider: vix
+            reads the implicit vix_data.csv, and credit, regime or index stops with
+            source_not_selected when used. A legacy regime_inputs_csv or index_filename
+            takes precedence over any selection. Unknown role keys fail here; an
+            unsupported source fails when its role loads.
         train_start: Training period start date
         train_end: Training period end date
         val_start: Validation period start date
@@ -48,7 +55,10 @@ class DataConfig:
     experiment_mode: str = "stock_level"
     index_filename: str | None = None
     # Explicit auxiliary selections are independent of the stock-panel source.
-    auxiliary_sources: dict[str, str] = field(default_factory=dict)
+    # Same mapping as configs/config.yaml, so direct Python callers get it too.
+    auxiliary_sources: dict[str, str] = field(
+        default_factory=lambda: {"regime": "fred", "index": "fred"}
+    )
     auxiliary_snapshot_mode: str = "source"
     auxiliary_snapshot_directory: str | None = None
     auxiliary_snapshot_references: dict[str, list[dict[str, str]]] = field(default_factory=dict)
@@ -100,6 +110,14 @@ class DataConfig:
             )
         if self.pit_min_scoreable_stocks < 0:
             raise ValueError("pit_min_scoreable_stocks must be >= 0")
+        # Role keys only: each role checks its source value when it loads.
+        roles = ("vix", "credit", "regime", "index")
+        unknown_roles = [role for role in self.auxiliary_sources if role not in roles]
+        if unknown_roles:
+            raise ValueError(
+                f"data.auxiliary_sources has unknown role(s) {unknown_roles}; "
+                f"expected keys among {list(roles)}"
+            )
 
 
 DEFAULT_VOLATILITY_TARGETING_COMPONENTS = [
@@ -170,14 +188,20 @@ class FeatureConfig:
         regime_exclusion_months: Exclusion window before matching historical months
         regime_similarity_quantile: Quantile size for similar/dissimilar buckets
         regime_min_history_months: Minimum history required before emitting non-zero regime features
-        regime_strict: If true, fail run when regime loading fails; otherwise soft-fill zeros
-        regime_lseg_market_ric: LSEG RIC for market proxy (LSEG-primary, FRED fallback)
-        regime_lseg_copper_ric: LSEG RIC for copper proxy (LSEG-primary, FRED fallback)
-        regime_lseg_yield_10y_ric: LSEG RIC for 10Y yield fallback
-        regime_lseg_yield_3m_ric: LSEG RIC for 3M yield fallback
-        regime_lseg_oil_ric: LSEG RIC for oil fallback
-        regime_lseg_vix_ric: LSEG RIC for volatility fallback
-        regime_inputs_csv: Deprecated legacy path to full seven-variable regime CSV (leave null to use live API)
+        regime_strict: Applies only when FeatureEngineer.transform receives no regime_df:
+            true raises, false zero-fills the regime columns. Through prepare_data a regime
+            input failure always stops preparation, whatever this is set to.
+        regime_lseg_market_ric: LSEG market RIC. There is no LSEG regime route or FRED
+            fallback: without a legacy regime_inputs_csv, loading the regime role rejects
+            any non-default value of this or the five RICs below; with one, they are ignored.
+        regime_lseg_copper_ric: LSEG copper RIC; see regime_lseg_market_ric
+        regime_lseg_yield_10y_ric: LSEG 10Y yield RIC; see regime_lseg_market_ric
+        regime_lseg_yield_3m_ric: LSEG 3M yield RIC; see regime_lseg_market_ric
+        regime_lseg_oil_ric: LSEG oil RIC; see regime_lseg_market_ric
+        regime_lseg_vix_ric: LSEG volatility RIC; see regime_lseg_market_ric
+        regime_inputs_csv: Deprecated legacy path to a full seven-variable regime CSV. When
+            set it takes precedence over data.auxiliary_sources.regime; leave null to load
+            the selected source (FRED by default)
         regime_enforce_lag_days: If deprecated regime_inputs_csv is set, shift dates by this many days (0 or 1) to avoid look-ahead
         regime_include_subsequent_returns: Whether to emit post-similarity return features
         regime_subsequent_return_horizons: Forward monthly return horizons used for similarity-conditioned features
