@@ -21,6 +21,7 @@ import json
 import sys
 from pathlib import Path
 
+import pandas as pd
 import pytest
 import yaml
 from hydra import compose, initialize_config_dir
@@ -1144,3 +1145,43 @@ def test_run_all_stops_at_the_paired_inference_refusal_only_on_a_smoke(
         assert stop is refusal, stopped_at
     else:
         assert stop is None, stopped_at
+
+
+def test_mechanics_sanity_gate_checks_one_seed_per_fold_not_across_folds(generator) -> None:
+    """The gate's seed condition is within a fold, never across folds.
+
+    Ticket 185 put the bridge fold on F2022's seed on purpose, so a cross-fold
+    distinctness check would refuse every real run, and a vacuous one would pass
+    a fold whose arms split seeds. The rendered cell is executed on inputs shaped
+    like the protocol's jobs rather than read as text, so a rewrite that keeps
+    the meaning still passes.
+    """
+    gate_cell = next(source for source in _code_cell_sources() if "sanity = {" in source)
+    jobs = [
+        {"fold": fold["key"], "arm": arm["key"], "seed": generator.fold_seed(fold)}
+        for fold in generator.FOLDS
+        for arm in generator.ARMS
+    ]
+
+    def run_gate(rows: list[dict]) -> None:
+        exec(
+            gate_cell,
+            {
+                "json": json,
+                "jobs": jobs,
+                "run_dirs": {(job["fold"], job["arm"]): Path(job["arm"]) for job in jobs},
+                "results_df": pd.DataFrame(rows),
+                "disclosure_df": pd.DataFrame({"twin_edge_count": [0] * len(jobs)}),
+            },
+        )
+
+    # The protocol's own seeds pass, the bridge fold sharing F2022's included.
+    run_gate(jobs)
+
+    # One arm moved onto another fold's protocol seed fails: every seed used is
+    # still a protocol seed, but that fold's arms no longer share one.
+    split = [dict(job) for job in jobs]
+    moved = next(job for job in split if job["fold"] == "F2023")
+    moved["seed"] = next(job["seed"] for job in jobs if job["fold"] == "F2022")
+    with pytest.raises(AssertionError, match="share one base seed"):
+        run_gate(split)
