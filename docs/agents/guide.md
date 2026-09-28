@@ -139,6 +139,7 @@ existing stage over widening `run_experiment.py`:
 | Objectives | `mci_gru/training/losses.py` | `build_training_loss`, `TrainingConfig.loss_type`, masked cross sections |
 | Training lifecycle | `mci_gru/training/trainer.py` | `Trainer`, `TrainingResult`, `ValidationObservation`, selection metric |
 | Ensembling | `mci_gru/training/ensemble.py` | `train_multiple_models`, per-member seeds, mean prediction |
+| Training summaries | `mci_gru/training/summary.py` | `build_training_summary`, `training_summary.json`, member and window coverage |
 | In-run metrics | `mci_gru/evaluation/metrics.py`, `statistics.py` | `EvaluationConfig`, bootstrap and Sharpe policy |
 | Run summaries and provenance | `mci_gru/evaluation/experiment_summary.py` | `run_metadata.json`, `resolved_config.json` and its SHA-256 |
 | Consumed input observations | `mci_gru/data/input_observations.py` | native readers, per-preparation context, `run_metadata.json` |
@@ -273,6 +274,7 @@ Start from the task concept, not from a guessed filename.
 | Loss or selection metric | `mci_gru/training/losses.py`, `trainer.py` | `TrainingConfig`, fail-closed selection | `tests/test_lambdarank_ic_loss.py`, `tests/test_lambdarank_ic_trainer.py`, `tests/test_portfolio_ic_loss.py`, `tests/test_portfolio_ic_trainer.py`, `tests/test_lambdarank_ic_config.py`, `tests/test_portfolio_ic_config.py` |
 | Training efficiency knobs | `mci_gru/training/trainer.py`, `mci_gru/config.py` | dataloader and AMP settings | `tests/test_training_efficiency_config.py` |
 | Ensemble behaviour | `mci_gru/training/ensemble.py` | ensemble invariant | `tests/test_ensemble_averaging.py` |
+| Checkpoint metrics or training summaries | `mci_gru/training/trainer.py`, `summary.py`, `mci_gru/walkforward.py` | selected-checkpoint metrics, `training_summary.json`, `walkforward_summary.json` | `tests/test_checkpoint_metrics.py`, `tests/test_training_summary.py`, `tests/test_ensemble_averaging.py` |
 | Walk-forward windows | `mci_gru/walkforward.py`, `run_experiment.py` | per-window config fidelity | `tests/test_walkforward_config_propagation.py`, `tests/test_phase3_graph_and_walkforward.py` |
 | Run summary or provenance | `mci_gru/evaluation/experiment_summary.py`, `mci_gru/data/input_observations.py` | `run_metadata.json`, `resolved_config.json`, consumed input observations | `tests/test_experiment_summary.py`, `tests/test_run_bundle_manifest.py`, `tests/test_data_input_identity.py`, `tests/test_input_observations.py` |
 | Evaluation statistics | `mci_gru/evaluation/statistics.py`, `metrics.py`, `portfolio.py` | `EvaluationConfig` | `tests/test_evaluation_statistics.py`, `tests/test_evaluation_portfolio.py`, `tests/test_prediction_report.py` |
@@ -296,6 +298,7 @@ rg -n "class GraphSchedule|def precompute_snapshots|def get_graph_for_date" mci_
 rg -n "def edge_feature_dim" mci_gru/graph/utils.py
 rg -n "class StockPredictionModel|def create_model" mci_gru/models
 rg -n "def build_training_loss|class Trainer|def train_multiple_models" mci_gru/training
+rg -n "def build_training_summary|def merge_walkforward_summary" mci_gru
 rg -n "averaged_predictions|graph_data.pt|run_metadata.json" run_experiment.py mci_gru
 ```
 

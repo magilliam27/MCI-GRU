@@ -33,6 +33,7 @@ from mci_gru.training.losses import (
     information_coefficient_sum_count,
     rank_information_coefficient_sum_count,
 )
+from mci_gru.training.summary import available_metric, format_checkpoint_metric
 
 logger = logging.getLogger(__name__)
 
@@ -90,9 +91,17 @@ def _unpack_loader_batch(batch, device: torch.device):
 
 @dataclass
 class TrainingResult:
-    best_val_loss: float
-    best_val_ic: float
-    best_val_rank_ic: float
+    """Outcome of one ``Trainer.train`` call.
+
+    ``best_val_loss``, ``best_val_ic`` and ``best_val_rank_ic`` are the validation
+    observation of the selected checkpoint, the one saved at ``best_model_path``.
+    Each is a finite float, or ``None`` when it was unavailable on that epoch or
+    no checkpoint was selected; none is carried over from another epoch.
+    """
+
+    best_val_loss: float | None
+    best_val_ic: float | None
+    best_val_rank_ic: float | None
     final_train_loss: float
     epochs_trained: int
     best_model_path: str
@@ -218,10 +227,10 @@ class Trainer:
 
         self.model.to(self.device)
 
-        # Training state
-        self.best_val_loss = float("inf")
-        self.best_val_ic = float("-inf")
-        self.best_val_rank_ic = float("-inf")
+        # Training state; best_val_* describe the selected checkpoint.
+        self.best_val_loss: float | None = None
+        self.best_val_ic: float | None = None
+        self.best_val_rank_ic: float | None = None
         self.patience_counter = 0
         self.epoch = 0
         self._profile_rows_written = 0
@@ -239,7 +248,9 @@ class Trainer:
             val_loader: Validation data loader
             epoch_callback: Optional per-epoch callback; receives
                 (epoch, train_loss, val_loss, val_ic, val_rank_ic,
-                 best_val_loss, best_val_ic, best_val_rank_ic).
+                 best_val_loss, best_val_ic, best_val_rank_ic). The ``best_*``
+                values describe the checkpoint selected so far and are ``None``
+                when unavailable on it or before any checkpoint is selected.
 
         Returns:
             TrainingResult with training metrics
@@ -279,9 +290,11 @@ class Trainer:
         )
         os.makedirs(os.path.dirname(best_model_path), exist_ok=True)
 
-        self.best_val_loss = float("inf")
-        self.best_val_ic = float("-inf")
-        self.best_val_rank_ic = float("-inf")
+        self.best_val_loss = None
+        self.best_val_ic = None
+        self.best_val_rank_ic = None
+        maximize_selection = training_cfg.selection_metric in ("val_ic", "val_rank_ic")
+        best_selection_value = float("-inf") if maximize_selection else float("inf")
         self.patience_counter = 0
         final_train_loss = 0.0
 
@@ -316,30 +329,23 @@ class Trainer:
                 f"Val Rank IC: {val_rank_ic:.6f}"
             )
 
-            improved = False
-            if training_cfg.selection_metric == "val_ic":
-                if selection_value > self.best_val_ic:
-                    improved = True
-            elif training_cfg.selection_metric == "val_rank_ic":
-                if selection_value > self.best_val_rank_ic:
-                    improved = True
+            if maximize_selection:
+                improved = selection_value > best_selection_value
             else:
-                if selection_value < self.best_val_loss:
-                    improved = True
+                improved = selection_value < best_selection_value
 
             if improved:
-                self.best_val_loss = val_loss
-                if validation.ic is not None:
-                    self.best_val_ic = validation.ic
-                if validation.rank_ic is not None:
-                    self.best_val_rank_ic = validation.rank_ic
+                best_selection_value = selection_value
+                self.best_val_loss = available_metric(validation.loss)
+                self.best_val_ic = available_metric(validation.ic)
+                self.best_val_rank_ic = available_metric(validation.rank_ic)
                 self.patience_counter = 0
                 torch.save(self.model.state_dict(), best_model_path)
                 logger.info(
                     "  -> New best model saved "
-                    f"(val_loss={self.best_val_loss:.6f}, "
-                    f"val_ic={self.best_val_ic:.6f}, "
-                    f"val_rank_ic={self.best_val_rank_ic:.6f})"
+                    f"(val_loss={format_checkpoint_metric(self.best_val_loss)}, "
+                    f"val_ic={format_checkpoint_metric(self.best_val_ic)}, "
+                    f"val_rank_ic={format_checkpoint_metric(self.best_val_rank_ic)})"
                 )
             else:
                 self.patience_counter += 1

@@ -112,6 +112,20 @@ Contract tests for scripts/check_config.py.
 | `test_subdirectory_reports_are_not_flagged` |  |  |
 | `test_real_docs_tree_is_clean` |  |  |
 
+## `tests/test_checkpoint_metrics.py`
+
+Selected-checkpoint metrics: Trainer.train reports the checkpoint it saved.
+
+**Exercises:** `mci_gru.config`, `mci_gru.training.losses`, `mci_gru.training.trainer`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_val_loss_selection_without_eligible_ic_rows_reports_ic_as_missing` | With no eligible IC row, IC co-metrics are None in the result and every callback. |  |
+| `test_co_metrics_describe_the_saved_checkpoint_not_an_earlier_epoch` | An earlier epoch's IC is never reported for a later saved checkpoint without one. |  |
+| `test_rank_ic_selection_reports_ic_as_missing_when_the_saved_epoch_has_none` | Both IC metrics: the saved epoch has a rank IC but no eligible Pearson IC row. |  |
+| `test_each_selection_metric_saves_its_own_best_epoch_and_reports_it` | Selection rules are unchanged and the reported metrics are the saved epoch's own. | parametrize |
+| `test_ic_selection_still_requires_minimum_selection_rows` | Fail-closed coverage boundary: N-1 eligible rows raise and N rows select. | parametrize |
+
 ## `tests/test_ci_smoke.py`
 
 **Exercises:** `scripts.ci_smoke`
@@ -306,6 +320,7 @@ Ensemble invariant: prediction = mean of independently trained models.
 | `test_ensemble_prediction_is_mean_of_member_predictions` |  |  |
 | `test_ensemble_writes_one_checkpoint_per_member` |  |  |
 | `test_ensemble_averaging_matches_numpy_mean` | avg_predictions returned in-memory equals the numpy mean of member outputs. |  |
+| `test_ensemble_completes_and_forwards_missing_checkpoint_metrics` | Members without an IC at their selected checkpoint complete and forward None. |  |
 
 ## `tests/test_evaluation_portfolio.py`
 
@@ -1348,6 +1363,22 @@ Strictness of the threshold comparison in `build_edges` (issue 170).
 | `test_create_config_from_dict_accepts_efficiency_overrides` |  |  |
 | `test_create_data_loaders_preserves_default_loader_behavior` |  |  |
 | `test_create_data_loaders_accepts_efficiency_overrides` |  |  |
+
+## `tests/test_training_summary.py`
+
+Training summaries average only available checkpoint metrics and count coverage.
+
+**Exercises:** `mci_gru.config`, `mci_gru.training.ensemble`, `mci_gru.training.summary`, `mci_gru.training.trainer`, `mci_gru.walkforward`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_member_summary_averages_available_values_and_keeps_missing_slots` | Missing member slots stay null and each mean covers only the available members. |  |
+| `test_member_summary_treats_non_finite_values_as_unavailable` | Historical sentinels such as -inf are unavailable rather than averaged. |  |
+| `test_member_summary_without_members_keeps_every_mean_missing` | An empty ensemble reports null means and zero coverage. |  |
+| `test_saved_training_summary_is_null_not_inf_when_no_ic_row_is_eligible` | End to end: val_loss selection with all-NaN validation labels writes null IC values. |  |
+| `test_walkforward_mean_weights_windows_equally_and_counts_windows` | Window coverage counts windows, not members, and each available window counts once. |  |
+| `test_walkforward_treats_historical_non_finite_window_means_as_unavailable` | A -inf or NaN window mean from an older run no longer poisons the aggregate. |  |
+| `test_walkforward_summary_of_no_windows_stays_empty` | An empty walk-forward run has no aggregate at all. |  |
 
 ## `tests/test_transforms.py`
 

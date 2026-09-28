@@ -395,8 +395,11 @@ fails closed**: IC metrics are `None` rather than `0.0` when no rows are
 eligible, and `ValidationObservation.selection_value()` raises `ValueError` when
 the configured `training.selection_metric` has fewer than
 `training.minimum_selection_rows` eligible rows. Early stopping and checkpointing
-both use that single metric; the co-metrics recorded in `TrainingResult` come
-from the selected epoch whenever they are available on it.
+both use that single metric. `TrainingResult.best_val_loss`, `best_val_ic`, and
+`best_val_rank_ic` are the selected checkpoint's own validation observation,
+the epoch saved at `best_model_path`; a metric unavailable on that epoch is
+`None`, never a value carried over from another epoch or an infinite sentinel
+(`tests/test_checkpoint_metrics.py`).
 
 `mci_gru/training/ensemble.py` implements the ensemble contract.
 `train_multiple_models()` builds `training.num_models` independent models; member
@@ -406,6 +409,15 @@ from the selected epoch whenever they are available on it.
 mean across members. Prediction CSVs have `kdcode,dt,score` rows, round scores to
 five decimal places, and omit masked or non-finite names — so in masked PIT mode
 a date's CSV contains only that date's tradable candidates.
+
+`run_experiment.py` writes the members' selected-checkpoint metrics to
+`training_summary.json` through `build_training_summary()`
+(`mci_gru/training/summary.py`). `best_val_losses`, `best_val_ics`, and
+`best_val_rank_ics` keep one slot per member, `null` where the metric was
+unavailable at that member's selected checkpoint. Each `mean_best_val_*`
+averages only the available finite member values, is `null` when none is
+available, and `member_coverage` records the available and total member counts
+(`tests/test_training_summary.py`).
 
 ## Walk-Forward Windows
 
@@ -423,8 +435,13 @@ sections with only `data.*` dates rewritten, so per-window evaluation uses the
 configured `EvaluationConfig` rather than defaults
 (`tests/test_walkforward_config_propagation.py`).
 
-`merge_walkforward_summary()` aggregates per-window training summaries and the
-mean of each numeric evaluation metric across windows;
+`merge_walkforward_summary()` aggregates per-window training summaries with
+equal weight per window: each `mean_best_val_*_across_windows` averages the
+windows whose own `mean_best_val_*` is available, `window_coverage` records the
+available and total window counts separately from each window's
+`member_coverage`, non-finite values from older summaries (such as `-inf`)
+count as unavailable, and an aggregate with no available window is `null`. It
+also takes the mean of each numeric evaluation metric across windows;
 `select_training_objective_value()` returns the aggregate matching
 `training.selection_metric`.
 

@@ -5,10 +5,13 @@ models and the final prediction is the member mean. Uses tiny deterministic
 CPU models so member predictions are known and distinct.
 """
 
+import logging
+from contextlib import nullcontext
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 import torch
 import torch.nn as nn
 
@@ -172,3 +175,79 @@ def test_ensemble_averaging_matches_numpy_mean(tmp_path: Path) -> None:
         members.append([[row[k] for k in KDCODES] for row in rows])
     expected = np.mean(np.array(members), axis=0)
     np.testing.assert_allclose(avg_predictions, expected, atol=1e-4)
+
+
+def _unlabelled_loader():
+    """Validation batches whose labels are all NaN, so no IC row is ever eligible."""
+    return [
+        (
+            torch.zeros((1, N_STOCKS, 3, 2)),
+            torch.full((1, N_STOCKS), float("nan")),
+            torch.zeros((1, N_STOCKS, 2)),
+            torch.zeros((2, 0), dtype=torch.long),
+            torch.zeros((0,)),
+            N_STOCKS,
+            [TEST_DATES[i]],
+        )
+        for i in range(len(TEST_DATES))
+    ]
+
+
+class _RecordingRun:
+    """Stands in for an MLflow run and records what the ensemble forwards to it."""
+
+    enabled = True
+
+    def __init__(self) -> None:
+        self.children: list[_RecordingRun] = []
+        self.metrics: list[dict] = []
+
+    def create_child_run(self, run_name, tags=None):
+        child = _RecordingRun()
+        self.children.append(child)
+        return nullcontext(child)
+
+    def log_epoch_metrics(self, *values) -> None:
+        pass
+
+    def log_metrics(self, metrics, step=None, prefix="") -> None:
+        self.metrics.append(dict(metrics))
+
+    def log_artifact(self, path, artifact_path=None) -> None:
+        pass
+
+    def log_artifacts(self, path, artifact_path=None) -> None:
+        pass
+
+
+def test_ensemble_completes_and_forwards_missing_checkpoint_metrics(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Members without an IC at their selected checkpoint complete and forward None."""
+    offsets = iter([0.0, 1.0])
+
+    def model_factory() -> nn.Module:
+        return FixedScoreModel(offset=next(offsets))
+
+    tracking = _RecordingRun()
+    with caplog.at_level(logging.INFO, logger="mci_gru.training.ensemble"):
+        results, avg_predictions = train_multiple_models(
+            model_factory=model_factory,
+            config=_config(tmp_path, num_models=2),
+            train_loader=_loader(),
+            val_loader=_unlabelled_loader(),
+            test_loader=_loader(),
+            kdcode_list=KDCODES,
+            test_dates=TEST_DATES,
+            output_path=str(tmp_path),
+            tracking_manager=tracking,
+        )
+
+    assert avg_predictions.shape == (len(TEST_DATES), N_STOCKS)
+    assert [(r.best_val_ic, r.best_val_rank_ic) for r in results] == [(None, None)] * 2
+    forwarded = [child.metrics[-1] for child in tracking.children]
+    assert [(m["best_val_ic"], m["best_val_rank_ic"]) for m in forwarded] == [(None, None)] * 2
+    completions = [r.getMessage() for r in caplog.records if "training complete" in r.getMessage()]
+    assert len(completions) == 2
+    assert all("val IC: unavailable, val Rank IC: unavailable" in line for line in completions)
