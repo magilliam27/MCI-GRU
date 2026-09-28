@@ -1290,6 +1290,17 @@ Unit tests for mci_gru.data.transforms.
 | `test_write_trial_ledger_strict_jsonl_and_force_guard` |  |  |
 | `test_validate_trial_family_rejects_missing_expected_member` |  |  |
 
+## `tests/test_vix_features.py`
+
+Behavioral tests for the market-wide VIX feature merge.
+
+**Exercises:** `mci_gru.features.volatility`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_missing_vix_dates_carry_the_last_earlier_level_and_default_to_20` |  |  |
+| `test_future_vix_observations_do_not_change_earlier_rows` |  | parametrize |
+
 ## `tests/test_volatility_features.py`
 
 Behavioral tests for ordinary rolling-volatility features.
