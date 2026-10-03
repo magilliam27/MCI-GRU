@@ -1,7 +1,9 @@
-"""Capture an execution-start snapshot and inspect it without live observations.
+"""Capture an execution-start snapshot, record what each member actually ran,
+and inspect both without live observations.
 
-This module does not start training, collect data inputs, or declare completion.
-Callers retain the returned digest alongside the artifact as its trust anchor.
+This module does not start training or collect data inputs. Callers retain the
+returned start digest alongside the artifact as its trust anchor; member events
+are chained to it.
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ import ast
 import base64
 import hashlib
 import json
+import os
 import platform
 import re
 import subprocess
@@ -227,6 +230,258 @@ def read_execution_provenance(reference: ExecutionReference) -> CapturedExecutio
     except (KeyError, TypeError, AttributeError, ValueError) as exc:
         raise ValueError("Invalid execution evidence: " + str(exc)) from exc
     return CapturedExecution(record, config, sources)
+
+
+MEMBER_EVENT_SCHEMA = "mci_gru.execution_member_event.v1"
+MEMBER_EVENTS = (
+    "seeded",
+    "training_started",
+    "checkpoint_saved",
+    "checkpoint_loaded",
+    "member_completed",
+    "member_failed",
+)
+BACKEND_OBSERVATIONS = {
+    "cuda_available": bool,
+    "cudnn_version": int,
+    "cudnn_enabled": bool,
+    "cudnn_deterministic": bool,
+    "cudnn_benchmark": bool,
+    "deterministic_algorithms": bool,
+    "float32_matmul_precision": str,
+}
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+
+
+@dataclass(frozen=True)
+class MemberExecution:
+    """What one attempt's retained member events establish, and what they do not.
+
+    ``status`` is ``complete`` only when every planned member left complete
+    evidence; ``failed`` when a member recorded a failure; otherwise
+    ``incomplete``. Each member lists the problems that keep it from complete.
+    """
+
+    status: str
+    expected_members: int
+    members: tuple[dict[str, Any], ...]
+
+
+class MemberEventLog:
+    """Append-only, hash-chained member events kept beside one start record.
+
+    The start record stays immutable. Each event names the digest of the event
+    before it, or the start digest for the first, so an edit, deletion or
+    reorder is detectable. Events that never arrive, as when the process is
+    killed, leave the member unfinished rather than complete.
+    """
+
+    def __init__(self, reference: ExecutionReference) -> None:
+        start = read_execution_provenance(reference)
+        self._attempt_id = start.record["attempt_id"]
+        self._path = _member_events_path(reference.path)
+        self._previous = reference.sha256
+        self._sequence = 0
+        try:
+            with self._path.open("xb"):
+                pass
+        except FileExistsError as exc:
+            raise ValueError("Member events already recorded for this attempt") from exc
+
+    def record(self, model_id: int, event: str, data: dict[str, Any]) -> None:
+        """Durably append one event for ensemble member *model_id*."""
+        if event not in MEMBER_EVENTS:
+            raise ValueError(f"Unknown member event: {event}")
+        line = canonical_json_bytes(
+            {
+                "schema": MEMBER_EVENT_SCHEMA,
+                "attempt_id": self._attempt_id,
+                "sequence": self._sequence,
+                "previous_sha256": self._previous,
+                "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
+                "model_id": model_id,
+                "event": event,
+                "data": data,
+            }
+        )
+        with self._path.open("ab") as handle:
+            handle.write(line)
+            handle.flush()
+            os.fsync(handle.fileno())
+        self._previous = hashlib.sha256(line).hexdigest()
+        self._sequence += 1
+
+
+def read_member_execution(reference: ExecutionReference) -> MemberExecution:
+    """Read retained member events against the retained start and its config.
+
+    The planned member count and seeds come from the retained resolved config,
+    never from the live one; they are the denominator, not evidence of a run.
+    """
+    start = read_execution_provenance(reference)
+    try:
+        config = json.loads(start.resolved_config_bytes)
+        expected = config["training"]["num_models"]
+        base_seed = config["seed"]
+        if type(expected) is not int or expected < 1 or type(base_seed) is not int:
+            raise TypeError
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("Retained config does not state the planned members") from exc
+    try:
+        payload = _member_events_path(reference.path).read_bytes()
+    except FileNotFoundError:
+        payload = b""
+    except OSError as exc:
+        raise ValueError("Invalid member events: unreadable") from exc
+    lines = payload.splitlines(keepends=True)
+    # A final line without its terminator is a write the process never finished.
+    truncated = bool(lines) and not lines[-1].endswith(b"\n")
+    if truncated:
+        lines = lines[:-1]
+    states: list[dict[str, Any]] = []
+    previous = reference.sha256
+    try:
+        for sequence, line in enumerate(lines):
+            entry = json.loads(line, parse_constant=_invalid_constant)
+            if not isinstance(entry, dict) or canonical_json_bytes(entry) != line:
+                raise ValueError("non-canonical event")
+            if (
+                entry["schema"] != MEMBER_EVENT_SCHEMA
+                or entry["attempt_id"] != start.record["attempt_id"]
+                or entry["sequence"] != sequence
+                or entry["previous_sha256"] != previous
+            ):
+                raise ValueError("event does not continue this attempt's chain")
+            if datetime.fromisoformat(entry["recorded_at_utc"]).tzinfo is None:
+                raise ValueError("timestamp must identify its time zone")
+            _apply_member_event(states, entry["model_id"], entry["event"], entry["data"])
+            previous = hashlib.sha256(line).hexdigest()
+    except (KeyError, TypeError, AttributeError, ValueError) as exc:
+        raise ValueError("Invalid member events: " + str(exc)) from exc
+    members = tuple(_member_report(state, base_seed) for state in states)
+    if any(member["status"] == "failed" for member in members):
+        status = "failed"
+    elif (
+        not truncated
+        and len(members) == expected
+        and all(member["status"] == "complete" for member in members)
+    ):
+        status = "complete"
+    else:
+        status = "incomplete"
+    return MemberExecution(status, expected, members)
+
+
+def _member_events_path(start_path: Path) -> Path:
+    return start_path.with_name(start_path.stem + ".events.jsonl")
+
+
+def _apply_member_event(states: list[dict[str, Any]], model_id: Any, event: str, data: Any) -> None:
+    if type(model_id) is not int or not isinstance(data, dict):
+        raise ValueError("invalid event shape")
+    if model_id == len(states):
+        if states and states[-1]["stage"] != "completed":
+            raise ValueError("a member started before the previous one finished")
+        states.append(
+            {
+                "model_id": model_id,
+                "stage": "new",
+                "applied_seed": None,
+                "torch_initial_seed": None,
+                "runtime": None,
+                "saved_sha256": None,
+                "loaded": False,
+                "loaded_sha256": None,
+                "error_type": None,
+            }
+        )
+    elif model_id != len(states) - 1:
+        raise ValueError("member events out of order")
+    state = states[model_id]
+    stage = state["stage"]
+    if event == "seeded" and stage == "new":
+        if type(data["seed"]) is not int:
+            raise ValueError("invalid applied seed")
+        _observation_value(data["torch_initial_seed"], int)
+        state.update(
+            stage="seeded",
+            applied_seed=data["seed"],
+            torch_initial_seed=data["torch_initial_seed"],
+        )
+    elif event == "training_started" and stage == "seeded":
+        if type(data["amp_requested"]) is not bool or type(data["amp_effective"]) is not bool:
+            raise ValueError("invalid precision record")
+        _observation_value(data["device"], str)
+        _observation_value(data["parameter_dtype"], str)
+        if set(data["backend"]) != set(BACKEND_OBSERVATIONS):
+            raise ValueError("invalid backend inventory")
+        for name, value_type in BACKEND_OBSERVATIONS.items():
+            _observation_value(data["backend"][name], value_type)
+        state.update(stage="started", runtime=data)
+    elif event == "checkpoint_saved" and stage == "started" and not state["loaded"]:
+        if (
+            type(data["epoch"]) is not int
+            or data["epoch"] < 1
+            or type(data["size_bytes"]) is not int
+            or not _SHA256.fullmatch(data["sha256"])
+        ):
+            raise ValueError("invalid checkpoint record")
+        state["saved_sha256"] = data["sha256"]
+    elif event == "checkpoint_loaded" and stage == "started" and not state["loaded"]:
+        if data["sha256"] is not None and not _SHA256.fullmatch(data["sha256"]):
+            raise ValueError("invalid checkpoint record")
+        state.update(loaded=True, loaded_sha256=data["sha256"])
+    elif event == "member_completed" and stage == "started" and state["loaded"]:
+        state["stage"] = "completed"
+    elif event == "member_failed" and stage in {"seeded", "started"}:
+        if not isinstance(data["error_type"], str) or not data["error_type"]:
+            raise ValueError("invalid failure record")
+        state.update(stage="failed", error_type=data["error_type"])
+    else:
+        raise ValueError(f"unexpected {event} event")
+
+
+def _member_report(state: dict[str, Any], base_seed: int) -> dict[str, Any]:
+    planned_seed = base_seed + state["model_id"]
+    problems = []
+    if state["stage"] != "failed":
+        if state["stage"] != "completed":
+            problems.append("member did not finish")
+        if state["applied_seed"] != planned_seed:
+            problems.append("applied seed differs from the plan")
+        seed_observation = state["torch_initial_seed"]
+        if seed_observation is None or seed_observation != {
+            "status": "observed",
+            "value": state["applied_seed"],
+        }:
+            problems.append("seed application not observed")
+        runtime = state["runtime"]
+        if runtime is not None and runtime["device"]["status"] != "observed":
+            problems.append("device not observed")
+        if state["saved_sha256"] is None:
+            problems.append("no checkpoint saved in this attempt")
+        if state["loaded"] and state["loaded_sha256"] is None:
+            problems.append("checkpoint missing at load")
+        elif state["loaded"] and state["loaded_sha256"] != state["saved_sha256"]:
+            problems.append("loaded checkpoint differs from the last one saved")
+    if state["stage"] == "failed":
+        status = "failed"
+    else:
+        status = "incomplete" if problems else "complete"
+    return {
+        "model_id": state["model_id"],
+        "status": status,
+        "planned_seed": planned_seed,
+        "applied_seed": state["applied_seed"],
+        "torch_initial_seed": state["torch_initial_seed"],
+        "runtime": state["runtime"],
+        "checkpoint": {
+            "saved_sha256": state["saved_sha256"],
+            "loaded_sha256": state["loaded_sha256"],
+        },
+        "error_type": state["error_type"],
+        "problems": problems,
+    }
 
 
 def _validate_source_path(name: str) -> None:
