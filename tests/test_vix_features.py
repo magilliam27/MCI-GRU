@@ -71,3 +71,55 @@ def test_future_vix_observations_do_not_change_earlier_rows(cutoff: str) -> None
             before_base[before_base.index < cutoff],
             before_mutated[before_mutated.index < cutoff],
         )
+
+
+def _stock_major_panel() -> pd.DataFrame:
+    # Momentum and volatility features re-sort by (kdcode, dt) before the VIX merge,
+    # so the panel reaching add_vix_features is stock-major in a real run.
+    return pd.concat(
+        [
+            pd.DataFrame({"kdcode": code, "dt": PANEL_DATES, "close": 100.0})
+            for code in ("AAA", "BBB")
+        ],
+        ignore_index=True,
+    )
+
+
+def test_stock_major_panel_never_carries_vix_across_stocks() -> None:
+    result = add_vix_features(_stock_major_panel(), _vix(VIX_OBSERVATIONS))
+
+    expected = [20.0, 11.0, 13.0, 13.0, 17.0, 17.0, 23.0]
+    for code in ("AAA", "BBB"):
+        stock = result[result["kdcode"] == code]
+        # BBB's first date has no VIX yet; it must not take AAA's last level (23.0).
+        assert stock["vix"].astype(float).tolist() == expected, code
+
+
+def test_vix_does_not_depend_on_panel_row_order() -> None:
+    stock_major = add_vix_features(_stock_major_panel(), _vix(VIX_OBSERVATIONS))
+    date_major = add_vix_features(
+        _stock_major_panel().sort_values(["dt", "kdcode"]), _vix(VIX_OBSERVATIONS)
+    )
+
+    key = ["kdcode", "dt"]
+    pd.testing.assert_frame_equal(
+        stock_major.sort_values(key).reset_index(drop=True),
+        date_major.sort_values(key).reset_index(drop=True),
+    )
+
+
+@pytest.mark.parametrize("cutoff", PANEL_DATES[1:])
+def test_future_vix_never_reaches_an_earlier_row_of_any_stock(cutoff: str) -> None:
+    changed = {
+        dt: level * 10.0 if dt >= cutoff else level for dt, level in VIX_OBSERVATIONS.items()
+    }
+
+    base = add_vix_features(_stock_major_panel(), _vix(VIX_OBSERVATIONS))
+    mutated = add_vix_features(_stock_major_panel(), _vix(changed))
+
+    later = base["dt"] >= cutoff
+    # The perturbation must reach the output, or the comparison below is vacuous.
+    assert not base.loc[later, "vix"].equals(mutated.loc[later, "vix"])
+    earlier = base["dt"] < cutoff
+    for column in VIX_FEATURES:
+        pd.testing.assert_series_equal(base.loc[earlier, column], mutated.loc[earlier, column])
