@@ -1293,6 +1293,27 @@ Prevent retired repository surfaces from being reintroduced.
 | `test_validate_run_bundle_rejects_empty_prediction_directory` |  |  |
 | `test_write_run_manifest_refuses_overwrite_without_force` |  |  |
 
+## `tests/test_run_input_attachments.py`
+
+Saved-run input attachment: exact declarations linked to observed reads (#208).
+
+**Exercises:** `mci_gru.data.input_manifest`, `mci_gru.data.input_observations`, `mci_gru.data.input_snapshots`, `mci_gru.evaluation.artifacts`, `mci_gru.evaluation.run_input_attachments`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_relocated_attachment_recovers_exact_declarations_and_their_reads` |  |  |
+| `test_missing_or_altered_retained_evidence_is_never_complete` |  | parametrize |
+| `test_a_same_size_read_with_different_bytes_is_not_the_declared_input` |  |  |
+| `test_a_required_role_that_was_never_read_is_explicit` |  |  |
+| `test_a_read_with_no_declaration_is_explicit_even_when_every_declared_file_matches` |  |  |
+| `test_identical_bytes_from_another_package_revision_are_not_the_declared_read` |  |  |
+| `test_a_declaration_naming_a_file_its_manifest_lacks_is_explicit` |  |  |
+| `test_supplied_execution_and_preservation_status_are_carried_unchanged` |  |  |
+| `test_an_unknown_status_is_refused` |  | parametrize |
+| `test_a_required_role_must_name_an_attached_manifest` |  |  |
+| `test_an_existing_attachment_is_never_replaced` |  |  |
+| `test_an_attachment_record_that_differs_from_its_anchor_is_rejected` |  |  |
+
 ## `tests/test_run_pytest_isolated.py`
 
 Regression tests for the isolated pytest launcher.
