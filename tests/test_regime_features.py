@@ -1,3 +1,6 @@
+import sys
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -296,34 +299,53 @@ def test_regime_csv_loader_forward_fills_without_backfill():
         os.unlink(path)
 
 
+FRED_SERIES_BY_COLUMN = {
+    "yield_10y": "DGS10",
+    "yield_3m": "DGS3MO",
+    "regime_oil": "DCOILWTICO",
+    "regime_volatility": "VIXCLS",
+    "regime_market": "SP500",
+    "regime_copper": "PCOPPUSDM",
+}
+
+
+def _install_fred_sdk(monkeypatch, series_by_column, fail_first=()):
+    """Fake the FRED SDK so the public loader path, rules included, is exercised."""
+    by_series_id = {FRED_SERIES_BY_COLUMN[name]: s for name, s in series_by_column.items()}
+    calls: dict[str, int] = {}
+
+    class Fred:
+        def __init__(self, api_key):
+            pass
+
+        def get_series(self, series_id, observation_start, observation_end):
+            calls[series_id] = calls.get(series_id, 0) + 1
+            if series_id in fail_first and calls[series_id] == 1:
+                raise TimeoutError("temporary FRED outage")
+            return by_series_id[series_id].copy()
+
+    monkeypatch.setenv("FRED_API_KEY", "test-only")
+    monkeypatch.setitem(sys.modules, "fredapi", SimpleNamespace(Fred=Fred))
+    return calls
+
+
 def test_live_regime_stock_bond_corr_uses_three_year_window(monkeypatch):
-    dates = pd.date_range("2020-01-01", periods=800, freq="D")
+    dates = pd.bdate_range("2020-01-01", periods=800)
     market_returns = pd.Series(np.linspace(-0.01, 0.012, len(dates)), index=dates)
     market = 100.0 * (1.0 + market_returns).cumprod()
     yield_10y = pd.Series(np.sin(np.linspace(0, 20, len(dates))), index=dates).cumsum()
 
-    series_by_name = {
-        "yield_10y": yield_10y,
-        "yield_3m": pd.Series(1.0, index=dates),
-        "regime_oil": pd.Series(np.linspace(70.0, 80.0, len(dates)), index=dates),
-        "regime_volatility": pd.Series(np.linspace(20.0, 25.0, len(dates)), index=dates),
-        "regime_market": market,
-        "regime_copper": pd.Series(np.linspace(3.0, 4.0, len(dates)), index=dates),
-    }
-
-    class FakeFREDLoader:
-        def __init__(self, *, snapshots):
-            pass
-
-        def get_series(self, _series_id, _start, _end, value_name, lag_days=1):
-            return pd.DataFrame(
-                {
-                    "dt": dates.strftime("%Y-%m-%d"),
-                    value_name: series_by_name[value_name].to_numpy(),
-                }
-            )
-
-    monkeypatch.setattr("mci_gru.data.fred_loader.FREDLoader", FakeFREDLoader)
+    _install_fred_sdk(
+        monkeypatch,
+        {
+            "yield_10y": yield_10y,
+            "yield_3m": pd.Series(1.0, index=dates),
+            "regime_oil": pd.Series(np.linspace(70.0, 80.0, len(dates)), index=dates),
+            "regime_volatility": pd.Series(np.linspace(20.0, 25.0, len(dates)), index=dates),
+            "regime_market": market,
+            "regime_copper": pd.Series(np.linspace(3.0, 4.0, len(dates)), index=dates),
+        },
+    )
     config = DataConfig(
         auxiliary_sources={"regime": "fred"},
         train_start="2020-01-01",
@@ -331,60 +353,43 @@ def test_live_regime_stock_bond_corr_uses_three_year_window(monkeypatch):
         val_start="2020-01-11",
         val_end="2020-01-12",
         test_start="2020-01-13",
-        test_end="2022-03-10",
+        test_end=dates[-1].strftime("%Y-%m-%d"),
     )
 
-    out = DataManager(config).load_regime_inputs()
+    out = DataManager(config).load_regime_inputs().set_index("dt")
+    corr = out.loc[dates.strftime("%Y-%m-%d"), "regime_stock_bond_corr"].to_numpy()
 
-    corr = out["regime_stock_bond_corr"]
-    assert corr.iloc[:756].isna().all()
-    assert not pd.isna(corr.iloc[756])
-
-    expected = market.pct_change().rolling(756, min_periods=756).corr(yield_10y.diff())
-    assert corr.iloc[756] == pytest.approx(expected.iloc[756])
+    # Session t sees the values dated the session before it, so the first full
+    # 756-pair window of returns against yield changes closes at session 757.
+    known_market, known_yield = market.shift(1), yield_10y.shift(1)
+    expected = (
+        known_market.pct_change(fill_method=None)
+        .rolling(756, min_periods=756)
+        .corr(known_yield.diff())
+        .to_numpy()
+    )
+    assert np.isnan(corr[:757]).all()
+    assert not np.isnan(corr[757])
+    np.testing.assert_allclose(corr, expected, equal_nan=True)
 
 
 def test_live_regime_stock_bond_corr_handles_sparse_merged_panel(monkeypatch):
     dates = pd.date_range("2000-01-01", periods=1600, freq="D")
     even_dates = dates[::2]
     odd_dates = dates[1::2]
-
-    class FakeFREDLoader:
-        def __init__(self, *, snapshots):
-            pass
-
-        def get_series(self, _series_id, _start, _end, value_name, lag_days=1):
-            if value_name == "yield_10y":
-                return pd.DataFrame(
-                    {
-                        "dt": even_dates.strftime("%Y-%m-%d"),
-                        value_name: np.linspace(1.0, 3.0, len(even_dates)),
-                    }
-                )
-            if value_name == "yield_3m":
-                return pd.DataFrame(
-                    {
-                        "dt": even_dates.strftime("%Y-%m-%d"),
-                        value_name: np.linspace(0.5, 1.5, len(even_dates)),
-                    }
-                )
-            if value_name == "regime_market":
-                returns = np.linspace(-0.005, 0.006, len(odd_dates))
-                market = 3000.0 * (1.0 + returns).cumprod()
-                return pd.DataFrame(
-                    {
-                        "dt": odd_dates.strftime("%Y-%m-%d"),
-                        value_name: market,
-                    }
-                )
-            return pd.DataFrame(
-                {
-                    "dt": dates.strftime("%Y-%m-%d"),
-                    value_name: np.linspace(10.0, 20.0, len(dates)),
-                }
-            )
-
-    monkeypatch.setattr("mci_gru.data.fred_loader.FREDLoader", FakeFREDLoader)
+    returns = np.linspace(-0.005, 0.006, len(odd_dates))
+    _install_fred_sdk(
+        monkeypatch,
+        {
+            "yield_10y": pd.Series(np.linspace(1.0, 3.0, len(even_dates)), index=even_dates),
+            "yield_3m": pd.Series(np.linspace(0.5, 1.5, len(even_dates)), index=even_dates),
+            "regime_market": pd.Series(3000.0 * (1.0 + returns).cumprod(), index=odd_dates),
+            **{
+                name: pd.Series(np.linspace(10.0, 20.0, len(dates)), index=dates)
+                for name in ("regime_oil", "regime_volatility", "regime_copper")
+            },
+        },
+    )
     config = DataConfig(
         auxiliary_sources={"regime": "fred"},
         train_start="2000-01-01",
@@ -402,32 +407,18 @@ def test_live_regime_stock_bond_corr_handles_sparse_merged_panel(monkeypatch):
 
 def test_live_regime_fetch_retries_transient_series_failure(monkeypatch):
     dates = pd.date_range("2020-01-01", periods=800, freq="D")
-    series_by_name = {
-        "yield_10y": pd.Series(np.linspace(1.0, 2.0, len(dates)), index=dates),
-        "yield_3m": pd.Series(np.linspace(0.5, 1.0, len(dates)), index=dates),
-        "regime_oil": pd.Series(np.linspace(70.0, 80.0, len(dates)), index=dates),
-        "regime_volatility": pd.Series(np.linspace(20.0, 25.0, len(dates)), index=dates),
-        "regime_market": pd.Series(np.linspace(3000.0, 4000.0, len(dates)), index=dates),
-        "regime_copper": pd.Series(np.linspace(3.0, 4.0, len(dates)), index=dates),
-    }
-    calls_by_name: dict[str, int] = {}
-
-    class FakeFREDLoader:
-        def __init__(self, *, snapshots):
-            pass
-
-        def get_series(self, _series_id, _start, _end, value_name, lag_days=1):
-            calls_by_name[value_name] = calls_by_name.get(value_name, 0) + 1
-            if value_name == "regime_oil" and calls_by_name[value_name] == 1:
-                raise TimeoutError("temporary FRED outage")
-            return pd.DataFrame(
-                {
-                    "dt": dates.strftime("%Y-%m-%d"),
-                    value_name: series_by_name[value_name].to_numpy(),
-                }
-            )
-
-    monkeypatch.setattr("mci_gru.data.fred_loader.FREDLoader", FakeFREDLoader)
+    calls = _install_fred_sdk(
+        monkeypatch,
+        {
+            "yield_10y": pd.Series(np.linspace(1.0, 2.0, len(dates)), index=dates),
+            "yield_3m": pd.Series(np.linspace(0.5, 1.0, len(dates)), index=dates),
+            "regime_oil": pd.Series(np.linspace(70.0, 80.0, len(dates)), index=dates),
+            "regime_volatility": pd.Series(np.linspace(20.0, 25.0, len(dates)), index=dates),
+            "regime_market": pd.Series(np.linspace(3000.0, 4000.0, len(dates)), index=dates),
+            "regime_copper": pd.Series(np.linspace(3.0, 4.0, len(dates)), index=dates),
+        },
+        fail_first={"DCOILWTICO"},
+    )
     monkeypatch.setenv("MCI_GRU_FRED_MAX_ATTEMPTS", "2")
     monkeypatch.setenv("MCI_GRU_FRED_RETRY_SECONDS", "0")
     config = DataConfig(
@@ -442,7 +433,7 @@ def test_live_regime_fetch_retries_transient_series_failure(monkeypatch):
 
     out = DataManager(config).load_regime_inputs()
 
-    assert calls_by_name["regime_oil"] == 2
+    assert calls["DCOILWTICO"] == 2
     assert not out["regime_oil"].isna().all()
 
 
