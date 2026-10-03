@@ -231,7 +231,13 @@ def add_vix_features(
     vix_merge = vix[vix_cols]
     df["dt"] = pd.to_datetime(df["dt"]).dt.strftime("%Y-%m-%d")
     df = df.merge(vix_merge, on="dt", how="left")
-    df["vix"] = df["vix"].ffill().fillna(20)
+    # Carry the level along the panel's own dates, never by row position: a
+    # stock-major panel would otherwise hand one stock's last (latest-dated) level
+    # to the next stock's earliest rows (issue #244). On a date-major panel this is
+    # exactly what the positional fill gave.
+    observed = vix.dropna(subset=["vix"]).groupby("dt")["vix"].last()
+    last_known = observed.reindex(pd.Index(sorted(df["dt"].unique()))).ffill()
+    df["vix"] = df["vix"].fillna(df["dt"].map(last_known)).fillna(20)
     df["vix_change"] = df["vix_change"].fillna(0)
     df["vix_regime"] = df["vix_regime"].fillna(0)
 
