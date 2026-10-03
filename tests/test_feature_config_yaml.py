@@ -26,6 +26,7 @@ REGIME_KEYS = sorted(
     for field in dataclasses.fields(FeatureConfig)
     if field.name == "include_global_regime" or field.name.startswith("regime_")
 )
+FEATURE_KEYS = sorted(field.name for field in dataclasses.fields(FeatureConfig))
 REGIME_INPUTS_CSV = "data/raw/market/regime_inputs.csv"
 
 
@@ -123,3 +124,45 @@ def test_every_feature_group_declares_every_regime_key(group: str) -> None:
         [f"features={group}", "features.regime_subsequent_return_horizons=[2,6]"]
     )
     assert override.features.regime_subsequent_return_horizons == [2, 6], group
+
+
+@pytest.mark.parametrize("group", FEATURE_GROUPS)
+def test_every_feature_group_declares_every_feature_config_key(group: str) -> None:
+    """Every ``FeatureConfig`` field is declared in every group, so no override needs ``+``.
+
+    ``features=base`` and ``features=full`` once lacked the seven momentum-blend keys that
+    ``with_momentum`` declares, so ``features.momentum_blend_mode=dynamic`` failed to
+    compose with them (issue 247).
+    """
+    composed = _compose([f"features={group}"])
+
+    missing = sorted(set(FEATURE_KEYS) - set(composed.features.keys()))
+    assert not missing, f"features={group} does not declare {missing}"
+
+
+@pytest.mark.parametrize("group", FEATURE_GROUPS)
+def test_momentum_blend_overrides_compose_with_every_feature_group(group: str) -> None:
+    """The momentum-blend overrides reach the typed config from every group, without ``+``."""
+    features = _compose_experiment_config(
+        [
+            f"features={group}",
+            "features.momentum_blend_mode=dynamic",
+            "features.momentum_dynamic_min_history=126",
+        ]
+    ).features
+
+    assert features.momentum_blend_mode == "dynamic", group
+    assert features.momentum_dynamic_min_history == 126, group
+
+
+@pytest.mark.parametrize("group", FEATURE_GROUPS)
+def test_feature_group_declarations_match_the_dataclass_defaults_for_momentum_blend(
+    group: str,
+) -> None:
+    """Declaring the momentum-blend keys leaves each group's default behaviour unchanged."""
+    features = _compose_experiment_config([f"features={group}"]).features
+    defaults = FeatureConfig()
+
+    for key in FEATURE_KEYS:
+        if key.startswith("momentum_blend") or key.startswith("momentum_dynamic"):
+            assert getattr(features, key) == getattr(defaults, key), f"{group}: {key}"

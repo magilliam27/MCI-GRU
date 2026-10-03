@@ -476,7 +476,9 @@ def engineer_features(
 def resolve_pit_context(
     config: ExperimentConfig, input_observations: InputObservationContext | None = None
 ) -> PitContext:
-    masked_panel = config.data.use_pit_universe and config.data.pit_universe_mode == "masked_panel"
+    # DataConfig accepts only pit_universe_mode="masked_panel" (#139), so a PIT
+    # universe is always a masked panel.
+    masked_panel = config.data.use_pit_universe
     csv_path = config.data.pit_universe_csv if config.data.use_pit_universe else None
     intervals: pd.DataFrame | None = None
     if config.data.use_pit_universe:
@@ -838,12 +840,8 @@ def prepare_data(
     gc.collect()
 
     pit = resolve_pit_context(config, data_manager.input_observations)
-    if pit.intervals is not None:
-        if pit.masked_panel:
-            logger.info("Using true PIT masked-panel mode (fixed union axis + daily masks)...")
-        else:
-            logger.info("Applying legacy PIT universe row filter...")
-            df_filled = _apply_pit_universe(df_filled, pit.csv_path, pit.input_observations)
+    if pit.masked_panel:
+        logger.info("Using true PIT masked-panel mode (fixed union axis + daily masks)...")
 
     norm_fit, df_norm = fit_normalisation(
         df_filled,
@@ -913,11 +911,9 @@ def prepare_data(
         config.data.test_end,
         # Earliest date the schedule will be asked about, so it can assert readiness.
         first_sample_date=tensor_bundle.train_dates[0] if len(tensor_bundle.train_dates) else None,
-        # Only masked_panel gets PIT-restricted selection. row_filter is dead
-        # configuration - every config setting it also sets
-        # use_pit_universe: false - and it could not protect the graph anyway,
-        # because the graph reads frames.raw, which the row filter never
-        # touches. See #123 decision D6.
+        # A PIT masked panel restricts edge selection to the PIT intervals. The
+        # graph reads frames.raw, so only these intervals can protect it (#123
+        # decision D6); the legacy row_filter mode is rejected by DataConfig.
         pit_intervals=pit.intervals if pit.masked_panel else None,
         input_observations=data_manager.input_observations,
     )
