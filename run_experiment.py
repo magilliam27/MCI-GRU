@@ -42,6 +42,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from mci_gru.config import create_config_from_dict
 from mci_gru.data.data_manager import create_data_loaders
+from mci_gru.data.input_observations import InputObservationError
+from mci_gru.data.quality_contract import AdmissionError, write_run_failure
 from mci_gru.evaluation.execution_provenance import (
     EVIDENCE_DIR,
     capture_execution_start,
@@ -199,11 +201,25 @@ def main(cfg: DictConfig):
             }
 
             phase_started = perf_counter()
-            if config.data.experiment_mode == "index_level":
-                data = prepare_data_index_level(cfg_w, feature_engineer)
-            else:
-                data = prepare_data(cfg_w, feature_engineer)
+            try:
+                if config.data.experiment_mode == "index_level":
+                    data = prepare_data_index_level(cfg_w, feature_engineer)
+                else:
+                    data = prepare_data(cfg_w, feature_engineer)
+            except (AdmissionError, InputObservationError) as error:
+                # Structured preparation failures only, before any trainer exists (#223).
+                write_run_failure(
+                    error,
+                    wpath,
+                    walkforward_window=wi,
+                    resolved_config_identity=resolved_config_identity,
+                )
+                raise
             timing_summary["phases"]["prepare_data_seconds"] = perf_counter() - phase_started
+            admission_path = os.path.join(wpath, "admission.json")
+            with open(admission_path, "w") as f:
+                json.dump(data["admission"], f, indent=2)
+            logger.info(f"Input admission saved to: {admission_path}")
 
             metadata = build_run_metadata(
                 cfg_w,

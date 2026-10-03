@@ -50,6 +50,9 @@ class DataConfig:
             the universe (#139).
         pit_min_scoreable_stocks: Minimum expected PIT-tradable candidates per normal date.
         pit_breadth_policy: ``error``, ``warn``, or ``off`` when candidate breadth is low.
+        pit_export_cutoff: Export cutoff (YYYY-MM-DD) of ``pit_universe_csv``. A blank
+            ``valid_to`` means membership through this date; with none declared, a
+            blank ``valid_to`` stops preparation (#223).
     """
 
     universe: str = "sp500"
@@ -80,6 +83,7 @@ class DataConfig:
     pit_universe_mode: str = "masked_panel"
     pit_min_scoreable_stocks: int = 450
     pit_breadth_policy: str = "error"
+    pit_export_cutoff: str | None = None
 
     def __post_init__(self):
         if self.experiment_mode not in ("stock_level", "index_level"):
@@ -116,6 +120,13 @@ class DataConfig:
             )
         if self.pit_min_scoreable_stocks < 0:
             raise ValueError("pit_min_scoreable_stocks must be >= 0")
+        if self.pit_export_cutoff is not None:
+            try:
+                datetime.strptime(self.pit_export_cutoff, "%Y-%m-%d")
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"pit_export_cutoff must be a YYYY-MM-DD date, got {self.pit_export_cutoff!r}"
+                ) from exc
         # Role keys only: each role checks its source value when it loads.
         roles = ("vix", "credit", "regime", "index")
         unknown_roles = [role for role in self.auxiliary_sources if role not in roles]

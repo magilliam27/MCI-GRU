@@ -248,6 +248,34 @@ Unit tests for pure data-loading helpers with no prior coverage.
 | `TestSectorEdges.test_build_sector_edges_connects_every_pair_in_a_sector` |  |  |
 | `TestSectorEdges.test_build_sector_edges_empty_universe` |  |  |
 
+## `tests/test_data_quality_contract.py`
+
+Input admission at the confirmed #223 seams: native read, preparation, runner.
+
+**Exercises:** `mci_gru`, `mci_gru.config`, `mci_gru.data`, `mci_gru.data.quality_contract`, `mci_gru.features`, `mci_gru.pipeline`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_a_stock_with_all_four_ohlc_histories_constant_stops_preparation` |  |  |
+| `test_the_varying_control_is_admitted_and_returns_prepared_data` |  |  |
+| `test_one_constant_field_is_reported_but_does_not_invalidate_the_history` |  |  |
+| `test_fewer_than_two_observations_is_insufficient_evidence_and_stops` |  |  |
+| `test_missing_prices_are_counted_per_stock_without_a_budget` |  |  |
+| `test_malformed_rows_stop_preparation_and_are_never_repaired` |  | parametrize |
+| `test_an_unparseable_file_fails_at_parse_with_its_bytes_observed` |  |  |
+| `test_a_missing_selected_file_is_not_substituted_by_a_same_named_decoy` |  |  |
+| `test_a_missing_index_file_is_not_substituted_either` |  |  |
+| `test_an_unresolved_required_verdict_cannot_return_admitted_data` |  |  |
+| `test_an_unresolved_optional_item_does_not_block` |  |  |
+| `test_a_blank_valid_to_is_membership_through_the_export_cutoff` |  |  |
+| `test_a_blank_valid_to_without_a_declared_cutoff_stops` |  |  |
+| `test_pit_structure_failures_stop_and_name_the_stock` |  | parametrize |
+| `test_adjacent_intervals_for_one_name_are_not_an_overlap` |  |  |
+| `test_the_session_breadth_floor_stops_through_the_failure_report` |  |  |
+| `test_the_runner_reports_a_missing_selected_file_and_never_reads_the_decoy` |  | slow |
+| `test_the_runner_reports_malformed_rows_with_the_identity_of_the_read` |  | slow |
+| `test_the_runner_control_passes_admission_and_reaches_the_guarded_trainer_path` | Proves the guards are live: a valid panel gets past preparation to them. | slow |
+
 ## `tests/test_default_experiment_recipe.py`
 
 Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.

@@ -7,14 +7,18 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-def resolve_project_data_path(configured_path: str) -> Path:
+def resolve_project_data_path(
+    configured_path: str, *, allow_basename_fallback: bool = True
+) -> Path:
     """
     Resolve a data file path using project-aware fallbacks.
 
     Resolution order:
       1. Exact configured path (absolute or relative to cwd)
       2. Relative to project root
-      3. Common organized data directories (by basename)
+      3. Common organized data directories (by basename), unless
+         ``allow_basename_fallback`` is false. Required selected files pass
+         false: a same-named file elsewhere is a substitute, not the selection.
     """
     candidate = Path(configured_path)
     if candidate.exists():
@@ -23,6 +27,12 @@ def resolve_project_data_path(configured_path: str) -> Path:
     root_relative = PROJECT_ROOT / configured_path
     if root_relative.exists():
         return root_relative.resolve()
+
+    if not allow_basename_fallback:
+        raise FileNotFoundError(
+            f"Selected data file not found at '{configured_path}' (explicit path or project "
+            "root). Same-named files elsewhere are not substituted for a selected input."
+        )
 
     basename = candidate.name
     fallback_dirs = [

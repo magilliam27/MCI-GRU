@@ -10,8 +10,11 @@ import numpy as np
 import pandas as pd
 import torch
 
+from mci_gru.data.quality_contract import assess_pit_intervals, fill_open_valid_to
+
 if TYPE_CHECKING:
     from mci_gru.data.input_observations import InputObservationContext
+    from mci_gru.data.quality_contract import AdmissionLedger
 
 
 @dataclass(frozen=True)
@@ -137,8 +140,17 @@ def classify_pit_knowledge_as_of(
 
 
 def load_pit_intervals(
-    csv_path: str, *, input_observations: InputObservationContext | None = None
+    csv_path: str,
+    *,
+    input_observations: InputObservationContext | None = None,
+    admission: AdmissionLedger | None = None,
+    open_valid_to: str | None = None,
 ) -> pd.DataFrame:
+    """Read PIT intervals; with ``admission``, malformed structure stops preparation.
+
+    A blank ``valid_to`` is membership through ``open_valid_to`` (the declared
+    export cutoff), not a row to drop.
+    """
     frame = (
         input_observations.read_csv(
             csv_path, role="data.pit_universe_csv", configured_path=csv_path
@@ -146,7 +158,12 @@ def load_pit_intervals(
         if input_observations is not None
         else pd.read_csv(csv_path)
     )
-    return normalise_pit_intervals(frame)
+    if admission is not None:
+        admission.record_all(
+            assess_pit_intervals(frame, configured_path=csv_path, open_valid_to=open_valid_to)
+        )
+        admission.require_admitted(input_observations)
+    return normalise_pit_intervals(fill_open_valid_to(frame, open_valid_to))
 
 
 def active_kdcodes_in_period(

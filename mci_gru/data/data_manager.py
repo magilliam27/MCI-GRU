@@ -27,6 +27,7 @@ from mci_gru.data.input_observations import InputObservationContext, InputObserv
 from mci_gru.data.input_snapshots import InputSnapshotError, InputSnapshots, SnapshotReference
 from mci_gru.data.path_resolver import resolve_project_data_path
 from mci_gru.data.pit import filter_edges_by_stock_mask
+from mci_gru.data.quality_contract import AdmissionLedger, assess_market_panel, input_failure
 from mci_gru.graph.schedule import canonical_date
 from mci_gru.regime_contract import REGIME_VARIABLES
 
@@ -77,12 +78,17 @@ class DataManager:
     """
 
     def __init__(
-        self, config: DataConfig, *, input_observations: InputObservationContext | None = None
+        self,
+        config: DataConfig,
+        *,
+        input_observations: InputObservationContext | None = None,
+        admission: AdmissionLedger | None = None,
     ) -> None:
         self.config = config
         self.input_observations = (
             input_observations if input_observations is not None else InputObservationContext()
         )
+        self.admission = admission if admission is not None else AdmissionLedger()
         self.input_snapshots = InputSnapshots(
             mode=config.auxiliary_snapshot_mode,
             directory=Path(config.auxiliary_snapshot_directory)
@@ -172,13 +178,12 @@ class DataManager:
         end = self.config.test_end
 
         if self.config.index_filename:
-            resolved = resolve_project_data_path(self.config.index_filename)
-            df = self.input_observations.read_csv(
-                resolved, role="data.index_filename", configured_path=self.config.index_filename
-            )
+            df = self._read_selected_csv("data.index_filename", self.config.index_filename)
             df["dt"] = pd.to_datetime(df["dt"]).dt.strftime("%Y-%m-%d")
             if "close" not in df.columns:
-                raise ValueError(f"Index CSV must have 'close' column: {resolved}")
+                raise ValueError(
+                    f"Index CSV must have 'close' column: {self.config.index_filename}"
+                )
             for col in ["open", "high", "low", "volume"]:
                 if col not in df.columns:
                     df[col] = df["close"] if col in ("open", "high", "low") else 0.0
@@ -216,19 +221,62 @@ class DataManager:
         self.kdcode_list = ["INDEX"]
         return df
 
-    def _load_from_csv(self) -> pd.DataFrame:
-        resolved_path = resolve_project_data_path(self.config.filename)
+    def _read_selected_csv(self, role: str, configured_path: str) -> pd.DataFrame:
+        """Read a required selected CSV; resolve/read/parse failures stop preparation."""
+        try:
+            resolved_path = resolve_project_data_path(
+                configured_path, allow_basename_fallback=False
+            )
+        except FileNotFoundError as error:
+            self.admission.record(
+                input_failure(
+                    role=role,
+                    configured_path=configured_path,
+                    stage="resolve",
+                    reason_code="missing_file",
+                    reason=str(error),
+                )
+            )
+            self.admission.require_admitted(self.input_observations)
+            raise
         logger.info(f"Loading data from {resolved_path}...")
+        try:
+            return self.input_observations.read_csv(
+                resolved_path, role=role, configured_path=configured_path
+            )
+        except InputObservationError:
+            raise
+        except Exception as error:
+            stage = "read" if isinstance(error, OSError) else "parse"
+            self.admission.record(
+                input_failure(
+                    role=role,
+                    configured_path=configured_path,
+                    stage=stage,
+                    reason_code=f"{stage}_failed",
+                    reason=f"{type(error).__name__} while {stage}ing the selected file",
+                )
+            )
+            self.admission.require_admitted(self.input_observations)
+            raise
 
-        df = self.input_observations.read_csv(
-            resolved_path, role="data.filename", configured_path=self.config.filename
+    def _load_from_csv(self) -> pd.DataFrame:
+        df = self._read_selected_csv("data.filename", self.config.filename)
+
+        # Original parsed rows, before any transform; preparation enforces the verdicts.
+        findings, coverage = assess_market_panel(
+            df, role="data.filename", configured_path=self.config.filename
         )
+        self.admission.record_all(findings)
+        if coverage:
+            self.admission.record_coverage("data.filename", coverage)
+        self.df = df
+        if self.admission.blocking():
+            return df
 
         logger.info(f"  Loaded {len(df)} rows")
         logger.info(f"  Date range: {df['dt'].min()} to {df['dt'].max()}")
         logger.info(f"  Stocks: {df['kdcode'].nunique()}")
-
-        self.df = df
         return df
 
     def _load_from_lseg(self) -> pd.DataFrame:
