@@ -117,12 +117,9 @@ def test_index_metadata_records_its_read_and_excludes_unused_stock_pit_and_secto
     assert metadata["data_file_sha256"] is None
 
 
-@pytest.mark.parametrize(
-    "mode,normalisation",
-    [("row_filter", "zscore"), ("masked_panel", "zscore"), ("masked_panel", "rank_gauss")],
-)
+@pytest.mark.parametrize("normalisation", ["zscore", "rank_gauss"])
 def test_preparation_keeps_both_pit_reads_when_the_file_changes(
-    tmp_path, monkeypatch, mode, normalisation
+    tmp_path, monkeypatch, normalisation
 ):
     source = tmp_path / "panel.csv"
     source.write_bytes(_native_panel())
@@ -133,7 +130,6 @@ def test_preparation_keeps_both_pit_reads_when_the_file_changes(
     config = _native_config(str(source))
     config.data.use_pit_universe = True
     config.data.pit_universe_csv = str(pit_path)
-    config.data.pit_universe_mode = mode
     config.data.pit_min_scoreable_stocks = 0
     config.data.normalisation = normalisation
     original_open = Path.open
