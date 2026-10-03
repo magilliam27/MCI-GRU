@@ -99,7 +99,11 @@ def test_requires_lseg_on_a_test_that_imports_the_lseg_client():
 
 
 def _ci_marker_expression() -> str:
-    """Return the `-m` expression of the one pytest step in the CI workflow."""
+    """Return the one `-m` expression every pytest step in the CI workflow selects with.
+
+    Each test job (the Python 3.10 floor and the Linux CPU lock, #143) must deselect
+    the same markers, so this guard's single child run covers all of them.
+    """
     workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
     expressions = []
     for job in workflow["jobs"].values():
@@ -110,9 +114,9 @@ def _ci_marker_expression() -> str:
             arguments = tokens[tokens.index("pytest") + 1 :]
             if "-m" in arguments:
                 expressions.append(arguments[arguments.index("-m") + 1])
-    assert len(expressions) == 1, (
-        f"expected exactly one pytest step selecting with -m in {CI_WORKFLOW}, found "
-        f"{expressions}; adapt this guard to how CI now selects tests"
+    assert expressions and len(set(expressions)) == 1, (
+        f"expected every pytest step in {CI_WORKFLOW} to select with one shared -m "
+        f"expression, found {expressions}; adapt this guard to how CI now selects tests"
     )
     return expressions[0]
 
