@@ -883,6 +883,25 @@ Tests for ``mci_gru.evaluation.paired_inference`` (ticket 179).
 | `test_winsorize_rows_clips_per_row_and_keeps_nan` |  |  |
 | `test_sharpe_block_bootstrap_ci_brackets_the_point_estimate` |  |  |
 
+## `tests/test_pct_change_gap_policy.py`
+
+Return features treat an input gap as pandas 2 always did, under pandas 2 and 3 alike.
+
+**Exercises:** `mci_gru.evaluation.capacity`, `mci_gru.features.credit`, `mci_gru.features.momentum`, `mci_gru.features.volatility`, `mci_gru.graph.correlation`, `mci_gru.utils.returns`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_daily_return_across_a_gap_is_measured_from_the_last_observed_close` |  |  |
+| `test_volatility_features_treat_a_gap_as_the_forward_filled_close` |  |  |
+| `test_volatility_targeting_features_treat_a_gap_as_the_forward_filled_close` |  |  |
+| `test_momentum_features_treat_a_gap_as_the_forward_filled_close` |  |  |
+| `test_correlation_matrix_treats_a_gap_as_the_forward_filled_close` |  |  |
+| `test_capacity_volatility_treats_a_gap_as_the_forward_filled_close` |  |  |
+| `test_vix_change_treats_a_gap_as_the_forward_filled_level` |  |  |
+| `test_credit_spread_change_treats_a_gap_as_the_forward_filled_spread` |  | parametrize |
+| `test_padded_change_matches_pandas_2_default_within_each_group` |  | parametrize |
+| `test_package_has_no_pct_change_call_without_an_explicit_fill_method` |  |  |
+
 ## `tests/test_phase3_graph_and_walkforward.py`
 
 Phase 3: lead-lag toy, snapshot valid_from, walk-forward config, cross-attn smoke.
