@@ -11,6 +11,7 @@ from importlib import import_module
 import pandas as pd
 
 from mci_gru.data.auxiliary_quality import (
+    MONTHLY_RELEASE_LAG_MONTHS,
     QualifiedRole,
     RegimeInputError,
     RegimeRole,
@@ -195,15 +196,19 @@ class FREDLoader:
         end: str,
         role: RegimeRole,
         sessions: pd.DatetimeIndex,
-        buffer_days: int = 31,
+        buffer_days: int | None = None,
     ) -> QualifiedRole:
         """
         Fetch one regime role and apply the ruled #224 availability rules.
 
-        The request is the one get_series makes, so a capture serves either.
+        A daily role requests what get_series requests, so a capture serves
+        either; a monthly role reaches back far enough for month X-2.
         No fill or row lag is applied here: see mci_gru.data.auxiliary_quality.
         A rule violation stops preparation with the role, reason and dates.
         """
+        if buffer_days is None:
+            # A monthly role's first session needs the value for month X-2.
+            buffer_days = 31 if role.cadence == "daily" else 31 * (MONTHLY_RELEASE_LAG_MONTHS + 1)
         start_ts = pd.Timestamp(start)
         end_ts = pd.Timestamp(end)
         request = {

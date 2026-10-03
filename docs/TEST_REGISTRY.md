@@ -51,6 +51,7 @@ Public auxiliary loader and preparation capture/replay contracts.
 | `test_copper_must_be_positive` |  |  |
 | `test_gaps_negative_oil_and_low_yields_are_valid` |  |  |
 | `test_a_stop_keeps_its_facts_through_the_preparation_failure` |  |  |
+| `test_a_source_covering_the_request_leaves_no_leading_gap` | Copper's request reaches back to month X-2, so its first session is usable. |  |
 
 ## `tests/test_backtest_engine_golden.py`
 

@@ -251,3 +251,33 @@ def test_a_stop_keeps_its_facts_through_the_preparation_failure(tmp_path, monkey
     oil = [item for item in observations["observations"] if item["role"] == "fred.regime_oil"]
     assert [item["outcome"] for item in oil] == ["success", "error"]
     assert "fred.regime_oil" not in {use["role"] for use in observations["uses"]}
+
+
+def test_a_source_covering_the_request_leaves_no_leading_gap(tmp_path, monkeypatch) -> None:
+    """Copper's request reaches back to month X-2, so its first session is usable."""
+
+    class Fred:
+        def __init__(self, api_key):
+            pass
+
+        def get_series(self, series_id, observation_start, observation_end):
+            dates = pd.date_range(observation_start, observation_end)
+            return pd.Series(np.linspace(1.0, 2.0, len(dates)), index=dates)
+
+    monkeypatch.setenv("FRED_API_KEY", "test-only")
+    monkeypatch.setitem(sys.modules, "fredapi", SimpleNamespace(Fred=Fred))
+    manager = DataManager(fixture_config(tmp_path))
+    out = manager.load_regime_inputs()
+    receipt = manager.regime_input_receipt
+    assert {item["role"]: item["leading_gap_sessions"] for item in receipt["verdicts"]} == {
+        role: 0
+        for role in (
+            "yield_10y",
+            "yield_3m",
+            "regime_oil",
+            "regime_volatility",
+            "regime_market",
+            "regime_copper",
+        )
+    }
+    assert out["regime_copper"].notna().all()
