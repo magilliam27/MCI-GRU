@@ -387,6 +387,9 @@ Every feature group must accept the regime overrides that launchers pass, withou
 | `test_regime_override_guard_discovers_the_default_group_and_ticket_keys` | The regime override guards are not vacuous: feature groups and regime keys are found. |  |
 | `test_april_regime_ablation_arms_compose_without_append_prefix` | Both April regime arms compose, without ``+``, and reach the typed config. | parametrize, parametrize |
 | `test_every_feature_group_declares_every_regime_key` | Each ``FeatureConfig`` regime key is declared, so its override needs no ``+``. | parametrize |
+| `test_every_feature_group_declares_every_feature_config_key` | Every ``FeatureConfig`` field is declared in every group, so no override needs ``+``. | parametrize |
+| `test_momentum_blend_overrides_compose_with_every_feature_group` | The momentum-blend overrides reach the typed config from every group, without ``+``. | parametrize |
+| `test_feature_group_declarations_match_the_dataclass_defaults_for_momentum_blend` | Declaring the momentum-blend keys leaves each group's default behaviour unchanged. | parametrize |
 
 ## `tests/test_feature_drift.py`
 
