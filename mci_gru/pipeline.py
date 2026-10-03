@@ -20,11 +20,20 @@ import torch
 
 from mci_gru.data.data_manager import DataManager
 from mci_gru.data.pit import (
+    CessationEvidence,
+    PITEligibilityError,
+    PITMaskSet,
+    PredictionClock,
     active_kdcodes_in_period,
     apply_label_mask,
     build_pit_masks,
     candidate_breadth,
+    cessation_exclusion_mask,
+    load_cessation_events,
     load_pit_intervals,
+    pit_eligibility_fragment,
+    pit_split_report,
+    resolve_cessation_events,
 )
 from mci_gru.data.preprocessing import (
     apply_rank_gaussian,
@@ -34,7 +43,9 @@ from mci_gru.data.preprocessing import (
     fit_rank_gaussian_reference,
     generate_graph_features,
     generate_time_series_features,
+    label_session_axis,
     purge_training_sessions_for_embargo,
+    resolve_labels,
 )
 from mci_gru.data.quality_contract import (
     AdmissionError,
@@ -77,6 +88,8 @@ class PitContext:
     masked_panel: bool
     csv_path: str | None
     input_observations: InputObservationContext | None = None
+    cessation: CessationEvidence | None = None
+    clock: PredictionClock | None = None
 
 
 @dataclass(frozen=True)
@@ -500,11 +513,36 @@ def resolve_pit_context(
             admission=admission,
             open_valid_to=config.data.pit_export_cutoff,
         )
+    # Only masked panels have daily eligibility, so only they need the clock.
+    clock = (
+        PredictionClock(
+            time=config.data.prediction_clock_time,
+            timezone=config.data.prediction_clock_timezone,
+        )
+        if masked_panel
+        else None
+    )
+    # Undated, malformed or unreadable cessation evidence stops here, before any
+    # tensor exists, carrying the ledger and sealed observations to the report.
+    try:
+        cessation = load_cessation_events(
+            config.data.pit_cessation_events_csv if masked_panel else None,
+            input_observations=input_observations,
+        )
+    except PITEligibilityError as error:
+        if admission is not None:
+            admission.record_all(error.failures)
+            error.admission = admission.to_dict()
+        if input_observations is not None:
+            error.input_observations = input_observations.freeze()
+        raise
     return PitContext(
         intervals=intervals,
         masked_panel=masked_panel,
         csv_path=csv_path,
         input_observations=input_observations,
+        cessation=cessation,
+        clock=clock,
     )
 
 
@@ -621,34 +659,51 @@ def apply_pit_masks_to_tensors(
     label_type: str,
     min_scoreable: int,
     breadth_policy: str,
-) -> tuple[TensorBundle, dict[str, list[dict[str, int | str]]]]:
+) -> tuple[TensorBundle, dict[str, list[dict[str, int | str]]], dict[str, Any]]:
+    """Apply daily PIT masks, including dated cessation, and build the PIT fragment.
+
+    Returns the masked tensors, the daily breadth summary and the
+    ``mci_gru.pit_eligibility.v1`` fragment #223's report embeds.
+    """
     assert pit.intervals is not None
-    train_masks = build_pit_masks(
-        frames.filtered,
-        frames.raw,
-        kdcode_list,
-        tensors.train_dates,
-        his_t,
-        label_t,
-        pit.intervals,
-    )
-    val_masks = build_pit_masks(
-        frames.filtered,
-        frames.raw,
-        kdcode_list,
-        tensors.val_dates,
-        his_t,
-        label_t,
-        pit.intervals,
-    )
-    test_masks = build_pit_masks(
-        frames.filtered,
-        frames.raw,
-        kdcode_list,
-        tensors.test_dates,
-        his_t,
-        label_t,
-        pit.intervals,
+    clock = pit.clock or PredictionClock()
+    cessation = pit.cessation or CessationEvidence(configured_path=None, events=())
+    sessions = label_session_axis(frames.raw, kdcode_list)
+    resolved = resolve_cessation_events(cessation, sessions, clock)
+
+    def _masks(dates: list[str]) -> PITMaskSet:
+        return build_pit_masks(
+            frames.filtered,
+            frames.raw,
+            kdcode_list,
+            dates,
+            his_t,
+            label_t,
+            pit.intervals,
+            cessation_exclusion_mask(resolved, kdcode_list, dates, clock),
+        )
+
+    train_masks = _masks(tensors.train_dates)
+    val_masks = _masks(tensors.val_dates)
+    test_masks = _masks(tensors.test_dates)
+    eligibility = pit_eligibility_fragment(
+        clock=clock,
+        evidence=cessation,
+        resolved=resolved,
+        label_t=label_t,
+        splits={
+            name: pit_split_report(
+                dates,
+                kdcode_list,
+                masks,
+                resolve_labels(frames.raw, kdcode_list, dates, label_t),
+            )
+            for name, dates, masks in (
+                ("train", tensors.train_dates, train_masks),
+                ("val", tensors.val_dates, val_masks),
+                ("test", tensors.test_dates, test_masks),
+            )
+        },
     )
 
     train_labels = apply_label_mask(tensors.train_labels, train_masks.loss)
@@ -713,7 +768,7 @@ def apply_pit_masks_to_tensors(
         val_tradable_mask=val_masks.tradable,
         test_tradable_mask=test_masks.tradable,
     )
-    return masked, pit_breadth
+    return masked, pit_breadth, eligibility
 
 
 def _build_sector_relation(
@@ -927,9 +982,10 @@ def prepare_data(
     )
 
     pit_breadth: dict[str, list[dict[str, int | str]]] | None = None
+    pit_eligibility: dict[str, Any] | None = None
     if pit.masked_panel:
         try:
-            tensor_bundle, pit_breadth = apply_pit_masks_to_tensors(
+            tensor_bundle, pit_breadth, pit_eligibility = apply_pit_masks_to_tensors(
                 tensor_bundle,
                 frames,
                 kdcode_list,
@@ -960,6 +1016,9 @@ def prepare_data(
         input_observations=data_manager.input_observations,
     )
 
+    if pit_eligibility is not None:
+        # The #225 coverage report travels with the admission record too.
+        admission.record_coverage("pit_eligibility", pit_eligibility)
     admission.require_admitted(observations)
     return {
         "kdcode_list": kdcode_list,
@@ -978,6 +1037,7 @@ def prepare_data(
         "rank_gauss_reference": norm_fit.rank_gauss_reference,
         "feature_reference": feature_reference,
         "pit_breadth": pit_breadth,
+        "pit_eligibility": pit_eligibility,
         "pit_universe_mode": config.data.pit_universe_mode
         if config.data.use_pit_universe
         else None,

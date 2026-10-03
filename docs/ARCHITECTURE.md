@@ -78,7 +78,11 @@ preparation → training → prediction → evaluation sequence once per window.
    - graph node input of shape `(days, stocks, features)` taken from the sample
      date itself;
    - labels of shape `(days, stocks)` using the implemented formula
-     `close[t + label_t] / close[t + 1] - 1`.
+     `close[t + label_t] / close[t + 1] - 1`, where the offsets count sessions
+     on the panel's own trading dates (#225). A stock with no close at either
+     endpoint has an unobservable label; a gap never moves an endpoint. The
+     embargo check and `label_available_mask` use the same endpoint resolver;
+     see `docs/agents/pit-eligibility-label-contract.md`.
 
    The first `his_t` training dates are consumed as lookback, so training labels
    start at `train_dates[his_t]`. Non-masked runs fill missing labels with the

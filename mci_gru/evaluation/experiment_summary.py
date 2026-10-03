@@ -128,6 +128,7 @@ def build_run_metadata(
         "feature_reference_path": "feature_reference.json",
         "pit_universe_mode": data.get("pit_universe_mode"),
         "pit_breadth": data.get("pit_breadth"),
+        "pit_eligibility": data.get("pit_eligibility"),
         **data_file_fingerprint(config.data.filename, logger),
         "data_inputs": data["input_observations"].data_inputs(),
         "input_observations": data["input_observations"].to_dict(),
