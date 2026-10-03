@@ -48,6 +48,7 @@ from mci_gru.data.preprocessing import (
     compute_labels,
     resolve_labels,
 )
+from mci_gru.data.quality_contract import AdmissionError, build_run_failure
 from mci_gru.pipeline import prepare_data
 
 # 29 declared synthetic sessions; no exchange-calendar package is consulted.
@@ -268,13 +269,36 @@ def test_malformed_or_naive_timestamp_stops_rather_than_counting_as_unknown(
     assert caught.value.kdcodes == ("STOP",)
 
 
-def test_missing_declared_event_file_stops(tmp_path) -> None:
+def test_missing_declared_event_file_stops_through_the_admission_report(tmp_path) -> None:
     _write_panel(tmp_path / "panel.csv")
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(PITEligibilityError) as caught:
         prepare_data(
             _config(tmp_path, tmp_path / "absent.csv"),
             _PassThroughFeatureEngineer(),
         )
+    assert caught.value.code == "event_file_unreadable"
+
+
+def test_undated_cessation_reaches_run_failure_json(tmp_path) -> None:
+    """The rejection is an AdmissionError, so #223's runner catch reports it."""
+    with pytest.raises(AdmissionError) as caught:
+        _prepare(tmp_path, known_from="")
+
+    report = build_run_failure(caught.value, walkforward_window=0, resolved_config_identity=None)
+    (failure,) = report["failures"]
+    assert failure["role"] == "data.pit_cessation_events_csv"
+    assert failure["stage"] == "pit_eligibility"
+    assert failure["verdict"] == "invalid"
+    assert failure["reason_code"] == "undated_cessation"
+    assert failure["evidence"] == {"kdcodes": ["STOP"]}
+    assert report["admission"]["admitted"] is False
+    roles = {use["role"] for use in report["input_observations"]["uses"]}
+    assert "data.pit_cessation_events_csv" in roles
+
+
+def test_admission_record_carries_the_pit_fragment(tmp_path) -> None:
+    data = _prepare(tmp_path)
+    assert data["admission"]["coverage"]["pit_eligibility"] == data["pit_eligibility"]
 
 
 def test_undeclared_event_file_excludes_nothing_and_says_so(tmp_path) -> None:

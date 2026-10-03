@@ -12,10 +12,19 @@ import numpy as np
 import pandas as pd
 import torch
 
+from mci_gru.data.input_observations import InputObservationError
 from mci_gru.data.preprocessing import LabelResolution, resolve_labels
+from mci_gru.data.quality_contract import (
+    AdmissionError,
+    AdmissionItem,
+    Verdict,
+    assess_pit_intervals,
+    fill_open_valid_to,
+)
 
 if TYPE_CHECKING:
     from mci_gru.data.input_observations import InputObservationContext
+    from mci_gru.data.quality_contract import AdmissionLedger
 
 
 @dataclass(frozen=True)
@@ -156,8 +165,17 @@ def classify_pit_knowledge_as_of(
 
 
 def load_pit_intervals(
-    csv_path: str, *, input_observations: InputObservationContext | None = None
+    csv_path: str,
+    *,
+    input_observations: InputObservationContext | None = None,
+    admission: AdmissionLedger | None = None,
+    open_valid_to: str | None = None,
 ) -> pd.DataFrame:
+    """Read PIT intervals; with ``admission``, malformed structure stops preparation.
+
+    A blank ``valid_to`` is membership through ``open_valid_to`` (the declared
+    export cutoff), not a row to drop.
+    """
     frame = (
         input_observations.read_csv(
             csv_path, role="data.pit_universe_csv", configured_path=csv_path
@@ -165,7 +183,12 @@ def load_pit_intervals(
         if input_observations is not None
         else pd.read_csv(csv_path)
     )
-    return normalise_pit_intervals(frame)
+    if admission is not None:
+        admission.record_all(
+            assess_pit_intervals(frame, configured_path=csv_path, open_valid_to=open_valid_to)
+        )
+        admission.require_admitted(input_observations)
+    return normalise_pit_intervals(fill_open_valid_to(frame, open_valid_to))
 
 
 def active_kdcodes_in_period(
@@ -310,12 +333,13 @@ _DATE_ONLY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _CLOCK_TIME = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
-class PITEligibilityError(ValueError):
+class PITEligibilityError(AdmissionError):
     """The declared cessation evidence cannot support a run; it must stop visibly.
 
-    Raised before any tensor is built. It carries what #223's single run-failure
-    report needs: ``role``, ``source``, ``stage``, ``reason``, the named ``kdcodes``
-    and the JSON-ready PIT ``fragment``.
+    Raised before any tensor is built. It is an ``AdmissionError`` carrying one
+    ``invalid`` item, so #223's runner catch writes it to ``run_failure.json``.
+    ``role``, ``source``, ``stage``, ``code``, ``reason`` and the named ``kdcodes``
+    are also kept as attributes.
     """
 
     def __init__(
@@ -327,7 +351,20 @@ class PITEligibilityError(ValueError):
         kdcodes: list[str] | tuple[str, ...] = (),
         fragment: dict[str, Any] | None = None,
     ) -> None:
-        super().__init__(reason)
+        item = AdmissionItem(
+            role=CESSATION_EVENTS_ROLE,
+            rule="cessation_known_by",
+            verdict=Verdict.INVALID,
+            reason_code=code,
+            reason=reason,
+            stage="pit_eligibility",
+            configured_path=source,
+            evidence={"kdcodes": list(kdcodes)},
+        )
+        super().__init__([item])
+        self.args = (
+            f"Input admission failed: {CESSATION_EVENTS_ROLE} pit_eligibility/{code}: {reason}",
+        )
         self.role = CESSATION_EVENTS_ROLE
         self.stage = "pit_eligibility"
         self.code = code
@@ -521,19 +558,28 @@ def load_cessation_events(
     def _parse(content: bytes) -> pd.DataFrame:
         return pd.read_csv(BytesIO(content), dtype=str, keep_default_na=False)
 
-    if input_observations is not None:
-        frame = input_observations.read_file(
-            csv_path,
-            role=CESSATION_EVENTS_ROLE,
-            configured_path=csv_path,
-            parse=_parse,
-            parser={
-                "name": "pandas.read_csv",
-                "options": {"dtype": "str", "keep_default_na": False},
-            },
-        )
-    else:
-        frame = pd.read_csv(csv_path, dtype=str, keep_default_na=False)
+    try:
+        if input_observations is not None:
+            frame = input_observations.read_file(
+                csv_path,
+                role=CESSATION_EVENTS_ROLE,
+                configured_path=csv_path,
+                parse=_parse,
+                parser={
+                    "name": "pandas.read_csv",
+                    "options": {"dtype": "str", "keep_default_na": False},
+                },
+            )
+        else:
+            frame = pd.read_csv(csv_path, dtype=str, keep_default_na=False)
+    except InputObservationError:
+        raise
+    except (OSError, ValueError) as exc:
+        raise PITEligibilityError(
+            f"declared cessation event file could not be read: {type(exc).__name__}: {exc}",
+            code="event_file_unreadable",
+            source=csv_path,
+        ) from exc
     return parse_cessation_events(frame, source=csv_path)
 
 

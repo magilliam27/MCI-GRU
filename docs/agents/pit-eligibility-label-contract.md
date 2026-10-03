@@ -49,10 +49,13 @@ Resolution, with every instant converted to UTC:
 The run stops with `mci_gru.data.pit.PITEligibilityError` before any tensor is built
 when the file is missing a required column, has a blank or duplicate `event_id`, a
 blank `kdcode`, a malformed or timezone-naive timestamp, or a cessation with a blank
-`effective_at` or `known_from` (no dated evidence, ruling 2). The error names every
-affected stock and carries `role`, `source`, `stage="pit_eligibility"`, `code` and
-`reason` for #223's single run-failure report. A missing or unreadable declared file
-stops the run under the settled single-source rule.
+`effective_at` or `known_from` (no dated evidence, ruling 2). A missing or unreadable
+declared file stops the same way (`event_file_unreadable`), under the settled
+single-source rule. The error is an `AdmissionError` (#223) with one `invalid` item
+(`rule="cessation_known_by"`, `stage="pit_eligibility"`, the reason code, and the
+named stocks as evidence). Preparation records it in the window's admission ledger
+and attaches the sealed input observations, so the runner writes it to
+`run_failure.json` (`docs/agents/data-quality-contract.md`).
 
 ## Populations
 
@@ -89,7 +92,8 @@ a gap.
 
 Training and evaluation use observable labels only. `prepare_data` returns the
 `pit_eligibility` fragment (schema `mci_gru.pit_eligibility.v1`), which run metadata
-records next to `pit_breadth`. It holds the clock, the endpoint rule, every declared
+records next to `pit_breadth` and the admission record carries as
+`coverage.pit_eligibility`. It holds the clock, the endpoint rule, every declared
 event with its original text and resolved UTC instants, and per split:
 
 - `daily`: `selected`, `cessation_excluded`, `eligible`, `feature_ready`,
