@@ -492,10 +492,30 @@ diff digest and version map; explicit observation states distinguish unavailable
 Git evidence from a clean tree. Read-back rejects missing or inconsistent required
 metadata as well as byte-integrity failures.
 Every start record stays `incomplete`: it provides no completion event or
-actual member seed/device/AMP/backend evidence. Training integration, richer
-runtime observations, input-identity linkage and bundle attachment remain
-separate work. Do not report this helper's tests as live capture, replay,
-preservation, or reproducibility proof.
+actual member seed/device/AMP/backend evidence.
+
+What each ensemble member actually ran is the second boundary. Pass the start
+reference to `train_multiple_models(..., execution=reference)`. Each member then
+appends to `execution_provenance/<attempt_id>.events.jsonl`, an append-only
+log chained to the start digest, which itself stays unchanged. The member
+records its applied seed once seeding returns, with `torch.initial_seed()` as
+the observed check. It records the observed device, parameter dtype and
+backend flags, and AMP both as requested and as in effect. It also records the
+digest of every checkpoint it saved and of the exact bytes it loaded, then its
+completion or failure.
+`read_member_execution(reference)` reads only the retained start and events.
+It takes the planned member count and seeds from the retained resolved config,
+which serves only as the denominator. A member is `complete` only when it was
+seeded as planned with the seed observed, started, saved a checkpoint in this
+attempt, loaded those same bytes, and finished. A stale, missing or replaced
+checkpoint, an unobserved seed or device, a killed process or an unfinished
+final write each leaves an explicit problem, and the attempt is not complete.
+An edit, deletion or reorder of any event before the last breaks the chain. The
+last event is protected only by its own checks until the runner's terminal
+receipt binds the log's digest. Runner/window linkage, that terminal receipt,
+input-identity linkage and bundle attachment remain separate work. Do not
+report these helpers' tests as live capture, replay, preservation, or
+reproducibility proof.
 
 - `results/`, `outputs/`, `*.pth`, and `*.pt` are gitignored and are not source
   of truth merely because they exist locally.
