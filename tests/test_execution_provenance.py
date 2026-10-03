@@ -166,6 +166,7 @@ def test_capture_rejects_changed_config_without_modifying_sources_or_prior_attem
     [
         b'{"tracking":{"password":"fixture-secret"}}',
         b'{"fred_api_key":"fixture-secret"}',
+        b'{"tracking":{"api_token":1234}}',
         rb'{"pass\u0077ord":"fixture-secret"}',
         b'{"tracking":{"uri":"https://user:fixture-secret@server/"}}',
         b'{"tls":{"key":"-----BEGIN EC PRIVATE KEY-----\\nfixture-secret"}}',
@@ -490,7 +491,7 @@ def test_runtime_credential_lookup_and_redacted_config_are_preserved(tmp_path):
     repo, _, config_path, _, _ = _fixture(tmp_path)
     content = b'import os\nFRED_API_KEY = os.getenv("FRED_API_KEY")\n'
     (repo / "mci_gru" / "provider.py").write_bytes(content)
-    config_bytes = b'{"password":"<REDACTED>","fred_api_key":null}'
+    config_bytes = b'{"password":"<REDACTED>","fred_api_key":null,"use_api_key":false}'
     config_path.write_bytes(config_bytes)
     ref = capture_execution_start(
         repo,
