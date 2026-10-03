@@ -227,18 +227,22 @@ def test_regime_override_identity_precedes_parsing_and_transforms(tmp_path):
 def test_legacy_data_file_keys_keep_cwd_semantics_where_the_resolver_disagrees(
     tmp_path, monkeypatch
 ):
-    fallback = tmp_path / "data" / "raw" / "market"
-    fallback.mkdir(parents=True)
-    source = fallback / "panel.csv"
+    # The selected relative file exists where it is read; a required selected
+    # file never resolves through a same-named basename fallback (#223).
+    read_from = tmp_path / "read_cwd"
+    (read_from / "missing").mkdir(parents=True)
+    source = read_from / "missing" / "panel.csv"
     original = _native_panel()
     source.write_bytes(original)
     monkeypatch.setattr(path_resolver, "PROJECT_ROOT", tmp_path)
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.chdir(read_from)
     config = _native_config("missing/panel.csv")
     data = prepare_data(config, FeatureEngineer(config.features))
-    higher_priority = tmp_path / "missing"
-    higher_priority.mkdir()
+    metadata_cwd = tmp_path / "metadata_cwd"
+    higher_priority = metadata_cwd / "missing"
+    higher_priority.mkdir(parents=True)
     (higher_priority / "panel.csv").write_bytes(b"new higher priority file")
+    monkeypatch.chdir(metadata_cwd)
 
     metadata = _saved_metadata(tmp_path, config, data)
 

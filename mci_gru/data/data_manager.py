@@ -22,11 +22,12 @@ import torch
 from pandas.io.common import infer_compression
 from torch.utils.data import Dataset
 
-from mci_gru.data import fred_loader, lseg_loader
+from mci_gru.data import auxiliary_quality, fred_loader, lseg_loader
 from mci_gru.data.input_observations import InputObservationContext, InputObservationError
 from mci_gru.data.input_snapshots import InputSnapshotError, InputSnapshots, SnapshotReference
 from mci_gru.data.path_resolver import resolve_project_data_path
 from mci_gru.data.pit import filter_edges_by_stock_mask
+from mci_gru.data.quality_contract import AdmissionLedger, assess_market_panel, input_failure
 from mci_gru.graph.schedule import canonical_date
 from mci_gru.regime_contract import REGIME_VARIABLES
 
@@ -77,12 +78,17 @@ class DataManager:
     """
 
     def __init__(
-        self, config: DataConfig, *, input_observations: InputObservationContext | None = None
+        self,
+        config: DataConfig,
+        *,
+        input_observations: InputObservationContext | None = None,
+        admission: AdmissionLedger | None = None,
     ) -> None:
         self.config = config
         self.input_observations = (
             input_observations if input_observations is not None else InputObservationContext()
         )
+        self.admission = admission if admission is not None else AdmissionLedger()
         self.input_snapshots = InputSnapshots(
             mode=config.auxiliary_snapshot_mode,
             directory=Path(config.auxiliary_snapshot_directory)
@@ -101,6 +107,8 @@ class DataManager:
         self.vix_df: pd.DataFrame | None = None
         self.credit_df: pd.DataFrame | None = None
         self.regime_df: pd.DataFrame | None = None
+        # Per-role #224 verdicts and leading-gap counts for the run report.
+        self.regime_input_receipt: dict | None = None
         self.kdcode_list: list[str] | None = None
 
     def required_input_failure(
@@ -170,13 +178,12 @@ class DataManager:
         end = self.config.test_end
 
         if self.config.index_filename:
-            resolved = resolve_project_data_path(self.config.index_filename)
-            df = self.input_observations.read_csv(
-                resolved, role="data.index_filename", configured_path=self.config.index_filename
-            )
+            df = self._read_selected_csv("data.index_filename", self.config.index_filename)
             df["dt"] = pd.to_datetime(df["dt"]).dt.strftime("%Y-%m-%d")
             if "close" not in df.columns:
-                raise ValueError(f"Index CSV must have 'close' column: {resolved}")
+                raise ValueError(
+                    f"Index CSV must have 'close' column: {self.config.index_filename}"
+                )
             for col in ["open", "high", "low", "volume"]:
                 if col not in df.columns:
                     df[col] = df["close"] if col in ("open", "high", "low") else 0.0
@@ -214,19 +221,62 @@ class DataManager:
         self.kdcode_list = ["INDEX"]
         return df
 
-    def _load_from_csv(self) -> pd.DataFrame:
-        resolved_path = resolve_project_data_path(self.config.filename)
+    def _read_selected_csv(self, role: str, configured_path: str) -> pd.DataFrame:
+        """Read a required selected CSV; resolve/read/parse failures stop preparation."""
+        try:
+            resolved_path = resolve_project_data_path(
+                configured_path, allow_basename_fallback=False
+            )
+        except FileNotFoundError as error:
+            self.admission.record(
+                input_failure(
+                    role=role,
+                    configured_path=configured_path,
+                    stage="resolve",
+                    reason_code="missing_file",
+                    reason=str(error),
+                )
+            )
+            self.admission.require_admitted(self.input_observations)
+            raise
         logger.info(f"Loading data from {resolved_path}...")
+        try:
+            return self.input_observations.read_csv(
+                resolved_path, role=role, configured_path=configured_path
+            )
+        except InputObservationError:
+            raise
+        except Exception as error:
+            stage = "read" if isinstance(error, OSError) else "parse"
+            self.admission.record(
+                input_failure(
+                    role=role,
+                    configured_path=configured_path,
+                    stage=stage,
+                    reason_code=f"{stage}_failed",
+                    reason=f"{type(error).__name__} while {stage}ing the selected file",
+                )
+            )
+            self.admission.require_admitted(self.input_observations)
+            raise
 
-        df = self.input_observations.read_csv(
-            resolved_path, role="data.filename", configured_path=self.config.filename
+    def _load_from_csv(self) -> pd.DataFrame:
+        df = self._read_selected_csv("data.filename", self.config.filename)
+
+        # Original parsed rows, before any transform; preparation enforces the verdicts.
+        findings, coverage = assess_market_panel(
+            df, role="data.filename", configured_path=self.config.filename
         )
+        self.admission.record_all(findings)
+        if coverage:
+            self.admission.record_coverage("data.filename", coverage)
+        self.df = df
+        if self.admission.blocking():
+            return df
 
         logger.info(f"  Loaded {len(df)} rows")
         logger.info(f"  Date range: {df['dt'].min()} to {df['dt'].max()}")
         logger.info(f"  Stocks: {df['kdcode'].nunique()}")
-
-        self.df = df
         return df
 
     def _load_from_lseg(self) -> pd.DataFrame:
@@ -365,10 +415,17 @@ class DataManager:
                 here so FRED series are fetched through the live date, not the frozen
                 training config end date.
 
+        The FRED path applies the #224 rulings (mci_gru.data.auxiliary_quality):
+        one row per weekday session, each value the last one known by 20:00
+        New York on that session, no back-fill, and a stop with the role and
+        dates on a malformed value or a gap longer than the carry limit. The
+        per-role verdicts land in ``regime_input_receipt`` for the run report.
+
         Output columns:
             dt, regime_market, regime_yield_curve, regime_oil, regime_copper,
             regime_stock_bond_corr, regime_monetary_policy, regime_volatility
         """
+        self.regime_input_receipt = None
         if regime_inputs_csv:
             warnings.warn(
                 "regime_inputs_csv is deprecated; explicitly select the FRED regime input path "
@@ -437,10 +494,13 @@ class DataManager:
         attempts = max(1, env_number("MCI_GRU_FRED_MAX_ATTEMPTS", 1, int))
         retry_seconds = max(0.0, env_number("MCI_GRU_FRED_RETRY_SECONDS", 0.0, float))
 
-        def fetch(series_id, value_name):
+        sessions = auxiliary_quality.session_calendar(start_ts, pd.Timestamp(end))
+
+        def fetch(series_id, column):
+            role = auxiliary_quality.REGIME_INPUT_ROLES[column]
             for attempt in range(attempts):
                 try:
-                    return fred.get_series(series_id, start, end, value_name, lag_days=1)
+                    return fred.get_regime_role(series_id, start, end, role, sessions)
                 except Exception as error:
                     retryable = isinstance(error, (TimeoutError, ConnectionError)) or (
                         isinstance(error, InputSnapshotError)
@@ -457,70 +517,44 @@ class DataManager:
                         time.sleep(retry_seconds)
             raise AssertionError("Unreachable retry loop")
 
-        yield_10y = fetch(fred_loader.FRED_SERIES_10Y, "yield_10y")
-        yield_3m = fetch(fred_loader.FRED_SERIES_3M, "yield_3m")
-        oil = fetch(fred_loader.FRED_SERIES_OIL_WTI, "regime_oil")
-        volatility = fetch(fred_loader.FRED_SERIES_VIX, "regime_volatility")
-        market = fetch(fred_loader.FRED_SERIES_SP500, "regime_market")
-        copper = fetch(fred_loader.FRED_SERIES_COPPER, "regime_copper")
-
-        base = (
-            yield_10y.merge(yield_3m, on="dt", how="outer")
-            .merge(oil, on="dt", how="outer")
-            .merge(market, on="dt", how="outer")
-            .merge(copper, on="dt", how="outer")
-            .merge(volatility, on="dt", how="outer")
-        )
-        base["dt"] = pd.to_datetime(base["dt"])
-        base = base.sort_values("dt").drop_duplicates(subset=["dt"], keep="last")
-
-        base["yield_10y"] = pd.to_numeric(base["yield_10y"], errors="coerce")
-        base["yield_3m"] = pd.to_numeric(base["yield_3m"], errors="coerce")
+        # #224 rulings: each role is already on the session grid, holding the
+        # last value known by 20:00 New York on that session, carried at most
+        # five sessions (copper: month M only during M+2), never back-filled.
+        qualified = {
+            column: fetch(series_id, column)
+            for series_id, column in (
+                (fred_loader.FRED_SERIES_10Y, "yield_10y"),
+                (fred_loader.FRED_SERIES_3M, "yield_3m"),
+                (fred_loader.FRED_SERIES_OIL_WTI, "regime_oil"),
+                (fred_loader.FRED_SERIES_VIX, "regime_volatility"),
+                (fred_loader.FRED_SERIES_SP500, "regime_market"),
+                (fred_loader.FRED_SERIES_COPPER, "regime_copper"),
+            )
+        }
+        base = pd.DataFrame({column: item.values for column, item in qualified.items()})
         base["regime_yield_curve"] = base["yield_10y"] - base["yield_3m"]
         base["regime_monetary_policy"] = base["yield_3m"]
-        base["regime_market"] = pd.to_numeric(base["regime_market"], errors="coerce")
-        base["regime_volatility"] = pd.to_numeric(base["regime_volatility"], errors="coerce")
 
-        # Paper-guided stock-bond regime: roughly three years of daily observations.
-        # The merged FRED/LSEG panel can be sparse because series publish on
-        # different calendars. Forward-fill the two raw inputs before deriving
-        # changes so rolling correlation is not all-null on staggered calendars.
-        market_for_corr = base["regime_market"].ffill()
-        yield_10y_for_corr = base["yield_10y"].ffill()
-        market_ret = market_for_corr.pct_change(fill_method=None)
-        yield_change = yield_10y_for_corr.diff()
+        # Paper-guided stock-bond regime: roughly three years of sessions.
+        market_ret = base["regime_market"].pct_change(fill_method=None)
+        yield_change = base["yield_10y"].diff()
         base["regime_stock_bond_corr"] = market_ret.rolling(
             STOCK_BOND_CORR_WINDOW_DAYS,
             min_periods=STOCK_BOND_CORR_MIN_PERIODS,
         ).corr(yield_change)
 
-        # Fill sparse macro holidays/weekends while preserving time direction.
-        for col in [
-            "regime_market",
-            "regime_yield_curve",
-            "regime_oil",
-            "regime_copper",
-            "regime_monetary_policy",
-            "regime_volatility",
-        ]:
-            base[col] = pd.to_numeric(base[col], errors="coerce").ffill().bfill()
-        base["regime_stock_bond_corr"] = pd.to_numeric(
-            base["regime_stock_bond_corr"], errors="coerce"
-        ).ffill()
-
-        base = base[
-            [
-                "dt",
-                "regime_market",
-                "regime_yield_curve",
-                "regime_oil",
-                "regime_copper",
-                "regime_stock_bond_corr",
-                "regime_monetary_policy",
-                "regime_volatility",
-            ]
-        ].copy()
-        base["dt"] = base["dt"].dt.strftime("%Y-%m-%d")
+        base = base[list(REGIME_VARIABLES)]
+        self.regime_input_receipt = {
+            "verdicts": [item.verdict for item in qualified.values()],
+            "leading_gap_sessions": {
+                column: int(base[column].notna().to_numpy().argmax())
+                if base[column].notna().any()
+                else len(base)
+                for column in REGIME_VARIABLES
+            },
+        }
+        base.insert(0, "dt", base.index.strftime("%Y-%m-%d"))
+        base = base.reset_index(drop=True)
         self.regime_df = base
         return base
 

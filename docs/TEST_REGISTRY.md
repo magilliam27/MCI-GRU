@@ -34,6 +34,25 @@ Public auxiliary loader and preparation capture/replay contracts.
 | `test_a_misspelt_auxiliary_source_role_is_rejected_when_the_config_is_built` |  |  |
 | `test_the_full_feature_preset_stops_at_the_unselected_credit_role` | features=full enables credit, which the base config leaves unselected. |  |
 
+## `tests/test_auxiliary_quality.py`
+
+#224 regime input rulings, proven through public DataManager.load_regime_inputs.
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.auxiliary_quality`, `mci_gru.data.data_manager`, `mci_gru.data.input_snapshots`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_session_t_sees_only_values_dated_before_t` |  |  |
+| `test_a_gap_carries_exactly_five_sessions_and_no_more` |  |  |
+| `test_copper_for_month_m_counts_from_month_m_plus_2` |  |  |
+| `test_changing_a_later_value_never_changes_earlier_output` |  |  |
+| `test_sessions_before_the_first_usable_value_stay_empty_and_are_counted` |  |  |
+| `test_a_malformed_or_invalid_value_stops_the_run_naming_role_and_date` |  | parametrize |
+| `test_copper_must_be_positive` |  |  |
+| `test_gaps_negative_oil_and_low_yields_are_valid` |  |  |
+| `test_a_stop_keeps_its_facts_through_the_preparation_failure` |  |  |
+| `test_a_source_covering_the_request_leaves_no_leading_gap` | Copper's request reaches back to month X-2, so its first session is usable. |  |
+
 ## `tests/test_backtest_engine_golden.py`
 
 Golden-output regression tests for legacy backtest CLIs (WS-N step 2).
@@ -228,6 +247,34 @@ Unit tests for pure data-loading helpers with no prior coverage.
 | `TestSectorEdges.test_build_sector_edges_links_same_sector_only` |  |  |
 | `TestSectorEdges.test_build_sector_edges_connects_every_pair_in_a_sector` |  |  |
 | `TestSectorEdges.test_build_sector_edges_empty_universe` |  |  |
+
+## `tests/test_data_quality_contract.py`
+
+Input admission at the confirmed #223 seams: native read, preparation, runner.
+
+**Exercises:** `mci_gru`, `mci_gru.config`, `mci_gru.data`, `mci_gru.data.quality_contract`, `mci_gru.features`, `mci_gru.pipeline`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_a_stock_with_all_four_ohlc_histories_constant_stops_preparation` |  |  |
+| `test_the_varying_control_is_admitted_and_returns_prepared_data` |  |  |
+| `test_one_constant_field_is_reported_but_does_not_invalidate_the_history` |  |  |
+| `test_fewer_than_two_observations_is_insufficient_evidence_and_stops` |  |  |
+| `test_missing_prices_are_counted_per_stock_without_a_budget` |  |  |
+| `test_malformed_rows_stop_preparation_and_are_never_repaired` |  | parametrize |
+| `test_an_unparseable_file_fails_at_parse_with_its_bytes_observed` |  |  |
+| `test_a_missing_selected_file_is_not_substituted_by_a_same_named_decoy` |  |  |
+| `test_a_missing_index_file_is_not_substituted_either` |  |  |
+| `test_an_unresolved_required_verdict_cannot_return_admitted_data` |  |  |
+| `test_an_unresolved_optional_item_does_not_block` |  |  |
+| `test_a_blank_valid_to_is_membership_through_the_export_cutoff` |  |  |
+| `test_a_blank_valid_to_without_a_declared_cutoff_stops` |  |  |
+| `test_pit_structure_failures_stop_and_name_the_stock` |  | parametrize |
+| `test_adjacent_intervals_for_one_name_are_not_an_overlap` |  |  |
+| `test_the_session_breadth_floor_stops_through_the_failure_report` |  |  |
+| `test_the_runner_reports_a_missing_selected_file_and_never_reads_the_decoy` |  | slow |
+| `test_the_runner_reports_malformed_rows_with_the_identity_of_the_read` |  | slow |
+| `test_the_runner_control_passes_admission_and_reaches_the_guarded_trainer_path` | Proves the guards are live: a valid panel gets past preparation to them. | slow |
 
 ## `tests/test_default_experiment_recipe.py`
 
@@ -1014,6 +1061,31 @@ Phase 3: lead-lag toy, snapshot valid_from, walk-forward config, cross-attn smok
 | `test_pit_availability_report_explicit_calendar_counts_full_day_outage` |  |  |
 | `test_write_pit_availability_report_cli_writes_json` |  |  |
 
+## `tests/test_pit_eligibility_contract.py`
+
+Dated PIT eligibility and fixed-session label contract (#225).
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.pit`, `mci_gru.data.preprocessing`, `mci_gru.data.quality_contract`, `mci_gru.pipeline`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_prepare_data_cessation_requires_effective_and_known_time` |  | parametrize |
+| `test_later_knowledge_changes_only_the_cessation_decision` | No-lookahead canary: moving known_from past T changes nothing but eligibility. |  |
+| `test_cessation_without_dated_evidence_rejects_the_run_naming_the_stock` |  |  |
+| `test_acquisition_time_is_never_availability` | A blank known_from is undated even when the row says when it was acquired. |  |
+| `test_malformed_or_naive_timestamp_stops_rather_than_counting_as_unknown` |  | parametrize |
+| `test_missing_declared_event_file_stops_through_the_admission_report` |  |  |
+| `test_undated_cessation_reaches_run_failure_json` | The rejection is an AdmissionError, so #223's runner catch reports it. |  |
+| `test_admission_record_carries_the_pit_fragment` |  |  |
+| `test_undeclared_event_file_excludes_nothing_and_says_so` |  |  |
+| `test_declared_event_file_is_read_through_the_input_carrier` |  |  |
+| `test_date_only_known_from_resolves_to_the_clock_on_the_next_session` | Never midnight: 2024-02-02 resolves to 20:00 New York on Monday 2024-02-05. |  |
+| `test_no_events_file_means_no_evidence` |  |  |
+| `test_gap_label_uses_fixed_sessions_and_all_three_consumers_agree` | Row shifts read 2024-02-13 (5%); fixed sessions read 2024-02-12 (4%). |  |
+| `test_missing_entry_close_makes_the_label_unobservable_without_substitution` |  |  |
+| `test_omitted_label_reports_which_endpoint_is_missing` |  | parametrize |
+| `test_a_missing_price_masks_only_that_session_and_is_counted_per_stock` | #223 ruling 13: a genuine gap is masked per session, never imputed into a prediction. |  |
+
 ## `tests/test_pit_evaluation_admission.py`
 
 PIT admission must be consistent across every backtest replay path (issue #116).
@@ -1188,7 +1260,7 @@ Regression tests for vectorised preprocessing (matches legacy semantics).
 | `test_purge_training_sessions_drops_exactly_label_t_sessions` | The purge removes the final label_t sessions of training signal, nothing more. |  |
 | `test_purge_training_sessions_refuses_when_no_labels_would_remain` | Too-short training windows must fail loudly, not silently yield an empty axis. |  |
 | `test_embargo_validator_flags_label_maturing_on_first_validation_session` | A calendar gap wider than label_t is not enough: the panel gap is in sessions. |  |
-| `test_embargo_validator_flags_stock_whose_own_sessions_reach_into_validation` | Per-stock row shifts, not the union axis, are what compute_labels consumes. |  |
+| `test_a_stock_gap_never_moves_its_exit_into_validation` | Labels and the embargo share one fixed-session resolver (#225 ruling 4). |  |
 | `test_embargo_validator_refuses_panel_that_ends_before_labels_mature` | A truncated panel must abort, not count unmatured labels as compliant. |  |
 | `test_embargo_validator_rejects_label_date_missing_from_panel` | An unknown training label date means the axes disagree; refuse to guess. |  |
 | `test_prepare_data_training_labels_never_consume_validation_closes` | End-to-end: no training label may read a close at or after val_start. | parametrize |
@@ -1566,6 +1638,9 @@ Behavioral tests for the market-wide VIX feature merge.
 |---|---|---|
 | `test_missing_vix_dates_carry_the_last_earlier_level_and_default_to_20` |  |  |
 | `test_future_vix_observations_do_not_change_earlier_rows` |  | parametrize |
+| `test_stock_major_panel_never_carries_vix_across_stocks` |  |  |
+| `test_vix_does_not_depend_on_panel_row_order` |  |  |
+| `test_future_vix_never_reaches_an_earlier_row_of_any_stock` |  | parametrize |
 
 ## `tests/test_volatility_features.py`
 

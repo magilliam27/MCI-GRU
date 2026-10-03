@@ -20,11 +20,20 @@ import torch
 
 from mci_gru.data.data_manager import DataManager
 from mci_gru.data.pit import (
+    CessationEvidence,
+    PITEligibilityError,
+    PITMaskSet,
+    PredictionClock,
     active_kdcodes_in_period,
     apply_label_mask,
     build_pit_masks,
     candidate_breadth,
+    cessation_exclusion_mask,
+    load_cessation_events,
     load_pit_intervals,
+    pit_eligibility_fragment,
+    pit_split_report,
+    resolve_cessation_events,
 )
 from mci_gru.data.preprocessing import (
     apply_rank_gaussian,
@@ -34,7 +43,15 @@ from mci_gru.data.preprocessing import (
     fit_rank_gaussian_reference,
     generate_graph_features,
     generate_time_series_features,
+    label_session_axis,
     purge_training_sessions_for_embargo,
+    resolve_labels,
+)
+from mci_gru.data.quality_contract import (
+    AdmissionError,
+    AdmissionLedger,
+    assess_pit_panel_coverage,
+    breadth_floor_failure,
 )
 from mci_gru.data.transforms import (
     compute_zscore_norm_stats,
@@ -71,6 +88,8 @@ class PitContext:
     masked_panel: bool
     csv_path: str | None
     input_observations: InputObservationContext | None = None
+    cessation: CessationEvidence | None = None
+    clock: PredictionClock | None = None
 
 
 @dataclass(frozen=True)
@@ -292,7 +311,7 @@ def _audit_pit_breadth(
         "data.pit_min_scoreable_stocks with an explicit explanation."
     )
     if policy == "error":
-        raise ValueError(message)
+        raise AdmissionError([breadth_floor_failure(split_name, low, min_scoreable, message)])
     logger.warning(f"Warning: {message}")
     return summary
 
@@ -454,8 +473,10 @@ def _build_tensors(
 # ── staged pipeline functions ────────────────────────────────────────────
 
 
-def load_raw_data(config: ExperimentConfig) -> tuple[DataManager, pd.DataFrame]:
-    data_manager = DataManager(config.data)
+def load_raw_data(
+    config: ExperimentConfig, admission: AdmissionLedger | None = None
+) -> tuple[DataManager, pd.DataFrame]:
+    data_manager = DataManager(config.data, admission=admission)
     df = data_manager.load()
     return data_manager, df
 
@@ -474,7 +495,9 @@ def engineer_features(
 
 
 def resolve_pit_context(
-    config: ExperimentConfig, input_observations: InputObservationContext | None = None
+    config: ExperimentConfig,
+    input_observations: InputObservationContext | None = None,
+    admission: AdmissionLedger | None = None,
 ) -> PitContext:
     # DataConfig accepts only pit_universe_mode="masked_panel" (#139), so a PIT
     # universe is always a masked panel.
@@ -485,13 +508,41 @@ def resolve_pit_context(
         if not config.data.pit_universe_csv:
             raise ValueError("data.use_pit_universe=true requires data.pit_universe_csv")
         intervals = load_pit_intervals(
-            config.data.pit_universe_csv, input_observations=input_observations
+            config.data.pit_universe_csv,
+            input_observations=input_observations,
+            admission=admission,
+            open_valid_to=config.data.pit_export_cutoff,
         )
+    # Only masked panels have daily eligibility, so only they need the clock.
+    clock = (
+        PredictionClock(
+            time=config.data.prediction_clock_time,
+            timezone=config.data.prediction_clock_timezone,
+        )
+        if masked_panel
+        else None
+    )
+    # Undated, malformed or unreadable cessation evidence stops here, before any
+    # tensor exists, carrying the ledger and sealed observations to the report.
+    try:
+        cessation = load_cessation_events(
+            config.data.pit_cessation_events_csv if masked_panel else None,
+            input_observations=input_observations,
+        )
+    except PITEligibilityError as error:
+        if admission is not None:
+            admission.record_all(error.failures)
+            error.admission = admission.to_dict()
+        if input_observations is not None:
+            error.input_observations = input_observations.freeze()
+        raise
     return PitContext(
         intervals=intervals,
         masked_panel=masked_panel,
         csv_path=csv_path,
         input_observations=input_observations,
+        cessation=cessation,
+        clock=clock,
     )
 
 
@@ -608,34 +659,51 @@ def apply_pit_masks_to_tensors(
     label_type: str,
     min_scoreable: int,
     breadth_policy: str,
-) -> tuple[TensorBundle, dict[str, list[dict[str, int | str]]]]:
+) -> tuple[TensorBundle, dict[str, list[dict[str, int | str]]], dict[str, Any]]:
+    """Apply daily PIT masks, including dated cessation, and build the PIT fragment.
+
+    Returns the masked tensors, the daily breadth summary and the
+    ``mci_gru.pit_eligibility.v1`` fragment #223's report embeds.
+    """
     assert pit.intervals is not None
-    train_masks = build_pit_masks(
-        frames.filtered,
-        frames.raw,
-        kdcode_list,
-        tensors.train_dates,
-        his_t,
-        label_t,
-        pit.intervals,
-    )
-    val_masks = build_pit_masks(
-        frames.filtered,
-        frames.raw,
-        kdcode_list,
-        tensors.val_dates,
-        his_t,
-        label_t,
-        pit.intervals,
-    )
-    test_masks = build_pit_masks(
-        frames.filtered,
-        frames.raw,
-        kdcode_list,
-        tensors.test_dates,
-        his_t,
-        label_t,
-        pit.intervals,
+    clock = pit.clock or PredictionClock()
+    cessation = pit.cessation or CessationEvidence(configured_path=None, events=())
+    sessions = label_session_axis(frames.raw, kdcode_list)
+    resolved = resolve_cessation_events(cessation, sessions, clock)
+
+    def _masks(dates: list[str]) -> PITMaskSet:
+        return build_pit_masks(
+            frames.filtered,
+            frames.raw,
+            kdcode_list,
+            dates,
+            his_t,
+            label_t,
+            pit.intervals,
+            cessation_exclusion_mask(resolved, kdcode_list, dates, clock),
+        )
+
+    train_masks = _masks(tensors.train_dates)
+    val_masks = _masks(tensors.val_dates)
+    test_masks = _masks(tensors.test_dates)
+    eligibility = pit_eligibility_fragment(
+        clock=clock,
+        evidence=cessation,
+        resolved=resolved,
+        label_t=label_t,
+        splits={
+            name: pit_split_report(
+                dates,
+                kdcode_list,
+                masks,
+                resolve_labels(frames.raw, kdcode_list, dates, label_t),
+            )
+            for name, dates, masks in (
+                ("train", tensors.train_dates, train_masks),
+                ("val", tensors.val_dates, val_masks),
+                ("test", tensors.test_dates, test_masks),
+            )
+        },
     )
 
     train_labels = apply_label_mask(tensors.train_labels, train_masks.loss)
@@ -700,7 +768,7 @@ def apply_pit_masks_to_tensors(
         val_tradable_mask=val_masks.tradable,
         test_tradable_mask=test_masks.tradable,
     )
-    return masked, pit_breadth
+    return masked, pit_breadth, eligibility
 
 
 def _build_sector_relation(
@@ -822,8 +890,14 @@ def build_correlation_graph(
 def prepare_data(
     config: ExperimentConfig,
     feature_engineer: FeatureEngineer,
+    *,
+    admission: AdmissionLedger | None = None,
 ) -> dict[str, Any]:
     """Load and prepare stock-level cross-sectional data for training.
+
+    Required inputs are admitted before any feature work: a required item in
+    ``admission`` (pre-seeded by the caller or recorded by a loader) that is not
+    ``valid`` raises :class:`AdmissionError` instead of returning data.
 
     Returns a dict consumed by the training loop and metric evaluation.
     """
@@ -831,15 +905,33 @@ def prepare_data(
     logger.info("Preparing Data")
     logger.info("=" * 80)
 
-    data_manager, df = load_raw_data(config)
+    admission = admission if admission is not None else AdmissionLedger()
+    data_manager, df = load_raw_data(config, admission)
+    observations = data_manager.input_observations
+    # The panel verdicts stop the run before any auxiliary provider is set up.
+    admission.require_admitted(observations)
     vix_df, credit_df, regime_df = load_auxiliary_data(data_manager, config)
+
+    pit = resolve_pit_context(config, observations, admission)
+    if pit.masked_panel:
+        assert pit.intervals is not None
+        admission.record_all(
+            assess_pit_panel_coverage(
+                pit.intervals,
+                set(df["kdcode"].astype(str).str.strip()),
+                config.data.train_start,
+                config.data.test_end,
+                configured_path=pit.csv_path,
+            )
+        )
+    admission.require_admitted(observations)
+
     df, feature_cols = engineer_features(df, feature_engineer, vix_df, credit_df, regime_df)
 
     logger.info("Filling NaN values...")
     df_filled = impute_feature_nans_by_day(df, feature_cols)
     gc.collect()
 
-    pit = resolve_pit_context(config, data_manager.input_observations)
     if pit.masked_panel:
         logger.info("Using true PIT masked-panel mode (fixed union axis + daily masks)...")
 
@@ -890,18 +982,24 @@ def prepare_data(
     )
 
     pit_breadth: dict[str, list[dict[str, int | str]]] | None = None
+    pit_eligibility: dict[str, Any] | None = None
     if pit.masked_panel:
-        tensor_bundle, pit_breadth = apply_pit_masks_to_tensors(
-            tensor_bundle,
-            frames,
-            kdcode_list,
-            pit,
-            config.model.his_t,
-            config.model.label_t,
-            config.training.label_type,
-            config.data.pit_min_scoreable_stocks,
-            config.data.pit_breadth_policy,
-        )
+        try:
+            tensor_bundle, pit_breadth, pit_eligibility = apply_pit_masks_to_tensors(
+                tensor_bundle,
+                frames,
+                kdcode_list,
+                pit,
+                config.model.his_t,
+                config.model.label_t,
+                config.training.label_type,
+                config.data.pit_min_scoreable_stocks,
+                config.data.pit_breadth_policy,
+            )
+        except AdmissionError as error:
+            admission.record_all(error.failures)
+            admission.require_admitted(observations)
+            raise
 
     graphs = build_correlation_graph(
         frames,
@@ -918,6 +1016,10 @@ def prepare_data(
         input_observations=data_manager.input_observations,
     )
 
+    if pit_eligibility is not None:
+        # The #225 coverage report travels with the admission record too.
+        admission.record_coverage("pit_eligibility", pit_eligibility)
+    admission.require_admitted(observations)
     return {
         "kdcode_list": kdcode_list,
         **tensor_bundle.to_dict(),
@@ -935,30 +1037,39 @@ def prepare_data(
         "rank_gauss_reference": norm_fit.rank_gauss_reference,
         "feature_reference": feature_reference,
         "pit_breadth": pit_breadth,
+        "pit_eligibility": pit_eligibility,
         "pit_universe_mode": config.data.pit_universe_mode
         if config.data.use_pit_universe
         else None,
+        "admission": admission.to_dict(),
     }
 
 
 def prepare_data_index_level(
     config: ExperimentConfig,
     feature_engineer: FeatureEngineer,
+    *,
+    admission: AdmissionLedger | None = None,
 ) -> dict[str, Any]:
     """Prepare data for index-level mode (single series, no survivorship bias).
 
     Uses a trivial 1-node / 0-edge graph so the rest of the pipeline runs
-    unchanged.
+    unchanged. Admission is enforced as in :func:`prepare_data`; index-family
+    value rules are deferred while the recipe leaves index mode disabled.
     """
     logger.info("=" * 80)
     logger.info("Preparing Data (index-level mode; no stock-level survivorship bias)")
     logger.info("=" * 80)
 
-    data_manager = DataManager(config.data)
+    admission = admission if admission is not None else AdmissionLedger()
+    data_manager = DataManager(config.data, admission=admission)
+    observations = data_manager.input_observations
+    admission.require_admitted(observations)
     df = data_manager.load_index_series()
     kdcode_list = ["INDEX"]
 
     vix_df, credit_df, regime_df = load_auxiliary_data(data_manager, config)
+    admission.require_admitted(observations)
 
     df = feature_engineer.transform(df, vix_df, credit_df, regime_df)
     feature_cols = feature_engineer.get_feature_columns()
@@ -1030,6 +1141,7 @@ def prepare_data_index_level(
     edge_index = torch.empty(2, 0, dtype=torch.long)
     edge_weight = torch.empty(0, dtype=torch.float32)
 
+    admission.require_admitted(observations)
     return {
         "kdcode_list": kdcode_list,
         **tensors,
@@ -1047,4 +1159,5 @@ def prepare_data_index_level(
         "edge_weight_sector": None,
         "rank_gauss_reference": None,
         "feature_reference": feature_reference,
+        "admission": admission.to_dict(),
     }
