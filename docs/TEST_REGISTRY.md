@@ -124,7 +124,7 @@ Contract tests for scripts/check_config.py.
 
 Selected-checkpoint metrics: Trainer.train reports the checkpoint it saved.
 
-**Exercises:** `mci_gru.config`, `mci_gru.training.losses`, `mci_gru.training.trainer`
+**Exercises:** `mci_gru.config`, `mci_gru.training.ensemble`, `mci_gru.training.losses`, `mci_gru.training.trainer`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -133,6 +133,11 @@ Selected-checkpoint metrics: Trainer.train reports the checkpoint it saved.
 | `test_rank_ic_selection_reports_ic_as_missing_when_the_saved_epoch_has_none` | Both IC metrics: the saved epoch has a rank IC but no eligible Pearson IC row. |  |
 | `test_each_selection_metric_saves_its_own_best_epoch_and_reports_it` | Selection rules are unchanged and the reported metrics are the saved epoch's own. | parametrize |
 | `test_ic_selection_still_requires_minimum_selection_rows` | Fail-closed coverage boundary: N-1 eligible rows raise and N rows select. | parametrize |
+| `test_selection_metric_that_is_never_finite_fails_closed` | A run whose selection metric is NaN on every epoch raises and saves no checkpoint. |  |
+| `test_first_finite_epoch_is_selected_after_non_finite_ones` | A NaN epoch never improves, before or after the first finite epoch, which is saved. |  |
+| `test_ic_selection_saves_the_first_finite_epoch_however_negative` | IC selection starts below every finite value, so an IC of -1 is still selected. | parametrize |
+| `test_selection_tie_keeps_the_earlier_epoch` | Only a strict improvement replaces the saved checkpoint. | parametrize |
+| `test_ensemble_fails_the_run_when_a_member_selects_no_checkpoint` | The member's error propagates, so no member or averaged predictions are written. |  |
 
 ## `tests/test_ci_smoke.py`
 
@@ -935,6 +940,25 @@ Tests for ``mci_gru.evaluation.paired_inference`` (ticket 179).
 | `test_winsorize_rows_clips_per_row_and_keeps_nan` |  |  |
 | `test_sharpe_block_bootstrap_ci_brackets_the_point_estimate` |  |  |
 
+## `tests/test_pct_change_gap_policy.py`
+
+Return features treat an input gap as pandas 2 always did, under pandas 2 and 3 alike.
+
+**Exercises:** `mci_gru.evaluation.capacity`, `mci_gru.features.credit`, `mci_gru.features.momentum`, `mci_gru.features.volatility`, `mci_gru.graph.correlation`, `mci_gru.utils.returns`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_daily_return_across_a_gap_is_measured_from_the_last_observed_close` |  |  |
+| `test_volatility_features_treat_a_gap_as_the_forward_filled_close` |  |  |
+| `test_volatility_targeting_features_treat_a_gap_as_the_forward_filled_close` |  |  |
+| `test_momentum_features_treat_a_gap_as_the_forward_filled_close` |  |  |
+| `test_correlation_matrix_treats_a_gap_as_the_forward_filled_close` |  |  |
+| `test_capacity_volatility_treats_a_gap_as_the_forward_filled_close` |  |  |
+| `test_vix_change_treats_a_gap_as_the_forward_filled_level` |  |  |
+| `test_credit_spread_change_treats_a_gap_as_the_forward_filled_spread` |  | parametrize |
+| `test_padded_change_matches_pandas_2_default_within_each_group` |  | parametrize |
+| `test_package_has_no_pct_change_call_without_an_explicit_fill_method` |  |  |
+
 ## `tests/test_phase3_graph_and_walkforward.py`
 
 Phase 3: lead-lag toy, snapshot valid_from, walk-forward config, cross-attn smoke.
@@ -1463,6 +1487,9 @@ Training summaries average only available checkpoint metrics and count coverage.
 | `test_walkforward_mean_weights_windows_equally_and_counts_windows` | Window coverage counts windows, not members, and each available window counts once. |  |
 | `test_walkforward_treats_historical_non_finite_window_means_as_unavailable` | A -inf or NaN window mean from an older run no longer poisons the aggregate. |  |
 | `test_walkforward_summary_of_no_windows_stays_empty` | An empty walk-forward run has no aggregate at all. |  |
+| `test_walkforward_evaluation_mean_skips_nan_windows_and_reports_coverage` | A NaN evaluation metric in one window is left out and counted, not averaged in. |  |
+| `test_walkforward_evaluation_mean_is_unchanged_without_nan_windows` | With every window available, each aggregate is the plain equal-weight mean. |  |
+| `test_walkforward_without_evaluation_adds_no_evaluation_keys` | Training-only windows keep the merged summary free of evaluation fields. |  |
 
 ## `tests/test_transforms.py`
 

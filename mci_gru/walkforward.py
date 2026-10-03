@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import date, timedelta
+from numbers import Real
 
 from dateutil.relativedelta import relativedelta
 
@@ -122,6 +123,12 @@ def merge_walkforward_summary(summaries: list[dict]) -> dict:
     of the total; member coverage stays in each window's summary. Missing and
     non-finite window values, including historical ``-inf`` sentinels, are
     unavailable, and an aggregate with no available window is ``None``.
+
+    Evaluation metrics follow the same rule: each numeric key in any window's
+    ``evaluation`` gets ``mean_<key>_across_windows`` over the windows where it is
+    available, and ``evaluation_window_coverage`` records how many windows
+    contributed to it out of the total, so a window whose metric is NaN no longer
+    turns the aggregate into NaN.
     """
     if not summaries:
         return {}
@@ -133,18 +140,20 @@ def merge_walkforward_summary(summaries: list[dict]) -> dict:
         )
     merged["window_coverage"] = window_coverage
     merged["windows"] = summaries
-    eval_keys: set[str] = set()
-    for summary in summaries:
-        eval_keys.update((summary.get("evaluation") or {}).keys())
-    eval_summary = {}
-    for key in sorted(eval_keys):
-        vals = [
-            summary.get("evaluation", {}).get(key)
-            for summary in summaries
-            if isinstance(summary.get("evaluation", {}).get(key), (int, float))
-        ]
-        if vals:
-            eval_summary[f"mean_{key}_across_windows"] = float(sum(vals) / len(vals))
+    evaluations = [summary.get("evaluation") or {} for summary in summaries]
+    numeric_keys = {
+        key
+        for evaluation in evaluations
+        for key, value in evaluation.items()
+        if isinstance(value, Real) and not isinstance(value, bool)
+    }
+    eval_summary: dict = {}
+    eval_coverage: dict[str, dict[str, int]] = {}
+    for key in sorted(numeric_keys):
+        eval_summary[f"mean_{key}_across_windows"], eval_coverage[key] = mean_of_available(
+            [evaluation.get(key) for evaluation in evaluations]
+        )
     if eval_summary:
         merged["evaluation"] = eval_summary
+        merged["evaluation_window_coverage"] = eval_coverage
     return merged
