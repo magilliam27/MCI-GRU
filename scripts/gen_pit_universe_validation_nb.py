@@ -24,7 +24,7 @@ cells = [
         - per-split complete-stock filtering;
         - the true PIT masked panel through `data.use_pit_universe=true` (`data.pit_universe_mode=masked_panel`): a fixed PIT-union stock axis with daily membership masks.
 
-        `masked_panel` is the only accepted PIT mode and it ignores `data.filter_stocks_per_split`, so the `pit_plus_per_split` control is defined for older manifests but not active by default: it would rerun `pit_universe`.
+        `masked_panel` is the only accepted PIT mode and it ignores `data.filter_stocks_per_split`, so the `pit_plus_per_split` control is kept for reference but inactive: it would rerun `pit_universe`.
 
         If `PIT_UNIVERSE_CSV` is blank, the notebook first runs the Joiner/Leaver PIT exporter and uses the generated `*_pit_universe.csv`. That export requires an LSEG/Refinitiv-enabled environment. If you already generated the PIT CSV and stored it in Drive, set `PIT_UNIVERSE_CSV` to that path and skip generation.
         """

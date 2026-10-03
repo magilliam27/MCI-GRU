@@ -140,5 +140,8 @@ def test_universe_control_overrides_compose_against_the_window_data_config(
 
     assert data.use_pit_universe is control["requires_pit"], control["name"]
     if control["requires_pit"]:
+        # masked_panel is also the default, so only the override itself shows the
+        # control names its PIT mode.
+        assert "++data.pit_universe_mode=masked_panel" in control["overrides"], control["name"]
         assert data.pit_universe_csv == "pit_universe.csv"
         assert data.pit_universe_mode == "masked_panel"
