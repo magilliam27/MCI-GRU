@@ -31,6 +31,7 @@ from hydra import compose, initialize_config_dir
 
 import run_experiment
 from mci_gru.config import ExperimentConfig, TrainingConfig
+from mci_gru.evaluation import execution_provenance
 from mci_gru.evaluation.artifacts import canonical_json_bytes
 from mci_gru.evaluation.execution_provenance import (
     BACKEND_OBSERVATIONS,
@@ -41,6 +42,7 @@ from mci_gru.evaluation.execution_provenance import (
     read_execution_run,
     read_member_execution,
     write_execution_plan,
+    write_window_receipt,
 )
 from mci_gru.evaluation.experiment_summary import write_resolved_config
 from mci_gru.training import ensemble
@@ -916,6 +918,112 @@ def test_damaged_window_evidence_is_never_complete(stock_copy, damage, problem):
     (damaged,) = after.windows
     assert (damaged["status"], after.status) == ("incomplete", "incomplete")
     assert any(entry.startswith(problem) for entry in damaged["problems"]), damaged["problems"]
+
+
+def _rewrite(path: Path, edit) -> None:
+    record = json.loads(path.read_bytes())
+    edit(record)
+    path.write_bytes(canonical_json_bytes(record))
+
+
+def test_a_receipt_that_does_not_bind_the_metadata_is_not_complete(stock_copy):
+    plan = _plan(stock_copy)
+    before = read_execution_run(plan)
+    (window,) = before.windows
+    _, _, receipt_path = _window_files(stock_copy, window)
+    _rewrite(receipt_path, lambda record: record["artifacts"].pop("run_metadata.json"))
+    _reseal(stock_copy, before.run_id, window)
+
+    (damaged,) = read_execution_run(plan).windows
+    assert damaged["status"] == "incomplete"
+    assert damaged["problems"] == ["terminal receipt does not bind the run metadata"]
+
+
+@pytest.mark.parametrize(
+    ("damage", "run_problem", "window_problem"),
+    [
+        ("unsafe_receipt_path", "run receipt invalid: Unsafe relative path", None),
+        ("run_receipt_is_a_directory", "run receipt invalid: not a readable file", None),
+        ("receipt_missing_a_field", None, "terminal receipt invalid: 'attempt_id'"),
+        ("unanchored_receipt_missing_a_field", "no run receipt", "no terminal receipt"),
+        ("directories_named_like_evidence", "no run receipt", "no terminal receipt"),
+        ("unreadable_artifact", None, "artifact unreadable: evaluation_summary.json"),
+        ("unreadable_receipt", None, "terminal receipt unreadable"),
+    ],
+)
+def test_malformed_or_unreadable_evidence_is_reported_not_raised(
+    stock_copy, monkeypatch, damage, run_problem, window_problem
+):
+    plan = _plan(stock_copy)
+    before = read_execution_run(plan)
+    (window,) = before.windows
+    _, _, receipt_path = _window_files(stock_copy, window)
+    evidence = stock_copy / "execution_provenance"
+    run_receipt = evidence / f"{before.run_id}.run_receipt.json"
+    if damage == "unsafe_receipt_path":
+        _rewrite(run_receipt, lambda record: record["windows"][0].update(path="../receipt.json"))
+    elif damage == "run_receipt_is_a_directory":
+        run_receipt.unlink()
+        run_receipt.mkdir()
+    elif damage == "receipt_missing_a_field":
+        _rewrite(receipt_path, lambda record: record.pop("attempt_id"))
+        _reseal(stock_copy, before.run_id, window)
+    elif damage == "unanchored_receipt_missing_a_field":
+        _rewrite(receipt_path, lambda record: record.pop("plan_sha256"))
+        run_receipt.unlink()
+    elif damage == "directories_named_like_evidence":
+        run_receipt.unlink()
+        receipt_path.unlink()
+        (evidence / ("e" * 32 + ".receipt.json")).mkdir()
+        (evidence / ("e" * 32 + ".json")).mkdir()
+    else:
+        unreadable = (
+            stock_copy / "evaluation_summary.json"
+            if damage == "unreadable_artifact"
+            else receipt_path
+        )
+        original = execution_provenance.sha256_file
+
+        def deny(path):
+            if Path(path) == unreadable:
+                raise PermissionError("fixture: unreadable")
+            return original(path)
+
+        monkeypatch.setattr(execution_provenance, "sha256_file", deny)
+
+    run = read_execution_run(plan)
+    (damaged,) = run.windows
+    assert run.status == "incomplete"
+    if run_problem is not None:
+        assert any(entry.startswith(run_problem) for entry in run.problems), run.problems
+    if window_problem is not None:
+        assert damaged["status"] == "incomplete"
+        assert any(entry.startswith(window_problem) for entry in damaged["problems"]), damaged[
+            "problems"
+        ]
+
+
+def test_a_window_receipt_refuses_to_bind_evidence_or_a_moved_start(stock_copy, tmp_path):
+    plan = _plan(stock_copy)
+    (window,) = read_execution_run(plan).windows
+    start_path, events_path, _ = _window_files(stock_copy, window)
+    start = ExecutionReference(start_path, _sha256(start_path))
+    with pytest.raises(ValueError, match="cannot bind itself"):
+        write_window_receipt(
+            start, plan=plan, walkforward_window=0, artifacts=["execution_provenance"]
+        )
+
+    moved = tmp_path / "elsewhere" / "execution_provenance"
+    moved.mkdir(parents=True)
+    shutil.copy2(start_path, moved / start_path.name)
+    shutil.copy2(events_path, moved / events_path.name)
+    with pytest.raises(ValueError, match="does not belong to this plan window"):
+        write_window_receipt(
+            ExecutionReference(moved / start_path.name, start.sha256),
+            plan=plan,
+            walkforward_window=0,
+            artifacts=[],
+        )
 
 
 def test_a_run_without_its_run_receipt_is_incomplete(stock_copy):

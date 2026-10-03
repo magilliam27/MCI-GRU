@@ -529,11 +529,14 @@ def read_execution_run(plan: ExecutionReference) -> RunExecution:
     anchors: dict[int, dict[str, Any]] = {}
     run_receipt_sha256 = None
     run_receipt = plan.path.with_name(f"{plan_record['run_id']}.run_receipt.json")
+    run_receipt_digest = _file_sha256(run_receipt)
     if not run_receipt.exists():
         problems.append("no run receipt")
+    elif run_receipt_digest is None:
+        problems.append("run receipt invalid: not a readable file")
     else:
         try:
-            reference = ExecutionReference(run_receipt, sha256_file(run_receipt))
+            reference = ExecutionReference(run_receipt, run_receipt_digest)
             record = _read_record(reference, RUN_RECEIPT_SCHEMA, "Run receipt")
             if (
                 record["run_id"] != plan_record["run_id"]
@@ -597,16 +600,22 @@ def _read_window(
     receipt = None
     if anchor is not None:
         path = root / anchor["path"]
+        digest = _file_sha256(path)
         if not path.is_file():
             problems.append("terminal receipt missing")
-        elif sha256_file(path) != anchor["sha256"]:
+        elif digest is None:
+            problems.append("terminal receipt unreadable")
+        elif digest != anchor["sha256"]:
             problems.append("terminal receipt differs from the run receipt")
         else:
             receipt = _window_receipt(ExecutionReference(path, anchor["sha256"]), problems)
     else:
         found = []
         for path in sorted(evidence.glob("*.receipt.json")):
-            candidate = _window_receipt(ExecutionReference(path, sha256_file(path)), [])
+            digest = _file_sha256(path)
+            if digest is None:
+                continue
+            candidate = _window_receipt(ExecutionReference(path, digest), [])
             if (
                 candidate is not None
                 and candidate[1]["plan_sha256"] == plan.sha256
@@ -660,7 +669,7 @@ def _read_window(
         ):
             problems.append("terminal receipt belongs to another attempt")
         events = _member_events_path(start.path)
-        if not events.is_file() or sha256_file(events) != record["member_events"]["sha256"]:
+        if _file_sha256(events) != record["member_events"]["sha256"]:
             problems.append("member events differ from the terminal receipt")
         problems.extend(_artifact_problems(window_dir, record["artifacts"]))
         if "run_metadata.json" not in record["artifacts"]:
@@ -698,6 +707,12 @@ def _window_receipt(
 ) -> tuple[ExecutionReference, dict[str, Any]] | None:
     try:
         record = _read_record(reference, WINDOW_RECEIPT_SCHEMA, "Terminal receipt")
+        if not re.fullmatch(r"[0-9a-f]{32}", record["attempt_id"]):
+            raise ValueError("invalid attempt identifier")
+        if not _SHA256.fullmatch(record["plan_sha256"]):
+            raise ValueError("invalid plan digest")
+        if type(record["walkforward_window"]) is not int or type(record["window_id"]) is not str:
+            raise ValueError("invalid window")
         for key in ("start", "member_events"):
             if not re.fullmatch(r"[0-9a-f]{32}(\.events\.jsonl|\.json)", record[key]["path"]):
                 raise ValueError(f"invalid {key} path")
@@ -720,9 +735,10 @@ def _plan_starts(
 ) -> list[ExecutionReference]:
     starts = []
     for path in sorted(evidence.glob("*.json")):
-        if not re.fullmatch(r"[0-9a-f]{32}\.json", path.name):
+        digest = _file_sha256(path)
+        if not re.fullmatch(r"[0-9a-f]{32}\.json", path.name) or digest is None:
             continue
-        reference = ExecutionReference(path, sha256_file(path))
+        reference = ExecutionReference(path, digest)
         try:
             record = read_execution_provenance(reference).record
         except ValueError:
@@ -807,11 +823,24 @@ def _artifact_problems(directory: Path, artifacts: dict[str, str]) -> list[str]:
     for name, digest in sorted(artifacts.items()):
         _validate_relative_path(name)
         path = directory / name
+        current = _file_sha256(path)
         if not path.is_file():
             problems.append(f"artifact missing: {name}")
-        elif sha256_file(path) != digest:
+        elif current is None:
+            problems.append(f"artifact unreadable: {name}")
+        elif current != digest:
             problems.append(f"artifact differs: {name}")
     return problems
+
+
+def _file_sha256(path: Path) -> str | None:
+    """Digest a regular file; a directory or unreadable file has no digest."""
+    if not path.is_file():
+        return None
+    try:
+        return sha256_file(path)
+    except OSError:
+        return None
 
 
 def _plan_root(plan: ExecutionReference) -> Path:
@@ -1063,6 +1092,9 @@ def _sensitive_name(name: str) -> bool:
 
 
 def _secret_value(value: Any) -> bool:
+    # A switch such as ``use_api_key: false`` names a credential but holds none.
+    if isinstance(value, bool):
+        return False
     return value not in (None, "", "<REDACTED>", "[REDACTED]", "null", "None", "~")
 
 

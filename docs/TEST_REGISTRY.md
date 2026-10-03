@@ -389,7 +389,7 @@ Execution evidence remains inspectable without the live checkout or runtime.
 
 Execution evidence from ensemble members and from the runner (#144).
 
-**Exercises:** `mci_gru.config`, `mci_gru.evaluation.artifacts`, `mci_gru.evaluation.execution_provenance`, `mci_gru.evaluation.experiment_summary`, `mci_gru.training`, `mci_gru.training.ensemble`, `mci_gru.training.trainer`, `run_experiment`
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation`, `mci_gru.evaluation.artifacts`, `mci_gru.evaluation.execution_provenance`, `mci_gru.evaluation.experiment_summary`, `mci_gru.training`, `mci_gru.training.ensemble`, `mci_gru.training.trainer`, `run_experiment`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -417,6 +417,9 @@ Execution evidence from ensemble members and from the runner (#144).
 | `test_an_output_failure_after_every_member_finished_is_not_completion` |  |  |
 | `test_an_expected_window_that_did_not_finish_keeps_the_run_incomplete` |  | parametrize |
 | `test_damaged_window_evidence_is_never_complete` |  | parametrize |
+| `test_a_receipt_that_does_not_bind_the_metadata_is_not_complete` |  |  |
+| `test_malformed_or_unreadable_evidence_is_reported_not_raised` |  | parametrize |
+| `test_a_window_receipt_refuses_to_bind_evidence_or_a_moved_start` |  |  |
 | `test_a_run_without_its_run_receipt_is_incomplete` |  |  |
 | `test_an_altered_plan_is_rejected` |  |  |
 | `test_a_terminal_receipt_from_another_run_is_not_this_runs` |  |  |
