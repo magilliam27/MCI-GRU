@@ -42,6 +42,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from mci_gru.config import create_config_from_dict
 from mci_gru.data.data_manager import create_data_loaders
+from mci_gru.evaluation.execution_provenance import (
+    EVIDENCE_DIR,
+    capture_execution_start,
+    write_execution_plan,
+    write_run_receipt,
+    write_window_receipt,
+)
 from mci_gru.evaluation.experiment_summary import (
     build_run_metadata,
     compute_evaluation_summary,
@@ -107,6 +114,10 @@ def main(cfg: DictConfig):
     window_configs = generate_walkforward_configs(config)
     use_wf_subdir = config.training.walkforward.enabled
     wf_summaries: list[dict[str, Any]] = []
+    window_paths = [
+        os.path.join(output_path, "walkforward", f"w{wi:03d}") if use_wf_subdir else output_path
+        for wi in range(len(window_configs))
+    ]
 
     tracking_experiment_name = config.tracking.experiment_name or config.experiment_name
     tracking_run_name = (
@@ -139,12 +150,20 @@ def main(cfg: DictConfig):
             if mlflow_meta is not None:
                 logger.info(f"MLflow run metadata saved to: {mlflow_meta}")
 
+        # The run's expected windows, recorded before any of them starts; the
+        # digests of this plan and of the run receipt are the run's trust anchors.
+        execution_plan = write_execution_plan(
+            output_path,
+            experiment_mode=config.data.experiment_mode,
+            window_dirs=window_paths,
+        )
+        logger.info(
+            "Execution plan saved to: %s (sha256 %s)", execution_plan.path, execution_plan.sha256
+        )
+        window_receipts = []
+
         for wi, cfg_w in enumerate(window_configs):
-            wpath = (
-                os.path.join(output_path, "walkforward", f"w{wi:03d}")
-                if use_wf_subdir
-                else output_path
-            )
+            wpath = window_paths[wi]
             if use_wf_subdir:
                 os.makedirs(wpath, exist_ok=True)
 
@@ -157,6 +176,17 @@ def main(cfg: DictConfig):
             )
             logger.info("=" * 80)
             resolved_config_identity = write_resolved_config(cfg_w, wpath, force=True)
+            # Captured after the effective config is serialized and before preparation,
+            # so a failure from here on leaves this window's attempt incomplete.
+            execution = capture_execution_start(
+                Path(__file__).resolve().parent,
+                os.path.join(wpath, resolved_config_identity["resolved_config_path"]),
+                resolved_config_sha256=resolved_config_identity["resolved_config_sha256"],
+                output_dir=wpath,
+                window_id=str(wi),
+                plan=execution_plan,
+            )
+            logger.info("Execution start saved to: %s", execution.path)
 
             window_started = perf_counter()
             timing_summary: dict[str, Any] = {
@@ -182,6 +212,10 @@ def main(cfg: DictConfig):
                 resolved_config_identity=resolved_config_identity,
                 logger=logger,
             )
+            metadata["execution_start"] = {
+                "path": f"{EVIDENCE_DIR}/{execution.path.name}",
+                "sha256": execution.sha256,
+            }
             metadata_path = os.path.join(wpath, "run_metadata.json")
             with open(metadata_path, "w") as f:
                 json.dump(metadata, f, indent=2)
@@ -278,6 +312,7 @@ def main(cfg: DictConfig):
                     output_path=wpath,
                     tracking_manager=active_tracking,
                     test_prediction_masks=data.get("test_tradable_mask"),
+                    execution=execution,
                 )
                 timing_summary["phases"]["model_training_prediction_export_seconds"] = (
                     perf_counter() - phase_started
@@ -366,6 +401,25 @@ def main(cfg: DictConfig):
                         artifact_path="run_artifacts",
                     )
 
+            window_receipt = write_window_receipt(
+                execution,
+                plan=execution_plan,
+                walkforward_window=wi,
+                artifacts=[
+                    "run_metadata.json",
+                    "feature_reference.json",
+                    "graph_data.pt",
+                    "checkpoints",
+                    *(f"predictions_model_{model_id}" for model_id in range(len(results))),
+                    "averaged_predictions",
+                    "training_summary.json",
+                    "evaluation_summary.json",
+                    "timing_summary.json",
+                ],
+            )
+            window_receipts.append(window_receipt)
+            logger.info("Terminal receipt saved to: %s", window_receipt.path)
+
         if use_wf_subdir and wf_summaries:
             merged = merge_walkforward_summary(wf_summaries)
             merged_path = os.path.join(output_path, "walkforward_summary.json")
@@ -383,6 +437,13 @@ def main(cfg: DictConfig):
                 wf_summaries,
                 None,
             )
+
+        run_receipt = write_run_receipt(
+            execution_plan,
+            window_receipts,
+            artifacts=["walkforward_summary.json"] if use_wf_subdir and wf_summaries else [],
+        )
+        logger.info("Run receipt saved to: %s (sha256 %s)", run_receipt.path, run_receipt.sha256)
 
         logger.info("\n" + "=" * 80)
         logger.info("Experiment Complete")
