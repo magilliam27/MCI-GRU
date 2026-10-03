@@ -4,11 +4,14 @@ Data preprocessing utilities for MCI-GRU.
 Contains pure data-transformation functions extracted from run_experiment.py:
 - generate_time_series_features: sliding-window tensor construction
 - generate_graph_features: per-day graph node features
-- compute_labels: forward-return label computation
+- resolve_label_endpoints / resolve_labels / compute_labels: fixed-session
+  forward-return labels (the one endpoint resolver, #225)
 - apply_rank_labels: cross-sectional rank percentile conversion
 - purge_training_sessions_for_embargo / assert_training_labels_respect_embargo:
-  session-level train/val embargo (labels are row shifts, not calendar offsets)
+  session-level train/val embargo on the same endpoint resolver as the labels
 """
+
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -169,6 +172,101 @@ def apply_rank_labels(labels: np.ndarray, valid_mask: np.ndarray | None = None) 
     return ranked.astype(np.float32)
 
 
+def label_session_axis(df: pd.DataFrame, kdcode_list: list[str]) -> list[str]:
+    """The panel's own trading sessions: every date any selected stock has a row on.
+
+    Labels, ``label_available_mask`` and the embargo check all count sessions on this
+    axis, so they agree on which closes a label consumes.
+    """
+    rows = df.loc[df["kdcode"].isin(kdcode_list), "dt"]
+    return sorted(rows.astype(str).unique())
+
+
+def resolve_label_endpoints(
+    sessions: list[str],
+    dates: list[str],
+    label_t: int,
+) -> tuple[list[str | None], list[str | None]]:
+    """Entry and exit sessions for each signal date (#225 ruling 4).
+
+    Entry is the close of session ``D+1`` and exit the close of session ``D+label_t``
+    on ``sessions``, the panel's own trading dates. With ``label_t=5`` the return spans
+    four close-to-close session intervals. An endpoint past the end of the axis, or a
+    signal date that is not on the axis, resolves to ``None``.
+    """
+    position = {session: i for i, session in enumerate(sessions)}
+    entries: list[str | None] = []
+    exits: list[str | None] = []
+    for date in dates:
+        i = position.get(str(date))
+        if i is None:
+            entries.append(None)
+            exits.append(None)
+            continue
+        entries.append(sessions[i + 1] if i + 1 < len(sessions) else None)
+        exits.append(sessions[i + label_t] if i + label_t < len(sessions) else None)
+    return entries, exits
+
+
+@dataclass(frozen=True)
+class LabelResolution:
+    """Fixed-session label endpoints and the closes observed at them."""
+
+    dates: list[str]
+    kdcodes: list[str]
+    entry_dates: list[str | None]
+    exit_dates: list[str | None]
+    entry_close: np.ndarray  # (dates, stocks); NaN when the stock has no close there
+    exit_close: np.ndarray
+
+    @property
+    def returns(self) -> np.ndarray:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return self.exit_close / self.entry_close - 1.0
+
+    @property
+    def observable(self) -> np.ndarray:
+        return np.isfinite(self.returns)
+
+
+def resolve_labels(
+    df: pd.DataFrame,
+    kdcode_list: list[str],
+    dates: list[str],
+    label_t: int,
+) -> LabelResolution:
+    """Resolve fixed-session endpoints and read each stock's close at them.
+
+    A stock with no close at its entry or exit session has an unobservable label.
+    There is no fill and no next-available substitute: a gap never moves an endpoint.
+    """
+    subset = df.loc[df["kdcode"].isin(kdcode_list), ["kdcode", "dt", "close"]].copy()
+    subset["dt"] = subset["dt"].astype(str)
+    sessions = label_session_axis(subset, kdcode_list)
+    closes = subset.pivot_table(index="dt", columns="kdcode", values="close", aggfunc="mean")
+    closes = closes.reindex(index=sessions, columns=kdcode_list)
+    close_matrix = closes.to_numpy(dtype=np.float64)
+
+    entries, exits = resolve_label_endpoints(sessions, dates, label_t)
+    position = {session: i for i, session in enumerate(sessions)}
+
+    def _closes_at(endpoints: list[str | None]) -> np.ndarray:
+        out = np.full((len(endpoints), len(kdcode_list)), np.nan, dtype=np.float64)
+        for row, endpoint in enumerate(endpoints):
+            if endpoint is not None:
+                out[row] = close_matrix[position[endpoint]]
+        return out
+
+    return LabelResolution(
+        dates=[str(date) for date in dates],
+        kdcodes=list(kdcode_list),
+        entry_dates=entries,
+        exit_dates=exits,
+        entry_close=_closes_at(entries),
+        exit_close=_closes_at(exits),
+    )
+
+
 def compute_labels(
     df: pd.DataFrame,
     kdcode_list: list[str],
@@ -179,32 +277,27 @@ def compute_labels(
     """Compute forward-return labels for the given dates.
 
     For each (stock, date) pair the label is:
-        close[date + label_t] / close[date + 1] - 1
+        close[session D + label_t] / close[session D + 1] - 1
+
+    where sessions are the panel's own trading dates (``resolve_label_endpoints``).
+    A stock missing either close has no observable label.
 
     When ``fill_missing`` is true, NaN labels (e.g. near the end of the dataset)
     are filled with the cross-sectional mean for that day, then with zero as a
     final fallback. Masked PIT mode passes ``fill_missing=False`` so unobservable
     labels stay excluded from loss/evaluation.
     """
-    df_subset = df[df["kdcode"].isin(kdcode_list)].copy()
-    df_subset = df_subset.sort_values(["kdcode", "dt"])
-
-    df_subset["future_close"] = df_subset.groupby("kdcode")["close"].shift(-label_t)
-    df_subset["next_close"] = df_subset.groupby("kdcode")["close"].shift(-1)
-    df_subset["forward_return"] = df_subset["future_close"] / df_subset["next_close"] - 1
-
-    df_subset = df_subset[df_subset["dt"].isin(dates)]
-    pivot = df_subset.pivot_table(index="dt", columns="kdcode", values="forward_return")
-    pivot = pivot.reindex(index=dates, columns=kdcode_list)
+    labels = resolve_labels(df, kdcode_list, dates, label_t).returns
+    labels = np.where(np.isfinite(labels), labels, np.nan)
 
     if fill_missing:
+        pivot = pd.DataFrame(labels, index=dates, columns=kdcode_list)
         for date in dates:
-            if date in pivot.index:
-                row_mean = pivot.loc[date].mean()
-                pivot.loc[date] = pivot.loc[date].fillna(row_mean)
-        pivot = pivot.fillna(0)
+            row_mean = pivot.loc[date].mean()
+            pivot.loc[date] = pivot.loc[date].fillna(row_mean)
+        labels = pivot.fillna(0).to_numpy()
 
-    return pivot.values.astype(np.float32)
+    return labels.astype(np.float32)
 
 
 def purge_training_sessions_for_embargo(
@@ -215,8 +308,8 @@ def purge_training_sessions_for_embargo(
     """Drop the final ``label_t`` trading sessions from the training session axis.
 
     ``compute_labels`` builds the label for signal date ``D`` as
-    ``close[D + label_t] / close[D + 1] - 1`` where the offsets are per-stock **row**
-    shifts over a session-indexed panel.  The label for the last training session
+    ``close[D + label_t] / close[D + 1] - 1`` where the offsets count sessions on the
+    panel's own trading dates.  The label for the last training session
     therefore matures ``label_t`` sessions later, which lands inside the validation
     window whenever the configured gap spans fewer than ``label_t`` sessions -- a
     calendar-day gap check cannot see this because weekends and holidays are absent
@@ -253,16 +346,11 @@ def assert_training_labels_respect_embargo(
     measures sessions rather than calendar days.  It is deliberately unconditional and
     takes no ``skip_embargo_check`` flag -- that flag governs the calendar check only.
 
-    Two bases are checked, both vectorised over the panel:
-
-    * **per-stock outcome dates** -- ``groupby('kdcode')['dt'].shift(-label_t)``, exactly
-      the rows ``compute_labels`` consumes, including stocks whose own panel has gaps;
-    * **union-session outcome dates** -- the label-date position on the panel's union
-      session axis plus ``label_t``.  A stock's rows are a subsequence of the union axis,
-      so this is a lower bound on its true outcome date, and unlike the per-stock basis
-      it stays defined when a stock's rows stop before its label matures.  Without it,
-      truncated stocks would look compliant and the check's strictness would depend on
-      how much future data happened to be loaded.
+    Outcome dates come from ``resolve_label_endpoints`` on ``label_session_axis``, the
+    same resolver ``compute_labels`` and ``label_available_mask`` use (#225 ruling 4),
+    so the check measures exactly the exit close each label consumes.  A stock with a
+    gap does not move its exit: an endpoint it lacks makes its label unobservable,
+    never later.
 
     Returns a summary dict for logging.  Raises ``ValueError`` on any violation, on a
     training label date missing from the panel, or when the panel is too short to prove
@@ -276,73 +364,51 @@ def assert_training_labels_respect_embargo(
     if label_t <= 0 or not train_label_dates:
         return summary
 
-    panel = df_for_labels.loc[df_for_labels["kdcode"].isin(kdcode_list), ["kdcode", "dt"]]
-    if panel.empty:
+    sessions = label_session_axis(df_for_labels, kdcode_list)
+    if not sessions:
         raise ValueError(
             "Cannot verify the train/val embargo: no label panel rows for the selected "
             f"universe of {len(kdcode_list)} stock(s)."
         )
-    panel = panel.sort_values(["kdcode", "dt"], kind="mergesort")
 
-    sessions = np.asarray(sorted(panel["dt"].unique()))
-    label_dates = np.asarray(sorted(set(train_label_dates)))
-    positions = np.searchsorted(sessions, label_dates)
-    clipped = np.minimum(positions, len(sessions) - 1)
-    missing = label_dates[(positions >= len(sessions)) | (sessions[clipped] != label_dates)]
-    if missing.size:
+    label_dates = sorted({str(date) for date in train_label_dates})
+    session_set = set(sessions)
+    missing = [date for date in label_dates if date not in session_set]
+    if missing:
         raise ValueError(
-            f"Cannot verify the train/val embargo: {missing.size} training label date(s) "
+            f"Cannot verify the train/val embargo: {len(missing)} training label date(s) "
             f"are absent from the label panel (first: {missing[0]})."
         )
 
-    outcome_positions = positions + label_t
-    if int(outcome_positions.max()) >= len(sessions):
+    _entries, exits = resolve_label_endpoints(sessions, label_dates, label_t)
+    if exits[-1] is None:
         raise ValueError(
             "Cannot verify the train/val embargo: the label panel ends before the last "
             f"training label matures ({label_dates[-1]} + {label_t} sessions, panel ends "
             f"{sessions[-1]}). Refusing to treat unverifiable labels as compliant."
         )
-    union_outcomes = sessions[outcome_positions]
-    union_violations = label_dates[union_outcomes >= val_start]
-
-    panel = panel.copy()
-    panel["outcome_dt"] = panel.groupby("kdcode", sort=False)["dt"].shift(-label_t)
-    train_rows = panel[panel["dt"].isin(set(label_dates.tolist()))]
-    matured = train_rows["outcome_dt"].notna()
-    per_stock_violations = train_rows[matured & (train_rows["outcome_dt"] >= val_start)]
+    violations = [
+        (date, exit_date)
+        for date, exit_date in zip(label_dates, exits, strict=True)
+        if exit_date is not None and exit_date >= val_start
+    ]
 
     summary.update(
         {
-            "last_train_label_date": str(label_dates[-1]),
-            # label_dates is sorted ascending, so the last outcome is the latest.
-            "last_union_outcome_date": str(union_outcomes[-1]),
-            "last_per_stock_outcome_date": (
-                str(train_rows.loc[matured, "outcome_dt"].max()) if bool(matured.any()) else None
-            ),
-            "rows_without_matured_label": int((~matured).sum()),
+            "last_train_label_date": label_dates[-1],
+            # label_dates is sorted ascending, so the last exit is the latest.
+            "last_outcome_date": exits[-1],
         }
     )
 
-    if union_violations.size or len(per_stock_violations):
-        detail = []
-        if union_violations.size:
-            detail.append(
-                f"{union_violations.size} training label date(s) mature at or after "
-                f"{val_start} on the union session axis (first: {union_violations[0]} "
-                f"-> {sessions[np.searchsorted(sessions, union_violations[0]) + label_t]})"
-            )
-        if len(per_stock_violations):
-            worst = per_stock_violations.iloc[0]
-            detail.append(
-                f"{len(per_stock_violations)} (stock, date) label(s) mature at or after "
-                f"{val_start} on their own session axis (first: {worst['kdcode']} "
-                f"{worst['dt']} -> {worst['outcome_dt']})"
-            )
+    if violations:
+        first_date, first_exit = violations[0]
         raise ValueError(
             "Train/val embargo violated on the session axis: "
-            + "; ".join(detail)
-            + f". label_t={label_t} is a session count, not a calendar-day count; the "
-            "training signal must be purged so labels mature before val_start."
+            f"{len(violations)} training label date(s) mature at or after {val_start} "
+            f"(first: {first_date} -> {first_exit}). label_t={label_t} is a session "
+            "count, not a calendar-day count; the training signal must be purged so "
+            "labels mature before val_start."
         )
 
     return summary

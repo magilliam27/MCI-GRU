@@ -5,6 +5,7 @@ This module provides structured configuration classes that work with Hydra
 for experiment configuration and management.
 """
 
+import re
 import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -53,6 +54,13 @@ class DataConfig:
         pit_export_cutoff: Export cutoff (YYYY-MM-DD) of ``pit_universe_csv``. A blank
             ``valid_to`` means membership through this date; with none declared, a
             blank ``valid_to`` stops preparation (#223).
+        pit_cessation_events_csv: Optional declared cessation event file (#225). A stock
+            leaves daily eligibility once its cessation is both effective and known by
+            the prediction clock. Requires ``use_pit_universe``. ``None`` declares no
+            cessation evidence and excludes nothing.
+        prediction_clock_time: ``HH:MM`` local time the forecast for date D is made.
+        prediction_clock_timezone: Timezone of ``prediction_clock_time``. Together they
+            default to 20:00 America/New_York (#225 ruling 1).
     """
 
     universe: str = "sp500"
@@ -84,6 +92,9 @@ class DataConfig:
     pit_min_scoreable_stocks: int = 450
     pit_breadth_policy: str = "error"
     pit_export_cutoff: str | None = None
+    pit_cessation_events_csv: str | None = None
+    prediction_clock_time: str = "20:00"
+    prediction_clock_timezone: str = "America/New_York"
 
     def __post_init__(self):
         if self.experiment_mode not in ("stock_level", "index_level"):
@@ -127,6 +138,15 @@ class DataConfig:
                 raise ValueError(
                     f"pit_export_cutoff must be a YYYY-MM-DD date, got {self.pit_export_cutoff!r}"
                 ) from exc
+        if self.pit_cessation_events_csv and not self.use_pit_universe:
+            raise ValueError(
+                "data.pit_cessation_events_csv requires data.use_pit_universe=true: "
+                "cessation evidence changes daily PIT eligibility only"
+            )
+        if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", str(self.prediction_clock_time)):
+            raise ValueError(
+                f"data.prediction_clock_time must be HH:MM, got {self.prediction_clock_time!r}"
+            )
         # Role keys only: each role checks its source value when it loads.
         roles = ("vix", "credit", "regime", "index")
         unknown_roles = [role for role in self.auxiliary_sources if role not in roles]

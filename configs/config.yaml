@@ -33,6 +33,14 @@ data:
   auxiliary_snapshot_mode: source  # source | capture | replay
   auxiliary_snapshot_directory: null
   auxiliary_snapshot_references: {}
+  # Dated PIT eligibility (#225). The forecast for date D is made at 20:00
+  # America/New_York. A declared cessation event file removes a stock from
+  # daily eligibility once its cessation is both effective and known by that
+  # clock; a date-only known_from counts from the clock on the next session.
+  # null declares no cessation evidence.
+  pit_cessation_events_csv: null
+  prediction_clock_time: "20:00"
+  prediction_clock_timezone: America/New_York
 
 # Model configuration
 model:
