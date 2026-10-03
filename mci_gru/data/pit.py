@@ -24,9 +24,11 @@ class PITMaskSet:
 
     ``active_member`` is unchanged monthly selection. ``cessation_excluded`` marks a
     cessation that is both effective and known at the prediction time (#225), and
-    ``eligible`` is ``active_member & ~cessation_excluded``. ``tradable`` (the
-    prediction population) is ``eligible & feature_ready``; ``loss`` adds an
-    observable label. Eligibility never reads ``label_available``.
+    ``eligible`` is ``active_member & ~cessation_excluded``. ``price_observed``
+    marks a finite close on D itself, so a genuine missing price masks that
+    session only (#223 ruling 13). ``tradable`` (the prediction population) is
+    ``eligible & feature_ready & price_observed``; ``loss`` adds an observable
+    label. Eligibility never reads ``label_available``.
     """
 
     active_member: np.ndarray
@@ -36,6 +38,7 @@ class PITMaskSet:
     cessation_excluded: np.ndarray | None = None
     eligible: np.ndarray | None = None
     label_available: np.ndarray | None = None
+    price_observed: np.ndarray | None = None
 
 
 class PITKnowledgeClass(str, Enum):
@@ -232,6 +235,24 @@ def feature_ready_mask(
     return out
 
 
+def price_observed_mask(
+    df_for_labels: pd.DataFrame,
+    kdcode_list: list[str],
+    sample_dates: list[str],
+) -> np.ndarray:
+    """True when the stock has a finite close on the sample date itself."""
+    subset = df_for_labels.loc[df_for_labels["kdcode"].isin(kdcode_list), ["kdcode", "dt", "close"]]
+    subset = subset[np.isfinite(pd.to_numeric(subset["close"], errors="coerce"))]
+    stock_index = {kdcode: j for j, kdcode in enumerate(kdcode_list)}
+    date_index = {str(date): i for i, date in enumerate(sample_dates)}
+    out = np.zeros((len(sample_dates), len(kdcode_list)), dtype=bool)
+    for row in subset.itertuples(index=False):
+        i = date_index.get(str(row.dt))
+        if i is not None:
+            out[i, stock_index[row.kdcode]] = True
+    return out
+
+
 def label_available_mask(
     df_for_labels: pd.DataFrame,
     kdcode_list: list[str],
@@ -255,6 +276,7 @@ def build_pit_masks(
     active = active_membership_mask(kdcode_list, sample_dates, pit_intervals)
     ready = feature_ready_mask(df_for_features, kdcode_list, sample_dates, his_t)
     labels = label_available_mask(df_for_labels, kdcode_list, sample_dates, label_t)
+    observed = price_observed_mask(df_for_labels, kdcode_list, sample_dates)
     excluded = (
         np.zeros_like(active)
         if cessation_excluded is None
@@ -265,7 +287,7 @@ def build_pit_masks(
             f"cessation mask shape {excluded.shape} does not match the PIT axis {active.shape}"
         )
     eligible = active & ~excluded
-    tradable = eligible & ready
+    tradable = eligible & ready & observed
     loss = tradable & labels
     return PITMaskSet(
         active_member=active,
@@ -275,6 +297,7 @@ def build_pit_masks(
         cessation_excluded=excluded,
         eligible=eligible,
         label_available=labels,
+        price_observed=observed,
     )
 
 
@@ -627,6 +650,7 @@ def pit_split_report(
     listed with its endpoints and reason and counted as omitted (#225 ruling 3).
     """
     assert masks.cessation_excluded is not None and masks.eligible is not None
+    assert masks.price_observed is not None
     omitted = masks.tradable & ~masks.loss
     daily = [
         {
@@ -635,6 +659,7 @@ def pit_split_report(
             "cessation_excluded": int((masks.active_member[i] & masks.cessation_excluded[i]).sum()),
             "eligible": int(masks.eligible[i].sum()),
             "feature_ready": int(masks.feature_ready[i].sum()),
+            "price_gap": int((masks.eligible[i] & ~masks.price_observed[i]).sum()),
             "predictions": int(masks.tradable[i].sum()),
             "label_observable": int(masks.loss[i].sum()),
             "label_omitted": int(omitted[i].sum()),
@@ -646,6 +671,7 @@ def pit_split_report(
         "cessation_excluded",
         "eligible",
         "feature_ready",
+        "price_gap",
         "predictions",
         "label_observable",
         "label_omitted",
@@ -680,6 +706,12 @@ def pit_split_report(
             ),
         },
         "omitted_labels": omitted_rows,
+        # Eligible sessions masked because the stock has no close that day.
+        "price_gaps_by_stock": {
+            str(kdcode_list[j]): int(n)
+            for j, n in enumerate((masks.eligible & ~masks.price_observed).sum(axis=0))
+            if n
+        },
     }
 
 

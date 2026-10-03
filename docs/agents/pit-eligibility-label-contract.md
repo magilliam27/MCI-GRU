@@ -65,7 +65,8 @@ All are `(dates, stocks)` booleans on the fixed union axis
 | `cessation_excluded` | Effective and known by the forecast, as above. |
 | `eligible` | `active_member & ~cessation_excluded`. Never reads labels. |
 | `feature_ready` | Complete `his_t` lookback before D. |
-| `tradable` | `eligible & feature_ready`: the prediction population. |
+| `price_observed` | A finite close on D itself. A genuine missing price masks that session only (#223 ruling 13). |
+| `tradable` | `eligible & feature_ready & price_observed`: the prediction population. |
 | `label_available` | The fixed-session label is observable. |
 | `loss` | `tradable & label_available`: rows that train and score. |
 
@@ -92,7 +93,8 @@ records next to `pit_breadth`. It holds the clock, the endpoint rule, every decl
 event with its original text and resolved UTC instants, and per split:
 
 - `daily`: `selected`, `cessation_excluded`, `eligible`, `feature_ready`,
-  `predictions`, `label_observable`, `label_omitted`;
+  `price_gap`, `predictions`, `label_observable`, `label_omitted`;
+- `price_gaps_by_stock`: eligible sessions masked for a missing close, per stock;
 - `totals`: the same counts summed;
 - `label_coverage`: `label_observable / predictions`, with numerator and denominator
   named;

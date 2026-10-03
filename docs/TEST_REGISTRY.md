@@ -995,6 +995,7 @@ Dated PIT eligibility and fixed-session label contract (#225).
 | `test_gap_label_uses_fixed_sessions_and_all_three_consumers_agree` | Row shifts read 2024-02-13 (5%); fixed sessions read 2024-02-12 (4%). |  |
 | `test_missing_entry_close_makes_the_label_unobservable_without_substitution` |  |  |
 | `test_omitted_label_reports_which_endpoint_is_missing` |  | parametrize |
+| `test_a_missing_price_masks_only_that_session_and_is_counted_per_stock` | #223 ruling 13: a genuine gap is masked per session, never imputed into a prediction. |  |
 
 ## `tests/test_pit_evaluation_admission.py`
 

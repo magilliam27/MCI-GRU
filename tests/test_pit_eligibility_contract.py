@@ -419,3 +419,21 @@ def test_omitted_label_reports_which_endpoint_is_missing(dropped: str, reason: s
     ]
     assert report["totals"]["predictions"] == 2
     assert report["totals"]["label_omitted"] == 1
+
+
+def test_a_missing_price_masks_only_that_session_and_is_counted_per_stock() -> None:
+    """#223 ruling 13: a genuine gap is masked per session, never imputed into a prediction."""
+    panel = _gap_panel(GAP_CLOSES)
+    stocks = ["CTRL", "GAP"]
+    intervals = pd.DataFrame(
+        [{"kdcode": k, "valid_from": "2024-02-01", "valid_to": "2024-02-29"} for k in stocks]
+    )
+    dates = ["2024-02-06", "2024-02-07"]
+    masks = build_pit_masks(panel, panel, stocks, dates, 1, 5, intervals)
+
+    # GAP is feature-ready on 2024-02-07 (it has the 2024-02-06 bar) but has no close.
+    assert masks.feature_ready.tolist() == [[True, True], [True, True]]
+    assert masks.tradable.tolist() == [[True, True], [True, False]]
+    report = pit_split_report(dates, stocks, masks, resolve_labels(panel, stocks, dates, 5))
+    assert [row["price_gap"] for row in report["daily"]] == [0, 1]
+    assert report["price_gaps_by_stock"] == {"GAP": 1}
