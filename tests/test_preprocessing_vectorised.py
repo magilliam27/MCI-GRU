@@ -1,7 +1,7 @@
 """Regression tests for vectorised preprocessing (matches legacy semantics).
 
-Also covers the session-level train/val embargo (issue #115): labels are per-stock row
-shifts over a session-indexed panel, so the embargo must be counted in trading sessions
+Also covers the session-level train/val embargo (issue #115): labels count fixed sessions
+on the panel's own trading dates (#225), so the embargo must be counted in trading sessions
 rather than the calendar days ``ExperimentConfig._validate_embargo`` compares.
 """
 
@@ -171,28 +171,39 @@ def test_embargo_validator_flags_label_maturing_on_first_validation_session():
     summary = assert_training_labels_respect_embargo(
         panel, ["AAA", "BBB"], sessions[:2], "2024-01-08", label_t=5
     )
-    assert summary["last_union_outcome_date"] == "2024-01-04"
-    assert summary["rows_without_matured_label"] == 0
+    assert summary["last_outcome_date"] == "2024-01-04"
 
 
-def test_embargo_validator_flags_stock_whose_own_sessions_reach_into_validation():
-    """Per-stock row shifts, not the union axis, are what compute_labels consumes."""
+def test_a_stock_gap_never_moves_its_exit_into_validation():
+    """Labels and the embargo share one fixed-session resolver (#225 ruling 4).
+
+    GAPPY lacks 2020-01-06 and 2020-01-07. A per-stock row shift would take its label for
+    2020-01-04 from its fifth later row, the 2020-01-11 close, which is val_start. Fixed
+    sessions read the 2020-01-09 close instead, the date the embargo check verifies.
+    """
     sessions = [f"2020-01-{d:02d}" for d in range(1, 15)]
     val_start = "2020-01-11"
     train_label_dates = sessions[:5]
-    # GAPPY is missing two mid-panel sessions, so its 5th subsequent row is 2020-01-11.
     panel = _label_panel(sessions, ["AAA", "GAPPY"], skip={"GAPPY": {"2020-01-06", "2020-01-07"}})
 
-    # The union axis alone says every training label matures by 2020-01-10.
-    union_only = assert_training_labels_respect_embargo(
-        _label_panel(sessions, ["AAA"]), ["AAA"], train_label_dates, val_start, label_t=5
+    summary = assert_training_labels_respect_embargo(
+        panel, ["AAA", "GAPPY"], train_label_dates, val_start, label_t=5
     )
-    assert union_only["last_union_outcome_date"] == "2020-01-10"
+    assert summary["last_outcome_date"] == "2020-01-10"
 
-    with pytest.raises(ValueError, match="on their own session axis"):
-        assert_training_labels_respect_embargo(
-            panel, ["AAA", "GAPPY"], train_label_dates, val_start, label_t=5
-        )
+    labels = compute_labels(panel, ["AAA", "GAPPY"], train_label_dates, 5, fill_missing=False)
+    close = panel.set_index(["kdcode", "dt"])["close"]
+    gappy = labels[:, 1]
+    # 2020-01-04: entry 01-05, exit 01-09, both observed.
+    assert gappy[3] == pytest.approx(
+        close["GAPPY", "2020-01-09"] / close["GAPPY", "2020-01-05"] - 1
+    )
+    # 2020-01-01 exits on the missing 01-06 and 2020-01-05 enters on it: unobservable.
+    assert np.isnan(gappy[0]) and np.isnan(gappy[4])
+    # The control stock has every session, so its labels are unchanged by the rule.
+    assert labels[3, 0] == pytest.approx(
+        close["AAA", "2020-01-09"] / close["AAA", "2020-01-05"] - 1
+    )
 
 
 def test_embargo_validator_refuses_panel_that_ends_before_labels_mature():

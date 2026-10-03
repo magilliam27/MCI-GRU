@@ -945,6 +945,28 @@ Phase 3: lead-lag toy, snapshot valid_from, walk-forward config, cross-attn smok
 | `test_pit_availability_report_explicit_calendar_counts_full_day_outage` |  |  |
 | `test_write_pit_availability_report_cli_writes_json` |  |  |
 
+## `tests/test_pit_eligibility_contract.py`
+
+Dated PIT eligibility and fixed-session label contract (#225).
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.pit`, `mci_gru.data.preprocessing`, `mci_gru.pipeline`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_prepare_data_cessation_requires_effective_and_known_time` |  | parametrize |
+| `test_later_knowledge_changes_only_the_cessation_decision` | No-lookahead canary: moving known_from past T changes nothing but eligibility. |  |
+| `test_cessation_without_dated_evidence_rejects_the_run_naming_the_stock` |  |  |
+| `test_acquisition_time_is_never_availability` | A blank known_from is undated even when the row says when it was acquired. |  |
+| `test_malformed_or_naive_timestamp_stops_rather_than_counting_as_unknown` |  | parametrize |
+| `test_missing_declared_event_file_stops` |  |  |
+| `test_undeclared_event_file_excludes_nothing_and_says_so` |  |  |
+| `test_declared_event_file_is_read_through_the_input_carrier` |  |  |
+| `test_date_only_known_from_resolves_to_the_clock_on_the_next_session` | Never midnight: 2024-02-02 resolves to 20:00 New York on Monday 2024-02-05. |  |
+| `test_no_events_file_means_no_evidence` |  |  |
+| `test_gap_label_uses_fixed_sessions_and_all_three_consumers_agree` | Row shifts read 2024-02-13 (5%); fixed sessions read 2024-02-12 (4%). |  |
+| `test_missing_entry_close_makes_the_label_unobservable_without_substitution` |  |  |
+| `test_omitted_label_reports_which_endpoint_is_missing` |  | parametrize |
+
 ## `tests/test_pit_evaluation_admission.py`
 
 PIT admission must be consistent across every backtest replay path (issue #116).
@@ -1119,7 +1141,7 @@ Regression tests for vectorised preprocessing (matches legacy semantics).
 | `test_purge_training_sessions_drops_exactly_label_t_sessions` | The purge removes the final label_t sessions of training signal, nothing more. |  |
 | `test_purge_training_sessions_refuses_when_no_labels_would_remain` | Too-short training windows must fail loudly, not silently yield an empty axis. |  |
 | `test_embargo_validator_flags_label_maturing_on_first_validation_session` | A calendar gap wider than label_t is not enough: the panel gap is in sessions. |  |
-| `test_embargo_validator_flags_stock_whose_own_sessions_reach_into_validation` | Per-stock row shifts, not the union axis, are what compute_labels consumes. |  |
+| `test_a_stock_gap_never_moves_its_exit_into_validation` | Labels and the embargo share one fixed-session resolver (#225 ruling 4). |  |
 | `test_embargo_validator_refuses_panel_that_ends_before_labels_mature` | A truncated panel must abort, not count unmatured labels as compliant. |  |
 | `test_embargo_validator_rejects_label_date_missing_from_panel` | An unknown training label date means the axes disagree; refuse to guess. |  |
 | `test_prepare_data_training_labels_never_consume_validation_closes` | End-to-end: no training label may read a close at or after val_start. | parametrize |
