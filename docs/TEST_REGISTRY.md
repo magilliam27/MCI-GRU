@@ -389,7 +389,7 @@ Execution evidence remains inspectable without the live checkout or runtime.
 
 Ensemble members leave retained evidence of what actually ran (#144, member proof).
 
-**Exercises:** `mci_gru.config`, `mci_gru.evaluation.execution_provenance`, `mci_gru.evaluation.experiment_summary`, `mci_gru.training.ensemble`, `mci_gru.training.trainer`
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation.execution_provenance`, `mci_gru.evaluation.experiment_summary`, `mci_gru.training`, `mci_gru.training.ensemble`, `mci_gru.training.trainer`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -402,8 +402,10 @@ Ensemble members leave retained evidence of what actually ran (#144, member proo
 | `test_an_unfinished_final_event_write_keeps_the_attempt_incomplete` |  |  |
 | `test_events_out_of_execution_order_are_rejected_even_when_chained` |  | parametrize |
 | `test_a_checkpoint_left_by_an_earlier_run_is_not_this_attempts_evidence` |  |  |
+| `test_a_checkpoint_saved_without_being_recorded_is_not_complete` |  |  |
 | `test_a_missing_checkpoint_at_load_is_explicit` |  |  |
 | `test_unavailable_runtime_observations_are_explicit_and_block_completion` |  |  |
+| `test_an_unobserved_device_blocks_completion` |  |  |
 | `test_a_member_that_never_started_is_counted_against_the_planned_total` |  |  |
 | `test_altered_member_events_are_rejected` |  | parametrize |
 | `test_recording_refuses_a_second_writer_for_the_same_attempt` |  |  |
