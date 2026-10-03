@@ -429,10 +429,20 @@ python run_experiment.py data=csv_sp500
 ## Linux CPU reference environment
 
 Issue [#143](https://github.com/magilliam27/MCI-GRU/issues/143) defines a separate
-experimental CPU recipe for **Ubuntu 24.04, x86_64, CPython 3.12.11**. This is
-neither the repository's minimum/default interpreter nor a GPU/Colab profile.
-`pyproject.toml` remains the authority for package ranges; `requirements.txt`
-retains its Colab-facing ranges. Existing CI policy remains unchanged pending D3.
+CPU recipe for **Ubuntu 24.04, x86_64, CPython 3.12.11**. It is not a GPU/Colab
+profile. `pyproject.toml` remains the authority for package ranges, and
+`requirements.txt` keeps its Colab-facing ranges.
+
+The owner settled the interpreter and D3 on 2026-10-03:
+
+- `.python-version` pins **3.12.11**, the interpreter every qualification ran
+  on. `requires-python = ">=3.10"` stays as the supported floor.
+- Normal CI (`.github/workflows/ci.yml`) runs two test jobs on every pull
+  request into `main`. The first is the Python 3.10 floor job, which resolves
+  pandas 2. The second is **Test (Python 3.12.11 Linux CPU lock)**, which
+  installs this recipe with pandas 3.0.3 and runs the same marker selection and
+  smoke. Both pandas majors are therefore exercised on every change, and
+  pandas-version-dependent code paths are pinned to one behaviour (#245).
 
 The recipe consists of two files, installed in this order:
 
