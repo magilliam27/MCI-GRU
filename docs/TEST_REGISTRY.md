@@ -1155,6 +1155,23 @@ Contract tests for scripts/gen_readme_figure.py and the README evidence figure.
 | `test_transform_with_regime_df_produces_nonzero_regime_columns` | Regime columns must be non-constant when a real regime_df is passed to transform. | requires_fred |
 | `test_regime_csv_lag_safety` | Lagged CSV regime inputs must not backfill the leading unavailable row. | requires_fred |
 
+## `tests/test_regime_lookahead_guard.py`
+
+Regime forward context is refused unless the matching excludes the current month.
+
+**Exercises:** `mci_gru.config`, `mci_gru.features`, `mci_gru.features.regime`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_feature_config_refuses_subsequent_returns_without_exclusion` |  |  |
+| `test_feature_config_accepts_the_combinations_the_guard_allows` | The guard is specific: it refuses only forward context with no exclusion. |  |
+| `test_create_config_from_dict_refuses_subsequent_returns_without_exclusion` |  |  |
+| `test_hydra_override_refuses_subsequent_returns_without_exclusion` | The path ``run_experiment.py`` takes: ``compose`` then ``create_config_from_dict``. |  |
+| `test_regime_computation_refuses_subsequent_returns_without_exclusion` |  |  |
+| `test_regime_computation_accepts_the_combinations_the_guard_allows` |  |  |
+| `test_feature_engineer_refuses_the_combination_when_the_config_guard_is_bypassed` | Keyword construction skips ``FeatureConfig``; the computation-time copy still refuses. |  |
+| `test_add_regime_features_refuses_subsequent_returns_without_exclusion` |  |  |
+
 ## `tests/test_repository_retirement_guard.py`
 
 Prevent retired repository surfaces from being reintroduced.
