@@ -7,6 +7,7 @@ from mci_gru.config import (
     DEFAULT_VOLATILITY_TARGETING_COMPONENTS,  # noqa: F401 — re-export
     resolve_volatility_targeting_components,
 )
+from mci_gru.utils.returns import padded_pct_change
 
 # Volatility feature columns
 VOLATILITY_FEATURES = ["volatility_5d", "volatility_21d", "vol_ratio"]
@@ -95,7 +96,7 @@ def add_volatility_features(
     df = df.sort_values(["kdcode", "dt"]).copy()
 
     if "_daily_return" not in df.columns:
-        df["_daily_return"] = df.groupby("kdcode")["close"].pct_change()
+        df["_daily_return"] = padded_pct_change(df["close"], df["kdcode"])
 
     short_col = f"volatility_{short_window}d"
     df[short_col] = df.groupby("kdcode")["_daily_return"].transform(
@@ -151,7 +152,7 @@ def add_volatility_targeting_features(
     print("Computing volatility-targeting features...")
     df = df.sort_values(["kdcode", "dt"]).copy()
     group_keys = df["kdcode"]
-    daily_return = df.groupby("kdcode")["close"].pct_change()
+    daily_return = padded_pct_change(df["close"], group_keys)
     harvey_return = daily_return.groupby(group_keys).shift(2)
 
     for half_life in resolved_half_lives:
@@ -184,7 +185,7 @@ def add_volatility_targeting_features(
     df[vol_of_vol_col] = df[vol_of_vol_col].fillna(0.0)
 
     interaction_col = f"vol_target_ret{interaction_return_window}_lag2_x_scale_hl{short_half_life}"
-    trailing_return = df.groupby("kdcode")["close"].pct_change(periods=interaction_return_window)
+    trailing_return = padded_pct_change(df["close"], group_keys, periods=interaction_return_window)
     lagged_trailing_return = trailing_return.groupby(group_keys).shift(2).fillna(0.0)
     df[interaction_col] = lagged_trailing_return * df[short_scale_col]
 
@@ -222,7 +223,7 @@ def add_vix_features(
 
     vix["dt"] = pd.to_datetime(vix["dt"]).dt.strftime("%Y-%m-%d")
     vix = vix.sort_values("dt")
-    vix["vix_change"] = vix["vix"].pct_change().fillna(0)
+    vix["vix_change"] = padded_pct_change(vix["vix"]).fillna(0)
     vix["vix_ma"] = vix["vix"].rolling(window=vix_ma_window, min_periods=1).mean()
     vix["vix_regime"] = (vix["vix"] > vix["vix_ma"]).astype(float)
 

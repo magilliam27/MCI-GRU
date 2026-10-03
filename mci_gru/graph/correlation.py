@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 import torch
 
+from mci_gru.utils.returns import padded_pct_change
+
 
 def _daily_returns_pivot(
     df: pd.DataFrame, kdcode_list: list[str], end_date: str, corr_lookback_days: int
@@ -17,7 +19,7 @@ def _daily_returns_pivot(
         df["daily_return"] = df["close"] / df["prev_close"] - 1
     else:
         df = df.sort_values(["kdcode", "dt"])
-        df["daily_return"] = df.groupby("kdcode")["close"].pct_change()
+        df["daily_return"] = padded_pct_change(df["close"], df["kdcode"])
 
     df = df[df["dt"] < end_date]
     all_dates = sorted(df["dt"].unique())

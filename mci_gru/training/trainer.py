@@ -42,6 +42,14 @@ from mci_gru.training.summary import available_metric, format_checkpoint_metric
 logger = logging.getLogger(__name__)
 
 
+class NoCheckpointSelectedError(RuntimeError):
+    """Training ended without any epoch producing a finite selection metric.
+
+    No checkpoint was saved, so the model holds unselected last-epoch weights and
+    must not be used for predictions.
+    """
+
+
 def _unpack_loader_batch(batch, device: torch.device):
     """Move graph batch tensors to *device*; supports 7- or 9-tuple collate output."""
     non_blocking = device.type == "cuda"
@@ -264,6 +272,10 @@ class Trainer:
 
         Returns:
             TrainingResult with training metrics
+
+        Raises:
+            NoCheckpointSelectedError: if the selection metric is non-finite on
+                every epoch, so no checkpoint was ever saved.
         """
         training_cfg = self.config.training
 
@@ -305,6 +317,8 @@ class Trainer:
         self.best_val_rank_ic = None
         maximize_selection = training_cfg.selection_metric in ("val_ic", "val_rank_ic")
         best_selection_value = float("-inf") if maximize_selection else float("inf")
+        selection_history: list[float] = []
+        checkpoint_saved = False
         self.patience_counter = 0
         final_train_loss = 0.0
 
@@ -337,6 +351,7 @@ class Trainer:
                 training_cfg.selection_metric,
                 training_cfg.minimum_selection_rows,
             )
+            selection_history.append(selection_value)
 
             logger.info(
                 f"Epoch [{epoch + 1}/{training_cfg.num_epochs}] - Train Loss: {train_loss:.6f}, "
@@ -356,6 +371,7 @@ class Trainer:
                 self.best_val_rank_ic = available_metric(validation.rank_ic)
                 self.patience_counter = 0
                 torch.save(self.model.state_dict(), best_model_path)
+                checkpoint_saved = True
                 if execution_callback is not None:
                     execution_callback(
                         "checkpoint_saved", {"path": best_model_path, "epoch": epoch + 1}
@@ -396,6 +412,13 @@ class Trainer:
                     self.best_val_ic,
                     self.best_val_rank_ic,
                 )
+
+        if not checkpoint_saved:
+            raise NoCheckpointSelectedError(
+                f"Selection metric {training_cfg.selection_metric} was not finite on any of "
+                f"{len(selection_history)} epoch(s) (values by epoch: {selection_history}); "
+                f"no checkpoint was saved to {best_model_path}."
+            )
 
         return TrainingResult(
             best_val_loss=self.best_val_loss,

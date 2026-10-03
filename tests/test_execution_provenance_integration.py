@@ -43,8 +43,9 @@ from mci_gru.evaluation.execution_provenance import (
     write_execution_plan,
 )
 from mci_gru.evaluation.experiment_summary import write_resolved_config
+from mci_gru.training import ensemble
 from mci_gru.training.ensemble import train_multiple_models
-from mci_gru.training.trainer import Trainer
+from mci_gru.training.trainer import NoCheckpointSelectedError, Trainer
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 N_STOCKS = 4
@@ -348,12 +349,37 @@ def test_a_checkpoint_left_by_an_earlier_run_is_not_this_attempts_evidence(tmp_p
     stale.parent.mkdir(parents=True)
     torch.save(TinyModel().state_dict(), stale)
 
-    # A NaN validation loss never improves on the initial best, so nothing is saved.
-    _train(tmp_path, config, reference, model_factory=NaNModel)
+    # A NaN validation loss never improves on the initial best, so nothing is
+    # saved and training refuses to fall back to the stale file.
+    with pytest.raises(NoCheckpointSelectedError):
+        _train(tmp_path, config, reference, model_factory=NaNModel)
+
+    report = read_member_execution(reference)
+    member = report.members[0]
+    assert report.status == "failed"
+    assert member["status"] == "failed"
+    assert member["error_type"] == "NoCheckpointSelectedError"
+    assert member["checkpoint"] == {"saved_sha256": None, "loaded_sha256": None}
+
+
+def test_a_checkpoint_saved_without_being_recorded_is_not_complete(tmp_path, monkeypatch):
+    config = _config(tmp_path, num_models=1)
+    reference = _start(tmp_path, config)
+    original_train = Trainer.train
+
+    def unrecorded_saves(self, *args, execution_callback=None, **kwargs):
+        def record(event, data):
+            if event != "checkpoint_saved":
+                execution_callback(event, data)
+
+        return original_train(self, *args, execution_callback=record, **kwargs)
+
+    monkeypatch.setattr(Trainer, "train", unrecorded_saves)
+    _train(tmp_path, config, reference)
 
     member = read_member_execution(reference).members[0]
     assert member["status"] == "incomplete"
-    assert member["checkpoint"] == {"saved_sha256": None, "loaded_sha256": _sha256(stale)}
+    assert member["checkpoint"]["saved_sha256"] is None
     assert "no checkpoint saved in this attempt" in member["problems"]
 
 
@@ -395,6 +421,24 @@ def test_unavailable_runtime_observations_are_explicit_and_block_completion(tmp_
     assert member["runtime"]["backend"]["cudnn_version"]["status"] == "unavailable"
     assert member["status"] == "incomplete"
     assert "seed application not observed" in member["problems"]
+
+
+def test_an_unobserved_device_blocks_completion(tmp_path, monkeypatch):
+    config = _config(tmp_path, num_models=1)
+    reference = _start(tmp_path, config)
+    # The recorder finds the device through the model's first parameter; hide it
+    # from the recorder only, so training itself runs normally.
+    monkeypatch.setattr(ensemble, "next", lambda iterator, default: default, raising=False)
+    _train(tmp_path, config, reference)
+
+    member = read_member_execution(reference).members[0]
+    assert member["runtime"]["device"] == {
+        "status": "unavailable",
+        "value": None,
+        "reason": "AttributeError",
+    }
+    assert member["status"] == "incomplete"
+    assert member["problems"] == ["device not observed"]
 
 
 def test_a_member_that_never_started_is_counted_against_the_planned_total(tmp_path):

@@ -10,6 +10,7 @@ import pandas as pd
 
 from mci_gru.evaluation.artifacts import write_json_artifact
 from mci_gru.evaluation.portfolio import apply_rank_drop_gate, calculate_turnover, rank_scores
+from mci_gru.utils.returns import padded_pct_change
 
 
 def add_lagged_capacity_inputs(
@@ -29,7 +30,7 @@ def add_lagged_capacity_inputs(
     market["dollar_volume"] = market["close"] * market["volume"]
     market = market.sort_values(["kdcode", "dt"]).reset_index(drop=True)
     grouped = market.groupby("kdcode", group_keys=False)
-    market["daily_return"] = grouped["close"].pct_change()
+    market["daily_return"] = padded_pct_change(market["close"], market["kdcode"])
     market["lagged_adv"] = grouped["dollar_volume"].transform(
         lambda series: series.shift(1).rolling(lookback_days, min_periods=1).mean()
     )

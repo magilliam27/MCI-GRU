@@ -421,6 +421,11 @@ guard surfaces are:
 - Python 3.10 or later; type hints on public functions.
 - `ruff check .` and `ruff format .`, configured in `pyproject.toml`.
 - Imports stay at module scope.
+- Never call `pct_change` without `fill_method`: pandas 2 pads gaps by default
+  and pandas 3 does not, so a bare call silently gives different returns on the
+  two. Use `mci_gru.utils.returns.padded_pct_change` for pandas 2's padding, the
+  owner's choice for every existing call site (#245), or pass
+  `fill_method=None` where a gap must stay NaN.
 - Prefer the existing typed pipeline seams over widening `run_experiment.py`.
 - Keep feature composition in `FeatureEngineer` and calculations in the owning
   feature module.
