@@ -15,6 +15,8 @@ import logging
 import numpy as np
 import pandas as pd
 
+from mci_gru.utils.returns import padded_pct_change
+
 logger = logging.getLogger(__name__)
 
 # Momentum feature columns
@@ -299,7 +301,7 @@ def _compute_raw_momentum(
     df = df.sort_values(["kdcode", "dt"]).copy()
 
     # Calculate daily returns per stock.
-    df["_daily_return"] = df.groupby("kdcode")["close"].pct_change()
+    df["_daily_return"] = padded_pct_change(df["close"], df["kdcode"])
 
     # Fast momentum: trailing return.
     df["fast_momentum"] = df.groupby("kdcode")["_daily_return"].transform(
