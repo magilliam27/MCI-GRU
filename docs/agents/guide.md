@@ -142,6 +142,7 @@ existing stage over widening `run_experiment.py`:
 | Training summaries | `mci_gru/training/summary.py` | `build_training_summary`, `training_summary.json`, member and window coverage |
 | In-run metrics | `mci_gru/evaluation/metrics.py`, `statistics.py` | `EvaluationConfig`, bootstrap and Sharpe policy |
 | Run summaries and provenance | `mci_gru/evaluation/experiment_summary.py` | `run_metadata.json`, `resolved_config.json` and its SHA-256 |
+| Retained execution evidence | `mci_gru/evaluation/execution_provenance.py` | `capture_execution_start`, `read_member_execution`, `read_execution_run`; `run_experiment.py` writes the plan, per-window starts, member events and receipts |
 | Consumed input observations | `mci_gru/data/input_observations.py` | native readers, per-preparation context, `run_metadata.json` |
 | Economic replay | `mci_gru/evaluation/backtest_engine.py`, `portfolio.py`, `scripts/backtest_sp500.py` | score / execution / return timing, costs, benchmark |
 | Selection research | `mci_gru/evaluation/selection_audit.py`, `selection_nulls.py`, `trial_ledger.py`, `artifacts.py` | [../evaluation/EVIDENCE_HARNESS.md](../evaluation/EVIDENCE_HARNESS.md), `SelectionResearchProtocol` |
@@ -276,7 +277,7 @@ Start from the task concept, not from a guessed filename.
 | Ensemble behaviour | `mci_gru/training/ensemble.py` | ensemble invariant | `tests/test_ensemble_averaging.py` |
 | Checkpoint metrics or training summaries | `mci_gru/training/trainer.py`, `summary.py`, `mci_gru/walkforward.py` | selected-checkpoint metrics, `training_summary.json`, `walkforward_summary.json` | `tests/test_checkpoint_metrics.py`, `tests/test_training_summary.py`, `tests/test_ensemble_averaging.py` |
 | Walk-forward windows | `mci_gru/walkforward.py`, `run_experiment.py` | per-window config fidelity | `tests/test_walkforward_config_propagation.py`, `tests/test_phase3_graph_and_walkforward.py` |
-| Run summary or provenance | `mci_gru/evaluation/experiment_summary.py`, `mci_gru/data/input_observations.py` | `run_metadata.json`, `resolved_config.json`, consumed input observations | `tests/test_experiment_summary.py`, `tests/test_run_bundle_manifest.py`, `tests/test_data_input_identity.py`, `tests/test_input_observations.py` |
+| Run summary or provenance | `mci_gru/evaluation/experiment_summary.py`, `mci_gru/data/input_observations.py`, `mci_gru/evaluation/execution_provenance.py` | `run_metadata.json`, `resolved_config.json`, consumed input observations, retained execution plan, starts, member events and receipts | `tests/test_experiment_summary.py`, `tests/test_run_bundle_manifest.py`, `tests/test_data_input_identity.py`, `tests/test_input_observations.py`, `tests/test_execution_provenance.py`, `tests/test_execution_provenance_integration.py` |
 | Evaluation statistics | `mci_gru/evaluation/statistics.py`, `metrics.py`, `portfolio.py` | `EvaluationConfig` | `tests/test_evaluation_statistics.py`, `tests/test_evaluation_portfolio.py`, `tests/test_prediction_report.py` |
 | Economic backtest | `mci_gru/evaluation/backtest_engine.py`, `scripts/backtest_sp500.py` | timing, costs, benchmark; [../research/archive/BACKTEST_FAIRNESS_AUDIT.md](../research/archive/BACKTEST_FAIRNESS_AUDIT.md) as history | `tests/test_backtest_engine_golden.py`, `tests/test_backtest_fairness.py`, `tests/test_backtest_plotting.py`, `tests/test_pit_saved_prediction_backtests.py` |
 | Selection research evidence | `mci_gru/evaluation/selection_audit.py`, `selection_nulls.py`, `trial_ledger.py`, `artifacts.py` | [../evaluation/EVIDENCE_HARNESS.md](../evaluation/EVIDENCE_HARNESS.md) | `tests/test_selection_research_claims.py`, `tests/test_selection_research_statistics.py`, `tests/test_selection_research_artifacts.py`, `tests/test_selection_research_integration.py`, `tests/test_selection_research_pit.py`, `tests/test_saved_prediction_selection_audit.py`, `tests/test_trial_ledger.py` |
@@ -453,6 +454,89 @@ guard surfaces are:
 ```
 
 ### Artifact and evidence constraints
+
+`capture_execution_start()` is the first standalone #144 boundary. Supply the
+existing redacted `resolved_config.json` and its expected digest, repository
+root, output directory and optional window identifier. Each call writes a new
+`execution_provenance/<attempt_id>.json` and returns an `ExecutionReference`
+containing its path and exact-byte SHA-256. Keep that reference with the run;
+the digest is an integrity anchor, not a signature. `read_execution_provenance()`
+verifies that reference and returns the original config bytes, source bytes
+and recorded observations without consulting Git, packages or the live source.
+
+The source snapshot covers `run_experiment.py`, `mci_gru/`, `configs/`,
+`pyproject.toml` and the two requirements files. It retains relevant untracked
+source and exact line endings. Symlinks, unreadable source and detected
+credential-bearing files are excluded with explicit partial-source evidence.
+The credential checks are conservative guards for credential filenames,
+decoded JSON keys, Python literal assignments/dictionaries/keyword arguments,
+simple YAML/TOML assignments, PEM/PGP private-key headers and authenticated
+URLs. A YAML/TOML value that is only an OmegaConf reference with no inline
+default, such as `${oc.env:LSEG_API_KEY}`, names where a credential comes from
+and is retained. Python that cannot be parsed is also excluded. These checks are not a general secret
+scanner. Config must already be redacted; capture rejects unsafe
+config rather than rewriting its established bytes or digest.
+
+This first boundary records Python, NumPy, pandas, SciPy, Torch, PyG and the
+process platform. Failed Git/package/platform observations are explicit unavailable
+values. The Colab runtime label is explicitly unknown. Source completeness is
+relative to the declared source scope, not proof of a complete execution
+dependency closure. External plugins and notebook-only code are not covered.
+The code-identity object preserves the existing v1 fields, including the dirty
+diff digest and version map; explicit observation states distinguish unavailable
+Git evidence from a clean tree. Read-back rejects missing or inconsistent required
+metadata as well as byte-integrity failures.
+Every start record stays `incomplete`: it provides no completion event or
+actual member seed/device/AMP/backend evidence.
+
+What each ensemble member actually ran is the second boundary. Pass the start
+reference to `train_multiple_models(..., execution=reference)`. Each member then
+appends to `execution_provenance/<attempt_id>.events.jsonl`, an append-only
+log chained to the start digest, which itself stays unchanged. The member
+records its applied seed once seeding returns, with `torch.initial_seed()` as
+the observed check. It records the observed device, parameter dtype and
+backend flags, and AMP both as requested and as in effect. It also records the
+digest of every checkpoint it saved and of the exact bytes it loaded, then its
+completion or failure.
+`read_member_execution(reference)` reads only the retained start and events.
+It takes the planned member count and seeds from the retained resolved config,
+which serves only as the denominator. A member is `complete` only when it was
+seeded as planned with the seed observed, started, saved a checkpoint in this
+attempt, loaded those same bytes, and finished. A stale, missing or replaced
+checkpoint, an unobserved seed or device, a killed process or an unfinished
+final write each leaves an explicit problem, and the attempt is not complete.
+An edit, deletion or reorder of any event before the last breaks the chain. The
+last event is protected only by its own checks until a terminal receipt binds
+the log's digest.
+
+`run_experiment.py` wires these together, which is the third boundary. Before
+any window starts it writes `execution_provenance/<run_id>.plan.json` under the
+run's output root, naming each expected window as integer
+`walkforward_window=i`, decimal `window_id=str(i)` and its output directory
+relative to the root. Each window then captures its own start after
+`resolved_config.json` is written and before preparation, naming the plan.
+`run_metadata.json` references that start by path and digest, and the members
+record into it. Only after the window's outputs exist does the runner write
+`<attempt_id>.receipt.json` beside the start. It binds the start, the member-event
+digest, the metadata, feature reference, graph, checkpoints, per-member and
+averaged predictions and the summaries. After the last window,
+`<run_id>.run_receipt.json` binds one terminal receipt per expected window and
+any run-level summary. Nothing binds a file written after it, so there are no
+circular hashes; the plan and run-receipt digests the runner logs are the run's
+trust anchors.
+`read_execution_run(plan_reference)` reads all of it back without observing
+anything live, and survives relocating the output tree. A window is `complete`
+only when its terminal receipt, anchored by the run receipt when one exists,
+matches its start, events, metadata and every bound file, its members are
+complete, and each checkpoint bound is the one its member loaded. A run is
+`complete` only when its run receipt binds every expected window and all of
+them are complete. A failure in preparation, in a member or in writing outputs
+leaves no receipt, so the window stays `incomplete`, or `failed` when a member
+recorded its failure; a missing event or receipt never reads as completion.
+#223 owns catching and reporting a preparation failure; this evidence only
+gives that report an attempt to link to. Input-identity linkage and bundle
+attachment remain #208's work. Do not report these helpers' tests as live
+capture, replay, preservation, or reproducibility proof.
 
 - `results/`, `outputs/`, `*.pth`, and `*.pt` are gitignored and are not source
   of truth merely because they exist locally.
