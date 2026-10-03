@@ -356,6 +356,35 @@ Ensemble invariant: prediction = mean of independently trained models.
 | `test_newey_west_sharpe_differs_from_naive_on_autocorrelated_returns` |  |  |
 | `test_moving_block_bootstrap_ci_is_deterministic_and_contains_mean` |  |  |
 
+## `tests/test_execution_provenance.py`
+
+Execution evidence remains inspectable without the live checkout or runtime.
+
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation.artifacts`, `mci_gru.evaluation.execution_provenance`, `mci_gru.evaluation.experiment_summary`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_retained_readback_survives_live_source_config_and_environment_changes` |  |  |
+| `test_source_scope_preserves_training_code_and_excludes_credentials` |  |  |
+| `test_reader_rejects_missing_changed_or_unsupported_evidence` |  | parametrize |
+| `test_capture_rejects_changed_config_without_modifying_sources_or_prior_attempt` |  |  |
+| `test_capture_refuses_unsafe_or_invalid_resolved_config` |  | parametrize |
+| `test_unavailable_observations_are_retained_as_unknown_not_clean` |  | parametrize |
+| `test_unreadable_source_is_explicit_partial_evidence_and_not_a_silent_omission` |  |  |
+| `test_reader_rejects_invalid_record_semantics_even_with_a_matching_outer_digest` |  | parametrize |
+| `test_capture_does_not_follow_source_links_outside_the_declared_tree` |  | parametrize |
+| `test_missing_training_root_is_not_reported_as_a_complete_source_snapshot` |  |  |
+| `test_package_observation_errors_are_explicit_and_labels_do_not_shift` |  |  |
+| `test_each_capture_is_a_distinct_incomplete_attempt_and_readback_does_not_write` |  |  |
+| `test_source_credential_formats_are_excluded_with_explicit_partial_evidence` |  | parametrize |
+| `test_credential_references_and_screening_patterns_are_captured` |  | parametrize |
+| `test_this_repositorys_reference_config_and_screening_module_are_captured` |  |  |
+| `test_runtime_credential_lookup_and_redacted_config_are_preserved` |  |  |
+| `test_platform_observation_failure_still_retains_an_incomplete_attempt` |  |  |
+| `test_code_identity_keeps_existing_v1_fields_with_execution_time_observations` |  |  |
+| `test_reader_requires_valid_attempt_and_observation_metadata` |  | parametrize |
+| `test_invalid_window_identifier_is_rejected_before_output` |  | parametrize |
+
 ## `tests/test_experiment_summary.py`
 
 Unit tests for mci_gru.evaluation.experiment_summary (WS-M M2 move).
