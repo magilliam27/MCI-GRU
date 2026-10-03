@@ -253,8 +253,6 @@ Values below reflect **`configs/config.yaml`** merged with **`configs/data/gics_
 | Data | pit_universe_mode | `masked_panel` |
 | Data | pit_min_scoreable_stocks | `104` (measured session minimum is 108) |
 | Data | pit_breadth_policy | `error` |
-
-Because the base default sets `use_pit_universe: true` against a PIT CSV that is not committed, any run supplying its own panel must pass `data.use_pit_universe=false`. `scripts/ci_smoke.py` does this.
 | Model | his_t | 10 |
 | Model | label_t | 5 |
 | Model | gru_hidden_sizes | [32, 10] |
@@ -271,6 +269,8 @@ Because the base default sets `use_pit_universe: true` against a PIT CSV that is
 | Training | lr_scheduler | `cosine` (linear warmup `warmup_steps` then cosine decay; `none` disables) |
 | Training | use_amp | `true` on CUDA (no-op on CPU) |
 | Tracking | enabled | `true` (local `./mlruns`; set `tracking.enabled=false` to disable) |
+
+Because the base default sets `use_pit_universe: true` against a PIT CSV that is not committed, any run supplying its own panel must pass `data.use_pit_universe=false`. `scripts/ci_smoke.py` does this.
 
 ## Common Configurations
 
