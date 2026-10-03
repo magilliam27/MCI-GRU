@@ -2,6 +2,8 @@
 
 import pandas as pd
 
+from mci_gru.utils.returns import padded_pct_change
+
 # Credit spread feature columns (market-wide, broadcast to all stocks)
 CREDIT_FEATURES = [
     "ig_spread",
@@ -31,8 +33,8 @@ def add_credit_features(
         credit = credit.rename(columns={credit.columns[0]: "dt"})
     credit["dt"] = pd.to_datetime(credit["dt"]).dt.strftime("%Y-%m-%d")
     credit = credit.sort_values("dt")
-    credit["ig_spread_change"] = credit["ig_spread"].pct_change().fillna(0)
-    credit["hy_spread_change"] = credit["hy_spread"].pct_change().fillna(0)
+    credit["ig_spread_change"] = padded_pct_change(credit["ig_spread"]).fillna(0)
+    credit["hy_spread_change"] = padded_pct_change(credit["hy_spread"]).fillna(0)
     ig_std = credit["ig_spread"].rolling(zscore_window, min_periods=1).std()
     hy_std = credit["hy_spread"].rolling(zscore_window, min_periods=1).std()
     credit["ig_spread_zscore"] = (
