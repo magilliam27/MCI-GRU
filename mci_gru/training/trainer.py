@@ -12,12 +12,16 @@ Graph resolution is handled upstream by the collate function (via
 (7 core tensors + optional sector ``edge_index`` / ``edge_weight``) from the loaders.
 """
 
+import hashlib
+import io
 import json
 import logging
 import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -227,6 +231,7 @@ class Trainer:
         self.output_path = output_path if output_path else self.config.get_output_path()
         self.checkpoint_path = checkpoint_path
         self.last_best_model_path: str | None = None
+        self.last_loaded_checkpoint_sha256: str | None = None
 
         if device is None:
             self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -249,6 +254,7 @@ class Trainer:
         train_loader,
         val_loader,
         epoch_callback: Callable[..., None] | None = None,
+        execution_callback: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> TrainingResult:
         """
         Args:
@@ -259,6 +265,10 @@ class Trainer:
                  best_val_loss, best_val_ic, best_val_rank_ic). The ``best_*``
                 values describe the checkpoint selected so far and are ``None``
                 when unavailable on it or before any checkpoint is selected.
+            execution_callback: Optional execution-evidence callback. Receives
+                ``("training_started", {"amp_requested", "amp_effective"})``
+                once the effective precision is decided, then
+                ``("checkpoint_saved", {"path", "epoch"})`` after each save.
 
         Returns:
             TrainingResult with training metrics
@@ -312,6 +322,11 @@ class Trainer:
         self.patience_counter = 0
         final_train_loss = 0.0
 
+        if execution_callback is not None:
+            execution_callback(
+                "training_started",
+                {"amp_requested": training_cfg.use_amp, "amp_effective": use_amp},
+            )
         logger.info(f"Training on {self.device}...")
         logger.info(f"  Loss: {loss_label}")
         logger.info(f"  Selection metric: {training_cfg.selection_metric}")
@@ -357,6 +372,10 @@ class Trainer:
                 self.patience_counter = 0
                 torch.save(self.model.state_dict(), best_model_path)
                 checkpoint_saved = True
+                if execution_callback is not None:
+                    execution_callback(
+                        "checkpoint_saved", {"path": best_model_path, "epoch": epoch + 1}
+                    )
                 logger.info(
                     "  -> New best model saved "
                     f"(val_loss={format_checkpoint_metric(self.best_val_loss)}, "
@@ -660,8 +679,13 @@ class Trainer:
             else:
                 best_model_path = os.path.join(self.output_path, "best_model.pth")
 
+        # The digest is of the exact bytes loaded, so evidence cannot describe a
+        # different file than the one the model now holds.
+        self.last_loaded_checkpoint_sha256 = None
         if os.path.exists(best_model_path):
-            self.model.load_state_dict(torch.load(best_model_path, weights_only=True))
+            checkpoint = Path(best_model_path).read_bytes()
+            self.model.load_state_dict(torch.load(io.BytesIO(checkpoint), weights_only=True))
+            self.last_loaded_checkpoint_sha256 = hashlib.sha256(checkpoint).hexdigest()
             logger.info(f"Loaded best model from {best_model_path}")
         else:
             logger.info(f"No saved model found at {best_model_path}")
