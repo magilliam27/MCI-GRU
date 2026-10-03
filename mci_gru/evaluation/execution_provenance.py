@@ -35,6 +35,13 @@ SOURCE_ROOTS = (
 SOURCE_SUFFIXES = {".py", ".yaml", ".yml", ".toml", ".txt", ".lock"}
 _CREDENTIAL_ASSIGNMENT = re.compile(rb"""(?im)["']?\b([\w-]+)["']?\s*[:=]\s*([^\r\n,}]+)""")
 _CREDENTIAL_URI = re.compile(rb"[a-z]+://[^/\s:]+:[^/@\s]+@", re.IGNORECASE)
+# A PEM/PGP private-key armour header. Written so this pattern's own source
+# text does not match it, which would otherwise exclude this module.
+_PRIVATE_KEY_HEADER = re.compile(rb"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----")
+# An OmegaConf environment or node reference with no inline default: the value
+# names where a credential comes from and is not itself a credential.
+_REFERENCE_ONLY = re.compile(r"\$\{(?:oc\.env:[A-Za-z_]\w*|[A-Za-z_][\w.]*)\}")
+_TRAILING_COMMENT = re.compile(r"\s+#.*$")
 
 
 @dataclass(frozen=True)
@@ -330,7 +337,7 @@ def _secret_value(value: Any) -> bool:
 
 
 def _contains_credentials(content: bytes, suffix: str = "") -> bool:
-    if _CREDENTIAL_URI.search(content) or b"PRIVATE KEY-----" in content:
+    if _CREDENTIAL_URI.search(content) or _PRIVATE_KEY_HEADER.search(content):
         return True
     if suffix == ".py":
         try:
@@ -371,8 +378,16 @@ def _contains_credentials(content: bytes, suffix: str = "") -> bool:
     return any(
         _sensitive_name(match[1].decode("utf-8", errors="replace"))
         and _secret_value(match[2].decode("utf-8", errors="replace").strip().strip("\"'"))
+        and not _reference_only(content, match.start(2))
         for match in _CREDENTIAL_ASSIGNMENT.finditer(content)
     )
+
+
+def _reference_only(content: bytes, start: int) -> bool:
+    end = content.find(b"\n", start)
+    value = content[start : end if end >= 0 else len(content)].decode("utf-8", errors="replace")
+    value = _TRAILING_COMMENT.sub("", value).strip().strip("\"'")
+    return _REFERENCE_ONLY.fullmatch(value) is not None
 
 
 def _invalid_constant(value: str) -> None:
@@ -396,7 +411,7 @@ def _validate_config(content: bytes) -> None:
         elif isinstance(value, list):
             pending.extend(value)
         elif isinstance(value, str):
-            if _CREDENTIAL_URI.search(value.encode()) or "PRIVATE KEY-----" in value:
+            if _CREDENTIAL_URI.search(value.encode()) or _PRIVATE_KEY_HEADER.search(value.encode()):
                 raise ValueError("Resolved config contains credentials")
             if PurePosixPath(value).is_absolute() or PureWindowsPath(value).is_absolute():
                 raise ValueError("Resolved config contains an unredacted absolute path")

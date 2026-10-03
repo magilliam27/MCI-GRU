@@ -8,6 +8,7 @@ import sys
 from dataclasses import replace
 from datetime import datetime, timezone
 from importlib import metadata
+from pathlib import Path
 
 import pytest
 
@@ -167,6 +168,7 @@ def test_capture_rejects_changed_config_without_modifying_sources_or_prior_attem
         b'{"fred_api_key":"fixture-secret"}',
         rb'{"pass\u0077ord":"fixture-secret"}',
         b'{"tracking":{"uri":"https://user:fixture-secret@server/"}}',
+        b'{"tls":{"key":"-----BEGIN EC PRIVATE KEY-----\\nfixture-secret"}}',
         b'{"data":{"filename":"/private/market.csv"}}',
         b'{"seed":NaN}',
         b"[]",
@@ -419,6 +421,13 @@ def test_each_capture_is_a_distinct_incomplete_attempt_and_readback_does_not_wri
         ("provider.py", b'settings["password"] = "fixture-secret"'),
         ("provider.yaml", b"password: fixture-secret"),
         ("provider.toml", b'fred_api_key = "fixture-secret"'),
+        ("key.yaml", b"-----BEGIN PRIVATE KEY-----\nfixture-secret\n-----END PRIVATE KEY-----\n"),
+        ("key.txt", b"-----BEGIN RSA PRIVATE KEY-----\nfixture-secret\n"),
+        ("key.txt", b"-----BEGIN OPENSSH PRIVATE KEY-----\nfixture-secret\n"),
+        ("key.txt", b"-----BEGIN PGP PRIVATE KEY BLOCK-----\nfixture-secret\n"),
+        ("provider.yaml", b"api_key: ${oc.env:LSEG_API_KEY,fixture-secret}"),
+        ("provider.yaml", b"api_key: fixture-secret  # ${oc.env:LSEG_API_KEY}"),
+        ("provider.yaml", b"api_key: ${oc.env:LSEG_API_KEY}fixture-secret"),
     ],
 )
 def test_source_credential_formats_are_excluded_with_explicit_partial_evidence(
@@ -433,6 +442,48 @@ def test_source_credential_formats_are_excluded_with_explicit_partial_evidence(
     assert f"mci_gru/{name}" not in retained.source_files
     assert retained.record["source_capture"]["status"] == "partial"
     assert b"fixture-secret" not in b"".join(retained.source_files.values())
+
+
+@pytest.mark.parametrize(
+    ("name", "content"),
+    [
+        ("data.yaml", b"api_key: ${oc.env:LSEG_API_KEY}  # From environment variable\n"),
+        ("data.yaml", b'fred_token: "${oc.env:FRED_TOKEN}"\n'),
+        ("data.yaml", b"password: ${tracking.password}\n"),
+        ("screening.py", b'PEM = rb"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----"\n'),
+    ],
+)
+def test_credential_references_and_screening_patterns_are_captured(tmp_path, name, content):
+    repo, _, config_path, digest, _ = _fixture(tmp_path)
+    (repo / "mci_gru" / name).write_bytes(content)
+    ref = capture_execution_start(
+        repo, config_path, resolved_config_sha256=digest, output_dir=tmp_path / "evidence"
+    )
+    retained = read_execution_provenance(ref)
+    assert retained.source_files[f"mci_gru/{name}"] == content
+    capture = retained.record["source_capture"]
+    assert (capture["status"], capture["problems"]) == ("complete", [])
+
+
+def test_this_repositorys_reference_config_and_screening_module_are_captured(tmp_path):
+    repository = Path(__file__).resolve().parents[1]
+    repo, _, config_path, digest, _ = _fixture(tmp_path)
+    copied = {}
+    for relative in (
+        "configs/data/lseg_sp500.yaml",
+        "mci_gru/evaluation/execution_provenance.py",
+    ):
+        content = (repository / relative).read_bytes()
+        (repo / relative).parent.mkdir(parents=True, exist_ok=True)
+        (repo / relative).write_bytes(content)
+        copied[relative] = content
+    ref = capture_execution_start(
+        repo, config_path, resolved_config_sha256=digest, output_dir=tmp_path / "evidence"
+    )
+    retained = read_execution_provenance(ref)
+    assert {name: retained.source_files.get(name) for name in copied} == copied
+    capture = retained.record["source_capture"]
+    assert (capture["status"], capture["problems"]) == ("complete", [])
 
 
 def test_runtime_credential_lookup_and_redacted_config_are_preserved(tmp_path):

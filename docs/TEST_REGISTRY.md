@@ -372,6 +372,8 @@ Execution evidence remains inspectable without the live checkout or runtime.
 | `test_package_observation_errors_are_explicit_and_labels_do_not_shift` |  |  |
 | `test_each_capture_is_a_distinct_incomplete_attempt_and_readback_does_not_write` |  |  |
 | `test_source_credential_formats_are_excluded_with_explicit_partial_evidence` |  | parametrize |
+| `test_credential_references_and_screening_patterns_are_captured` |  | parametrize |
+| `test_this_repositorys_reference_config_and_screening_module_are_captured` |  |  |
 | `test_runtime_credential_lookup_and_redacted_config_are_preserved` |  |  |
 | `test_platform_observation_failure_still_retains_an_incomplete_attempt` |  |  |
 | `test_code_identity_keeps_existing_v1_fields_with_execution_time_observations` |  |  |

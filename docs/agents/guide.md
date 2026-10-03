@@ -277,7 +277,7 @@ Start from the task concept, not from a guessed filename.
 | Ensemble behaviour | `mci_gru/training/ensemble.py` | ensemble invariant | `tests/test_ensemble_averaging.py` |
 | Checkpoint metrics or training summaries | `mci_gru/training/trainer.py`, `summary.py`, `mci_gru/walkforward.py` | selected-checkpoint metrics, `training_summary.json`, `walkforward_summary.json` | `tests/test_checkpoint_metrics.py`, `tests/test_training_summary.py`, `tests/test_ensemble_averaging.py` |
 | Walk-forward windows | `mci_gru/walkforward.py`, `run_experiment.py` | per-window config fidelity | `tests/test_walkforward_config_propagation.py`, `tests/test_phase3_graph_and_walkforward.py` |
-| Run summary or provenance | `mci_gru/evaluation/experiment_summary.py`, `mci_gru/data/input_observations.py` | `run_metadata.json`, `resolved_config.json`, consumed input observations | `tests/test_experiment_summary.py`, `tests/test_run_bundle_manifest.py`, `tests/test_data_input_identity.py`, `tests/test_input_observations.py` |
+| Run summary or provenance | `mci_gru/evaluation/experiment_summary.py`, `mci_gru/data/input_observations.py`, `mci_gru/evaluation/execution_provenance.py` | `run_metadata.json`, `resolved_config.json`, consumed input observations, retained execution-start evidence | `tests/test_experiment_summary.py`, `tests/test_run_bundle_manifest.py`, `tests/test_data_input_identity.py`, `tests/test_input_observations.py`, `tests/test_execution_provenance.py` |
 | Evaluation statistics | `mci_gru/evaluation/statistics.py`, `metrics.py`, `portfolio.py` | `EvaluationConfig` | `tests/test_evaluation_statistics.py`, `tests/test_evaluation_portfolio.py`, `tests/test_prediction_report.py` |
 | Economic backtest | `mci_gru/evaluation/backtest_engine.py`, `scripts/backtest_sp500.py` | timing, costs, benchmark; [../research/archive/BACKTEST_FAIRNESS_AUDIT.md](../research/archive/BACKTEST_FAIRNESS_AUDIT.md) as history | `tests/test_backtest_engine_golden.py`, `tests/test_backtest_fairness.py`, `tests/test_backtest_plotting.py`, `tests/test_pit_saved_prediction_backtests.py` |
 | Selection research evidence | `mci_gru/evaluation/selection_audit.py`, `selection_nulls.py`, `trial_ledger.py`, `artifacts.py` | [../evaluation/EVIDENCE_HARNESS.md](../evaluation/EVIDENCE_HARNESS.md) | `tests/test_selection_research_claims.py`, `tests/test_selection_research_statistics.py`, `tests/test_selection_research_artifacts.py`, `tests/test_selection_research_integration.py`, `tests/test_selection_research_pit.py`, `tests/test_saved_prediction_selection_audit.py`, `tests/test_trial_ledger.py` |
@@ -470,8 +470,10 @@ source and exact line endings. Symlinks, unreadable source and detected
 credential-bearing files are excluded with explicit partial-source evidence.
 The credential checks are conservative guards for credential filenames,
 decoded JSON keys, Python literal assignments/dictionaries/keyword arguments,
-simple YAML/TOML assignments, private-key text and authenticated URLs. Python
-that cannot be parsed is also excluded. These checks are not a general secret
+simple YAML/TOML assignments, PEM/PGP private-key headers and authenticated
+URLs. A YAML/TOML value that is only an OmegaConf reference with no inline
+default, such as `${oc.env:LSEG_API_KEY}`, names where a credential comes from
+and is retained. Python that cannot be parsed is also excluded. These checks are not a general secret
 scanner. Config must already be redacted; capture rejects unsafe
 config rather than rewriting its established bytes or digest.
 
