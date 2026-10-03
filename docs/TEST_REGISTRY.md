@@ -1562,6 +1562,9 @@ Behavioral tests for the market-wide VIX feature merge.
 |---|---|---|
 | `test_missing_vix_dates_carry_the_last_earlier_level_and_default_to_20` |  |  |
 | `test_future_vix_observations_do_not_change_earlier_rows` |  | parametrize |
+| `test_stock_major_panel_never_carries_vix_across_stocks` |  |  |
+| `test_vix_does_not_depend_on_panel_row_order` |  |  |
+| `test_future_vix_never_reaches_an_earlier_row_of_any_stock` |  | parametrize |
 
 ## `tests/test_volatility_features.py`
 
