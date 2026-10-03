@@ -1024,12 +1024,16 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 
 ## `tests/test_pit_universe_validation_notebook.py`
 
+**Exercises:** `mci_gru.config`
+
 | Test | Description | Markers |
 |---|---|---|
 | `test_pit_notebook_includes_survivorship_controls` |  |  |
 | `test_pit_notebook_writes_comparison_artifacts` |  |  |
 | `test_pit_notebook_preserves_frozen_recipe_scope` |  |  |
 | `test_pit_notebook_code_cells_parse` |  |  |
+| `test_universe_control_composition_guard_finds_the_pit_controls_and_windows` | The composition test below is not vacuous: PIT controls and data configs are found. |  |
+| `test_universe_control_overrides_compose_against_the_window_data_config` | Every control's overrides compose with the notebook's own data configs (issue 248). | parametrize, parametrize |
 
 ## `tests/test_portfolio_ic_config.py`
 

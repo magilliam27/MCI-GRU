@@ -2,6 +2,14 @@ import ast
 import json
 from pathlib import Path
 
+import pytest
+from hydra import compose, initialize_config_dir
+from omegaconf import OmegaConf
+
+from mci_gru.config import create_config_from_dict
+
+ROOT = Path(__file__).resolve().parents[1]
+CONFIG_DIR = ROOT / "configs"
 NOTEBOOK_PATH = Path("notebooks/pit_universe_validation_colab.ipynb")
 GENERATOR_PATH = Path("scripts/gen_pit_universe_validation_nb.py")
 
@@ -23,8 +31,7 @@ def test_pit_notebook_includes_survivorship_controls() -> None:
         "data.use_pit_universe=true",
         "data.pit_universe_csv=",
         "data.filter_stocks_per_split=true",
-        "+data.use_pit_universe=true",
-        "+data.pit_universe_csv=",
+        "data.pit_universe_mode=masked_panel",
         "+data.filter_stocks_per_split=true",
         "kdcode",
         "valid_from",
@@ -39,6 +46,8 @@ def test_pit_notebook_includes_survivorship_controls() -> None:
 
     assert "row_availability_fallback" not in combined
     assert "row_availability_fallback" not in generator
+    assert "+data.use_pit_universe" not in combined
+    assert "+data.pit_universe_csv" not in combined
 
 
 def test_pit_notebook_writes_comparison_artifacts() -> None:
@@ -81,3 +90,55 @@ def test_pit_notebook_code_cells_parse() -> None:
     assert code_cells
     for source in code_cells:
         ast.parse(source)
+
+
+def _notebook_literal(name: str):
+    """The literal assigned to ``name`` in the notebook's code cells."""
+    for source in _cell_sources():
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+        for node in tree.body:
+            if (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == name
+            ):
+                return ast.literal_eval(node.value)
+    raise AssertionError(f"{name} is not assigned in {NOTEBOOK_PATH}")
+
+
+UNIVERSE_CONTROLS = _notebook_literal("UNIVERSE_CONTROLS")
+PROOF_WINDOWS = _notebook_literal("PROOF_WINDOWS")
+
+
+def test_universe_control_composition_guard_finds_the_pit_controls_and_windows() -> None:
+    """The composition test below is not vacuous: PIT controls and data configs are found."""
+    pit_controls = {control["name"] for control in UNIVERSE_CONTROLS if control["requires_pit"]}
+    assert {"pit_universe", "pit_plus_per_split"} <= pit_controls
+    assert {window["data_config"] for window in PROOF_WINDOWS} >= {"temporal_2016"}
+
+
+@pytest.mark.parametrize("data_config", sorted({w["data_config"] for w in PROOF_WINDOWS}))
+@pytest.mark.parametrize("control", UNIVERSE_CONTROLS, ids=lambda control: control["name"])
+def test_universe_control_overrides_compose_against_the_window_data_config(
+    control: dict, data_config: str
+) -> None:
+    """Every control's overrides compose with the notebook's own data configs (issue 248).
+
+    ``+data.use_pit_universe`` failed here, because ``temporal_*`` already declares it.
+    """
+    overrides = [
+        f"data={data_config}",
+        *(item.format(pit_csv="pit_universe.csv") for item in control["overrides"]),
+    ]
+    with initialize_config_dir(config_dir=str(CONFIG_DIR), version_base=None):
+        cfg = compose(config_name="config", overrides=overrides)
+    data = create_config_from_dict(OmegaConf.to_container(cfg, resolve=True)).data
+
+    assert data.use_pit_universe is control["requires_pit"], control["name"]
+    if control["requires_pit"]:
+        assert data.pit_universe_csv == "pit_universe.csv"
+        assert data.pit_universe_mode == "masked_panel"

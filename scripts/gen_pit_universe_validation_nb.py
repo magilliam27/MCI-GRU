@@ -22,8 +22,9 @@ cells = [
 
         - the current baseline complete-stock filter;
         - per-split complete-stock filtering;
-        - point-in-time/date-aware row filtering through `data.use_pit_universe=true`;
-        - PIT plus per-split filtering.
+        - the true PIT masked panel through `data.use_pit_universe=true` (`data.pit_universe_mode=masked_panel`): a fixed PIT-union stock axis with daily membership masks.
+
+        `masked_panel` is the only accepted PIT mode and it ignores `data.filter_stocks_per_split`, so the `pit_plus_per_split` control is defined for older manifests but not active by default: it would rerun `pit_universe`.
 
         If `PIT_UNIVERSE_CSV` is blank, the notebook first runs the Joiner/Leaver PIT exporter and uses the generated `*_pit_universe.csv`. That export requires an LSEG/Refinitiv-enabled environment. If you already generated the PIT CSV and stored it in Drive, set `PIT_UNIVERSE_CSV` to that path and skip generation.
         """
@@ -243,28 +244,40 @@ cells = [
                 'requires_pit': False,
                 'overrides': ['+data.filter_stocks_per_split=true'],
             },
+            # The temporal_* data configs declare use_pit_universe and pit_universe_csv,
+            # so those overrides take no '+' (Hydra refuses to append a declared key).
+            # filter_stocks_per_split is undeclared there, so it keeps its '+'.
+            # pit_universe_mode is undeclared there too; '++' names the intended mode
+            # whether or not a data config declares it.
             {
                 'name': 'pit_universe',
-                'description': 'PIT row validity filter before normalization and stock filtering.',
+                'description': 'True PIT masked panel: fixed PIT-union stock axis with daily membership masks.',
                 'requires_pit': True,
-                'overrides': ['+data.use_pit_universe=true', '+data.pit_universe_csv={pit_csv}'],
+                'overrides': [
+                    'data.use_pit_universe=true',
+                    'data.pit_universe_csv={pit_csv}',
+                    '++data.pit_universe_mode=masked_panel',
+                ],
             },
             {
                 'name': 'pit_plus_per_split',
-                'description': 'PIT row validity plus per-split complete-stock filtering.',
+                'description': (
+                    'PIT masked panel with per-split filtering requested. The masked panel '
+                    'ignores filter_stocks_per_split, so this reruns pit_universe.'
+                ),
                 'requires_pit': True,
                 'overrides': [
-                    '+data.use_pit_universe=true',
-                    '+data.pit_universe_csv={pit_csv}',
+                    'data.use_pit_universe=true',
+                    'data.pit_universe_csv={pit_csv}',
+                    '++data.pit_universe_mode=masked_panel',
                     '+data.filter_stocks_per_split=true',
                 ],
             },
         ]
-        ACTIVE_UNIVERSE_CONTROLS = ['baseline', 'pit_plus_per_split'] if FAST_MODE else [
+        ACTIVE_UNIVERSE_CONTROLS = ['baseline', 'pit_universe'] if FAST_MODE else [
             'baseline',
             'per_split_filter',
             'pit_universe',
-            'pit_plus_per_split',
         ]
 
         TOP_K_VALUES = [15, 20]
