@@ -15,7 +15,7 @@ seven-variable surface:
 
 | Column | Source / derivation | Description |
 |--------|----------------------|-------------|
-| `dt` | loader date index | Calendar date; one row per date. |
+| `dt` | session grid | One row per weekday session. |
 | `regime_market` | LSEG market RIC or FRED `SP500` fallback | Market proxy level. |
 | `regime_yield_curve` | FRED/LSEG 10Y minus 3M yield | Yield curve spread. |
 | `regime_oil` | FRED WTI or LSEG oil RIC fallback | Oil proxy level. |
@@ -24,12 +24,44 @@ seven-variable surface:
 | `regime_monetary_policy` | lagged 3M yield | Monetary policy / T-bill yield proxy. |
 | `regime_volatility` | FRED `VIXCLS` or LSEG VIX fallback | Volatility / VIX proxy. |
 
-The live loader applies a 1-day lag to FRED series before merging. It then
-forward/backward fills sparse market holidays for raw live fields after all
-series are loaded. `regime_stock_bond_corr` uses a 756-trading-day rolling
-window with `min_periods=756`; its initial warmup rows remain `NaN` and only
-later gaps are forward-filled, so the first valid correlation is not backfilled
-into dates where the full 3-year window was unavailable.
+## Historical Availability Rules (#224)
+
+The owner rulings of 2026-10-03 on #224 apply to the six FRED inputs the
+frozen recipe enables. They are written per role (market level, 10-year yield,
+3-month yield, oil, copper, volatility), so a later source for the same role
+inherits them, and they are declared conventions, not measured publication
+latency. The code lives in `mci_gru/data/auxiliary_quality.py`; the proof is
+`tests/test_auxiliary_quality.py`, through `DataManager.load_regime_inputs` in
+replay mode with providers and network off.
+
+| Rule | Behaviour |
+|------|-----------|
+| Clock | The forecast for session t is made at 20:00 America/New_York on t. |
+| Sessions | Weekdays. On an exchange trading date this gives the same availability as the exchange calendar; an exchange holiday counts as one session of carry. |
+| Daily availability | A value dated D is known from 20:00 New York on the next session, so session t sees only values dated before t. |
+| Copper availability | The value for month M is known from the first session of month M+2. |
+| Carry | A daily value carries at most 5 sessions; a monthly value only through its month M+2. A longer gap stops the run, naming the role, the last observation and the first session over the limit. |
+| Missing markers | FRED `.` or a blank is a genuine gap. Any other non-numeric token, an infinite value, or a repeated observation date stops the run. |
+| Valid values | Market level, volatility and copper must be positive. The two yields and oil may be any finite value. Units are as FRED documents them. |
+| Leading gaps | No back-fill. Sessions before a role's first usable value stay empty, so the regime features keep their neutral 0 there (`add_regime_features`), and the count is recorded. The training window is unchanged. |
+| Revisions | Unchecked. Values as served at capture stand in for history. |
+
+Derived columns follow their inputs on the same session: the yield curve is
+10-year minus 3-month, monetary policy is the 3-month yield, and
+`regime_stock_bond_corr` is a 756-session rolling correlation of market returns
+against 10-year yield changes with `min_periods=756`, so its warmup stays
+empty.
+
+`DataManager.regime_input_receipt` carries one verdict per role (`role`,
+`label`, `source`, `series_id`, `observation_id`, the rules and scope applied,
+first observation, first usable session, leading-gap sessions, missing
+observations, the longest carry seen, and `revisions: unchecked`) plus the
+leading-gap count of each of the seven output columns. It is input to #223's
+single run report; #224 adds no aggregator of its own. A stop raises an
+`InputSnapshotError` at stage `validate` whose facts carry the reason and dates.
+
+Index mode (`load_index_series`), standalone VIX, credit and the legacy CSV
+below are disabled in the recipe and keep their earlier behaviour.
 
 ## Requirements
 

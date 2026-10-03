@@ -34,6 +34,25 @@ Public auxiliary loader and preparation capture/replay contracts.
 | `test_a_misspelt_auxiliary_source_role_is_rejected_when_the_config_is_built` |  |  |
 | `test_the_full_feature_preset_stops_at_the_unselected_credit_role` | features=full enables credit, which the base config leaves unselected. |  |
 
+## `tests/test_auxiliary_quality.py`
+
+#224 regime input rulings, proven through public DataManager.load_regime_inputs.
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.auxiliary_quality`, `mci_gru.data.data_manager`, `mci_gru.data.input_snapshots`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_session_t_sees_only_values_dated_before_t` |  |  |
+| `test_a_gap_carries_exactly_five_sessions_and_no_more` |  |  |
+| `test_copper_for_month_m_counts_from_month_m_plus_2` |  |  |
+| `test_changing_a_later_value_never_changes_earlier_output` |  |  |
+| `test_sessions_before_the_first_usable_value_stay_empty_and_are_counted` |  |  |
+| `test_a_malformed_or_invalid_value_stops_the_run_naming_role_and_date` |  | parametrize |
+| `test_copper_must_be_positive` |  |  |
+| `test_gaps_negative_oil_and_low_yields_are_valid` |  |  |
+| `test_a_stop_keeps_its_facts_through_the_preparation_failure` |  |  |
+| `test_a_source_covering_the_request_leaves_no_leading_gap` | Copper's request reaches back to month X-2, so its first session is usable. |  |
+
 ## `tests/test_backtest_engine_golden.py`
 
 Golden-output regression tests for legacy backtest CLIs (WS-N step 2).
