@@ -506,8 +506,11 @@ diff -u "$cpu_root/versions-1.json" "$cpu_root/versions-2.json"
 printf 'Retained rebuild evidence: %s\n' "$cpu_root"
 ```
 
-The dedicated `.github/workflows/lock-stack-linux.yml` performs the same rebuild
-in two independent hosted jobs without package caching, then compares the
+The dedicated `.github/workflows/lock-stack-linux.yml` is the record of #218's
+qualification. Its jobs run only for pull requests from that ticket's branch
+`codex/143-linux-lock-qualification` (the `if:` gate) and are skipped on every
+other pull request; the per-change check is the lock job in `ci.yml`. When run,
+it performs the same rebuild in two independent hosted jobs without package caching, then compares the
 installed version sets, package download origins/hashes, source SHA, combined
 recipe digest, exact Python version and CPU identity. Both jobs must pass
 `pip check`, project build/core/dev/fred constraint checks, the existing

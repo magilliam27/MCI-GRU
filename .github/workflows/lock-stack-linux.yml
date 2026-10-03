@@ -1,6 +1,7 @@
 name: Linux CPU locked rebuilds
 
-# Separate CPU reference for #143; repository interpreter/CI policy is unchanged.
+# Two-rebuild qualification of the #143 CPU reference, gated to #218's branch.
+# Every other pull request skips it; ci.yml runs the lock stack per change.
 on:
   pull_request:
     branches: [main, master]
