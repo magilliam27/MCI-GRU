@@ -288,7 +288,7 @@ Graph responsibilities are split across the package:
 ### Correlation graph
 
 The return panel is built from `close / prev_close - 1` (or a per-stock
-`pct_change` when `prev_close` is absent), truncated to observations strictly
+`pct_change`, with gaps padded as pandas 2 did, when `prev_close` is absent), truncated to observations strictly
 **before** the graph's valid-from date, limited to the last
 `graph.corr_lookback_days` dates (default 252), reindexed to the stock axis, and
 zero-filled before `DataFrame.corr()`.
