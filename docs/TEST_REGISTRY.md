@@ -451,6 +451,9 @@ Every feature group must accept the regime overrides that launchers pass, withou
 | `test_regime_override_guard_discovers_the_default_group_and_ticket_keys` | The regime override guards are not vacuous: feature groups and regime keys are found. |  |
 | `test_april_regime_ablation_arms_compose_without_append_prefix` | Both April regime arms compose, without ``+``, and reach the typed config. | parametrize, parametrize |
 | `test_every_feature_group_declares_every_regime_key` | Each ``FeatureConfig`` regime key is declared, so its override needs no ``+``. | parametrize |
+| `test_every_feature_group_declares_every_feature_config_key` | Every ``FeatureConfig`` field is declared in every group, so no override needs ``+``. | parametrize |
+| `test_momentum_blend_overrides_compose_with_every_feature_group` | The momentum-blend overrides reach the typed config from every group, without ``+``. | parametrize |
+| `test_feature_group_declarations_match_the_dataclass_defaults_for_momentum_blend` | Declaring the momentum-blend keys leaves each group's default behaviour unchanged. | parametrize |
 
 ## `tests/test_feature_drift.py`
 
@@ -1021,10 +1024,10 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 
 | Test | Description | Markers |
 |---|---|---|
-| `test_pit_masked_panel_notebook_uses_frozen_default_recipe` |  | requires_fred |
-| `test_pit_masked_panel_summary_text_reports_full_run_budget` |  | requires_fred |
-| `test_pit_masked_panel_summary_text_keeps_smoke_caveat` |  | requires_fred |
-| `test_pit_masked_panel_notebook_code_cells_parse` |  | requires_fred |
+| `test_pit_masked_panel_notebook_uses_frozen_default_recipe` |  |  |
+| `test_pit_masked_panel_summary_text_reports_full_run_budget` |  |  |
+| `test_pit_masked_panel_summary_text_keeps_smoke_caveat` |  |  |
+| `test_pit_masked_panel_notebook_code_cells_parse` |  |  |
 
 ## `tests/test_pit_membership_progression_audit.py`
 
@@ -1050,16 +1053,16 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 
 | Test | Description | Markers |
 |---|---|---|
-| `test_issue31_notebook_pins_repeated_seed_full_pit_replication` |  | requires_fred |
-| `test_issue31_notebook_writes_required_decision_artifacts` |  | requires_fred |
-| `test_issue31_notebook_can_resume_and_retry_transient_regime_fetch_failures` |  | requires_fred |
-| `test_issue31_notebook_uses_cost_rank_gate_promotion_path` |  | requires_fred |
-| `test_issue31_notebook_pastes_known_drive_locations_and_branch` |  | requires_fred |
-| `test_issue31_notebook_hardwires_colab_inputs_and_runtime_key` |  | requires_fred |
-| `test_issue31_notebook_includes_pooled_significance_for_issue29` |  | requires_fred |
-| `test_issue31_notebook_summarizes_three_seed_closeout_evidence` |  | requires_fred |
-| `test_issue31_notebook_runs_backtest_sensitivity_replay` |  | requires_fred |
-| `test_issue31_notebook_code_cells_parse` |  | requires_fred |
+| `test_issue31_notebook_pins_repeated_seed_full_pit_replication` |  |  |
+| `test_issue31_notebook_writes_required_decision_artifacts` |  |  |
+| `test_issue31_notebook_can_resume_and_retry_transient_regime_fetch_failures` |  |  |
+| `test_issue31_notebook_uses_cost_rank_gate_promotion_path` |  |  |
+| `test_issue31_notebook_pastes_known_drive_locations_and_branch` |  |  |
+| `test_issue31_notebook_hardwires_colab_inputs_and_runtime_key` |  |  |
+| `test_issue31_notebook_includes_pooled_significance_for_issue29` |  |  |
+| `test_issue31_notebook_summarizes_three_seed_closeout_evidence` |  |  |
+| `test_issue31_notebook_runs_backtest_sensitivity_replay` |  |  |
+| `test_issue31_notebook_code_cells_parse` |  |  |
 
 ## `tests/test_pit_saved_prediction_backtests.py`
 
@@ -1088,12 +1091,16 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 
 ## `tests/test_pit_universe_validation_notebook.py`
 
+**Exercises:** `mci_gru.config`
+
 | Test | Description | Markers |
 |---|---|---|
 | `test_pit_notebook_includes_survivorship_controls` |  |  |
 | `test_pit_notebook_writes_comparison_artifacts` |  |  |
 | `test_pit_notebook_preserves_frozen_recipe_scope` |  |  |
 | `test_pit_notebook_code_cells_parse` |  |  |
+| `test_universe_control_composition_guard_finds_the_pit_controls_and_windows` | The composition test below is not vacuous: PIT controls and data configs are found. |  |
+| `test_universe_control_overrides_compose_against_the_window_data_config` | Every control's overrides compose with the notebook's own data configs (issue 248). | parametrize, parametrize |
 
 ## `tests/test_portfolio_ic_config.py`
 
@@ -1198,19 +1205,36 @@ Contract tests for scripts/gen_readme_figure.py and the README evidence figure.
 
 | Test | Description | Markers |
 |---|---|---|
-| `test_compute_regime_monthly_features_outputs_expected_columns` |  | requires_fred |
-| `test_compute_regime_monthly_features_adds_subsequent_return_signals` |  | requires_fred |
-| `test_compute_regime_monthly_features_no_lookahead_exclusion_effect` |  | requires_fred |
-| `test_regime_subsequent_return_horizon_excludes_future_window` |  | requires_fred |
-| `test_add_regime_features_broadcasts_without_row_change` |  | requires_fred |
-| `test_regime_input_contract_columns_present` |  | requires_fred |
-| `test_regime_csv_contract_is_deprecated_and_requires_full_seven_variable_surface` | Deprecated CSV override must not silently drop paper-guided variables. | requires_fred |
-| `test_regime_csv_loader_forward_fills_without_backfill` | Raw CSV gaps may use prior values only; leading gaps remain unavailable. | requires_fred |
-| `test_live_regime_stock_bond_corr_uses_three_year_window` |  | requires_fred |
-| `test_live_regime_stock_bond_corr_handles_sparse_merged_panel` |  | requires_fred |
-| `test_live_regime_fetch_retries_transient_series_failure` |  | requires_fred |
-| `test_transform_with_regime_df_produces_nonzero_regime_columns` | Regime columns must be non-constant when a real regime_df is passed to transform. | requires_fred |
-| `test_regime_csv_lag_safety` | Lagged CSV regime inputs must not backfill the leading unavailable row. | requires_fred |
+| `test_compute_regime_monthly_features_outputs_expected_columns` |  |  |
+| `test_compute_regime_monthly_features_adds_subsequent_return_signals` |  |  |
+| `test_compute_regime_monthly_features_no_lookahead_exclusion_effect` |  |  |
+| `test_regime_subsequent_return_horizon_excludes_future_window` |  |  |
+| `test_add_regime_features_broadcasts_without_row_change` |  |  |
+| `test_regime_input_contract_columns_present` |  |  |
+| `test_regime_csv_contract_is_deprecated_and_requires_full_seven_variable_surface` | Deprecated CSV override must not silently drop paper-guided variables. |  |
+| `test_regime_csv_loader_forward_fills_without_backfill` | Raw CSV gaps may use prior values only; leading gaps remain unavailable. |  |
+| `test_live_regime_stock_bond_corr_uses_three_year_window` |  |  |
+| `test_live_regime_stock_bond_corr_handles_sparse_merged_panel` |  |  |
+| `test_live_regime_fetch_retries_transient_series_failure` |  |  |
+| `test_transform_with_regime_df_produces_nonzero_regime_columns` | Regime columns must be non-constant when a real regime_df is passed to transform. |  |
+| `test_regime_csv_lag_safety` | Lagged CSV regime inputs must not backfill the leading unavailable row. |  |
+
+## `tests/test_regime_lookahead_guard.py`
+
+Regime forward context is refused unless the matching excludes the current month.
+
+**Exercises:** `mci_gru.config`, `mci_gru.features`, `mci_gru.features.regime`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_feature_config_refuses_subsequent_returns_without_exclusion` |  |  |
+| `test_feature_config_accepts_the_combinations_the_guard_allows` | The guard is specific: it refuses only forward context with no exclusion. |  |
+| `test_create_config_from_dict_refuses_subsequent_returns_without_exclusion` |  |  |
+| `test_hydra_override_refuses_subsequent_returns_without_exclusion` | The path ``run_experiment.py`` takes: ``compose`` then ``create_config_from_dict``. |  |
+| `test_regime_computation_refuses_subsequent_returns_without_exclusion` |  |  |
+| `test_regime_computation_accepts_the_combinations_the_guard_allows` |  |  |
+| `test_feature_engineer_refuses_the_combination_when_the_config_guard_is_bypassed` | Keyword construction skips ``FeatureConfig``; the computation-time copy still refuses. |  |
+| `test_add_regime_features_refuses_subsequent_returns_without_exclusion` |  |  |
 
 ## `tests/test_repository_retirement_guard.py`
 
