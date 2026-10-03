@@ -276,7 +276,6 @@ def test_required_provider_failure_retains_safe_facts_without_fallback_or_use(
 def test_data_manager_regime_capture_and_replay_account_for_all_six_sources(
     tmp_path: Path, monkeypatch
 ) -> None:
-    dates = pd.date_range("2017-01-01", periods=1200)
     series_ids = ["DGS10", "DGS3MO", "DCOILWTICO", "VIXCLS", "SP500", "PCOPPUSDM"]
     calls = []
 
@@ -284,8 +283,9 @@ def test_data_manager_regime_capture_and_replay_account_for_all_six_sources(
         def __init__(self, api_key):
             calls.append("setup")
 
-        def get_series(self, series_id, **kwargs):
+        def get_series(self, series_id, observation_start, observation_end):
             calls.append(series_id)
+            dates = pd.date_range(observation_start, observation_end)
             return pd.Series(
                 np.linspace(10.0, 100.0, len(dates)) + series_ids.index(series_id), index=dates
             )
@@ -726,10 +726,9 @@ def test_preparation_reports_the_current_rejected_series_after_an_earlier_retry(
             calls.append(series_id)
             if calls == ["DGS10"]:
                 raise TimeoutError("transient synthetic timeout")
-            values = (
-                [1.0, 2.0, 3.0] if series_id == "DGS10" else ["malformed", "malformed", "malformed"]
-            )
-            return pd.Series(values, index=pd.date_range("2020-01-01", periods=3))
+            dates = pd.date_range(kwargs["observation_start"], kwargs["observation_end"])
+            values = [1.0] * len(dates) if series_id == "DGS10" else ["malformed"] * len(dates)
+            return pd.Series(values, index=dates)
 
     monkeypatch.setenv("FRED_API_KEY", "test-only")
     monkeypatch.setenv("MCI_GRU_FRED_MAX_ATTEMPTS", "2")
@@ -740,7 +739,8 @@ def test_preparation_reports_the_current_rejected_series_after_an_earlier_retry(
     failure = caught.value
     assert failure.facts["role"] == "fred.yield_3m"
     assert failure.facts["request"]["series_id"] == "DGS3MO"
-    assert failure.facts["stage"] == "parse"
+    assert failure.facts["stage"] == "validate"
+    assert failure.facts["reason_code"] == "malformed_value"
     assert failure.facts["identity"]["manifest_sha256"]
     evidence = failure.input_observations.to_dict()
     failed = [event for event in evidence["observations"] if event["outcome"] == "error"]

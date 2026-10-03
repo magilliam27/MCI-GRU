@@ -10,7 +10,13 @@ from importlib import import_module
 
 import pandas as pd
 
-from mci_gru.data.input_snapshots import InputSnapshots
+from mci_gru.data.auxiliary_quality import (
+    QualifiedRole,
+    RegimeInputError,
+    RegimeRole,
+    qualify_role,
+)
+from mci_gru.data.input_snapshots import InputSnapshotError, InputSnapshots
 
 # FRED series IDs for credit spreads (daily, basis points)
 FRED_SERIES_IG = "BAMLC0A0CM"  # ICE BofA US Corporate Index OAS
@@ -21,6 +27,9 @@ FRED_SERIES_3M = "DGS3MO"
 FRED_SERIES_OIL_WTI = "DCOILWTICO"
 FRED_SERIES_COPPER = "PCOPPUSDM"
 FRED_SERIES_VIX = "VIXCLS"
+
+# FRED's documented missing-observation token; a blank is also a gap.
+FRED_MISSING_MARKERS = (".",)
 
 
 class FREDLoader:
@@ -178,3 +187,69 @@ class FREDLoader:
             df = df.rename(columns={df.columns[0]: "dt"})
             df["dt"] = pd.to_datetime(df["dt"]).dt.strftime("%Y-%m-%d")
             return df[["dt", value_name]]
+
+    def get_regime_role(
+        self,
+        series_id: str,
+        start: str,
+        end: str,
+        role: RegimeRole,
+        sessions: pd.DatetimeIndex,
+        buffer_days: int = 31,
+    ) -> QualifiedRole:
+        """
+        Fetch one regime role and apply the ruled #224 availability rules.
+
+        The request is the one get_series makes, so a capture serves either.
+        No fill or row lag is applied here: see mci_gru.data.auxiliary_quality.
+        A rule violation stops preparation with the role, reason and dates.
+        """
+        start_ts = pd.Timestamp(start)
+        end_ts = pd.Timestamp(end)
+        request = {
+            "series_id": series_id,
+            "observation_start": (start_ts - pd.Timedelta(days=buffer_days)).strftime("%Y-%m-%d"),
+            "observation_end": end_ts.strftime("%Y-%m-%d"),
+        }
+        observation = self.snapshots.observe(
+            role=f"fred.{role.column}",
+            source="fred",
+            request=request,
+            acquire=lambda: self._get_client().get_series(
+                series_id,
+                observation_start=request["observation_start"],
+                observation_end=request["observation_end"],
+            ),
+        )
+        rejection: RegimeInputError | None = None
+        try:
+            with self.snapshots.accepted(observation):
+                try:
+                    qualified = qualify_role(
+                        observation.data,
+                        role,
+                        sessions,
+                        source="fred",
+                        series_id=series_id,
+                        missing_markers=FRED_MISSING_MARKERS,
+                    )
+                except RegimeInputError as error:
+                    rejection = error
+                    raise
+        except InputSnapshotError as failure:
+            if rejection is None:
+                raise
+            facts = {
+                key: value
+                for key, value in failure.facts.items()
+                if key not in {"role", "source", "request", "stage", "reason", "reason_code"}
+            }
+            raise InputSnapshotError(
+                role=failure.facts["role"],
+                source="fred",
+                request=request,
+                stage="validate",
+                **{**facts, **rejection.facts, "detail": str(rejection)},
+            ) from None
+        qualified.verdict["observation_id"] = observation.observation_id.index
+        return qualified
