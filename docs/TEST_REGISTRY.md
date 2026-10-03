@@ -134,7 +134,7 @@ Selected-checkpoint metrics: Trainer.train reports the checkpoint it saved.
 | `test_each_selection_metric_saves_its_own_best_epoch_and_reports_it` | Selection rules are unchanged and the reported metrics are the saved epoch's own. | parametrize |
 | `test_ic_selection_still_requires_minimum_selection_rows` | Fail-closed coverage boundary: N-1 eligible rows raise and N rows select. | parametrize |
 | `test_selection_metric_that_is_never_finite_fails_closed` | A run whose selection metric is NaN on every epoch raises and saves no checkpoint. |  |
-| `test_first_finite_epoch_is_selected_after_non_finite_ones` | NaN epochs never improve, and the first finite epoch after them is saved. |  |
+| `test_first_finite_epoch_is_selected_after_non_finite_ones` | A NaN epoch never improves, before or after the first finite epoch, which is saved. |  |
 | `test_ic_selection_saves_the_first_finite_epoch_however_negative` | IC selection starts below every finite value, so an IC of -1 is still selected. | parametrize |
 | `test_selection_tie_keeps_the_earlier_epoch` | Only a strict improvement replaces the saved checkpoint. | parametrize |
 | `test_ensemble_fails_the_run_when_a_member_selects_no_checkpoint` | The member's error propagates, so no member or averaged predictions are written. |  |
