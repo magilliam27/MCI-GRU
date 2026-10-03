@@ -230,7 +230,7 @@ def add_vix_features(
     vix_merge = vix[vix_cols]
     df["dt"] = pd.to_datetime(df["dt"]).dt.strftime("%Y-%m-%d")
     df = df.merge(vix_merge, on="dt", how="left")
-    df["vix"] = df["vix"].fillna(method="ffill").fillna(20)
+    df["vix"] = df["vix"].ffill().fillna(20)
     df["vix_change"] = df["vix_change"].fillna(0)
     df["vix_regime"] = df["vix_regime"].fillna(0)
 

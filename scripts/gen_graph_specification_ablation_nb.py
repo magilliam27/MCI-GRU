@@ -915,7 +915,7 @@ def build_cells() -> list[dict]:
                         "seed": job["seed"],
                         "run_dir": str(run_dir),
                         # Production per-run pooled daily IC with CI. The arbiter
-                        # is the paired difference in section 9; this is context.
+                        # is the paired difference in section 10; this is context.
                         "avg_ic": metrics.get("avg_ic"),
                         "avg_ic_ci_lower": metrics.get("avg_ic_ci_lower"),
                         "avg_ic_ci_upper": metrics.get("avg_ic_ci_upper"),
@@ -1077,7 +1077,7 @@ def build_cells() -> list[dict]:
         md("## 8. Disclosure: Pooled Daily IC Per Year"),
         code(
             r"""
-            # Disclosure-grade per-year breakdown. Section 9's paired arbiter uses
+            # Disclosure-grade per-year breakdown. Section 10's paired arbiter uses
             # the production label `close[t+5]/close[t+1] - 1`; this cell keeps the
             # ticket-166 `close[t+5]/close[t] - 1` variant for continuity with the
             # earlier report, and the two sit 0.003-0.006 apart for that reason
@@ -1139,7 +1139,38 @@ def build_cells() -> list[dict]:
             display(per_year_df)
             """
         ),
-        md("## 9. Paired Inference Against The Control"),
+        md("## 9. Mechanics Sanity Gate"),
+        code(
+            r"""
+            # There is no promotion gate, so this stage decides nothing. What it
+            # does is say whether the mechanics held: every job trained, the twin
+            # rule held everywhere, and each fold's arms shared one base seed.
+            #
+            # It sits above the paired-inference cell on purpose. That cell
+            # refuses a smoke (ticket 181 section 8), so a gate placed after it
+            # never ran on the one stage whose purpose is checking mechanics
+            # (issue 196). Everything it reads exists before the arbiter.
+            # `distinct_fold_seeds` is the most seeds any one fold's arms used,
+            # not a cross-fold check: the bridge fold shares F2022's seed.
+            sanity = {
+                "jobs_expected": len(jobs),
+                "jobs_completed": len(run_dirs),
+                "twin_edges_total": int(disclosure_df["twin_edge_count"].sum()),
+                "distinct_fold_seeds": int(results_df.groupby("fold")["seed"].nunique().max()),
+                "folds_present": sorted({fold_key for fold_key, _ in run_dirs}),
+                "arms_present": sorted({arm_key for _, arm_key in run_dirs}),
+            }
+            print(json.dumps(sanity, indent=2))
+            if sanity["jobs_completed"] != sanity["jobs_expected"]:
+                raise AssertionError("Not every job completed; the manifest records what landed.")
+            if sanity["twin_edges_total"] != 0:
+                raise AssertionError("Twin edge present; the hygiene rule failed.")
+            if sanity["distinct_fold_seeds"] != 1:
+                raise AssertionError("A fold's arms did not share one base seed.")
+            print("Mechanics sanity passed.")
+            """
+        ),
+        md("## 10. Paired Inference Against The Control"),
         code(
             r"""
             # The arbiter (ticket 181 sections 5, 6, 7 and 9), on the merged
@@ -1517,7 +1548,7 @@ def build_cells() -> list[dict]:
             display(descriptive_df)
             """
         ),
-        md("## 10. Disclosure: Ensemble Scale, Sharpe Intervals, Basket Returns, April Composite"),
+        md("## 11. Disclosure: Ensemble Scale, Sharpe Intervals, Basket Returns, April Composite"),
         code(
             r"""
             from mci_gru.evaluation.paired_inference import sharpe_block_bootstrap_ci
@@ -1613,7 +1644,7 @@ def build_cells() -> list[dict]:
 
             # April 2026's composite decision score, computed alongside for
             # reconciliation with the historical ablation reports. The composite
-            # is not the arbiter; the paired difference in section 9 is.
+            # is not the arbiter; the paired difference in section 10 is.
             DECISION_SCORE_WEIGHTS = {
                 "avg_ic": 0.35,
                 "avg_spearman_corr": 0.25,
@@ -1637,12 +1668,9 @@ def build_cells() -> list[dict]:
             display(scored_df[["fold", "arm", "avg_ic", "avg_ic_ci_lower", "avg_ic_ci_upper", "decision_score"]])
             """
         ),
-        md("## 11. Sanity Summary"),
+        md("## 12. Summary"),
         code(
             r"""
-            # There is no promotion gate, so this stage decides nothing. What it
-            # does is say whether the mechanics held: every job trained, the twin
-            # rule held everywhere, and each fold's arms shared one base seed.
             summary_lines = [
                 "# Graph-Specification Ablation Summary",
                 "",
@@ -1670,23 +1698,6 @@ def build_cells() -> list[dict]:
             summary_path = RUN_ROOT / f"graph_specification_ablation_summary_{STAGE_SLUG}.md"
             summary_path.write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
             print("Summary:", summary_path)
-
-            sanity = {
-                "jobs_expected": len(jobs),
-                "jobs_completed": len(run_dirs),
-                "twin_edges_total": int(disclosure_df["twin_edge_count"].sum()),
-                "distinct_fold_seeds": int(results_df.groupby("fold")["seed"].nunique().max()),
-                "folds_present": sorted({fold_key for fold_key, _ in run_dirs}),
-                "arms_present": sorted({arm_key for _, arm_key in run_dirs}),
-            }
-            print(json.dumps(sanity, indent=2))
-            if sanity["jobs_completed"] != sanity["jobs_expected"]:
-                raise AssertionError("Not every job completed; the manifest records what landed.")
-            if sanity["twin_edges_total"] != 0:
-                raise AssertionError("Twin edge present; the hygiene rule failed.")
-            if sanity["distinct_fold_seeds"] != 1:
-                raise AssertionError("A fold's arms did not share one base seed.")
-            print("Mechanics sanity passed.")
             """
         ),
     ]

@@ -35,7 +35,6 @@ from time import perf_counter
 from typing import Any
 
 import hydra
-import numpy as np
 import torch
 from omegaconf import DictConfig, OmegaConf
 
@@ -55,6 +54,7 @@ from mci_gru.models import create_model
 from mci_gru.pipeline import prepare_data, prepare_data_index_level
 from mci_gru.tracking import MLflowTrackingManager
 from mci_gru.training import train_multiple_models
+from mci_gru.training.summary import build_training_summary
 from mci_gru.utils.seeding import set_seed
 from mci_gru.walkforward import generate_walkforward_configs, merge_walkforward_summary
 
@@ -283,24 +283,11 @@ def main(cfg: DictConfig):
                     perf_counter() - phase_started
                 )
 
-                best_val_losses = [r.best_val_loss for r in results]
-                best_val_ics = [r.best_val_ic for r in results]
-                best_val_rank_ics = [r.best_val_rank_ic for r in results]
-                training_summary = {
-                    "experiment_name": cfg_w.experiment_name,
-                    "models_trained": len(results),
-                    "best_val_losses": best_val_losses,
-                    "best_val_ics": best_val_ics,
-                    "best_val_rank_ics": best_val_rank_ics,
-                    "mean_best_val_loss": float(np.mean(best_val_losses))
-                    if best_val_losses
-                    else None,
-                    "mean_best_val_ic": float(np.mean(best_val_ics)) if best_val_ics else None,
-                    "mean_best_val_rank_ic": (
-                        float(np.mean(best_val_rank_ics)) if best_val_rank_ics else None
-                    ),
-                    "walkforward_window": wi,
-                }
+                training_summary = build_training_summary(
+                    results,
+                    experiment_name=cfg_w.experiment_name,
+                    walkforward_window=wi,
+                )
                 training_summary_path = os.path.join(wpath, "training_summary.json")
                 with open(training_summary_path, "w") as f:
                     json.dump(training_summary, f, indent=2)

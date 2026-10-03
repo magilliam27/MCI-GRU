@@ -19,7 +19,6 @@ import pandas as pd
 import torch
 
 from mci_gru.data.data_manager import DataManager
-from mci_gru.data.input_observations import InputObservationContext, InputObservationError
 from mci_gru.data.pit import (
     active_kdcodes_in_period,
     apply_label_mask,
@@ -48,6 +47,7 @@ from mci_gru.graph.sector_edges import build_sector_edges, load_sector_map_csv
 
 if TYPE_CHECKING:
     from mci_gru.config import ExperimentConfig, GraphConfig
+    from mci_gru.data.input_observations import InputObservationContext
     from mci_gru.features import FeatureEngineer
     from mci_gru.graph.schedule import GraphSchedule
 
@@ -155,19 +155,24 @@ def load_auxiliary_data(
         try:
             vix_df = data_manager.load_vix()
             logger.info(f"Loaded VIX data: {len(vix_df)} observations")
-        except InputObservationError:
-            raise
         except Exception as exc:
-            logger.warning(f"Warning: Could not load VIX data: {exc}")
+            raise data_manager.required_input_failure(
+                exc,
+                role="vix",
+                source=config.data.auxiliary_sources.get("vix", "file"),
+                configured_path="vix_data.csv",
+            ) from None
 
     if config.features.include_credit_spread:
         try:
             credit_df = data_manager.load_credit_spreads()
             logger.info(f"Loaded credit spread data: {len(credit_df)} observations")
-        except InputObservationError:
-            raise
         except Exception as exc:
-            logger.warning(f"Warning: Could not load credit spread data: {exc}")
+            raise data_manager.required_input_failure(
+                exc,
+                role="credit",
+                source=config.data.auxiliary_sources.get("credit", "file"),
+            ) from None
 
     if config.features.include_global_regime:
         try:
@@ -182,13 +187,15 @@ def load_auxiliary_data(
                 regime_enforce_lag_days=config.features.regime_enforce_lag_days,
             )
             logger.info(f"Loaded regime input data: {len(regime_df)} observations")
-        except InputObservationError:
-            raise
         except Exception as exc:
-            if config.features.regime_strict:
-                raise
-            logger.warning(f"Warning: Could not load regime input data: {exc}")
-            logger.warning("Continuing with zero-filled regime features (soft-fail)")
+            raise data_manager.required_input_failure(
+                exc,
+                role="regime",
+                source="file"
+                if config.features.regime_inputs_csv
+                else config.data.auxiliary_sources.get("regime", "file"),
+                configured_path=config.features.regime_inputs_csv,
+            ) from None
 
     return vix_df, credit_df, regime_df
 

@@ -14,6 +14,7 @@ import pandas as pd
 import torch
 
 from mci_gru.config import ExperimentConfig
+from mci_gru.training.summary import format_checkpoint_metric
 from mci_gru.training.trainer import Trainer, TrainingResult, prediction_rows_for_date
 from mci_gru.utils.seeding import set_seed
 
@@ -107,9 +108,9 @@ def train_multiple_models(
 
             logger.info(
                 f"Model {model_id + 1} training complete. "
-                f"Selected-checkpoint val loss: {result.best_val_loss:.6f}, "
-                f"val IC: {result.best_val_ic:.6f}, "
-                f"val Rank IC: {result.best_val_rank_ic:.6f}"
+                f"Selected-checkpoint val loss: {format_checkpoint_metric(result.best_val_loss)}, "
+                f"val IC: {format_checkpoint_metric(result.best_val_ic)}, "
+                f"val Rank IC: {format_checkpoint_metric(result.best_val_rank_ic)}"
             )
 
             trainer.last_best_model_path = result.best_model_path

@@ -267,6 +267,218 @@ def test_parsed_inventory_ignores_run_status_but_not_markers(tmp_path):
     assert parse_registry(remarked).modules != parse_registry(plain).modules
 
 
+_INHERITING_MODULE = '''
+"""Fake module whose tests may inherit a module-level pytestmark."""
+
+import sys
+
+import pytest
+
+requires_data = pytest.mark.requires_data
+
+{assignment}
+
+
+def test_unmarked():
+    assert True
+
+
+@pytest.mark.slow
+def test_decorated():
+    assert True
+
+
+@pytest.mark.requires_fred
+def test_already_marked():
+    assert True
+
+
+class TestGroup:
+    def test_method(self):
+        assert True
+'''
+
+
+def _test_rows(content: str) -> set[str]:
+    return {line for line in content.splitlines() if line.startswith("| `")}
+
+
+@pytest.mark.parametrize(
+    ("assignment", "inherited"),
+    [
+        pytest.param("pytestmark = pytest.mark.requires_fred", ["requires_fred"], id="single-mark"),
+        pytest.param(
+            "pytestmark = [pytest.mark.requires_lseg, pytest.mark.requires_fred]",
+            ["requires_lseg", "requires_fred"],
+            id="list-of-marks",
+        ),
+        pytest.param(
+            "pytestmark = (pytest.mark.requires_lseg, pytest.mark.requires_fred)",
+            ["requires_lseg", "requires_fred"],
+            id="tuple-of-marks",
+        ),
+        pytest.param(
+            'pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX only")',
+            ["skipif"],
+            id="single-mark-with-arguments",
+        ),
+        pytest.param(
+            "pytestmark = ["
+            'pytest.mark.filterwarnings("ignore::UserWarning"), pytest.mark.requires_fred]',
+            ["filterwarnings", "requires_fred"],
+            id="list-of-marks-with-arguments",
+        ),
+        pytest.param(
+            "pytestmark: list = [pytest.mark.requires_lseg]",
+            ["requires_lseg"],
+            id="annotated-assignment",
+        ),
+        pytest.param("", [], id="no-pytestmark"),
+    ],
+)
+def test_module_pytestmark_fills_the_markers_column_of_every_test(tmp_path, assignment, inherited):
+    """A module-level pytestmark marks every test in the file, so every row must show it (#121).
+
+    Each row lists the test's own decorator marks first, then each inherited mark
+    it does not already carry. A mark assigned to any other name, like the unused
+    ``requires_data`` alias here, marks nothing.
+    """
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_inheriting.py").write_text(
+        _INHERITING_MODULE.format(assignment=assignment), encoding="utf-8"
+    )
+
+    content = build_registry(tests_dir, None, tmp_path / "TEST_REGISTRY.md", write=False)
+
+    def row(name: str, markers: list[str]) -> str:
+        return f"| `{name}` |  | {', '.join(markers)} |"
+
+    assert _test_rows(content) == {
+        row("test_unmarked", inherited),
+        row("test_decorated", ["slow", *inherited]),
+        row(
+            "test_already_marked",
+            ["requires_fred", *(m for m in inherited if m != "requires_fred")],
+        ),
+        row("TestGroup.test_method", inherited),
+    }
+
+
+_CAPABILITY_MODULE = textwrap.dedent(
+    """
+    import pytest
+
+    pytestmark = pytest.mark.requires_lseg
+
+
+    def test_needs_lseg():
+        assert True
+
+
+    def test_offline():
+        assert True
+    """
+)
+
+
+@pytest.mark.parametrize(
+    ("edit", "changed"),
+    [
+        pytest.param(
+            lambda source: source.replace("pytestmark = pytest.mark.requires_lseg\n", ""),
+            {"test_needs_lseg", "test_offline"},
+            id="pytestmark-removed",
+        ),
+        pytest.param(
+            lambda source: source.replace("pytestmark = pytest.mark.requires_lseg\n", "").replace(
+                "def test_needs_lseg", "@pytest.mark.requires_lseg\ndef test_needs_lseg"
+            ),
+            {"test_offline"},
+            id="pytestmark-moved-onto-one-test",
+        ),
+    ],
+)
+def test_check_notices_a_pytestmark_edit_that_changes_which_tests_run(
+    tmp_path, capsys, edit, changed
+):
+    """Editing a module-level pytestmark changes test selection, so --check must fail (#121).
+
+    It must name exactly the tests whose markers changed: a test that keeps its
+    mark through a decorator is not stale.
+    """
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    test_file = tests_dir / "test_capability.py"
+    test_file.write_text(_CAPABILITY_MODULE, encoding="utf-8")
+    out = tmp_path / "TEST_REGISTRY.md"
+    argv = ["--tests-dir", str(tests_dir), "--out", str(out)]
+    assert main(argv) == 0
+    assert main([*argv, "--check"]) == 0
+
+    edited = edit(_CAPABILITY_MODULE)
+    assert edited != _CAPABILITY_MODULE  # the edit must actually change the file
+    test_file.write_text(edited, encoding="utf-8")
+    capsys.readouterr()
+
+    assert main([*argv, "--check"]) == 1
+    err = capsys.readouterr().err
+    for name in ("test_needs_lseg", "test_offline"):
+        message = f"tests/test_capability.py::{name}: description or markers differ"
+        assert (message in err) == (name in changed), name
+
+
+def test_class_marks_reach_only_the_tests_that_class_encloses(tmp_path):
+    """A class's mark decorators and pytestmark mark its own tests, nested ones included."""
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_classes.py").write_text(
+        textwrap.dedent(
+            """
+            import pytest
+
+            pytestmark = pytest.mark.requires_fred
+
+
+            def test_module_level():
+                assert True
+
+
+            @pytest.mark.slow
+            class TestMarked:
+                pytestmark = [pytest.mark.requires_lseg]
+
+                def test_method(self):
+                    assert True
+
+                class TestNested:
+                    pytestmark = pytest.mark.requires_data
+
+                    @pytest.mark.parametrize("value", [1])
+                    def test_deep(self, value):
+                        assert value
+
+
+            class TestUnmarked:
+                def test_sibling(self):
+                    assert True
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    content = build_registry(tests_dir, None, tmp_path / "TEST_REGISTRY.md", write=False)
+
+    # Own marks first, then the closest enclosing scope's, out to the module's.
+    assert _test_rows(content) == {
+        "| `test_module_level` |  | requires_fred |",
+        "| `TestMarked.test_method` |  | slow, requires_lseg, requires_fred |",
+        "| `TestMarked.TestNested.test_deep` |  "
+        "| parametrize, requires_data, slow, requires_lseg, requires_fred |",
+        "| `TestUnmarked.test_sibling` |  | requires_fred |",
+    }
+
+
 def test_parse_registry_round_trips_every_real_test_file():
     """Every real test, with its description and markers, survives render then parse.
 

@@ -48,9 +48,11 @@ preparation → training → prediction → evaluation sequence once per window.
    whatever remains.
 
 4. **PIT mode resolution** — with `data.use_pit_universe=true`, membership
-   intervals are loaded from `data.pit_universe_csv`. `row_filter` (the default
-   mode) drops rows outside `[valid_from, valid_to]`. `masked_panel` keeps every
-   row and defers eligibility to daily masks (step 8).
+   intervals are loaded from `data.pit_universe_csv`. `masked_panel`, the default
+   and the only mode `DataConfig` accepts, keeps every row and defers
+   eligibility to daily masks (step 8). The former `row_filter` mode, which
+   dropped rows outside `[valid_from, valid_to]` but left the correlation graph
+   unrestricted, is rejected at validation (#139).
 
 5. **Normalization** — `data.normalisation=zscore` fits per-feature mean and
    standard deviation on rows with `dt <= data.train_end` only, then applies a
@@ -87,8 +89,10 @@ preparation → training → prediction → evaluation sequence once per window.
 
    The formula makes `model.label_t=1` degenerate: the label becomes
    `close[t+1] / close[t+1] - 1`, identically zero for every stock and date.
-   Nothing in the config layer rejects that value; `scripts/ci_smoke.py` sets
-   `model.label_t=2` for this reason.
+   `ModelConfig` therefore rejects `label_t < 2` at construction (issue #107).
+   Values of 0 or below are rejected as well: they place the exit close at or
+   before the entry close, and the session embargo treats them as having no
+   horizon although the label still reads `close[t+1]`.
 
 8. **Masked-panel eligibility** — `mci_gru/data/pit.py` defines the mask algebra:
 
@@ -391,8 +395,11 @@ fails closed**: IC metrics are `None` rather than `0.0` when no rows are
 eligible, and `ValidationObservation.selection_value()` raises `ValueError` when
 the configured `training.selection_metric` has fewer than
 `training.minimum_selection_rows` eligible rows. Early stopping and checkpointing
-both use that single metric; the co-metrics recorded in `TrainingResult` come
-from the selected epoch whenever they are available on it.
+both use that single metric. `TrainingResult.best_val_loss`, `best_val_ic`, and
+`best_val_rank_ic` are the selected checkpoint's own validation observation,
+the epoch saved at `best_model_path`; a metric unavailable on that epoch is
+`None`, never a value carried over from another epoch or an infinite sentinel
+(`tests/test_checkpoint_metrics.py`).
 
 `mci_gru/training/ensemble.py` implements the ensemble contract.
 `train_multiple_models()` builds `training.num_models` independent models; member
@@ -402,6 +409,15 @@ from the selected epoch whenever they are available on it.
 mean across members. Prediction CSVs have `kdcode,dt,score` rows, round scores to
 five decimal places, and omit masked or non-finite names — so in masked PIT mode
 a date's CSV contains only that date's tradable candidates.
+
+`run_experiment.py` writes the members' selected-checkpoint metrics to
+`training_summary.json` through `build_training_summary()`
+(`mci_gru/training/summary.py`). `best_val_losses`, `best_val_ics`, and
+`best_val_rank_ics` keep one slot per member, `null` where the metric was
+unavailable at that member's selected checkpoint. Each `mean_best_val_*`
+averages only the available finite member values, is `null` when none is
+available, and `member_coverage` records the available and total member counts
+(`tests/test_training_summary.py`).
 
 ## Walk-Forward Windows
 
@@ -419,8 +435,13 @@ sections with only `data.*` dates rewritten, so per-window evaluation uses the
 configured `EvaluationConfig` rather than defaults
 (`tests/test_walkforward_config_propagation.py`).
 
-`merge_walkforward_summary()` aggregates per-window training summaries and the
-mean of each numeric evaluation metric across windows;
+`merge_walkforward_summary()` aggregates per-window training summaries with
+equal weight per window: each `mean_best_val_*_across_windows` averages the
+windows whose own `mean_best_val_*` is available, `window_coverage` records the
+available and total window counts separately from each window's
+`member_coverage`, non-finite values from older summaries (such as `-inf`)
+count as unavailable, and an aggregate with no available window is `null`. It
+also takes the mean of each numeric evaluation metric across windows;
 `select_training_objective_value()` returns the aggregate matching
 `training.selection_metric`.
 

@@ -6,6 +6,34 @@
 
 This file records the test inventory only, with no counts, dates, or last-run status, so each line depends on one test file. `--check` compares it with `tests/`; last-run status goes to a separate report (see `docs/TESTING_GUIDE.md`).
 
+## `tests/test_auxiliary_input_replay.py`
+
+Public auxiliary loader and preparation capture/replay contracts.
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.data_manager`, `mci_gru.data.fred_loader`, `mci_gru.data.input_observations`, `mci_gru.data.input_snapshots`, `mci_gru.data.lseg_loader`, `mci_gru.features`, `mci_gru.pipeline`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_fred_replay_uses_original_sdk_series_before_fill_and_lag` |  |  |
+| `test_replay_returns_repeated_identical_requests_in_captured_order` |  |  |
+| `test_credit_replay_keeps_both_original_series_and_the_existing_lag` |  |  |
+| `test_lseg_replay_preserves_raw_history_without_opening_a_session` |  | parametrize |
+| `test_required_provider_failure_retains_safe_facts_without_fallback_or_use` |  | parametrize, parametrize |
+| `test_data_manager_regime_capture_and_replay_account_for_all_six_sources` |  |  |
+| `test_preparation_requires_selected_file_inputs_without_implicit_provider_setup` |  | parametrize |
+| `test_data_manager_replays_explicit_auxiliary_sources_with_a_csv_stock_config` |  | parametrize |
+| `test_preparation_returns_complete_replayable_input_identities_for_enabled_roles` |  | parametrize |
+| `test_data_manager_file_capture_replays_the_original_read_buffer` |  | parametrize |
+| `test_preparation_keeps_rejected_file_snapshot_without_consumption` |  |  |
+| `test_provider_capture_uses_the_retained_observation_if_sdk_buffer_changes` |  |  |
+| `test_preparation_does_not_reacquire_after_retention_failure` |  | parametrize |
+| `test_preparation_reports_the_current_rejected_series_after_an_earlier_retry` |  |  |
+| `test_explicit_unsupported_source_configuration_is_not_ignored` |  | parametrize |
+| `test_the_frozen_recipe_requests_its_six_fred_regime_series_without_a_source_override` | The recipe names no auxiliary source, so the base config's regime=fred must carry it. |  |
+| `test_the_base_config_declares_the_typed_default_auxiliary_sources` | Hydra runs read configs/config.yaml and direct callers read DataConfig(); both agree. |  |
+| `test_a_misspelt_auxiliary_source_role_is_rejected_when_the_config_is_built` |  |  |
+| `test_the_full_feature_preset_stops_at_the_unselected_credit_role` | features=full enables credit, which the base config leaves unselected. |  |
+
 ## `tests/test_backtest_engine_golden.py`
 
 Golden-output regression tests for legacy backtest CLIs (WS-N step 2).
@@ -38,6 +66,14 @@ Test script to verify backtest fairness fixes.
 | Test | Description | Markers |
 |---|---|---|
 | `test_plot_equity_curve_uses_agg_backend_when_saving` |  |  |
+
+## `tests/test_capability_marker_guard.py`
+
+No test CI deselects by capability marker may pass without that capability.
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_no_test_ci_deselects_passes_without_its_capability` | Every test CI deselects fails or skips with the CI runner's capabilities. | skipif |
 
 ## `tests/test_capacity_replay.py`
 
@@ -83,6 +119,20 @@ Contract tests for scripts/check_config.py.
 | `test_clean_tree_passes` |  |  |
 | `test_subdirectory_reports_are_not_flagged` |  |  |
 | `test_real_docs_tree_is_clean` |  |  |
+
+## `tests/test_checkpoint_metrics.py`
+
+Selected-checkpoint metrics: Trainer.train reports the checkpoint it saved.
+
+**Exercises:** `mci_gru.config`, `mci_gru.training.losses`, `mci_gru.training.trainer`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_val_loss_selection_without_eligible_ic_rows_reports_ic_as_missing` | With no eligible IC row, IC co-metrics are None in the result and every callback. |  |
+| `test_co_metrics_describe_the_saved_checkpoint_not_an_earlier_epoch` | An earlier epoch's IC is never reported for a later saved checkpoint without one. |  |
+| `test_rank_ic_selection_reports_ic_as_missing_when_the_saved_epoch_has_none` | Both IC metrics: the saved epoch has a rank IC but no eligible Pearson IC row. |  |
+| `test_each_selection_metric_saves_its_own_best_epoch_and_reports_it` | Selection rules are unchanged and the reported metrics are the saved epoch's own. | parametrize |
+| `test_ic_selection_still_requires_minimum_selection_rows` | Fail-closed coverage boundary: N-1 eligible rows raise and N rows select. | parametrize |
 
 ## `tests/test_ci_smoke.py`
 
@@ -278,6 +328,7 @@ Ensemble invariant: prediction = mean of independently trained models.
 | `test_ensemble_prediction_is_mean_of_member_predictions` |  |  |
 | `test_ensemble_writes_one_checkpoint_per_member` |  |  |
 | `test_ensemble_averaging_matches_numpy_mean` | avg_predictions returned in-memory equals the numpy mean of member outputs. |  |
+| `test_ensemble_completes_and_forwards_missing_checkpoint_metrics` | Members without an IC at their selected checkpoint complete and forward None. |  |
 
 ## `tests/test_evaluation_portfolio.py`
 
@@ -344,7 +395,7 @@ Unit tests for mci_gru.evaluation.experiment_summary (WS-M M2 move).
 | `test_data_file_fingerprint_hashes_existing_file` |  |  |
 | `test_data_file_fingerprint_missing_file_returns_nulls` |  |  |
 | `test_resolved_evaluation_kwargs_derives_defaults_from_label_t` |  |  |
-| `test_resolved_evaluation_kwargs_label_t_one_floors` |  |  |
+| `test_resolved_evaluation_kwargs_at_the_smallest_admissible_label_t` | `ModelConfig` refuses label_t < 2 (issue 107), so 2 is the lowest horizon a run carries. |  |
 | `test_resolved_evaluation_kwargs_explicit_values_win` |  |  |
 | `test_compute_evaluation_summary_shape_and_metrics` |  |  |
 | `test_select_training_objective_key_mapping_last_window` |  |  |
@@ -353,11 +404,16 @@ Unit tests for mci_gru.evaluation.experiment_summary (WS-M M2 move).
 
 ## `tests/test_feature_config_yaml.py`
 
+Every feature group must accept the regime overrides that launchers pass, without ``+``.
+
 **Exercises:** `mci_gru.config`
 
 | Test | Description | Markers |
 |---|---|---|
 | `test_feature_yaml_declares_regime_subsequent_return_keys` | Regime ablation overrides must target keys declared in feature YAML groups. |  |
+| `test_regime_override_guard_discovers_the_default_group_and_ticket_keys` | The regime override guards are not vacuous: feature groups and regime keys are found. |  |
+| `test_april_regime_ablation_arms_compose_without_append_prefix` | Both April regime arms compose, without ``+``, and reach the typed config. | parametrize, parametrize |
+| `test_every_feature_group_declares_every_regime_key` | Each ``FeatureConfig`` regime key is declared, so its override needs no ``+``. | parametrize |
 
 ## `tests/test_feature_drift.py`
 
@@ -384,6 +440,9 @@ Contract tests for scripts/generate_test_registry.py.
 | `test_registry_is_current_detects_inventory_drift` |  |  |
 | `test_check_mode_reports_staleness_through_exit_code` |  |  |
 | `test_parsed_inventory_ignores_run_status_but_not_markers` |  |  |
+| `test_module_pytestmark_fills_the_markers_column_of_every_test` | A module-level pytestmark marks every test in the file, so every row must show it (#121). | parametrize |
+| `test_check_notices_a_pytestmark_edit_that_changes_which_tests_run` | Editing a module-level pytestmark changes test selection, so --check must fail (#121). | parametrize |
+| `test_class_marks_reach_only_the_tests_that_class_encloses` | A class's mark decorators and pytestmark mark its own tests, nested ones included. |  |
 | `test_parse_registry_round_trips_every_real_test_file` | Every real test, with its description and markers, survives render then parse. |  |
 | `test_committed_registry_carries_no_run_or_whole_inventory_lines` | No line may depend on more than one test file, or on when it was generated. |  |
 | `test_registries_from_concurrent_test_additions_merge_cleanly` | Two branches that each add a test must three-way merge with no registry conflict. | skipif, parametrize |
@@ -539,6 +598,9 @@ Contract tests for the graph-specification ablation harness.
 | `test_smoke_artifacts_cannot_satisfy_a_screen_or_confirm_resume` | A 1 x 2 result must never be mistaken for a real stage's completed job. |  |
 | `test_stage_keyed_paths_use_the_smoke_aware_slug` | The resume directory and key are built from the slug, not the raw stage. |  |
 | `test_analysis_gate_still_reads_the_semantic_stage` | Namespacing the smoke must not weaken the refusal that keeps it inert. |  |
+| `test_mechanics_sanity_gate_is_reached_on_every_stage_including_a_smoke` | The harness's own mechanics gate runs on every stage, the smoke first. | parametrize, parametrize |
+| `test_run_all_stops_at_the_paired_inference_refusal_only_on_a_smoke` | Reaching the gate must not weaken or bypass the s8 refusal. | parametrize, parametrize |
+| `test_mechanics_sanity_gate_checks_one_seed_per_fold_not_across_folds` | The gate's seed condition is within a fold, never across folds. |  |
 
 ## `tests/test_graph_zeroed_control.py`
 
@@ -629,6 +691,22 @@ Native read-to-metadata guards for immutable consumed-input observations.
 | `test_nonconsumed_and_foreign_observations_cannot_become_saved_uses` |  | parametrize |
 | `test_parser_integrity_failure_is_distinct_from_ordinary_parse_failure` |  |  |
 | `test_failed_native_read_records_only_known_facts_and_cannot_be_consumed` |  |  |
+
+## `tests/test_input_snapshots.py`
+
+Public exact-observation snapshot preservation and offline replay contracts.
+
+**Exercises:** `mci_gru.data.input_manifest`, `mci_gru.data.input_observations`, `mci_gru.data.input_snapshots`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_snapshot_round_trip_keeps_exact_file_bytes_and_original_provenance` |  |  |
+| `test_snapshot_rejects_changed_retained_bytes_without_repair` |  | parametrize |
+| `test_snapshot_refuses_a_different_selected_request` |  | parametrize |
+| `test_snapshot_keeps_sdk_observation_types_axes_order_and_missingness` |  | parametrize |
+| `test_snapshot_keeps_object_text_apart_from_the_pandas_3_string_dtype` |  | parametrize, parametrize |
+| `test_snapshot_rejects_missing_or_incompatible_packages` |  | parametrize |
+| `test_snapshot_keeps_literal_sdk_metadata_types` |  |  |
 
 ## `tests/test_lambdarank_ic_config.py`
 
@@ -759,6 +837,20 @@ Phase 2 model flags: self-attention type embed, MHA path shapes, encoders.
 | `test_hydra_ingestion_seed_fallback_is_1729` | Regression pin: config dicts without a `seed` key fall back to 1729. |  |
 | `test_mlflow_manager_round_trip_logs_params_metrics_and_artifacts` |  |  |
 | `test_backtest_tracking_links_child_run_to_saved_training_run` |  |  |
+
+## `tests/test_model_config_label_t.py`
+
+Admissible range for `model.label_t` (issue 107).
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.preprocessing`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_label_t_below_two_is_rejected_naming_the_label_formula` | 1 is the all-zero panel; 0 and -1 are the backward labels the embargo skips. | parametrize |
+| `test_label_t_of_two_and_above_still_constructs` | Control. 2 is the smallest genuine forward label; 5 is the shipped value. | parametrize |
+| `test_a_cli_override_of_label_t_one_is_rejected` | `python run_experiment.py model.label_t=1` must stop at config construction. |  |
+| `test_the_shipped_hydra_config_and_the_smallest_override_still_build` | Control for the CLI path: the rejection is about the value, not the route. |  |
+| `test_the_boundary_sits_where_the_label_panel_degenerates` | Ties the guard to the formula it protects, measured through `compute_labels`. |  |
 
 ## `tests/test_momentum_blend_modes.py`
 
@@ -892,10 +984,10 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 
 | Test | Description | Markers |
 |---|---|---|
-| `test_pit_masked_panel_notebook_uses_frozen_default_recipe` |  |  |
-| `test_pit_masked_panel_summary_text_reports_full_run_budget` |  |  |
-| `test_pit_masked_panel_summary_text_keeps_smoke_caveat` |  |  |
-| `test_pit_masked_panel_notebook_code_cells_parse` |  |  |
+| `test_pit_masked_panel_notebook_uses_frozen_default_recipe` |  | requires_fred |
+| `test_pit_masked_panel_summary_text_reports_full_run_budget` |  | requires_fred |
+| `test_pit_masked_panel_summary_text_keeps_smoke_caveat` |  | requires_fred |
+| `test_pit_masked_panel_notebook_code_cells_parse` |  | requires_fred |
 
 ## `tests/test_pit_membership_progression_audit.py`
 
@@ -921,16 +1013,16 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 
 | Test | Description | Markers |
 |---|---|---|
-| `test_issue31_notebook_pins_repeated_seed_full_pit_replication` |  |  |
-| `test_issue31_notebook_writes_required_decision_artifacts` |  |  |
-| `test_issue31_notebook_can_resume_and_retry_transient_regime_fetch_failures` |  |  |
-| `test_issue31_notebook_uses_cost_rank_gate_promotion_path` |  |  |
-| `test_issue31_notebook_pastes_known_drive_locations_and_branch` |  |  |
-| `test_issue31_notebook_hardwires_colab_inputs_and_runtime_key` |  |  |
-| `test_issue31_notebook_includes_pooled_significance_for_issue29` |  |  |
-| `test_issue31_notebook_summarizes_three_seed_closeout_evidence` |  |  |
-| `test_issue31_notebook_runs_backtest_sensitivity_replay` |  |  |
-| `test_issue31_notebook_code_cells_parse` |  |  |
+| `test_issue31_notebook_pins_repeated_seed_full_pit_replication` |  | requires_fred |
+| `test_issue31_notebook_writes_required_decision_artifacts` |  | requires_fred |
+| `test_issue31_notebook_can_resume_and_retry_transient_regime_fetch_failures` |  | requires_fred |
+| `test_issue31_notebook_uses_cost_rank_gate_promotion_path` |  | requires_fred |
+| `test_issue31_notebook_pastes_known_drive_locations_and_branch` |  | requires_fred |
+| `test_issue31_notebook_hardwires_colab_inputs_and_runtime_key` |  | requires_fred |
+| `test_issue31_notebook_includes_pooled_significance_for_issue29` |  | requires_fred |
+| `test_issue31_notebook_summarizes_three_seed_closeout_evidence` |  | requires_fred |
+| `test_issue31_notebook_runs_backtest_sensitivity_replay` |  | requires_fred |
+| `test_issue31_notebook_code_cells_parse` |  | requires_fred |
 
 ## `tests/test_pit_saved_prediction_backtests.py`
 
@@ -941,6 +1033,21 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 | `test_build_backtest_command_enables_costs_and_rank_gate` |  |  |
 | `test_resolve_year_jobs_remaps_stale_colab_paths_to_current_run_root` |  |  |
 | `test_write_summary_outputs_compares_cost_aware_rows_to_reviewed_artifact` |  |  |
+
+## `tests/test_pit_universe_mode_config.py`
+
+``row_filter`` can no longer be selected as ``data.pit_universe_mode`` (#139).
+
+**Exercises:** `mci_gru.config`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_default_pit_universe_mode_is_masked_panel` |  |  |
+| `test_row_filter_is_rejected_at_construction` |  | parametrize |
+| `test_command_line_override_to_row_filter_is_rejected` |  |  |
+| `test_discovery_covers_every_config_that_declared_row_filter` |  |  |
+| `test_shipped_data_config_composes_to_masked_panel` |  | parametrize |
+| `test_shipped_experiment_preset_composes_to_masked_panel` |  | parametrize |
 
 ## `tests/test_pit_universe_validation_notebook.py`
 
@@ -1054,19 +1161,19 @@ Contract tests for scripts/gen_readme_figure.py and the README evidence figure.
 
 | Test | Description | Markers |
 |---|---|---|
-| `test_compute_regime_monthly_features_outputs_expected_columns` |  |  |
-| `test_compute_regime_monthly_features_adds_subsequent_return_signals` |  |  |
-| `test_compute_regime_monthly_features_no_lookahead_exclusion_effect` |  |  |
-| `test_regime_subsequent_return_horizon_excludes_future_window` |  |  |
-| `test_add_regime_features_broadcasts_without_row_change` |  |  |
-| `test_regime_input_contract_columns_present` |  |  |
-| `test_regime_csv_contract_is_deprecated_and_requires_full_seven_variable_surface` | Deprecated CSV override must not silently drop paper-guided variables. |  |
-| `test_regime_csv_loader_forward_fills_without_backfill` | Raw CSV gaps may use prior values only; leading gaps remain unavailable. |  |
-| `test_live_regime_stock_bond_corr_uses_three_year_window` |  |  |
-| `test_live_regime_stock_bond_corr_handles_sparse_merged_panel` |  |  |
-| `test_live_regime_fetch_retries_transient_series_failure` |  |  |
-| `test_transform_with_regime_df_produces_nonzero_regime_columns` | Regime columns must be non-constant when a real regime_df is passed to transform. |  |
-| `test_regime_csv_lag_safety` | Lagged CSV regime inputs must not backfill the leading unavailable row. |  |
+| `test_compute_regime_monthly_features_outputs_expected_columns` |  | requires_fred |
+| `test_compute_regime_monthly_features_adds_subsequent_return_signals` |  | requires_fred |
+| `test_compute_regime_monthly_features_no_lookahead_exclusion_effect` |  | requires_fred |
+| `test_regime_subsequent_return_horizon_excludes_future_window` |  | requires_fred |
+| `test_add_regime_features_broadcasts_without_row_change` |  | requires_fred |
+| `test_regime_input_contract_columns_present` |  | requires_fred |
+| `test_regime_csv_contract_is_deprecated_and_requires_full_seven_variable_surface` | Deprecated CSV override must not silently drop paper-guided variables. | requires_fred |
+| `test_regime_csv_loader_forward_fills_without_backfill` | Raw CSV gaps may use prior values only; leading gaps remain unavailable. | requires_fred |
+| `test_live_regime_stock_bond_corr_uses_three_year_window` |  | requires_fred |
+| `test_live_regime_stock_bond_corr_handles_sparse_merged_panel` |  | requires_fred |
+| `test_live_regime_fetch_retries_transient_series_failure` |  | requires_fred |
+| `test_transform_with_regime_df_produces_nonzero_regime_columns` | Regime columns must be non-constant when a real regime_df is passed to transform. | requires_fred |
+| `test_regime_csv_lag_safety` | Lagged CSV regime inputs must not backfill the leading unavailable row. | requires_fred |
 
 ## `tests/test_repository_retirement_guard.py`
 
@@ -1292,6 +1399,22 @@ Strictness of the threshold comparison in `build_edges` (issue 170).
 | `test_create_data_loaders_preserves_default_loader_behavior` |  |  |
 | `test_create_data_loaders_accepts_efficiency_overrides` |  |  |
 
+## `tests/test_training_summary.py`
+
+Training summaries average only available checkpoint metrics and count coverage.
+
+**Exercises:** `mci_gru.config`, `mci_gru.training.ensemble`, `mci_gru.training.summary`, `mci_gru.training.trainer`, `mci_gru.walkforward`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_member_summary_averages_available_values_and_keeps_missing_slots` | Missing member slots stay null and each mean covers only the available members. |  |
+| `test_member_summary_treats_non_finite_values_as_unavailable` | Historical sentinels such as -inf are unavailable rather than averaged. |  |
+| `test_member_summary_without_members_keeps_every_mean_missing` | An empty ensemble reports null means and zero coverage. |  |
+| `test_saved_training_summary_is_null_not_inf_when_no_ic_row_is_eligible` | End to end: val_loss selection with all-NaN validation labels writes null IC values. |  |
+| `test_walkforward_mean_weights_windows_equally_and_counts_windows` | Window coverage counts windows, not members, and each available window counts once. |  |
+| `test_walkforward_treats_historical_non_finite_window_means_as_unavailable` | A -inf or NaN window mean from an older run no longer poisons the aggregate. |  |
+| `test_walkforward_summary_of_no_windows_stays_empty` | An empty walk-forward run has no aggregate at all. |  |
+
 ## `tests/test_transforms.py`
 
 Unit tests for mci_gru.data.transforms.
@@ -1316,6 +1439,17 @@ Unit tests for mci_gru.data.transforms.
 | `test_write_trial_ledger_writes_csv_and_jsonl` |  |  |
 | `test_write_trial_ledger_strict_jsonl_and_force_guard` |  |  |
 | `test_validate_trial_family_rejects_missing_expected_member` |  |  |
+
+## `tests/test_vix_features.py`
+
+Behavioral tests for the market-wide VIX feature merge.
+
+**Exercises:** `mci_gru.features.volatility`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_missing_vix_dates_carry_the_last_earlier_level_and_default_to_20` |  |  |
+| `test_future_vix_observations_do_not_change_earlier_rows` |  | parametrize |
 
 ## `tests/test_volatility_features.py`
 
