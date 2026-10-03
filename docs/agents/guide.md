@@ -144,6 +144,7 @@ existing stage over widening `run_experiment.py`:
 | Run summaries and provenance | `mci_gru/evaluation/experiment_summary.py` | `run_metadata.json`, `resolved_config.json` and its SHA-256 |
 | Retained execution evidence | `mci_gru/evaluation/execution_provenance.py` | `capture_execution_start`, `read_member_execution`, `read_execution_run`; `run_experiment.py` writes the plan, per-window starts, member events and receipts |
 | Consumed input observations | `mci_gru/data/input_observations.py` | native readers, per-preparation context, `run_metadata.json` |
+| Saved-run input attachments | `mci_gru/evaluation/run_input_attachments.py`, `run_input_declarations.py` | `attach_window_inputs`, `read_run_inputs`; required roles from config, `data.input_package_*`, `input_attachments/<attempt_id>/` |
 | Economic replay | `mci_gru/evaluation/backtest_engine.py`, `portfolio.py`, `scripts/backtest_sp500.py` | score / execution / return timing, costs, benchmark |
 | Selection research | `mci_gru/evaluation/selection_audit.py`, `selection_nulls.py`, `trial_ledger.py`, `artifacts.py` | [../evaluation/EVIDENCE_HARNESS.md](../evaluation/EVIDENCE_HARNESS.md), `SelectionResearchProtocol` |
 | Run bundles | `mci_gru/evaluation/run_bundle.py` | manifest hashes, `CONFIG_CANDIDATES`, immutability |

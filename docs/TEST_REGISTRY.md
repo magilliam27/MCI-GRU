@@ -436,7 +436,7 @@ Execution evidence remains inspectable without the live checkout or runtime.
 
 Execution evidence from ensemble members and from the runner (#144).
 
-**Exercises:** `mci_gru.config`, `mci_gru.evaluation`, `mci_gru.evaluation.artifacts`, `mci_gru.evaluation.execution_provenance`, `mci_gru.evaluation.experiment_summary`, `mci_gru.training`, `mci_gru.training.ensemble`, `mci_gru.training.trainer`, `run_experiment`
+**Exercises:** `mci_gru.config`, `mci_gru.data.input_manifest`, `mci_gru.evaluation`, `mci_gru.evaluation.artifacts`, `mci_gru.evaluation.execution_provenance`, `mci_gru.evaluation.experiment_summary`, `mci_gru.evaluation.run_input_attachments`, `mci_gru.training`, `mci_gru.training.ensemble`, `mci_gru.training.trainer`, `run_experiment`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -458,6 +458,8 @@ Execution evidence from ensemble members and from the runner (#144).
 | `test_recording_refuses_a_second_writer_for_the_same_attempt` |  |  |
 | `test_a_stock_run_links_its_start_metadata_members_and_outputs` |  |  |
 | `test_an_index_level_run_is_linked_the_same_way` |  |  |
+| `test_a_window_retains_its_declared_inputs_and_its_receipt_binds_them` |  |  |
+| `test_an_undeclared_panel_leaves_the_attachment_incomplete_but_the_run_finishes` |  |  |
 | `test_each_window_gets_its_own_attempt_and_the_run_survives_relocation` |  |  |
 | `test_a_preparation_failure_leaves_an_incomplete_attempt_and_no_receipt` |  |  |
 | `test_a_member_failure_marks_the_window_and_run_failed` |  |  |
@@ -1387,6 +1389,24 @@ Saved-run input attachment: exact declarations linked to observed reads (#208).
 | `test_a_required_role_must_name_an_attached_manifest` |  |  |
 | `test_an_existing_attachment_is_never_replaced` |  |  |
 | `test_an_attachment_record_that_differs_from_its_anchor_is_rejected` |  |  |
+
+## `tests/test_run_input_declarations.py`
+
+Runner wiring for saved-run inputs: configured roles bound to declared packages (#208).
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.input_manifest`, `mci_gru.data.input_observations`, `mci_gru.evaluation.run_input_attachments`, `mci_gru.evaluation.run_input_declarations`, `mci_gru.features`, `mci_gru.pipeline`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_a_captured_window_is_complete_after_every_source_is_gone` |  |  |
+| `test_replay_binds_the_snapshots_the_configuration_references` |  |  |
+| `test_live_provider_reads_are_linked_but_never_complete` |  |  |
+| `test_a_selected_file_outside_the_declared_package_has_no_declared_package` |  |  |
+| `test_a_package_file_changed_after_its_manifest_is_not_the_declared_read` |  |  |
+| `test_a_declared_manifest_that_is_not_the_pinned_one_stops_the_run` |  |  |
+| `test_required_roles_are_exactly_the_roles_a_real_preparation_consumes` |  | parametrize |
+| `test_the_recipe_data_config_binds_both_selected_files_to_the_preserved_package` |  |  |
+| `test_a_partial_or_malformed_package_declaration_is_refused` |  | parametrize |
 
 ## `tests/test_run_pytest_isolated.py`
 

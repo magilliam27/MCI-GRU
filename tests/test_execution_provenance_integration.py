@@ -31,6 +31,7 @@ from hydra import compose, initialize_config_dir
 
 import run_experiment
 from mci_gru.config import ExperimentConfig, TrainingConfig
+from mci_gru.data.input_manifest import InputFileSpec, write_input_manifest
 from mci_gru.evaluation import execution_provenance
 from mci_gru.evaluation.artifacts import canonical_json_bytes
 from mci_gru.evaluation.execution_provenance import (
@@ -45,6 +46,7 @@ from mci_gru.evaluation.execution_provenance import (
     write_window_receipt,
 )
 from mci_gru.evaluation.experiment_summary import write_resolved_config
+from mci_gru.evaluation.run_input_attachments import AttachmentReference, read_run_inputs
 from mci_gru.training import ensemble
 from mci_gru.training.ensemble import train_multiple_models
 from mci_gru.training.trainer import NoCheckpointSelectedError, Trainer
@@ -729,6 +731,67 @@ def test_an_index_level_run_is_linked_the_same_way(tmp_path):
     (window,) = run.windows
     assert (window["status"], window["window_id"], window["problems"]) == ("complete", "0", [])
     assert json.loads((out / "run_metadata.json").read_text())["kdcode_list"] == ["INDEX"]
+
+
+def test_a_window_retains_its_declared_inputs_and_its_receipt_binds_them(tmp_path):
+    # The panel is published as a package first; the runner rewrites identical bytes.
+    base = tmp_path / "declared_run"
+    base.mkdir()
+    _write_panel(base / "panel.csv", days=60)
+    manifest = tmp_path / "declared" / "panel.r1.json"
+    manifest.parent.mkdir()
+    package = write_input_manifest(
+        manifest,
+        base,
+        package_id="runner-panel",
+        package_revision="r1",
+        files=[InputFileSpec("panel.csv", "price panel")],
+        provenance={
+            "source": "synthetic fixture",
+            "acquisition_mode": "fixture",
+            "acquired_at": "2020-04-01T00:00:00+00:00",
+            "producing_command": None,
+            "producing_arguments": None,
+            "unknowns": ["Fixture packages have no producing command"],
+        },
+    )
+    out = _run(
+        base,
+        [
+            f"data.input_package_manifest={manifest.as_posix()}",
+            f"data.input_package_manifest_sha256={package.sha256}",
+            f"data.input_package_root={base.as_posix()}",
+        ],
+    )
+    (window,) = read_execution_run(_plan(out)).windows
+    metadata = json.loads((out / "run_metadata.json").read_text())
+    attached = metadata["input_attachment"]
+    assert attached["path"] == f"input_attachments/{window['attempt_id']}/record.json"
+    assert attached["status"] == "complete"
+    receipt = json.loads(_window_files(out, window)[2].read_bytes())
+    assert receipt["artifacts"][attached["path"]] == attached["sha256"]
+    for name in ("input_observations.json", f"manifests/{package.sha256}.json"):
+        retained = Path(attached["path"]).parent / name
+        assert receipt["artifacts"][retained.as_posix()] == _sha256(out / retained)
+
+    moved = tmp_path / "moved"
+    shutil.copytree(out, moved)
+    shutil.rmtree(base)
+    shutil.rmtree(manifest.parent)
+    inputs = read_run_inputs(AttachmentReference(moved / attached["path"], attached["sha256"]))
+    assert (inputs.status, inputs.problems) == ("complete", [])
+    assert inputs.execution == {"status": "unknown", "start": metadata["execution_start"]}
+    assert [role["role"] for role in inputs.roles] == ["data.filename"]
+
+
+def test_an_undeclared_panel_leaves_the_attachment_incomplete_but_the_run_finishes(stock_run):
+    attached = json.loads((stock_run / "run_metadata.json").read_text())["input_attachment"]
+    inputs = read_run_inputs(AttachmentReference(stock_run / attached["path"], attached["sha256"]))
+    assert attached["status"] == inputs.status == "incomplete"
+    assert inputs.problems == ["required role data.filename has no declared package"]
+    # The data group's package is not attached when no selected file lies in it.
+    assert inputs.packages == ()
+    assert read_execution_run(_plan(stock_run)).status == "complete"
 
 
 def test_each_window_gets_its_own_attempt_and_the_run_survives_relocation(two_window_run, tmp_path):

@@ -1,6 +1,7 @@
 """Attach a window's exact input declarations and observed reads to its saved run.
 
-A window's attachment retains, under ``input_attachments/``:
+An attachment directory (the runner uses ``input_attachments/<attempt_id>/``
+inside the window, so a re-run never meets an earlier attempt's files) retains:
 
 - each consumed package's manifest, byte-exact, named by its SHA-256;
 - the window's frozen ``input_observations`` record (#191 / #206);
@@ -82,7 +83,7 @@ class RunInputs:
 
 
 def attach_run_inputs(
-    window_dir: str | Path,
+    directory: str | Path,
     *,
     manifests: Sequence[ManifestSnapshot],
     observations: InputObservations,
@@ -97,7 +98,7 @@ def attach_run_inputs(
     still retained, so the reader can report it; only a malformed declaration
     is refused here.
     """
-    window = Path(window_dir)
+    directory = Path(directory)
     execution = {"status": "unknown"} if execution is None else dict(execution)
     preservation = {"status": "unproven"} if preservation is None else dict(preservation)
     _validate_status(execution, EXECUTION_STATUSES, "execution")
@@ -115,11 +116,10 @@ def attach_run_inputs(
     if len(set(required)) != len(required):
         raise ValueError("A required role binding is declared more than once")
 
-    directory = window / ATTACHMENT_DIR
     packages = []
     for snapshot in manifests:
-        relative = f"{ATTACHMENT_DIR}/manifests/{snapshot.sha256}.json"
-        _write_new(window / relative, snapshot.raw_bytes)
+        relative = f"manifests/{snapshot.sha256}.json"
+        _write_new(directory / relative, snapshot.raw_bytes)
         packages.append(
             {
                 "package_id": snapshot.manifest.package_id,
@@ -136,7 +136,7 @@ def attach_run_inputs(
         "written_at_utc": datetime.now(timezone.utc).isoformat(),
         "packages": packages,
         "input_observations": {
-            "path": f"{ATTACHMENT_DIR}/{OBSERVATIONS_NAME}",
+            "path": OBSERVATIONS_NAME,
             "sha256": hashlib.sha256(observed).hexdigest(),
         },
         "required": [
@@ -168,7 +168,7 @@ def read_run_inputs(reference: AttachmentReference) -> RunInputs:
         _validate_status(record["preservation"], PRESERVATION_STATUSES, "preservation")
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError(f"Invalid input attachment record: {exc}") from exc
-    window = reference.path.parent.parent
+    directory = reference.path.parent
     problems: list[str] = []
 
     declarations: dict[str, ManifestSnapshot] = {}
@@ -178,7 +178,7 @@ def read_run_inputs(reference: AttachmentReference) -> RunInputs:
         label = f"{entry['package_id']} {entry['package_revision']}"
         package = {**entry, "raw_bytes": None}
         packages.append(package)
-        path = window / entry["path"]
+        path = directory / entry["path"]
         if not path.is_file():
             problems.append(f"manifest snapshot missing: {label}")
             continue
@@ -190,7 +190,7 @@ def read_run_inputs(reference: AttachmentReference) -> RunInputs:
         package["raw_bytes"] = snapshot.raw_bytes
         declarations[digest] = snapshot
 
-    observations = _read_observations(window, record["input_observations"], problems)
+    observations = _read_observations(directory, record["input_observations"], problems)
     roles = _link_roles(record["required"], declarations, observations, problems)
     return RunInputs(
         "incomplete" if problems else "complete",
@@ -203,9 +203,9 @@ def read_run_inputs(reference: AttachmentReference) -> RunInputs:
 
 
 def _read_observations(
-    window: Path, entry: dict[str, Any], problems: list[str]
+    directory: Path, entry: dict[str, Any], problems: list[str]
 ) -> dict[str, Any] | None:
-    path = window / entry["path"]
+    path = directory / entry["path"]
     try:
         content = path.read_bytes()
     except OSError:
