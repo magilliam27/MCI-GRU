@@ -404,6 +404,46 @@ Execution evidence remains inspectable without the live checkout or runtime.
 | `test_reader_requires_valid_attempt_and_observation_metadata` |  | parametrize |
 | `test_invalid_window_identifier_is_rejected_before_output` |  | parametrize |
 
+## `tests/test_execution_provenance_integration.py`
+
+Execution evidence from ensemble members and from the runner (#144).
+
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation`, `mci_gru.evaluation.artifacts`, `mci_gru.evaluation.execution_provenance`, `mci_gru.evaluation.experiment_summary`, `mci_gru.training`, `mci_gru.training.ensemble`, `mci_gru.training.trainer`, `run_experiment`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_two_members_record_what_actually_ran_and_survive_relocation` |  |  |
+| `test_failure_after_seeding_is_explicit_and_never_complete` |  |  |
+| `test_a_member_killed_before_finishing_leaves_an_incomplete_attempt` |  |  |
+| `test_a_checkpoint_changed_after_saving_is_not_the_selected_evidence` |  |  |
+| `test_load_evidence_describes_the_bytes_loaded_not_the_file_afterwards` |  |  |
+| `test_training_with_a_config_other_than_the_retained_one_is_not_complete` |  |  |
+| `test_an_unfinished_final_event_write_keeps_the_attempt_incomplete` |  |  |
+| `test_events_out_of_execution_order_are_rejected_even_when_chained` |  | parametrize |
+| `test_a_checkpoint_left_by_an_earlier_run_is_not_this_attempts_evidence` |  |  |
+| `test_a_checkpoint_saved_without_being_recorded_is_not_complete` |  |  |
+| `test_a_missing_checkpoint_at_load_is_explicit` |  |  |
+| `test_unavailable_runtime_observations_are_explicit_and_block_completion` |  |  |
+| `test_an_unobserved_device_blocks_completion` |  |  |
+| `test_a_member_that_never_started_is_counted_against_the_planned_total` |  |  |
+| `test_altered_member_events_are_rejected` |  | parametrize |
+| `test_recording_refuses_a_second_writer_for_the_same_attempt` |  |  |
+| `test_a_stock_run_links_its_start_metadata_members_and_outputs` |  |  |
+| `test_an_index_level_run_is_linked_the_same_way` |  |  |
+| `test_each_window_gets_its_own_attempt_and_the_run_survives_relocation` |  |  |
+| `test_a_preparation_failure_leaves_an_incomplete_attempt_and_no_receipt` |  |  |
+| `test_a_member_failure_marks_the_window_and_run_failed` |  |  |
+| `test_an_output_failure_after_every_member_finished_is_not_completion` |  |  |
+| `test_an_expected_window_that_did_not_finish_keeps_the_run_incomplete` |  | parametrize |
+| `test_damaged_window_evidence_is_never_complete` |  | parametrize |
+| `test_a_receipt_that_does_not_bind_the_metadata_is_not_complete` |  |  |
+| `test_malformed_or_unreadable_evidence_is_reported_not_raised` |  | parametrize |
+| `test_a_window_receipt_refuses_to_bind_evidence_or_a_moved_start` |  |  |
+| `test_a_run_without_its_run_receipt_is_incomplete` |  |  |
+| `test_an_altered_plan_is_rejected` |  |  |
+| `test_a_terminal_receipt_from_another_run_is_not_this_runs` |  |  |
+| `test_a_start_from_another_run_in_the_same_directory_is_not_this_runs` |  |  |
+
 ## `tests/test_experiment_summary.py`
 
 Unit tests for mci_gru.evaluation.experiment_summary (WS-M M2 move).
