@@ -1308,6 +1308,8 @@ Saved-run input attachment: exact declarations linked to observed reads (#208).
 | `test_a_read_with_no_declaration_is_explicit_even_when_every_declared_file_matches` |  |  |
 | `test_identical_bytes_from_another_package_revision_are_not_the_declared_read` |  |  |
 | `test_a_declaration_naming_a_file_its_manifest_lacks_is_explicit` |  |  |
+| `test_a_required_read_with_no_declared_package_is_linked_but_never_complete` |  |  |
+| `test_a_required_role_needs_both_a_manifest_and_a_path` |  |  |
 | `test_supplied_execution_and_preservation_status_are_carried_unchanged` |  |  |
 | `test_an_unknown_status_is_refused` |  | parametrize |
 | `test_a_required_role_must_name_an_attached_manifest` |  |  |

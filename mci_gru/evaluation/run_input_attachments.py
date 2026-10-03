@@ -49,11 +49,16 @@ PRESERVATION_STATUSES = ("unproven", "partial", "complete")
 
 @dataclass(frozen=True)
 class RoleBinding:
-    """One declared package file that a required input role is expected to read."""
+    """One declared package file that a required input role is expected to read.
+
+    A role that is required but has no declared package, such as a live
+    provider read that was not captured, has neither digest nor path; its reads
+    are linked but it can never be complete.
+    """
 
     role: str
-    manifest_sha256: str
-    path: str
+    manifest_sha256: str | None
+    path: str | None
 
 
 @dataclass(frozen=True)
@@ -103,7 +108,9 @@ def attach_run_inputs(
     for binding in required:
         if not isinstance(binding.role, str) or not binding.role:
             raise ValueError("A required role needs a name")
-        if binding.manifest_sha256 not in by_digest:
+        if (binding.manifest_sha256 is None) != (binding.path is None):
+            raise ValueError(f"Required role {binding.role} needs both a manifest and a path")
+        if binding.manifest_sha256 is not None and binding.manifest_sha256 not in by_digest:
             raise ValueError(f"Required role {binding.role} names a manifest that is not attached")
     if len(set(required)) != len(required):
         raise ValueError("A required role binding is declared more than once")
@@ -245,10 +252,13 @@ def _link_roles(
             entry
             for entry in roles
             if entry["role"] == role
-            and entry["declared"] is not None
-            and identity.get("sha256") == entry["declared"]["sha256"]
-            and identity.get("manifest_sha256", entry["manifest_sha256"])
-            == entry["manifest_sha256"]
+            and (
+                entry["manifest_sha256"] is None
+                or entry["declared"] is not None
+                and identity.get("sha256") == entry["declared"]["sha256"]
+                and identity.get("manifest_sha256", entry["manifest_sha256"])
+                == entry["manifest_sha256"]
+            )
         ]
         if not matches:
             problems.append(
@@ -260,13 +270,17 @@ def _link_roles(
             entry["observation_ids"].append(use["observation_id"])
     for entry in roles:
         if not entry["observation_ids"]:
-            problems.append(f"required role {entry['role']} was not consumed from {entry['path']}")
+            source = "" if entry["path"] is None else f" from {entry['path']}"
+            problems.append(f"required role {entry['role']} was not consumed{source}")
     return tuple(roles)
 
 
 def _declared_file(
     binding: dict[str, Any], declarations: dict[str, ManifestSnapshot], problems: list[str]
 ) -> dict[str, Any] | None:
+    if binding["manifest_sha256"] is None:
+        problems.append(f"required role {binding['role']} has no declared package")
+        return None
     snapshot = declarations.get(binding["manifest_sha256"])
     if snapshot is None:
         problems.append(f"required role {binding['role']} has no verified manifest")

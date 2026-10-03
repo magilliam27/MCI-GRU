@@ -307,6 +307,44 @@ def test_a_declaration_naming_a_file_its_manifest_lacks_is_explicit(tmp_path):
     assert "required role data.filename names a file its manifest lacks" in inputs.problems
 
 
+def test_a_required_read_with_no_declared_package_is_linked_but_never_complete(tmp_path):
+    _, stock = _stock_package(tmp_path)
+    regime = _regime_package(tmp_path, "r1")
+    context = InputObservationContext()
+    live = InputSnapshots(mode="source", input_observations=context)
+    observed = live.observe(
+        role="fred.DGS10", source="fred", request=REQUEST, acquire=lambda: REGIME
+    )
+    live.use(observed, "regime")
+    assert "manifest_sha256" not in observed.record["identity"]
+    fixture = Fixture(
+        tmp_path,
+        tmp_path / "run" / "window",
+        stock,
+        regime,
+        context.freeze(),
+        [RoleBinding("regime", None, None), RoleBinding("credit", None, None)],
+    )
+
+    inputs = read_run_inputs(_relocate(fixture, _attach(fixture, manifests=[])))
+
+    assert inputs.status == "incomplete"
+    assert inputs.problems == [
+        "required role regime has no declared package",
+        "required role credit has no declared package",
+        "required role credit was not consumed",
+    ]
+    links = {role["role"]: role["observation_ids"] for role in inputs.roles}
+    assert links == {"regime": [0], "credit": []}
+
+
+def test_a_required_role_needs_both_a_manifest_and_a_path(tmp_path):
+    fixture = _fixture(tmp_path)
+    with pytest.raises(ValueError, match="needs both a manifest and a path"):
+        _attach(fixture, required=[RoleBinding("regime", fixture.regime.sha256, None)])
+    assert not fixture.window.exists()
+
+
 def test_supplied_execution_and_preservation_status_are_carried_unchanged(tmp_path):
     fixture = _fixture(tmp_path)
     execution = {
