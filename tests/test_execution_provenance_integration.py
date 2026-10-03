@@ -1,30 +1,48 @@
-"""Ensemble members leave retained evidence of what actually ran (#144, member proof).
+"""Execution evidence from ensemble members and from the runner (#144).
 
-Two tiny synthetic CPU members run through ``train_multiple_models`` against a
-retained execution-start record. Readback must use only the retained evidence:
-planned seeds or a checkpoint filename never prove that a member ran.
+Member proof: two tiny synthetic CPU members run through ``train_multiple_models``
+against a retained execution-start record. Readback must use only the retained
+evidence: planned seeds or a checkpoint filename never prove that a member ran.
+
+Runner proof: ``run_experiment.py`` runs in-process on a synthetic panel. Each
+window gets its own immutable start, its metadata references that start, and a
+separate terminal receipt binds the start, member events, metadata, checkpoints
+and outputs. A run is complete only when a run receipt binds every window the
+plan expected; a missing event or receipt never reads as completion.
 """
 
 import hashlib
 import json
+import logging
 import os
 import shutil
 import subprocess
 import sys
 import textwrap
+from contextlib import contextmanager
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import pytest
 import torch
 import torch.nn as nn
+from hydra import compose, initialize_config_dir
 
+import run_experiment
 from mci_gru.config import ExperimentConfig, TrainingConfig
+from mci_gru.evaluation import execution_provenance
+from mci_gru.evaluation.artifacts import canonical_json_bytes
 from mci_gru.evaluation.execution_provenance import (
     BACKEND_OBSERVATIONS,
     ExecutionReference,
     MemberEventLog,
     capture_execution_start,
+    read_execution_provenance,
+    read_execution_run,
     read_member_execution,
+    write_execution_plan,
+    write_window_receipt,
 )
 from mci_gru.evaluation.experiment_summary import write_resolved_config
 from mci_gru.training import ensemble
@@ -472,3 +490,596 @@ def test_recording_refuses_a_second_writer_for_the_same_attempt(tmp_path):
     _train(tmp_path, config, reference)
     with pytest.raises(ValueError, match="already"):
         _train(tmp_path, config, reference)
+
+
+# --- Runner proof ---------------------------------------------------------------
+
+RUNNER_OVERRIDES = [
+    "features=base",
+    "data.source=csv",
+    "data.use_pit_universe=false",
+    "data.train_start=2020-01-01",
+    "data.train_end=2020-02-14",
+    "data.val_start=2020-02-18",
+    "data.val_end=2020-02-28",
+    "data.test_start=2020-03-03",
+    "data.test_end=2020-03-20",
+    "model.his_t=3",
+    "model.label_t=2",
+    "model.gru_hidden_sizes=[8,4]",
+    "model.hidden_size_gat1=8",
+    "model.output_gat1=4",
+    "model.gat_heads=1",
+    "model.hidden_size_gat2=8",
+    "model.num_hidden_states=4",
+    "model.cross_attn_heads=1",
+    "model.use_self_attention=false",
+    "training.num_epochs=1",
+    "training.num_models=2",
+    "training.batch_size=2",
+    "training.warmup_steps=0",
+    "tracking.enabled=false",
+]
+TWO_WINDOWS = [
+    "data.test_end=2021-06-30",
+    "training.walkforward.enabled=true",
+    "training.walkforward.window_train_years=1",
+    "training.walkforward.window_val_months=1",
+    "training.walkforward.test_span_months=1",
+    "training.walkforward.step_months=1",
+    "training.walkforward.max_windows=2",
+]
+
+
+def _write_panel(path: Path, *, days: int) -> None:
+    dates = pd.bdate_range("2020-01-01", periods=days)
+    rows = []
+    for s_idx, stock in enumerate(["A.N", "B.N", "C.N", "D.N"]):
+        price = 100.0 + s_idx
+        for d_idx, dt in enumerate(dates):
+            open_px = price * (1.0 + 0.002 * np.sin(d_idx / 4.0 + s_idx))
+            close_px = open_px * (1.0 + 0.001 * (s_idx + 1) * np.cos(d_idx / 7.0))
+            rows.append(
+                {
+                    "kdcode": stock,
+                    "dt": dt.strftime("%Y-%m-%d"),
+                    "open": open_px,
+                    "high": max(open_px, close_px) * 1.001,
+                    "low": min(open_px, close_px) * 0.999,
+                    "close": close_px,
+                    "volume": 1_000_000.0 + d_idx,
+                }
+            )
+            price = close_px
+    pd.DataFrame(rows).to_csv(path, index=False)
+
+
+@contextmanager
+def _restored_process_state(directory: Path):
+    root = logging.getLogger()
+    handlers, level, cwd = list(root.handlers), root.level, os.getcwd()
+    os.chdir(directory)
+    try:
+        yield
+    finally:
+        os.chdir(cwd)
+        for handler in root.handlers:
+            if handler not in handlers:
+                handler.close()
+        root.handlers[:] = handlers
+        root.setLevel(level)
+
+
+def _run(base: Path, overrides: list[str], *, days: int = 60) -> Path:
+    """Run the experiment runner in-process; the run's output root is returned."""
+    base.mkdir(parents=True, exist_ok=True)
+    panel = base / "panel.csv"
+    _write_panel(panel, days=days)
+    out = base / "out"
+    out.mkdir()
+    with initialize_config_dir(config_dir=str(REPOSITORY_ROOT / "configs"), version_base=None):
+        cfg = compose(
+            "config",
+            overrides=[*RUNNER_OVERRIDES, f"data.filename={panel.as_posix()}", *overrides],
+        )
+    with _restored_process_state(out):
+        try:
+            run_experiment.main.__wrapped__(cfg)
+        except Exception as error:
+            raise _RunFailed(out) from error
+    return out
+
+
+class _RunFailed(Exception):
+    def __init__(self, out: Path) -> None:
+        super().__init__(str(out))
+        self.out = out
+
+
+def _run_failing(base: Path, overrides: list[str], **kwargs) -> tuple[Path, BaseException]:
+    with pytest.raises(_RunFailed) as failure:
+        _run(base, overrides, **kwargs)
+    return failure.value.out, failure.value.__cause__
+
+
+def _plan(out: Path) -> ExecutionReference:
+    (path,) = (out / "execution_provenance").glob("*.plan.json")
+    return ExecutionReference(path, _sha256(path))
+
+
+def _window_files(out: Path, window: dict) -> tuple[Path, Path, Path]:
+    evidence = out / window["output_dir"] / "execution_provenance"
+    attempt = window["attempt_id"]
+    return (
+        evidence / f"{attempt}.json",
+        evidence / f"{attempt}.events.jsonl",
+        evidence / f"{attempt}.receipt.json",
+    )
+
+
+@pytest.fixture(scope="module")
+def stock_run(tmp_path_factory) -> Path:
+    return _run(tmp_path_factory.mktemp("stock_run"), [])
+
+
+@pytest.fixture(scope="module")
+def two_window_run(tmp_path_factory) -> Path:
+    return _run(tmp_path_factory.mktemp("two_window_run"), TWO_WINDOWS, days=400)
+
+
+@pytest.fixture
+def stock_copy(stock_run, tmp_path) -> Path:
+    copy = tmp_path / "copy"
+    shutil.copytree(stock_run, copy)
+    return copy
+
+
+def test_a_stock_run_links_its_start_metadata_members_and_outputs(stock_run):
+    plan = _plan(stock_run)
+    run = read_execution_run(plan)
+    assert (run.status, run.problems, run.experiment_mode) == ("complete", [], "stock_level")
+    assert run.expected_windows == 1
+    (window,) = run.windows
+    assert (window["walkforward_window"], window["window_id"], window["output_dir"]) == (
+        0,
+        "0",
+        ".",
+    )
+    assert (window["status"], window["problems"]) == ("complete", [])
+    assert window["members"].status == "complete"
+    assert window["members"].expected_members == 2
+
+    start_path, events_path, receipt_path = _window_files(stock_run, window)
+    start = read_execution_provenance(ExecutionReference(start_path, window["start_sha256"]))
+    # Captured after the effective config was serialized, and bound to this run's plan.
+    assert start.record["window_id"] == "0"
+    assert start.record["plan"] == {"run_id": run.run_id, "sha256": plan.sha256}
+    assert start.resolved_config_bytes == (stock_run / "resolved_config.json").read_bytes()
+    assert start.record["execution_status"] == "incomplete"
+
+    metadata = json.loads((stock_run / "run_metadata.json").read_text())
+    assert metadata["walkforward_window"] == 0
+    assert metadata["execution_start"] == {
+        "path": f"execution_provenance/{window['attempt_id']}.json",
+        "sha256": window["start_sha256"],
+    }
+
+    receipt = json.loads(receipt_path.read_bytes())
+    assert receipt_path.read_bytes() == canonical_json_bytes(receipt)
+    assert window["receipt_sha256"] == _sha256(receipt_path)
+    assert receipt["start"] == {"path": start_path.name, "sha256": window["start_sha256"]}
+    assert receipt["member_events"] == {"path": events_path.name, "sha256": _sha256(events_path)}
+    artifacts = receipt["artifacts"]
+    for name in [
+        "run_metadata.json",
+        "feature_reference.json",
+        "graph_data.pt",
+        "checkpoints/model_0_best.pth",
+        "checkpoints/model_1_best.pth",
+        "training_summary.json",
+        "evaluation_summary.json",
+        "timing_summary.json",
+    ]:
+        assert artifacts[name] == _sha256(stock_run / name), name
+    predictions = sorted((stock_run / "averaged_predictions").glob("*.csv"))
+    assert predictions
+    for path in predictions:
+        assert artifacts[path.relative_to(stock_run).as_posix()] == _sha256(path)
+    assert not any(name.startswith("execution_provenance/") for name in artifacts)
+
+    run_receipt = json.loads(
+        (stock_run / "execution_provenance" / f"{run.run_id}.run_receipt.json").read_bytes()
+    )
+    assert run.run_receipt_sha256 == _sha256(
+        stock_run / "execution_provenance" / f"{run.run_id}.run_receipt.json"
+    )
+    assert run_receipt["plan_sha256"] == plan.sha256
+    assert run_receipt["windows"] == [
+        {
+            "walkforward_window": 0,
+            "path": f"execution_provenance/{receipt_path.name}",
+            "sha256": window["receipt_sha256"],
+        }
+    ]
+
+
+def test_an_index_level_run_is_linked_the_same_way(tmp_path):
+    base = tmp_path / "index"
+    base.mkdir()
+    dates = pd.bdate_range("2019-01-01", "2020-03-31")
+    closes = 3000.0 * np.cumprod(1.0 + 0.002 * np.sin(np.arange(len(dates)) / 5.0))
+    pd.DataFrame({"dt": dates.strftime("%Y-%m-%d"), "close": closes}).to_csv(
+        base / "index.csv", index=False
+    )
+    out = _run(
+        base,
+        [
+            "+data.experiment_mode=index_level",
+            # Index-level preparation emits scalar edge weights for its edgeless graph,
+            # so the default four-feature edges cannot run there (a separate defect).
+            "graph.use_multi_feature_edges=false",
+            # A cross-sectional IC needs more than the one index series.
+            "training.loss_type=mse",
+            "training.selection_metric=val_loss",
+            f"+data.index_filename={(base / 'index.csv').as_posix()}",
+        ],
+    )
+    run = read_execution_run(_plan(out))
+    assert (run.status, run.experiment_mode) == ("complete", "index_level")
+    (window,) = run.windows
+    assert (window["status"], window["window_id"], window["problems"]) == ("complete", "0", [])
+    assert json.loads((out / "run_metadata.json").read_text())["kdcode_list"] == ["INDEX"]
+
+
+def test_each_window_gets_its_own_attempt_and_the_run_survives_relocation(two_window_run, tmp_path):
+    plan = _plan(two_window_run)
+    run = read_execution_run(plan)
+    assert (run.status, run.problems, run.expected_windows) == ("complete", [], 2)
+    assert [w["walkforward_window"] for w in run.windows] == [0, 1]
+    assert [w["window_id"] for w in run.windows] == ["0", "1"]
+    assert [w["output_dir"] for w in run.windows] == ["walkforward/w000", "walkforward/w001"]
+    assert [w["status"] for w in run.windows] == ["complete", "complete"]
+    assert run.windows[0]["attempt_id"] != run.windows[1]["attempt_id"]
+    for window in run.windows:
+        start_path, _, _ = _window_files(two_window_run, window)
+        start = read_execution_provenance(ExecutionReference(start_path, window["start_sha256"]))
+        assert start.record["window_id"] == window["window_id"]
+        window_dir = two_window_run / window["output_dir"]
+        assert start.resolved_config_bytes == (window_dir / "resolved_config.json").read_bytes()
+        metadata = json.loads((window_dir / "run_metadata.json").read_text())
+        assert metadata["walkforward_window"] == window["walkforward_window"]
+        assert metadata["execution_start"]["sha256"] == window["start_sha256"]
+    run_receipt = json.loads(
+        (two_window_run / "execution_provenance" / f"{run.run_id}.run_receipt.json").read_bytes()
+    )
+    assert run_receipt["artifacts"] == {
+        "walkforward_summary.json": _sha256(two_window_run / "walkforward_summary.json")
+    }
+
+    moved = tmp_path / "moved"
+    shutil.copytree(two_window_run, moved)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    with _restored_process_state(elsewhere):
+        relocated = read_execution_run(
+            ExecutionReference(moved / plan.path.relative_to(two_window_run), plan.sha256)
+        )
+    assert relocated == run
+
+
+def test_a_preparation_failure_leaves_an_incomplete_attempt_and_no_receipt(tmp_path, monkeypatch):
+    def fail(*args, **kwargs):
+        raise RuntimeError("fixture: preparation failed")
+
+    monkeypatch.setattr(run_experiment, "prepare_data", fail)
+    out, error = _run_failing(tmp_path, [])
+    assert "preparation failed" in str(error)
+
+    run = read_execution_run(_plan(out))
+    assert (run.status, run.run_receipt_sha256) == ("incomplete", None)
+    assert "no run receipt" in run.problems
+    (window,) = run.windows
+    assert window["status"] == "incomplete"
+    assert "no terminal receipt" in window["problems"]
+    assert window["receipt_sha256"] is None
+    # The immutable start was captured before preparation and is still this run's.
+    start_path, _, receipt_path = _window_files(out, window)
+    start = read_execution_provenance(ExecutionReference(start_path, window["start_sha256"]))
+    assert start.record["window_id"] == "0"
+    assert not receipt_path.exists()
+    assert window["members"].status == "incomplete"
+    assert window["members"].members == ()
+
+
+def test_a_member_failure_marks_the_window_and_run_failed(tmp_path, monkeypatch):
+    built = []
+    create_model = run_experiment.create_model
+
+    def second_member_fails(*args, **kwargs):
+        built.append(1)
+        if len(built) == 2:
+            raise RuntimeError("fixture: member two failed")
+        return create_model(*args, **kwargs)
+
+    monkeypatch.setattr(run_experiment, "create_model", second_member_fails)
+    out, _ = _run_failing(tmp_path, [])
+
+    run = read_execution_run(_plan(out))
+    assert run.status == "failed"
+    (window,) = run.windows
+    assert window["status"] == "failed"
+    assert [m["status"] for m in window["members"].members] == ["complete", "failed"]
+    assert "no terminal receipt" in window["problems"]
+
+
+def test_an_output_failure_after_every_member_finished_is_not_completion(tmp_path, monkeypatch):
+    def fail(*args, **kwargs):
+        raise OSError("fixture: evaluation output failed")
+
+    monkeypatch.setattr(run_experiment, "compute_evaluation_summary", fail)
+    out, _ = _run_failing(tmp_path, [])
+
+    run = read_execution_run(_plan(out))
+    (window,) = run.windows
+    assert window["members"].status == "complete"
+    assert (window["status"], run.status) == ("incomplete", "incomplete")
+    assert "no terminal receipt" in window["problems"]
+
+
+@pytest.mark.parametrize("failing_window", [0, 1])
+def test_an_expected_window_that_did_not_finish_keeps_the_run_incomplete(
+    tmp_path, monkeypatch, failing_window
+):
+    prepare_data = run_experiment.prepare_data
+    calls = []
+
+    def fail_one_window(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == failing_window + 1:
+            raise RuntimeError("fixture: window preparation failed")
+        return prepare_data(*args, **kwargs)
+
+    monkeypatch.setattr(run_experiment, "prepare_data", fail_one_window)
+    out, _ = _run_failing(tmp_path, TWO_WINDOWS, days=400)
+
+    run = read_execution_run(_plan(out))
+    assert (run.status, run.expected_windows) == ("incomplete", 2)
+    statuses = [window["status"] for window in run.windows]
+    if failing_window == 0:
+        assert statuses == ["incomplete", "incomplete"]
+        assert "no execution start" in run.windows[1]["problems"]
+        assert run.windows[1]["attempt_id"] is None
+    else:
+        assert statuses == ["complete", "incomplete"]
+        assert "no terminal receipt" in run.windows[1]["problems"]
+        assert run.windows[1]["attempt_id"] is not None
+
+
+def _reseal(out: Path, run_id: str, window: dict) -> None:
+    """Forge consistent receipts over the current files, as a careless rewrite would."""
+    _, events_path, receipt_path = _window_files(out, window)
+    receipt = json.loads(receipt_path.read_bytes())
+    window_dir = out / window["output_dir"]
+    receipt["artifacts"] = {name: _sha256(window_dir / name) for name in receipt["artifacts"]}
+    receipt["member_events"]["sha256"] = _sha256(events_path)
+    receipt_path.write_bytes(canonical_json_bytes(receipt))
+    run_receipt_path = out / "execution_provenance" / f"{run_id}.run_receipt.json"
+    run_receipt = json.loads(run_receipt_path.read_bytes())
+    run_receipt["windows"][window["walkforward_window"]]["sha256"] = _sha256(receipt_path)
+    run_receipt_path.write_bytes(canonical_json_bytes(run_receipt))
+
+
+@pytest.mark.parametrize(
+    ("damage", "problem"),
+    [
+        ("edit_output", "artifact differs: evaluation_summary.json"),
+        ("delete_prediction", "artifact missing: averaged_predictions/"),
+        ("replace_checkpoint", "artifact differs: checkpoints/model_1_best.pth"),
+        ("drop_final_event", "member events differ from the terminal receipt"),
+        ("drop_final_event_resealed", "members incomplete"),
+        ("delete_window_receipt", "terminal receipt missing"),
+        ("edit_window_receipt", "terminal receipt differs from the run receipt"),
+        ("metadata_names_another_start", "metadata does not reference this start"),
+        ("checkpoint_not_the_loaded_one", "checkpoint differs from the one member 1 loaded"),
+    ],
+)
+def test_damaged_window_evidence_is_never_complete(stock_copy, damage, problem):
+    plan = _plan(stock_copy)
+    before = read_execution_run(plan)
+    (window,) = before.windows
+    start_path, events_path, receipt_path = _window_files(stock_copy, window)
+    if damage == "edit_output":
+        (stock_copy / "evaluation_summary.json").write_text("{}")
+    elif damage == "delete_prediction":
+        sorted((stock_copy / "averaged_predictions").glob("*.csv"))[0].unlink()
+    elif damage == "replace_checkpoint":
+        (stock_copy / "checkpoints" / "model_1_best.pth").write_bytes(b"replaced")
+    elif damage in {"drop_final_event", "drop_final_event_resealed"}:
+        lines = events_path.read_bytes().splitlines(keepends=True)
+        events_path.write_bytes(b"".join(lines[:-1]))
+        if damage == "drop_final_event_resealed":
+            _reseal(stock_copy, before.run_id, window)
+    elif damage == "delete_window_receipt":
+        receipt_path.unlink()
+    elif damage == "edit_window_receipt":
+        receipt = json.loads(receipt_path.read_bytes())
+        receipt["written_at_utc"] = "2020-01-01T00:00:00+00:00"
+        receipt_path.write_bytes(canonical_json_bytes(receipt))
+    elif damage == "metadata_names_another_start":
+        metadata = json.loads((stock_copy / "run_metadata.json").read_text())
+        metadata["execution_start"]["sha256"] = "0" * 64
+        (stock_copy / "run_metadata.json").write_text(json.dumps(metadata))
+        _reseal(stock_copy, before.run_id, window)
+    elif damage == "checkpoint_not_the_loaded_one":
+        (stock_copy / "checkpoints" / "model_1_best.pth").write_bytes(b"replaced")
+        _reseal(stock_copy, before.run_id, window)
+
+    after = read_execution_run(plan)
+    (damaged,) = after.windows
+    assert (damaged["status"], after.status) == ("incomplete", "incomplete")
+    assert any(entry.startswith(problem) for entry in damaged["problems"]), damaged["problems"]
+
+
+def _rewrite(path: Path, edit) -> None:
+    record = json.loads(path.read_bytes())
+    edit(record)
+    path.write_bytes(canonical_json_bytes(record))
+
+
+def test_a_receipt_that_does_not_bind_the_metadata_is_not_complete(stock_copy):
+    plan = _plan(stock_copy)
+    before = read_execution_run(plan)
+    (window,) = before.windows
+    _, _, receipt_path = _window_files(stock_copy, window)
+    _rewrite(receipt_path, lambda record: record["artifacts"].pop("run_metadata.json"))
+    _reseal(stock_copy, before.run_id, window)
+
+    (damaged,) = read_execution_run(plan).windows
+    assert damaged["status"] == "incomplete"
+    assert damaged["problems"] == ["terminal receipt does not bind the run metadata"]
+
+
+@pytest.mark.parametrize(
+    ("damage", "run_problem", "window_problem"),
+    [
+        ("unsafe_receipt_path", "run receipt invalid: Unsafe relative path", None),
+        ("run_receipt_is_a_directory", "run receipt invalid: not a readable file", None),
+        ("receipt_missing_a_field", None, "terminal receipt invalid: 'attempt_id'"),
+        ("unanchored_receipt_missing_a_field", "no run receipt", "no terminal receipt"),
+        ("directories_named_like_evidence", "no run receipt", "no terminal receipt"),
+        ("unreadable_artifact", None, "artifact unreadable: evaluation_summary.json"),
+        ("unreadable_receipt", None, "terminal receipt unreadable"),
+    ],
+)
+def test_malformed_or_unreadable_evidence_is_reported_not_raised(
+    stock_copy, monkeypatch, damage, run_problem, window_problem
+):
+    plan = _plan(stock_copy)
+    before = read_execution_run(plan)
+    (window,) = before.windows
+    _, _, receipt_path = _window_files(stock_copy, window)
+    evidence = stock_copy / "execution_provenance"
+    run_receipt = evidence / f"{before.run_id}.run_receipt.json"
+    if damage == "unsafe_receipt_path":
+        _rewrite(run_receipt, lambda record: record["windows"][0].update(path="../receipt.json"))
+    elif damage == "run_receipt_is_a_directory":
+        run_receipt.unlink()
+        run_receipt.mkdir()
+    elif damage == "receipt_missing_a_field":
+        _rewrite(receipt_path, lambda record: record.pop("attempt_id"))
+        _reseal(stock_copy, before.run_id, window)
+    elif damage == "unanchored_receipt_missing_a_field":
+        _rewrite(receipt_path, lambda record: record.pop("plan_sha256"))
+        run_receipt.unlink()
+    elif damage == "directories_named_like_evidence":
+        run_receipt.unlink()
+        receipt_path.unlink()
+        (evidence / ("e" * 32 + ".receipt.json")).mkdir()
+        (evidence / ("e" * 32 + ".json")).mkdir()
+    else:
+        unreadable = (
+            stock_copy / "evaluation_summary.json"
+            if damage == "unreadable_artifact"
+            else receipt_path
+        )
+        original = execution_provenance.sha256_file
+
+        def deny(path):
+            if Path(path) == unreadable:
+                raise PermissionError("fixture: unreadable")
+            return original(path)
+
+        monkeypatch.setattr(execution_provenance, "sha256_file", deny)
+
+    run = read_execution_run(plan)
+    (damaged,) = run.windows
+    assert run.status == "incomplete"
+    if run_problem is not None:
+        assert any(entry.startswith(run_problem) for entry in run.problems), run.problems
+    if window_problem is not None:
+        assert damaged["status"] == "incomplete"
+        assert any(entry.startswith(window_problem) for entry in damaged["problems"]), damaged[
+            "problems"
+        ]
+
+
+def test_a_window_receipt_refuses_to_bind_evidence_or_a_moved_start(stock_copy, tmp_path):
+    plan = _plan(stock_copy)
+    (window,) = read_execution_run(plan).windows
+    start_path, events_path, _ = _window_files(stock_copy, window)
+    start = ExecutionReference(start_path, _sha256(start_path))
+    with pytest.raises(ValueError, match="cannot bind itself"):
+        write_window_receipt(
+            start, plan=plan, walkforward_window=0, artifacts=["execution_provenance"]
+        )
+
+    moved = tmp_path / "elsewhere" / "execution_provenance"
+    moved.mkdir(parents=True)
+    shutil.copy2(start_path, moved / start_path.name)
+    shutil.copy2(events_path, moved / events_path.name)
+    with pytest.raises(ValueError, match="does not belong to this plan window"):
+        write_window_receipt(
+            ExecutionReference(moved / start_path.name, start.sha256),
+            plan=plan,
+            walkforward_window=0,
+            artifacts=[],
+        )
+
+
+def test_a_run_without_its_run_receipt_is_incomplete(stock_copy):
+    plan = _plan(stock_copy)
+    run_id = read_execution_run(plan).run_id
+    (stock_copy / "execution_provenance" / f"{run_id}.run_receipt.json").unlink()
+    run = read_execution_run(plan)
+    assert (run.status, run.run_receipt_sha256) == ("incomplete", None)
+    assert run.problems == ["no run receipt"]
+
+
+def test_an_altered_plan_is_rejected(stock_copy):
+    plan = _plan(stock_copy)
+    plan.path.write_bytes(plan.path.read_bytes().replace(b'"stock_level"', b'"index_level"'))
+    with pytest.raises(ValueError, match="digest mismatch"):
+        read_execution_run(plan)
+
+
+def test_a_terminal_receipt_from_another_run_is_not_this_runs(stock_copy):
+    plan = _plan(stock_copy)
+    run = read_execution_run(plan)
+    (window,) = run.windows
+    _, _, receipt_path = _window_files(stock_copy, window)
+    receipt = json.loads(receipt_path.read_bytes())
+    receipt["plan_sha256"] = "0" * 64
+    receipt_path.unlink()
+    receipt_path.with_name("f" * 32 + ".receipt.json").write_bytes(canonical_json_bytes(receipt))
+    (stock_copy / "execution_provenance" / f"{run.run_id}.run_receipt.json").unlink()
+
+    (unbound,) = read_execution_run(plan).windows
+    assert unbound["status"] == "incomplete"
+    assert "no terminal receipt" in unbound["problems"]
+    assert unbound["attempt_id"] == window["attempt_id"]
+
+
+def test_a_start_from_another_run_in_the_same_directory_is_not_this_runs(stock_copy, tmp_path):
+    plan = _plan(stock_copy)
+    run = read_execution_run(plan)
+    (window,) = run.windows
+    _, _, receipt_path = _window_files(stock_copy, window)
+    receipt_path.unlink()
+    (stock_copy / "execution_provenance" / f"{run.run_id}.run_receipt.json").unlink()
+    other_plan = write_execution_plan(
+        tmp_path / "other", experiment_mode="stock_level", window_dirs=[tmp_path / "other"]
+    )
+    config = stock_copy / "resolved_config.json"
+    capture_execution_start(
+        REPOSITORY_ROOT,
+        config,
+        resolved_config_sha256=_sha256(config),
+        output_dir=stock_copy,
+        window_id="0",
+        plan=other_plan,
+    )
+
+    (unbound,) = read_execution_run(plan).windows
+    assert unbound["attempt_id"] == window["attempt_id"]
+    assert "more than one execution start" not in unbound["problems"]
+    assert "no terminal receipt" in unbound["problems"]
