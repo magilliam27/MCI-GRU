@@ -33,7 +33,9 @@ def _layer_shapes(encoder: GRUWithAttention) -> list[tuple[int, int]]:
 
 
 def _model_config(**overrides) -> dict:
-    cfg = ModelConfig(temporal_encoder="gru_attn", use_nn_multihead_attention=True, **overrides)
+    cfg = ModelConfig(
+        **{"temporal_encoder": "gru_attn", "use_nn_multihead_attention": True, **overrides}
+    )
     return {**cfg.to_dict(), "edge_feature_dim": 4}
 
 
@@ -96,6 +98,15 @@ def test_create_model_routes_the_setting_without_multi_scale():
         INPUT_SIZE, _model_config(gru_attn_layer_widths="per_layer", use_multi_scale=False)
     )
     assert _layer_shapes(model.temporal_encoder) == [(INPUT_SIZE, 32), (32, 10)]
+
+
+def test_create_model_routes_the_setting_to_the_transformer_slow_branch():
+    """Transformer mode keeps a gru_attn slow branch, which must read the setting too."""
+    model = create_model(
+        INPUT_SIZE,
+        _model_config(temporal_encoder="transformer", gru_attn_layer_widths="per_layer"),
+    )
+    assert _layer_shapes(model.temporal_encoder.slow_gru) == [(INPUT_SIZE, 32), (32, 10)]
 
 
 def test_model_config_validates_and_serialises_the_setting():

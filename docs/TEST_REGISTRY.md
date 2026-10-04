@@ -740,6 +740,7 @@ Issue 131: how ``gru_attn`` reads ``model.gru_hidden_sizes``.
 | `test_create_model_routes_the_setting_to_both_multi_scale_branches` |  |  |
 | `test_create_model_default_keeps_the_shared_form` | Control for the routing test: without the key the model is the shipped one. |  |
 | `test_create_model_routes_the_setting_without_multi_scale` |  |  |
+| `test_create_model_routes_the_setting_to_the_transformer_slow_branch` | Transformer mode keeps a gru_attn slow branch, which must read the setting too. |  |
 | `test_model_config_validates_and_serialises_the_setting` |  |  |
 | `test_encoder_rejects_an_unknown_layer_widths_value` |  |  |
 
