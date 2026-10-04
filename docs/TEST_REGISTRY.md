@@ -10,7 +10,7 @@ This file records the test inventory only, with no counts, dates, or last-run st
 
 Public auxiliary loader and preparation capture/replay contracts.
 
-**Exercises:** `mci_gru.config`, `mci_gru.data.data_manager`, `mci_gru.data.fred_loader`, `mci_gru.data.input_observations`, `mci_gru.data.input_snapshots`, `mci_gru.data.lseg_loader`, `mci_gru.features`, `mci_gru.pipeline`
+**Exercises:** `mci_gru.config`, `mci_gru.data.data_manager`, `mci_gru.data.fred_loader`, `mci_gru.data.input_observations`, `mci_gru.data.input_snapshots`, `mci_gru.data.lseg_loader`, `mci_gru.evaluation.run_input_declarations`, `mci_gru.features`, `mci_gru.pipeline`
 
 | Test | Description | Markers |
 |---|---|---|

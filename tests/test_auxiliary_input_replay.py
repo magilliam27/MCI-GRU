@@ -20,6 +20,7 @@ from mci_gru.data.fred_loader import FREDLoader
 from mci_gru.data.input_observations import InputObservationContext, InputObservationError
 from mci_gru.data.input_snapshots import InputSnapshots, load_snapshot
 from mci_gru.data.lseg_loader import LSEGLoader
+from mci_gru.evaluation.run_input_declarations import keep_captures_with_run
 from mci_gru.features import FeatureEngineer
 from mci_gru.pipeline import load_auxiliary_data, prepare_data, prepare_data_index_level
 
@@ -779,11 +780,14 @@ def test_explicit_unsupported_source_configuration_is_not_ignored(
     assert manager.input_observations.freeze().uses == ()
 
 
-def _compose(overrides: list[str]):
-    """Build the typed config the way run_experiment.py does."""
+def _compose(overrides: list[str], output_dir: Path | None = None):
+    """Build the typed config the way run_experiment.py does, given its output folder."""
     with initialize_config_dir(config_dir=str(REPO_ROOT / "configs"), version_base=None):
         cfg = compose(config_name="config", overrides=overrides)
-    return create_config_from_dict(OmegaConf.to_container(cfg, resolve=True))
+    config = create_config_from_dict(OmegaConf.to_container(cfg, resolve=True))
+    if output_dir is not None:
+        keep_captures_with_run(config.data, output_dir)
+    return config
 
 
 def _recipe_overrides() -> list[str]:
@@ -794,13 +798,13 @@ def _recipe_overrides() -> list[str]:
 
 
 def test_the_frozen_recipe_requests_its_six_fred_regime_series_without_a_source_override(
-    monkeypatch,
+    tmp_path: Path, monkeypatch
 ) -> None:
     """The recipe names no auxiliary source, so the base config's regime=fred must carry it."""
     overrides = _recipe_overrides()
     assert "features.include_global_regime=true" in overrides
     assert not [line for line in overrides if "auxiliary_sources" in line]
-    config = _compose(overrides)
+    config = _compose(overrides, tmp_path)
     assert config.data.auxiliary_sources["regime"] == "fred"
     requested = []
 
@@ -826,6 +830,9 @@ def test_the_frozen_recipe_requests_its_six_fred_regime_series_without_a_source_
     vix_df, credit_df, regime_df = load_auxiliary_data(DataManager(config.data), config)
     assert requested == ["setup", *RECIPE_REGIME_SERIES]
     assert vix_df is None and credit_df is None and not regime_df.empty
+    # The recipe captures (2026-10-04), so each requested series is retained with the run.
+    retained = sorted((tmp_path / "input_snapshots").glob("*/manifest.json"))
+    assert len(retained) == len(RECIPE_REGIME_SERIES)
 
 
 def test_the_base_config_declares_the_typed_default_auxiliary_sources() -> None:
