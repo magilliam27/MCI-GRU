@@ -8,8 +8,8 @@ draft is [`ADMISSION_RECEIPT_AND_CHARTER_DRAFT.md`](ADMISSION_RECEIPT_AND_CHARTE
 
 ## Once, before the first run
 
-1. **Merge the open recipe pull requests in order:** #274, then #275, then the
-   pull request that adds this runbook (#270 is already merged). In `full` mode the
+1. **Merge the open recipe pull requests in order:** #275, then the pull request
+   that adds this runbook (#270 and #274 are already merged). In `full` mode the
    notebook checks the cloned commit for #270, #274 and #275 and names any that is
    missing.
 2. **Put the EODHD S&P 500 file on Drive.** Copy the whole folder
