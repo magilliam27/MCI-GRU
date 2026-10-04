@@ -532,6 +532,20 @@ Every feature group must accept the regime overrides that launchers pass, withou
 | `test_feature_drift_flags_shifted_distribution` |  |  |
 | `test_missing_feature_reference_returns_not_available` |  |  |
 
+## `tests/test_first_run_cessation.py`
+
+The first run declares no cessation file; this pins why that is safe, and when not.
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.pit`, `mci_gru.data.preprocessing`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_without_a_price_tail_the_cessation_file_changes_no_tradable_or_loss_row` |  |  |
+| `test_with_a_carried_price_tail_the_cessation_file_does_change_the_masks` | Control: carried closes after delisting make the undeclared run train on them. |  |
+| `test_the_recipe_declares_no_cessation_file` | The decision this module justifies; a declared file needs the recipe note revisited. |  |
+| `test_tail_check_flags_a_carried_tail_and_passes_a_clean_history` |  |  |
+| `test_tail_check_exit_code_follows_the_finding` |  |  |
+
 ## `tests/test_generate_test_registry.py`
 
 Contract tests for scripts/generate_test_registry.py.

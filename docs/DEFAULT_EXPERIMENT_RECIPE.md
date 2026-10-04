@@ -123,6 +123,32 @@ features.regime_min_history_months=24
   `gru-32-10` does not move if a base default does.
   `tests/test_default_experiment_recipe.py` composes this block the way
   `run_experiment.py` does and checks the model it builds.
+- No cessation (delisting) event file is declared:
+  `data.pit_cessation_events_csv` stays `null` (decided 2026-10-04, #273). Five
+  panel names carry LSEG delisted suffixes. A declared cessation changes only
+  `eligible`, and the traded population also needs a close on the date itself
+  (`tradable = eligible & feature_ready & price_observed` in `build_pit_masks`).
+  So while a delisted name has no close after its last real session, the file
+  would change no prediction, label, loss or metric. It would change only the
+  input manifest and how the PIT eligibility report classes those sessions
+  (`cessation_excluded` rather than `price_gap`).
+  `tests/test_first_run_cessation.py` pins this, with a control showing that
+  carried closes after delisting do change the masks.
+  - **Precondition, checked on the real panel before the run:**
+    `python scripts/check_delisted_tails.py`. Exit 1 means a delisted name ends
+    in repeated closes or zero volume. That name then needs a cessation row dated
+    to its real last session, or the carried rows removed at source. The #223
+    frozen-price rule does not catch this, because it flags only a history that
+    is constant throughout.
+  - A cessation dated on a name's final session and known by 20:00 New York that
+    day would also drop that one session from the cross-section. Its own loss is
+    unchanged, but other names' scores on that date move slightly. The likely
+    case is DD and DOW at the DowDuPont merger close on 2017-08-31. The
+    2017-09-01..09-13 gap that the data config calls a pricing gap is most likely
+    those two names after the merger (inferred, not checked against the CSV).
+  - The last sessions before each delisting have unobservable 5-day labels,
+    which are omitted and counted until #129 values terminal outcomes. A
+    cessation file would not change that.
 - The graph is the static threshold graph, not top-K and not dynamic schedule.
 - The objective is pure IC on raw 5-day return labels. Do not substitute rank
   labels for performance scoring unless the rank-label evaluation scale has
