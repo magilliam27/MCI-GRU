@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mci_gru.data.auxiliary_quality import REGIME_INPUT_ROLES
+from mci_gru.data.data_manager import MARKET_FILE_ROLE
 from mci_gru.data.input_manifest import read_input_manifest
 from mci_gru.data.path_resolver import PROJECT_ROOT, resolve_project_data_path
 from mci_gru.data.pit import CESSATION_EVENTS_ROLE
@@ -34,11 +35,13 @@ from mci_gru.evaluation.run_input_attachments import (
 if TYPE_CHECKING:
     import logging
 
-    from mci_gru.config import ExperimentConfig
+    from mci_gru.config import DataConfig, ExperimentConfig
     from mci_gru.data.input_manifest import ManifestSnapshot
     from mci_gru.data.input_observations import InputObservations
 
 SNAPSHOT_FILE = "observations.bin"
+# Where a capture with no named folder keeps its snapshots, inside the run output.
+RUN_SNAPSHOT_DIR = "input_snapshots"
 # Roles whose reads pass through the auxiliary snapshot store.
 SNAPSHOT_MODES = ("capture", "replay")
 
@@ -61,6 +64,19 @@ class RequiredRole:
 class InputDeclarations:
     manifests: tuple[ManifestSnapshot, ...]
     required: tuple[RoleBinding, ...]
+
+
+def keep_captures_with_run(data: DataConfig, output_dir: str | Path) -> str | None:
+    """In capture mode with no named folder, retain snapshots in the run's output.
+
+    The snapshots are the only copy of what a provider returned, so they belong
+    with the run that read them. A named folder, and every other mode, is left
+    as configured. Returns the folder chosen here, or ``None``.
+    """
+    if data.auxiliary_snapshot_mode != "capture" or data.auxiliary_snapshot_directory:
+        return None
+    data.auxiliary_snapshot_directory = str(Path(output_dir) / RUN_SNAPSHOT_DIR)
+    return data.auxiliary_snapshot_directory
 
 
 def required_input_roles(config: ExperimentConfig) -> tuple[RequiredRole, ...]:
@@ -104,9 +120,15 @@ def required_input_roles(config: ExperimentConfig) -> tuple[RequiredRole, ...]:
                 )
             )
         else:
+            # An index file replaces FRED's SP500 for the market role (#276).
+            market_csv = features.regime_market_csv
             roles += [
-                RequiredRole(f"fred.{column}", auxiliary=True) for column in REGIME_INPUT_ROLES
+                RequiredRole(f"fred.{column}", auxiliary=True)
+                for column in REGIME_INPUT_ROLES
+                if not (market_csv and column == "regime_market")
             ]
+            if market_csv:
+                roles.append(RequiredRole(MARKET_FILE_ROLE, market_csv, auxiliary=True))
     return tuple(roles)
 
 

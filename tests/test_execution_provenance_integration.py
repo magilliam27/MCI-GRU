@@ -21,6 +21,7 @@ import sys
 import textwrap
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -733,8 +734,8 @@ def test_an_index_level_run_is_linked_the_same_way(tmp_path):
     assert json.loads((out / "run_metadata.json").read_text())["kdcode_list"] == ["INDEX"]
 
 
-def test_a_window_retains_its_declared_inputs_and_its_receipt_binds_them(tmp_path):
-    # The panel is published as a package first; the runner rewrites identical bytes.
+def _declared_panel(tmp_path: Path) -> tuple[Path, Path, str, list[str]]:
+    """Publish the runner's panel as a package first; the runner rewrites identical bytes."""
     base = tmp_path / "declared_run"
     base.mkdir()
     _write_panel(base / "panel.csv", days=60)
@@ -755,14 +756,17 @@ def test_a_window_retains_its_declared_inputs_and_its_receipt_binds_them(tmp_pat
             "unknowns": ["Fixture packages have no producing command"],
         },
     )
-    out = _run(
-        base,
-        [
-            f"data.input_package_manifest={manifest.as_posix()}",
-            f"data.input_package_manifest_sha256={package.sha256}",
-            f"data.input_package_root={base.as_posix()}",
-        ],
-    )
+    overrides = [
+        f"data.input_package_manifest={manifest.as_posix()}",
+        f"data.input_package_manifest_sha256={package.sha256}",
+        f"data.input_package_root={base.as_posix()}",
+    ]
+    return base, manifest, package.sha256, overrides
+
+
+def test_a_window_retains_its_declared_inputs_and_its_receipt_binds_them(tmp_path):
+    base, manifest, package_sha256, overrides = _declared_panel(tmp_path)
+    out = _run(base, overrides)
     (window,) = read_execution_run(_plan(out)).windows
     metadata = json.loads((out / "run_metadata.json").read_text())
     attached = metadata["input_attachment"]
@@ -770,7 +774,7 @@ def test_a_window_retains_its_declared_inputs_and_its_receipt_binds_them(tmp_pat
     assert attached["status"] == "complete"
     receipt = json.loads(_window_files(out, window)[2].read_bytes())
     assert receipt["artifacts"][attached["path"]] == attached["sha256"]
-    for name in ("input_observations.json", f"manifests/{package.sha256[:16]}.json"):
+    for name in ("input_observations.json", f"manifests/{package_sha256[:16]}.json"):
         retained = Path(attached["path"]).parent / name
         assert receipt["artifacts"][retained.as_posix()] == _sha256(out / retained)
 
@@ -786,34 +790,9 @@ def test_a_window_retains_its_declared_inputs_and_its_receipt_binds_them(tmp_pat
 
 def test_a_failed_attachment_is_recorded_and_the_run_finishes(tmp_path):
     # A pinned package digest that does not match its manifest makes attaching raise.
-    base = tmp_path / "failed_attachment"
-    base.mkdir()
-    _write_panel(base / "panel.csv", days=60)
-    manifest = tmp_path / "declared" / "panel.r1.json"
-    manifest.parent.mkdir()
-    write_input_manifest(
-        manifest,
-        base,
-        package_id="runner-panel",
-        package_revision="r1",
-        files=[InputFileSpec("panel.csv", "price panel")],
-        provenance={
-            "source": "synthetic fixture",
-            "acquisition_mode": "fixture",
-            "acquired_at": "2020-04-01T00:00:00+00:00",
-            "producing_command": None,
-            "producing_arguments": None,
-            "unknowns": ["Fixture packages have no producing command"],
-        },
-    )
-    out = _run(
-        base,
-        [
-            f"data.input_package_manifest={manifest.as_posix()}",
-            f"data.input_package_manifest_sha256={'0' * 64}",
-            f"data.input_package_root={base.as_posix()}",
-        ],
-    )
+    base, _, _, overrides = _declared_panel(tmp_path)
+    overrides[1] = f"data.input_package_manifest_sha256={'0' * 64}"
+    out = _run(base, overrides)
     attached = json.loads((out / "run_metadata.json").read_text())["input_attachment"]
     assert (attached["path"], attached["sha256"], attached["status"]) == (None, None, "failed")
     assert attached["error"].startswith("ManifestDigestMismatchError")
@@ -822,6 +801,48 @@ def test_a_failed_attachment_is_recorded_and_the_run_finishes(tmp_path):
     (window,) = run.windows
     receipt = json.loads(_window_files(out, window)[2].read_bytes())
     assert not any(name.startswith("input_attachments/") for name in receipt["artifacts"])
+
+
+class _Fred:
+    """A local FRED client: daily series on weekdays, copper monthly."""
+
+    def __init__(self, api_key):
+        del api_key
+
+    def get_series(self, series_id, observation_start, observation_end):
+        frequency = "MS" if series_id == "PCOPPUSDM" else "B"
+        dates = pd.date_range(observation_start, observation_end, freq=frequency)
+        return pd.Series(np.linspace(10.0, 100.0, len(dates)), index=dates)
+
+
+def test_a_capture_run_keeps_its_regime_snapshots_and_its_inputs_verify(tmp_path, monkeypatch):
+    monkeypatch.setenv("FRED_API_KEY", "test-only")
+    monkeypatch.setitem(sys.modules, "fredapi", SimpleNamespace(Fred=_Fred))
+    base, manifest, _, overrides = _declared_panel(tmp_path)
+    out = _run(
+        base,
+        [
+            *overrides,
+            "features.include_global_regime=true",
+            "data.auxiliary_snapshot_mode=capture",
+        ],
+    )
+    attached = json.loads((out / "run_metadata.json").read_text())["input_attachment"]
+    assert attached["status"] == "complete"
+    record = json.loads((out / attached["path"]).read_bytes())
+    snapshots = {package["manifest_sha256"] for package in record["packages"][1:]}
+    retained = sorted((out / "input_snapshots").glob("*/manifest.json"))
+    assert len(retained) == len(snapshots) == 6
+    assert {_sha256(path) for path in retained} == snapshots
+
+    moved = tmp_path / "moved"
+    shutil.copytree(out, moved)
+    shutil.rmtree(base)
+    shutil.rmtree(manifest.parent)
+    inputs = read_run_inputs(AttachmentReference(moved / attached["path"], attached["sha256"]))
+    assert (inputs.status, inputs.problems) == ("complete", [])
+    regime = [role for role in inputs.roles if role["role"].startswith("fred.")]
+    assert len(regime) == 6 and all(role["observation_ids"] for role in regime)
 
 
 def test_an_undeclared_panel_leaves_the_attachment_incomplete_but_the_run_finishes(stock_run):

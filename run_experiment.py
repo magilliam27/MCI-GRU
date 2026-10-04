@@ -58,7 +58,7 @@ from mci_gru.evaluation.experiment_summary import (
     write_resolved_config,
 )
 from mci_gru.evaluation.run_input_attachments import ATTACHMENT_DIR
-from mci_gru.evaluation.run_input_declarations import attach_window_inputs
+from mci_gru.evaluation.run_input_declarations import attach_window_inputs, keep_captures_with_run
 from mci_gru.features import FeatureEngineer
 from mci_gru.graph.utils import edge_feature_dim
 from mci_gru.models import create_model
@@ -105,6 +105,9 @@ def main(cfg: DictConfig):
     logger.info("\nConfiguration:")
     logger.info("\n" + OmegaConf.to_yaml(cfg))
     config = create_config_from_dict(OmegaConf.to_container(cfg, resolve=True))
+    snapshot_directory = keep_captures_with_run(config.data, output_path)
+    if snapshot_directory is not None:
+        logger.info(f"Captured auxiliary inputs will be retained in: {snapshot_directory}")
     set_seed(config.seed)
     logger.info(f"\nBase random seed: {config.seed}")
     logger.info(f"Output directory: {output_path}")
