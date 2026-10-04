@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import shutil
@@ -51,6 +52,7 @@ from mci_gru.data.eodhd_prices import (
     SymbolSegment,
     adjustment_basis_summary,
     agreement_passes,
+    apply_adjustments,
     assemble_panel,
     build_symbol_plans,
     check_window,
@@ -69,6 +71,7 @@ from mci_gru.data.eodhd_prices import (
     splits_frame,
 )
 from mci_gru.data.input_manifest import InputFileSpec, read_input_manifest, write_input_manifest
+from mci_gru.data.quality_contract import Verdict, assess_market_panel, fill_open_valid_to
 
 API_ROOT = "https://eodhd.com/api"
 KEY_ENV = "EODHD_API_KEY"
@@ -92,7 +95,13 @@ class EodhdClient:
         self.calls = 0
 
     def _get(self, kind: str, name: str, path: str, params: dict[str, str]) -> Any:
-        cache_path = self._cache / kind / f"{name}.json"
+        """One request, served from the cache when the same path and parameters were read.
+
+        The cache file name carries a digest of the parameters, so a different date
+        range is a different entry. No exception that could carry the URL escapes.
+        """
+        digest = hashlib.sha256(json.dumps([path, params], sort_keys=True).encode()).hexdigest()
+        cache_path = self._cache / kind / f"{name}.{digest[:16]}.json"
         record: dict[str, Any] = {"endpoint": path, "params": params}
         if cache_path.exists():
             envelope = json.loads(cache_path.read_text(encoding="utf-8"))
@@ -100,7 +109,7 @@ class EodhdClient:
             self._raw.append(record)
             return envelope["body"]
         query = urllib.parse.urlencode({**params, "api_token": self._key, "fmt": "json"})
-        url = f"{API_ROOT}/{path}?{query}"
+        url = f"{API_ROOT}/{urllib.parse.quote(path, safe='/.-_')}?{query}"
         body, status = None, None
         for attempt, delay in enumerate((0, *RETRY_DELAYS)):
             time.sleep(delay)
@@ -118,8 +127,17 @@ class EodhdClient:
                     raise VendorError(f"EODHD refused {path} (HTTP {error.code})") from None
                 if error.code != 429 and error.code < 500:
                     raise VendorError(f"EODHD returned HTTP {error.code} for {path}") from None
-            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
+            except (
+                OSError,  # includes URLError, TimeoutError and dropped connections
+                http.client.HTTPException,
+                json.JSONDecodeError,
+                UnicodeDecodeError,
+            ) as error:
                 status = type(error).__name__
+            except Exception as error:  # anything else may quote the URL, and with it the key
+                raise VendorError(
+                    f"EODHD request for {path} failed ({type(error).__name__})"
+                ) from None
             if attempt == len(RETRY_DELAYS):
                 raise VendorError(f"EODHD request for {path} failed after retries ({status})")
         self.calls += 1
@@ -165,6 +183,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--reference-manifest-sha256")
     parser.add_argument("--symbol-map", type=Path, default=DEFAULT_SYMBOL_MAP)
+    parser.add_argument(
+        "--pit-export-cutoff",
+        default="2026-07-31",
+        help="Date a blank valid_to in the PIT file means (the export cutoff, as the data config's "
+        "pit_export_cutoff declares)",
+    )
     parser.add_argument("--start", default="2015-01-01")
     parser.add_argument("--end", default="2026-07-31")
     parser.add_argument("--package-root", type=Path, required=True)
@@ -212,6 +236,13 @@ def verify_inputs(manifest: Path, expected_sha256: str | None, inputs: list[Path
     return snapshot.sha256
 
 
+def _acquisition_mode(raw_log: list[dict[str, Any]]) -> str:
+    cached = {bool(record.get("from_cache")) for record in raw_log}
+    if cached == {True}:
+        return "cache"
+    return "live and cache" if cached == {True, False} else "live"
+
+
 def _git_commit() -> str | None:
     try:
         result = subprocess.run(
@@ -224,15 +255,21 @@ def _git_commit() -> str | None:
 
 def read_symbol(
     client: EodhdClient, kdcode: str, symbol: str, args: argparse.Namespace
-) -> tuple[pd.DataFrame, list[Finding], int]:
-    """One symbol's split-adjusted rows over the pull span, with its checks."""
-    eod = eod_rows_frame(client.eod(symbol, args.start, args.end))
-    eod = eod[(eod["dt"] >= args.start) & (eod["dt"] <= args.end)]
-    splits = splits_frame(client.splits(symbol, args.start, args.end), as_of=args.end)
-    adjusted = split_adjust(eod, splits)
-    findings = split_basis_findings(kdcode, symbol, adjusted)
-    adjusted, blanked = clean_values(adjusted)
-    return adjusted.reset_index(drop=True), findings, blanked
+) -> tuple[pd.DataFrame, list[Finding]]:
+    """One symbol's split-adjusted rows over the pull span.
+
+    Vendor rows that cannot be read become a blocking finding and no rows.
+    """
+    try:
+        eod = eod_rows_frame(client.eod(symbol, args.start, args.end))
+        eod = eod[(eod["dt"] >= args.start) & (eod["dt"] <= args.end)]
+        if eod.empty:
+            return eod.reset_index(drop=True), []
+        splits = splits_frame(client.splits(symbol, args.start, args.end), as_of=args.end)
+    except (ValueError, KeyError, TypeError) as error:
+        detail = f"{symbol}: vendor rows could not be read ({error})"
+        return eod_rows_frame([]), [Finding(kdcode, "vendor_rows_invalid", True, detail)]
+    return split_adjust(eod, splits).reset_index(drop=True), []
 
 
 def resolve_segment(
@@ -248,8 +285,11 @@ def resolve_segment(
 
     With a reference, the first candidate whose returns agree with it over the
     segment's needed span wins; name-hint candidates are tried only after the
-    listed ones fail. Without one, the first candidate with rows wins.
+    listed ones fail. Without one, the first candidate with rows wins. The proof
+    applies the plan's declared adjustments and accepted dates, as the final
+    check does; the rows returned are split-adjusted only.
     """
+    exempt = [adjustment.date for adjustment in plan.adjustments]
     window = None
     if need is not None and reference is not None:
         window = check_window(need, reference, segment)
@@ -272,12 +312,15 @@ def resolve_segment(
         if symbol in seen:
             continue
         seen.add(symbol)
-        rows, symbol_findings, blanked = read_symbol(client, plan.kdcode, symbol, args)
-        rows = clip_segment(rows, segment)
+        rows, symbol_findings = read_symbol(client, plan.kdcode, symbol, args)
+        rows = clip_segment(rows, segment).reset_index(drop=True)
         entry: dict[str, Any] = {"symbol": symbol, "rows": len(rows)}
         if rows.empty:
             tried.append(entry)
+            findings.extend(symbol_findings)
             continue
+        symbol_findings += split_basis_findings(plan.kdcode, symbol, rows, exempt)
+        rows, blanked = clean_values(rows)
         if fallback is None:
             fallback = (rows, symbol, blanked)
             fallback_findings = symbol_findings
@@ -285,7 +328,8 @@ def resolve_segment(
             tried.append(entry)
             findings.extend(symbol_findings)
             return rows, _chosen(segment, symbol, tried, blanked, "first_with_rows"), findings
-        stats = return_agreement(rows, reference, *window)
+        proof, _, _ = apply_adjustments(plan.kdcode, rows, plan.adjustments)
+        stats = return_agreement(proof, reference, *window, accepted=plan.accepted_differences)
         entry.update(stats)
         tried.append(entry)
         if agreement_passes(stats):
@@ -357,7 +401,9 @@ def main(argv: list[str] | None = None) -> int:
     map_target = market / f"{stem}_symbol_map.json"
     _copy_exact(args.symbol_map, map_target)
 
-    pit = pd.read_csv(args.pit_universe, dtype=str)
+    pit = fill_open_valid_to(
+        pd.read_csv(args.pit_universe, dtype=str, keep_default_na=False), args.pit_export_cutoff
+    )
     plans = build_symbol_plans(pit["kdcode"], load_symbol_map(args.symbol_map))
     spans = needed_spans(pit).set_index("kdcode")
     reference = None
@@ -387,8 +433,23 @@ def main(argv: list[str] | None = None) -> int:
             chosen.append(choice)
             findings.extend(segment_findings)
             blanked_total += choice["values_blanked"]
-        pieces[kdcode] = parts
-        resolved[kdcode] = {"overridden": plan.overridden, "note": plan.note, "segments": chosen}
+        nonempty = [part for part in parts if not part.empty]
+        applied: list[dict[str, Any]] = []
+        if nonempty:
+            joined = pd.concat(nonempty, ignore_index=True)
+            joined, applied, adjustment_findings = apply_adjustments(
+                kdcode, joined, plan.adjustments
+            )
+            findings.extend(adjustment_findings)
+            nonempty = [joined]
+        pieces[kdcode] = nonempty
+        resolved[kdcode] = {
+            "overridden": plan.overridden,
+            "note": plan.note,
+            "segments": chosen,
+            "adjustments_applied": applied,
+            "accepted_differences": list(plan.accepted_differences),
+        }
         symbols = ", ".join(str(c["symbol"]) for c in chosen)
         print(f"[{index}/{len(plans)}] {kdcode}: {symbols}", flush=True)
 
@@ -399,12 +460,21 @@ def main(argv: list[str] | None = None) -> int:
     check = pd.DataFrame()
     basis: dict[str, Any] = {}
     if reference is not None:
-        check, check_findings = reference_check(panel, reference, pit)
+        accepted = {kdcode: plan.accepted_differences for kdcode, plan in plans.items()}
+        check, check_findings = reference_check(panel, reference, pit, accepted)
         findings.extend(check_findings)
         basis = adjustment_basis_summary(check)
 
     panel_path = market / f"{stem}.csv"
     panel_for_write(panel).to_csv(panel_path, index=False)
+    # The loader's own admission rules, on the bytes as written.
+    written = pd.read_csv(panel_path, dtype={"kdcode": str, "dt": str}, keep_default_na=False)
+    contract, _ = assess_market_panel(written, role="data.filename", configured_path=None)
+    for item in contract:
+        if item.verdict is Verdict.INVALID:
+            findings.append(
+                Finding(None, f"panel_{item.reason_code}", True, item.reason, item.evidence)
+            )
     coverage_path = market / f"{stem}_coverage.csv"
     coverage_table(panel).to_csv(coverage_path, index=False)
     check_path = market / f"{stem}_reference_check.csv"
@@ -481,7 +551,7 @@ def main(argv: list[str] | None = None) -> int:
             files=files,
             provenance={
                 "source": meta["source"],
-                "acquisition_mode": "live" if not meta["vendor_responses_cached"] else "cache",
+                "acquisition_mode": _acquisition_mode(raw_log),
                 "acquired_at": acquired_at,
                 "producing_command": "python -m scripts.data.export_eodhd_pit_prices",
                 "producing_arguments": sys.argv[1:] if argv is None else list(argv),

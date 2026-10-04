@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "description": "EODHD symbols for identifiers of the 110-name 2016 PIT universe that the rule in mci_gru/data/eodhd_prices.py default_symbol cannot map: renamed, reused, predecessor and delisted tickers (#281). Each segment lists candidate symbols tried in order, then EODHD's US listings whose company name contains name_hint. When the pull is given the preserved LSEG panel, a candidate is accepted only if its returns agree with that panel over the span the universe needs, so a wrong guess here stops the pull rather than entering the panel. Dates are inclusive and follow the listing changes.",
+  "description": "EODHD symbols for identifiers of the 110-name 2016 PIT universe that the rule in mci_gru/data/eodhd_prices.py default_symbol cannot map: renamed, reused, predecessor and delisted tickers (#281). Each segment lists candidate symbols tried in order, then EODHD's US listings whose company name contains name_hint. When the pull is given the preserved LSEG panel, a candidate is accepted only if its returns agree with that panel over the span the universe needs, so a wrong guess here stops the pull rather than entering the panel. Dates are inclusive and follow the listing changes. An entry may also declare adjustments (a corporate action the split records miss, such as a spin-off: prices before the date are multiplied by factor, or by the step in EODHD adjusted_close on that date when no factor is given) and accepted_differences (dates whose one-day difference from the reference is explained); each needs a reason.",
   "overrides": {
     "DD.N^I17": {
-      "note": "E. I. du Pont de Nemours, traded as DD until the Dow merger closed on 2017-08-31. The DD ticker was later reused by DowDuPont, now DuPont de Nemours.",
+      "note": "E. I. du Pont de Nemours, traded as DD until the Dow merger closed on 2017-08-31. The merged DowDuPont traded as DWDP; the DD ticker was reused on 2019-06-03 when DowDuPont became DuPont de Nemours.",
       "segments": [
         {"candidates": ["DD.US"], "name_hint": "du Pont", "end": "2017-08-31"}
       ]
@@ -71,7 +71,7 @@
     "CB.N": {
       "note": "ACE Limited (ACE) until it acquired Chubb on 2016-01-14 and took the CB ticker.",
       "segments": [
-        {"candidates": ["CB.US", "ACE.US"], "name_hint": "ACE Ltd", "end": "2016-01-14"},
+        {"candidates": ["CB.US", "ACE.US"], "name_hint": "ACE Limited", "end": "2016-01-14"},
         {"candidates": ["CB.US"], "start": "2016-01-15"}
       ]
     },
@@ -83,10 +83,10 @@
       ]
     },
     "BALL.N": {
-      "note": "Ball Corporation traded as BLL until its 2022 ticker change.",
+      "note": "Ball Corporation traded as BLL until 2022-05-09; BALL from the open on 2022-05-10 (Ball press release of 2022-04-27).",
       "segments": [
-        {"candidates": ["BALL.US", "BLL.US"], "name_hint": "Ball Corp", "end": "2022-05-13"},
-        {"candidates": ["BALL.US"], "start": "2022-05-16"}
+        {"candidates": ["BALL.US", "BLL.US"], "name_hint": "Ball Corp", "end": "2022-05-09"},
+        {"candidates": ["BALL.US"], "start": "2022-05-10"}
       ]
     },
     "ATVI.OQ^J23": {

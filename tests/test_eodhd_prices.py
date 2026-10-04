@@ -19,14 +19,17 @@ import yaml
 
 import scripts.data.export_eodhd_pit_prices as export
 from mci_gru.data.eodhd_prices import (
+    PriceAdjustment,
     SymbolMapError,
     agreement_passes,
+    apply_adjustments,
     build_symbol_plans,
     clean_values,
     default_symbol,
     eod_rows_frame,
     load_symbol_map,
     name_hint_candidates,
+    needed_spans,
     parse_split_ratio,
     parse_symbol_map,
     reference_check,
@@ -105,6 +108,11 @@ def test_committed_symbol_map_parses_and_names_only_ric_shaped_identifiers():
     # The reused tickers must be cut at the merger, not read whole.
     assert plans["DD.N^I17"].segments[-1].end == "2017-08-31"
     assert plans["DD.N"].segments[0].start == "2017-09-01"
+    # BLL became BALL at the open on 2022-05-10.
+    assert [(s.end, s.start) for s in plans["BALL.N"].segments] == [
+        ("2022-05-09", None),
+        (None, "2022-05-10"),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -204,6 +212,76 @@ def test_clean_values_blanks_nonpositive_prices_and_negative_volume():
     assert blanked == 4 + 1  # all four prices of row 1 are 0, plus one volume
 
 
+def test_a_declared_spin_off_rescales_earlier_prices_only():
+    dates = _sessions("2023-12-26", 6)
+    raw = [100.0, 101.0, 102.0, 80.0, 81.0, 82.0]  # the spin-off removes 20 per share on day 3
+    adjusted = [c * 0.8 if i < 3 else c for i, c in enumerate(raw)]
+    frame = eod_rows_frame(_raw_rows(dates, raw, adjusted=adjusted))
+
+    declared, applied, findings = apply_adjustments(
+        "GE.N", frame, [PriceAdjustment(dates[3], "spin-off", factor=0.8)]
+    )
+    vendor, vendor_applied, _ = apply_adjustments(
+        "GE.N", frame, [PriceAdjustment(dates[3], "spin-off")]
+    )
+
+    assert declared["close"].tolist() == pytest.approx([80.0, 80.8, 81.6, 80.0, 81.0, 82.0])
+    assert declared["volume"].tolist() == frame["volume"].tolist()
+    assert vendor["close"].tolist() == pytest.approx(declared["close"].tolist())
+    assert vendor_applied[0]["factor"] == pytest.approx(0.8)
+    assert vendor_applied[0]["basis"] == "vendor_adjusted_close"
+    assert applied[0]["basis"] == "declared_factor" and not findings
+
+
+def test_a_vendor_factor_with_no_rows_on_its_date_blocks():
+    frame = eod_rows_frame(_raw_rows(_sessions("2024-01-02", 3), [10.0, 11.0, 12.0]))
+    _, applied, findings = apply_adjustments(
+        "X.N", frame, [PriceAdjustment("2025-06-02", "spin-off")]
+    )
+    assert not applied
+    assert [(f.code, f.blocking) for f in findings] == [("adjustment_unresolved", True)]
+
+
+def test_a_dividend_sized_step_is_quiet_and_a_larger_one_is_reported():
+    dates = _sessions("2024-03-25", 5)
+    closes = [100.0, 100.0, 100.0, 100.0, 100.0]
+    adjusted = [0.99 * 0.9, 0.99 * 0.9, 0.9, 1 * 100 / 100, 1.0]
+    adjusted = [a * 100 for a in adjusted]  # a 1% dividend step, then a 10% step
+    frame = eod_rows_frame(_raw_rows(dates, closes, adjusted=adjusted))
+    findings = split_basis_findings("MMM.N", "MMM.US", frame)
+    assert [(f.code, f.blocking) for f in findings] == [("large_adjustment_step", False)]
+    assert list(findings[0].evidence["steps"]) == [dates[3]]
+    assert split_basis_findings("MMM.N", "MMM.US", frame, exempt=[dates[3]]) == []
+
+
+def test_needed_spans_refuse_blank_valid_to():
+    pit = pd.DataFrame({"kdcode": ["A.N"], "valid_from": ["2020-01-02"], "valid_to": [""]})
+    with pytest.raises(ValueError, match="blank"):
+        needed_spans(pit)
+
+
+def test_symbol_map_reads_adjustments_and_accepted_differences():
+    plans = parse_symbol_map(
+        {
+            "schema": 1,
+            "overrides": {
+                "GE.N": {
+                    "adjustments": [{"date": "2024-04-02", "reason": "GE Vernova spin-off"}],
+                    "accepted_differences": [{"date": "2019-01-02", "reason": "bad tick"}],
+                }
+            },
+        }
+    )
+    plan = plans["GE.N"]
+    assert plan.segments[0].candidates == ("GE.US",)
+    assert plan.adjustments == (PriceAdjustment("2024-04-02", "GE Vernova spin-off"),)
+    assert plan.accepted_differences == ("2019-01-02",)
+    with pytest.raises(SymbolMapError, match="reason"):
+        parse_symbol_map(
+            {"schema": 1, "overrides": {"GE.N": {"adjustments": [{"date": "2024-04-02"}]}}}
+        )
+
+
 # ---------------------------------------------------------------------------
 # Proof against the reference panel
 # ---------------------------------------------------------------------------
@@ -244,6 +322,38 @@ def test_uncorrelated_quiet_series_fail_even_when_differences_are_small():
     )
     assert stats["median_abs_diff"] < 0.002
     assert not agreement_passes(stats)
+
+
+def test_one_large_daily_difference_fails_unless_the_map_accepts_it():
+    dates = _sessions("2016-01-04", 2600)
+    closes = _walk(6, 2600)
+    mine = closes.copy()
+    mine[:1300] *= 1.25  # a 20% level gap no split explains, e.g. an unadjusted spin-off
+    frame = pd.DataFrame({"dt": dates, "close": mine})
+    reference = _reference("X.N", dates, closes)
+
+    stats = return_agreement(frame, reference, dates[0], dates[-1])
+    assert stats["median_abs_diff"] < 0.002  # the whole-window statistics look fine
+    assert stats["unexplained_large_diffs"] == 1
+    assert stats["unexplained_large_diff_dates"][0]["dt"] == dates[1300]
+    assert not agreement_passes(stats)
+
+    accepted = return_agreement(frame, reference, dates[0], dates[-1], accepted=[dates[1300]])
+    assert accepted["accepted_large_diffs"] == 1
+    assert agreement_passes(accepted)
+
+
+def test_a_short_window_with_full_coverage_passes_without_a_correlation():
+    dates = _sessions("2018-10-01", 12)
+    closes = _walk(7, 12)
+    stats = return_agreement(
+        pd.DataFrame({"dt": dates, "close": closes}),
+        _reference("X.N", dates, closes),
+        dates[0],
+        dates[-1],
+    )
+    assert stats["correlation"] is None and stats["return_pairs"] == 11
+    assert agreement_passes(stats)
 
 
 def test_missing_sessions_inside_the_needed_span_fail():
@@ -316,7 +426,7 @@ def vendor(tmp_path, monkeypatch):
     prefix = "toy_universe"
     pit = source / "constituents" / f"{prefix}_pit_universe.csv"
     pit.write_text(
-        "kdcode,valid_from,valid_to\nGOOD.OQ,2015-06-01,2016-06-30\nOLD.N^A16,2015-06-01,2016-01-29\n",
+        "kdcode,valid_from,valid_to\nGOOD.OQ,2015-06-01,\nOLD.N^A16,2015-06-01,2016-01-29\n",
         encoding="utf-8",
     )
     reference = source / "reference.csv"
@@ -333,15 +443,22 @@ def vendor(tmp_path, monkeypatch):
                 "schema": 1,
                 "overrides": {
                     "OLD.N^A16": {
-                        "segments": [{"candidates": ["OLD.US"], "name_hint": "Old Company"}]
-                    }
+                        "segments": [
+                            {"candidates": ["GONE.US", "OLD.US"], "name_hint": "Old Company"}
+                        ]
+                    },
+                    "GOOD.OQ": {
+                        "adjustments": [{"date": dates[300], "reason": "spin-off"}],
+                    },
                 },
             }
         ),
         encoding="utf-8",
     )
-    # GOOD: raw prices carry a 2-for-1 split on session 100 that the split record undoes.
+    # GOOD: raw prices carry a 2-for-1 split on session 100 that the split record undoes,
+    # and a spin-off on session 300 that only adjusted_close carries (step 0.8).
     raw_good = np.where(np.arange(400) < 100, good * 2, good)
+    raw_good = np.where(np.arange(400) < 300, raw_good / 0.8, raw_good)
     FakeClient.eod_rows = {
         "GOOD.US": _raw_rows(dates, list(raw_good), adjusted=list(good)),
         # OLD.US is now someone else; the old company sits under OLD_old in the delisted list.
@@ -371,6 +488,7 @@ def _argv(vendor, **extra):
         "--symbol-map", str(vendor["map"]),
         "--start", "2015-01-01",
         "--end", "2016-07-29",
+        "--pit-export-cutoff", "2016-06-30",
         "--package-root", str(vendor["tmp"] / "package"),
         "--cache-dir", str(vendor["tmp"] / "cache"),
     ]  # fmt: skip
@@ -396,8 +514,10 @@ def test_export_proves_each_mapping_and_publishes_a_verifiable_package(vendor):
     old = symbols["OLD.N^A16"]["segments"][0]
     assert old["symbol"] == "OLD_OLD.US"
     assert old["chosen_by"] == "reference_match"
-    assert [t["symbol"] for t in old["tried"]] == ["OLD.US", "OLD_OLD.US"]
+    assert [t["symbol"] for t in old["tried"]] == ["GONE.US", "OLD.US", "OLD_OLD.US"]
+    assert old["tried"][0]["rows"] == 0  # a symbol EODHD does not know is skipped, not fatal
 
+    assert symbols["GOOD.OQ"]["adjustments_applied"][0]["factor"] == pytest.approx(0.8)
     good = panel[panel["kdcode"] == "GOOD.OQ"]["close"].to_numpy()
     assert np.abs(np.diff(np.log(good))).max() < 0.2  # the split no longer shows
 
@@ -477,6 +597,10 @@ def test_client_never_stores_or_reports_the_key(tmp_path, monkeypatch):
     client.eod("AAPL.US", "2020-01-01", "2020-01-31")
     assert len(seen_urls) == 1 and raw_log[-1]["from_cache"] is True
 
+    # Another date range is another request, not the cached one.
+    client.eod("AAPL.US", "2019-01-01", "2020-01-31")
+    assert len(seen_urls) == 2
+
     def failing_urlopen(url, timeout):
         raise export.urllib.error.HTTPError(url, 500, f"boom {url}", {}, None)
 
@@ -485,6 +609,31 @@ def test_client_never_stores_or_reports_the_key(tmp_path, monkeypatch):
     with pytest.raises(export.VendorError) as caught:
         client.eod("MSFT.US", "2020-01-01", "2020-01-31")
     assert key not in str(caught.value)
+
+    def odd_urlopen(url, timeout):
+        raise ValueError(f"URL can't contain control characters. {url!r}")
+
+    monkeypatch.setattr(export.urllib.request, "urlopen", odd_urlopen)
+    with pytest.raises(export.VendorError) as caught:
+        client.eod("A B.US", "2020-01-01", "2020-01-31")
+    assert key not in str(caught.value) and caught.value.__cause__ is None
+
+
+def test_client_quotes_symbols_and_retries_dropped_connections(tmp_path, monkeypatch):
+    attempts = []
+
+    def flaky_urlopen(url, timeout):
+        attempts.append(url)
+        if len(attempts) == 1:
+            raise ConnectionResetError("reset by peer")
+        return _Response([])
+
+    monkeypatch.setattr(export.urllib.request, "urlopen", flaky_urlopen)
+    monkeypatch.setattr(export.time, "sleep", lambda seconds: None)
+    client = export.EodhdClient("k", tmp_path / "cache", [])
+    assert client.eod("A B.US", "2020-01-01", "2020-01-31") == []
+    assert len(attempts) == 2
+    assert "/eod/A%20B.US?" in attempts[-1]
 
 
 def test_inputs_must_match_the_reference_manifest(tmp_path):

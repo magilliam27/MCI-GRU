@@ -58,7 +58,7 @@ def build_cells() -> list[dict]:
         code(
             """
             # Parameters
-            BRANCH = "main"
+            BRANCH = "claude/first-run-eodhd-prices-g5lvy4"  # "main" once #281's pull request is merged
             EXPECTED_COMMIT = ""  # optional: the full commit SHA to run
 
             LSEG_PACKAGE_DRIVE_DIR = "/content/drive/MyDrive/MCI_GRU_shared/preservation/2026-10-02-110-universe-2016"
@@ -96,8 +96,8 @@ def build_cells() -> list[dict]:
         ),
         code(
             """
-            # Clone the repository at BRANCH (and EXPECTED_COMMIT, if set), then install exactly
-            # what requirements.lock pins and the repository without dependencies.
+            # Clone the repository at BRANCH (and EXPECTED_COMMIT, if set), then install the
+            # Colab-facing requirements (ranges that Colab's own torch satisfies) and the repository.
             REPO_URL = "https://github.com/magilliam27/MCI-GRU.git"
             REPO_DIR = Path("/content/MCI-GRU")
 
@@ -130,7 +130,7 @@ def build_cells() -> list[dict]:
                 raise RuntimeError(f"Checked out {COMMIT}, expected {EXPECTED_COMMIT}")
             print("Commit:", COMMIT)
             PIP = [sys.executable, "-m", "pip", "install", "-q"]
-            stream(PIP + ["-r", str(REPO_DIR / "requirements.lock")])
+            stream(PIP + ["-r", str(REPO_DIR / "requirements.txt")])
             stream(PIP + ["--no-deps", "-e", str(REPO_DIR)])
             """
         ),
@@ -161,33 +161,35 @@ def build_cells() -> list[dict]:
         ),
         code(
             """
-            # Copy the package (and its manifest, when one was published) to Drive. A file that
-            # already exists there with other bytes stops the copy; nothing is overwritten.
+            # Copy the package (and its manifest, when one was published) to Drive. Every
+            # destination is checked before anything is copied: a file already there with other
+            # bytes stops the copy, and nothing is overwritten. A failed pull goes to its own
+            # timestamped folder, so re-runs never collide.
             import filecmp
             import hashlib
             import shutil
+            from datetime import datetime, timezone
 
             target = Path(OUTPUT_DRIVE_DIR)
             if exit_code != 0:
-                target = target.with_name(target.name + "_FAILED_" + COMMIT[:8])
+                stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                target = target.with_name(f"{target.name}_FAILED_{stamp}")
+            sources = [p for p in sorted(Path(LOCAL_PACKAGE).rglob("*")) if p.is_file()]
+            pairs = [(p, target / p.relative_to(LOCAL_PACKAGE)) for p in sources]
+            manifest = Path(LOCAL_MANIFEST)
+            if exit_code == 0 and manifest.exists():
+                pairs.append((manifest, target / manifest.name))
+            clashes = [d for s, d in pairs if d.exists() and not filecmp.cmp(s, d, shallow=False)]
+            if clashes:
+                raise RuntimeError(f"{len(clashes)} files already on Drive with other bytes, e.g. {clashes[0]}")
             copied = 0
-            for source in sorted(Path(LOCAL_PACKAGE).rglob("*")):
-                if not source.is_file():
-                    continue
-                destination = target / source.relative_to(LOCAL_PACKAGE)
+            for source, destination in pairs:
                 if destination.exists():
-                    if not filecmp.cmp(source, destination, shallow=False):
-                        raise RuntimeError(f"{destination} exists with other bytes; not overwriting")
                     continue
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source, destination)
                 copied += 1
-            manifest = Path(LOCAL_MANIFEST)
             if exit_code == 0 and manifest.exists():
-                destination = target / manifest.name
-                if destination.exists() and not filecmp.cmp(manifest, destination, shallow=False):
-                    raise RuntimeError(f"{destination} exists with other bytes; not overwriting")
-                shutil.copyfile(manifest, destination)
                 print("Manifest SHA-256:", hashlib.sha256(manifest.read_bytes()).hexdigest())
             print(f"Copied {copied} files to {target}")
             """
@@ -200,9 +202,11 @@ def build_cells() -> list[dict]:
               Tell the thread the pull finished. The manifest gets committed to
               `data/manifests/`, and a data config pins its SHA-256, so the first run can
               stage this package the way it stages the LSEG one.
-            - **Exit code 1:** the files went to a `_FAILED_` folder instead.
+            - **Exit code 1:** the files went to a timestamped `_FAILED_` folder instead.
               `market/*.meta.json` lists each blocking finding by name, and
-              `*_symbols.json` shows every symbol tried. Fix the symbol map
+              `*_symbols.json` shows every symbol tried. A one-day difference from LSEG is
+              usually a spin-off the split records miss: the map's `adjustments` handle it.
+              Fix the symbol map
               (`data/mappings/eodhd_symbols_gics_top10_110_2016.json`), then re-run from
               the top; cached responses are reused.
             """

@@ -19,6 +19,10 @@ What this module decides:
   multiplied by it. EODHD's ``adjusted_close`` (splits and dividends) is kept
   only to check the split handling. A wrong split would show as a jump in the
   ratio between the two.
+- **Corporate actions the split records miss.** A spin-off changes the price
+  basis without a split. The map can declare one per identifier: prices before
+  its date are multiplied by a stated factor, or by the step EODHD's
+  ``adjusted_close`` takes on that date.
 - **How a mapping is proven.** When a reference panel is supplied (the preserved
   LSEG panel), each name's EODHD close-to-close returns must agree with the
   reference's over the span the universe needs. A ticker mix-up cannot pass
@@ -55,6 +59,9 @@ LABEL_TAIL_DAYS = 10
 #: this cannot be a dividend. It is a split applied twice or missed (a 3-for-2
 #: split is log 1.5 = 0.41).
 SPLIT_JUMP_LOG_LIMIT = 0.18
+#: A step in that ratio beyond this is larger than an ordinary dividend. It is
+#: reported (not blocking) as a possible spin-off or special dividend.
+LARGE_ADJUSTMENT_LOG = 0.03
 
 #: Identity and coverage thresholds for agreement with the reference panel.
 MIN_RETURN_CORRELATION = 0.95
@@ -62,6 +69,15 @@ MAX_MEDIAN_ABS_RETURN_DIFF = 0.002
 MAX_MISSING_SHARE = 0.02
 #: Days of slack at either end of the needed span (listing-day conventions).
 EDGE_SLACK_SESSIONS = 5
+#: One day's return may differ from the reference by at most this much, unless
+#: the map accepts that date. A spin-off, a missed split or a level gap at a
+#: splice shows up here even when the whole-window statistics look fine.
+MAX_DAILY_ABS_DIFF = 0.03
+#: Below this many return pairs a correlation means little; short windows are
+#: judged on coverage and the daily limit alone.
+MIN_PAIRS_FOR_CORRELATION = 20
+#: Dates listed as evidence, per finding.
+EVIDENCE_DATES = 20
 
 
 class SymbolMapError(ValueError):
@@ -84,13 +100,29 @@ class SymbolSegment:
 
 
 @dataclass(frozen=True)
+class PriceAdjustment:
+    """A corporate action the split records do not carry, such as a spin-off.
+
+    Prices before ``date`` are multiplied by ``factor``. With no factor, the
+    factor is the step EODHD's ``adjusted_close`` takes on that date.
+    """
+
+    date: str
+    reason: str
+    factor: float | None = None
+
+
+@dataclass(frozen=True)
 class SymbolPlan:
-    """Every segment of one panel identifier, in date order."""
+    """Every segment of one panel identifier, in date order, and its declared events."""
 
     kdcode: str
     segments: tuple[SymbolSegment, ...]
     note: str | None = None
     overridden: bool = False
+    adjustments: tuple[PriceAdjustment, ...] = ()
+    #: Dates whose one-day difference from the reference is explained and accepted.
+    accepted_differences: tuple[str, ...] = ()
 
 
 @dataclass
@@ -161,13 +193,16 @@ def parse_symbol_map(payload: Mapping[str, Any]) -> dict[str, SymbolPlan]:
         raise SymbolMapError("Symbol map needs an 'overrides' object")
     plans: dict[str, SymbolPlan] = {}
     for kdcode, entry in overrides.items():
-        if not isinstance(entry, dict) or not isinstance(entry.get("segments"), list):
-            raise SymbolMapError(f"{kdcode}: needs a 'segments' list")
-        unknown = set(entry) - {"segments", "note"}
+        if not isinstance(entry, dict):
+            raise SymbolMapError(f"{kdcode}: must be an object")
+        unknown = set(entry) - {"segments", "note", "adjustments", "accepted_differences"}
         if unknown:
             raise SymbolMapError(f"{kdcode}: unknown fields {sorted(unknown)}")
+        raw_segments = entry.get("segments", [{"candidates": [default_symbol(kdcode)]}])
+        if not isinstance(raw_segments, list):
+            raise SymbolMapError(f"{kdcode}: 'segments' must be a list")
         segments = []
-        for index, raw in enumerate(entry["segments"]):
+        for index, raw in enumerate(raw_segments):
             where = f"{kdcode} segment {index}"
             if not isinstance(raw, dict):
                 raise SymbolMapError(f"{where}: must be an object")
@@ -193,9 +228,66 @@ def parse_symbol_map(payload: Mapping[str, Any]) -> dict[str, SymbolPlan]:
                 )
             )
         _validate_segment_order(kdcode, segments)
-        note = entry.get("note")
-        plans[kdcode] = SymbolPlan(kdcode, tuple(segments), note=note, overridden=True)
+        plans[kdcode] = SymbolPlan(
+            kdcode,
+            tuple(segments),
+            note=entry.get("note"),
+            overridden=True,
+            adjustments=_parse_adjustments(kdcode, entry.get("adjustments", [])),
+            accepted_differences=_parse_accepted(kdcode, entry.get("accepted_differences", [])),
+        )
     return plans
+
+
+def _reason(raw: Mapping[str, Any], where: str) -> str:
+    reason = raw.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        raise SymbolMapError(f"{where}: needs a nonempty 'reason'")
+    return reason
+
+
+def _parse_adjustments(kdcode: str, raw_list: Any) -> tuple[PriceAdjustment, ...]:
+    if not isinstance(raw_list, list):
+        raise SymbolMapError(f"{kdcode}: 'adjustments' must be a list")
+    adjustments = []
+    for index, raw in enumerate(raw_list):
+        where = f"{kdcode} adjustment {index}"
+        if not isinstance(raw, dict) or set(raw) - {"date", "reason", "factor"}:
+            raise SymbolMapError(f"{where}: allowed fields are date, reason and factor")
+        factor = raw.get("factor")
+        if factor is not None and (
+            isinstance(factor, bool)
+            or not isinstance(factor, (int, float))
+            or not math.isfinite(factor)
+            or factor <= 0
+        ):
+            raise SymbolMapError(f"{where}: factor must be a positive number")
+        date = _date_or_none(raw.get("date"), where)
+        if date is None:
+            raise SymbolMapError(f"{where}: needs a date")
+        adjustments.append(
+            PriceAdjustment(date, _reason(raw, where), None if factor is None else float(factor))
+        )
+    dates = [a.date for a in adjustments]
+    if len(set(dates)) != len(dates):
+        raise SymbolMapError(f"{kdcode}: adjustments repeat a date")
+    return tuple(sorted(adjustments, key=lambda a: a.date))
+
+
+def _parse_accepted(kdcode: str, raw_list: Any) -> tuple[str, ...]:
+    if not isinstance(raw_list, list):
+        raise SymbolMapError(f"{kdcode}: 'accepted_differences' must be a list")
+    dates = []
+    for index, raw in enumerate(raw_list):
+        where = f"{kdcode} accepted difference {index}"
+        if not isinstance(raw, dict) or set(raw) - {"date", "reason"}:
+            raise SymbolMapError(f"{where}: allowed fields are date and reason")
+        _reason(raw, where)
+        date = _date_or_none(raw.get("date"), where)
+        if date is None:
+            raise SymbolMapError(f"{where}: needs a date")
+        dates.append(date)
+    return tuple(sorted(set(dates)))
 
 
 def _validate_segment_order(kdcode: str, segments: list[SymbolSegment]) -> None:
@@ -272,7 +364,10 @@ def eod_rows_frame(rows: Iterable[Mapping[str, Any]]) -> pd.DataFrame:
     frame = pd.DataFrame(list(rows))
     columns = ["date", *PRICE_FIELDS, "adjusted_close", "volume"]
     if frame.empty:
-        return pd.DataFrame(columns=["dt", *PRICE_FIELDS, "adjusted_close", "volume"])
+        empty = pd.DataFrame({"dt": pd.Series(dtype=str)})
+        for column in (*PRICE_FIELDS, "adjusted_close", "volume"):
+            empty[column] = pd.Series(dtype=float)
+        return empty
     missing = [c for c in columns if c not in frame.columns]
     if missing:
         raise ValueError(f"EOD rows are missing fields {missing}")
@@ -315,28 +410,105 @@ def split_adjust(eod: pd.DataFrame, splits: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def split_basis_findings(kdcode: str, symbol: str, adjusted: pd.DataFrame) -> list[Finding]:
-    """Jumps in adjusted_close / split-adjusted close that no dividend explains."""
+def adjustment_steps(adjusted: pd.DataFrame) -> pd.DataFrame:
+    """Per session, the step in adjusted_close / split-adjusted close from the session before.
+
+    ``step`` is the factor that session's vendor adjustment applies to earlier
+    prices: below 1 on an ex-dividend date, about 1 on an ordinary day.
+    """
     usable = adjusted[(adjusted["close"] > 0) & (adjusted["adjusted_close"] > 0)]
-    if len(usable) < 2:
-        return []
-    log_ratio = np.log(usable["adjusted_close"].to_numpy() / usable["close"].to_numpy())
-    jumps = np.abs(np.diff(log_ratio))
-    bad = np.flatnonzero(jumps > SPLIT_JUMP_LOG_LIMIT)
-    if not len(bad):
-        return []
-    dates = usable["dt"].to_numpy()
-    return [
-        Finding(
-            kdcode,
-            "split_basis_jump",
-            True,
-            f"{symbol}: adjusted_close and the split-adjusted close disagree by a split-sized "
-            "step; a split is missing from the split records or the raw prices already "
-            "carry it",
-            {"symbol": symbol, "dates": [str(dates[i + 1]) for i in bad[:10]]},
+    ratio = (usable["adjusted_close"] / usable["close"]).to_numpy()
+    if len(ratio) < 2:
+        return pd.DataFrame({"dt": pd.Series(dtype=str), "step": pd.Series(dtype=float)})
+    return pd.DataFrame({"dt": usable["dt"].to_numpy()[1:], "step": ratio[:-1] / ratio[1:]})
+
+
+def split_basis_findings(
+    kdcode: str, symbol: str, adjusted: pd.DataFrame, exempt: Iterable[str] = ()
+) -> list[Finding]:
+    """Steps in adjusted_close / split-adjusted close that no dividend explains.
+
+    A split-sized step blocks: a split is missing or applied twice. A smaller
+    step that is still larger than a dividend is reported as a possible
+    corporate action. Dates the map already declares are exempt.
+    """
+    steps = adjustment_steps(adjusted)
+    steps = steps[~steps["dt"].isin(set(exempt))]
+    size = np.abs(np.log(steps["step"].to_numpy()))
+    findings = []
+    split_sized = steps[size > SPLIT_JUMP_LOG_LIMIT]
+    if len(split_sized):
+        findings.append(
+            Finding(
+                kdcode,
+                "split_basis_jump",
+                True,
+                f"{symbol}: adjusted_close and the split-adjusted close disagree by a "
+                "split-sized step; a split is missing from the split records or the raw "
+                "prices already carry it",
+                {"symbol": symbol, "dates": split_sized["dt"].head(EVIDENCE_DATES).tolist()},
+            )
         )
-    ]
+    large = steps[(size > LARGE_ADJUSTMENT_LOG) & (size <= SPLIT_JUMP_LOG_LIMIT)]
+    if len(large):
+        findings.append(
+            Finding(
+                kdcode,
+                "large_adjustment_step",
+                False,
+                f"{symbol}: EODHD's adjusted_close steps by more than a dividend on these "
+                "dates; a spin-off or special dividend the split-adjusted prices do not carry",
+                {
+                    "symbol": symbol,
+                    "steps": {
+                        str(d): round(float(v), 6)
+                        for d, v in zip(
+                            large["dt"].head(EVIDENCE_DATES),
+                            large["step"].head(EVIDENCE_DATES),
+                            strict=True,
+                        )
+                    },
+                },
+            )
+        )
+    return findings
+
+
+def apply_adjustments(
+    kdcode: str, frame: pd.DataFrame, adjustments: Iterable[PriceAdjustment]
+) -> tuple[pd.DataFrame, list[dict[str, Any]], list[Finding]]:
+    """Apply the map's declared corporate actions to one identifier's rows.
+
+    Prices before each date are multiplied by its factor; volume is unchanged.
+    A factor read from ``adjusted_close`` needs vendor rows on and before the date.
+    """
+    out = frame.copy()
+    applied, findings = [], []
+    steps = adjustment_steps(frame).set_index("dt")["step"]
+    for adjustment in adjustments:
+        factor = adjustment.factor
+        basis = "declared_factor"
+        if factor is None:
+            basis = "vendor_adjusted_close"
+            factor = float(steps.get(adjustment.date, np.nan))
+            if not math.isfinite(factor):
+                findings.append(
+                    Finding(
+                        kdcode,
+                        "adjustment_unresolved",
+                        True,
+                        f"No adjusted_close step on {adjustment.date} to read the factor from",
+                        {"date": adjustment.date, "reason": adjustment.reason},
+                    )
+                )
+                continue
+        before = out["dt"] < adjustment.date
+        for column in PRICE_FIELDS:
+            out.loc[before, column] = out.loc[before, column] * factor
+        applied.append(
+            {"date": adjustment.date, "factor": factor, "basis": basis, "reason": adjustment.reason}
+        )
+    return out, applied, findings
 
 
 def clean_values(frame: pd.DataFrame) -> tuple[pd.DataFrame, int]:
@@ -406,8 +578,15 @@ def coverage_table(panel: pd.DataFrame) -> pd.DataFrame:
 
 
 def needed_spans(pit: pd.DataFrame) -> pd.DataFrame:
-    """Per identifier: one year before its first window to just after its last."""
+    """Per identifier: one year before its first window to just after its last.
+
+    Blank ``valid_to`` cells must be filled with the export cutoff first.
+    """
     frame = pit.copy()
+    for column in ("valid_from", "valid_to"):
+        blank = frame[column].isna() | (frame[column].astype(str).str.strip() == "")
+        if blank.any():
+            raise ValueError(f"PIT {column} has blank cells; fill them with the export cutoff")
     frame["valid_from"] = pd.to_datetime(frame["valid_from"], format=DATE_FORMAT)
     frame["valid_to"] = pd.to_datetime(frame["valid_to"], format=DATE_FORMAT)
     spans = frame.groupby("kdcode").agg(first=("valid_from", "min"), last=("valid_to", "max"))
@@ -431,11 +610,14 @@ def return_agreement(
     end: str,
     *,
     candidate_column: str = "close",
+    accepted: Iterable[str] = (),
 ) -> dict[str, Any]:
     """Coverage and close-to-close return agreement over ``[start, end]``.
 
     Reference sessions with a close set the calendar. Returns are taken between
-    consecutive reference sessions where both sources have a close.
+    consecutive reference sessions where both sources have a close. Days whose
+    returns differ by more than ``MAX_DAILY_ABS_DIFF`` are counted, and those
+    not in ``accepted`` are listed.
     """
     ref = _close_returns(reference)
     ref = ref[(ref.index >= start) & (ref.index <= end)]
@@ -450,19 +632,37 @@ def return_agreement(
         "median_abs_diff": None,
         "max_abs_diff": None,
         "share_abs_diff_over_1pct": None,
+        "accepted_large_diffs": 0,
+        "unexplained_large_diffs": 0,
+        "unexplained_large_diff_dates": [],
     }
     aligned = pd.DataFrame({"ref": ref, "cand": cand.reindex(ref.index)})
     rets = aligned.pct_change(fill_method=None).dropna()
     result["return_pairs"] = len(rets)
-    if len(rets) >= 20:
-        diff = (rets["cand"] - rets["ref"]).abs()
+    if rets.empty:
+        return result
+    diff = (rets["cand"] - rets["ref"]).abs()
+    large = diff[diff > MAX_DAILY_ABS_DIFF]
+    accepted = set(accepted)
+    unexplained = large[~large.index.isin(accepted)]
+    result.update(
+        median_abs_diff=float(diff.median()),
+        max_abs_diff=float(diff.max()),
+        share_abs_diff_over_1pct=float((diff > 0.01).mean()),
+        accepted_large_diffs=len(large) - len(unexplained),
+        unexplained_large_diffs=len(unexplained),
+        unexplained_large_diff_dates=[
+            {
+                "dt": str(d),
+                "eodhd": float(rets.at[d, "cand"]),
+                "reference": float(rets.at[d, "ref"]),
+            }
+            for d in unexplained.index[:EVIDENCE_DATES]
+        ],
+    )
+    if len(rets) >= MIN_PAIRS_FOR_CORRELATION:
         corr = rets["cand"].corr(rets["ref"])
-        result.update(
-            correlation=None if pd.isna(corr) else float(corr),
-            median_abs_diff=float(diff.median()),
-            max_abs_diff=float(diff.max()),
-            share_abs_diff_over_1pct=float((diff > 0.01).mean()),
-        )
+        result["correlation"] = None if pd.isna(corr) else float(corr)
     return result
 
 
@@ -473,8 +673,12 @@ def agreement_passes(stats: Mapping[str, Any]) -> bool:
         return True
     if stats["missing_sessions"] > max(EDGE_SLACK_SESSIONS, MAX_MISSING_SHARE * sessions):
         return False
+    if stats["unexplained_large_diffs"]:
+        return False
+    if stats["return_pairs"] < MIN_PAIRS_FOR_CORRELATION:
+        return True
     if stats["correlation"] is None:
-        return stats["return_pairs"] == 0 and stats["missing_sessions"] == 0
+        return False
     return (
         stats["correlation"] >= MIN_RETURN_CORRELATION
         and stats["median_abs_diff"] <= MAX_MEDIAN_ABS_RETURN_DIFF
@@ -498,9 +702,13 @@ def check_window(
 
 
 def reference_check(
-    panel: pd.DataFrame, reference: pd.DataFrame, pit: pd.DataFrame
+    panel: pd.DataFrame,
+    reference: pd.DataFrame,
+    pit: pd.DataFrame,
+    accepted: Mapping[str, Iterable[str]] | None = None,
 ) -> tuple[pd.DataFrame, list[Finding]]:
     """Compare every identifier against the reference over its needed span."""
+    accepted = accepted or {}
     spans = needed_spans(pit).set_index("kdcode")
     by_code = dict(tuple(panel.groupby("kdcode"))) if not panel.empty else {}
     ref_by_code = dict(tuple(reference.groupby("kdcode"))) if not reference.empty else {}
@@ -525,9 +733,9 @@ def reference_check(
             )
             rows.append(row)
             continue
-        stats = return_agreement(mine, ref, *window)
+        stats = return_agreement(mine, ref, *window, accepted=accepted.get(kdcode, ()))
         total = return_agreement(mine, ref, *window, candidate_column="adjusted_close")
-        row.update(stats)
+        row.update({k: v for k, v in stats.items() if k != "unexplained_large_diff_dates"})
         row["total_return_median_abs_diff"] = total["median_abs_diff"]
         passed = agreement_passes(stats)
         row["verdict"] = "pass" if passed else "fail"
