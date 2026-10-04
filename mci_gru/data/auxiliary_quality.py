@@ -30,11 +30,14 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from mci_gru.data.quality_contract import AdmissionItem, Verdict
+
 PREDICTION_CLOCK = "20:00 America/New_York"
 SESSION_CALENDAR = "weekdays"
 MAX_CARRY_SESSIONS = 5
 MONTHLY_RELEASE_LAG_MONTHS = 2
 VALID_FOR_STATED_SCOPE = "valid for stated scope"
+ADMISSION_RULE = "regime_historical_availability"
 _MAX_REPORTED_DATES = 10
 
 
@@ -264,3 +267,34 @@ def qualify_role(
         "revisions": "unchecked",
     }
     return QualifiedRole(pd.Series(values, index=sessions, name=role.column), verdict)
+
+
+def admission_item(verdict: dict[str, Any]) -> AdmissionItem:
+    """A qualified role's verdict as one #223 ledger item (``valid`` for its stated scope)."""
+    return AdmissionItem(
+        role=f"{verdict['source']}.{verdict['role']}",
+        rule=ADMISSION_RULE,
+        verdict=Verdict.VALID,
+        reason_code="valid_for_stated_scope",
+        reason=f"{verdict['label']} meets the #224 availability rules for the stated scope",
+        source=verdict["source"],
+        evidence=verdict,
+    )
+
+
+def rejection_item(facts: dict[str, Any]) -> AdmissionItem:
+    """A role stopped by a #224 rule, from the stop's own facts, as an ``invalid`` ledger item."""
+    return AdmissionItem(
+        role=facts["role"],
+        rule=ADMISSION_RULE,
+        verdict=Verdict.INVALID,
+        reason_code=facts["reason_code"],
+        reason=facts.get("detail", facts["reason_code"]),
+        stage=facts["stage"],
+        source=facts["source"],
+        evidence={
+            key: value
+            for key, value in facts.items()
+            if key not in {"role", "source", "stage", "reason", "reason_code", "detail"}
+        },
+    )
