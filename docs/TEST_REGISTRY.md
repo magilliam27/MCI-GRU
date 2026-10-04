@@ -386,6 +386,38 @@ Ensemble invariant: prediction = mean of independently trained models.
 | `test_ensemble_averaging_matches_numpy_mean` | avg_predictions returned in-memory equals the numpy mean of member outputs. |  |
 | `test_ensemble_completes_and_forwards_missing_checkpoint_metrics` | Members without an IC at their selected checkpoint complete and forward None. |  |
 
+## `tests/test_eodhd_prices.py`
+
+EODHD daily prices for the point-in-time universe (#281).
+
+**Exercises:** `mci_gru.data.eodhd_prices`, `mci_gru.data.input_manifest`, `mci_gru.data.quality_contract`, `scripts.data.export_eodhd_pit_prices`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_default_symbol_follows_the_ric_rule` |  | parametrize |
+| `test_committed_symbol_map_parses_and_names_only_ric_shaped_identifiers` |  |  |
+| `test_symbol_map_rejects_ambiguous_segments` |  | parametrize |
+| `test_plans_reject_overrides_for_names_outside_the_universe` |  |  |
+| `test_name_hint_matches_common_stock_names_case_insensitively` |  |  |
+| `test_parse_split_ratio_reads_new_over_old` |  |  |
+| `test_split_adjust_divides_prices_and_multiplies_volume_before_the_split` |  |  |
+| `test_splits_after_the_panel_end_are_not_applied` |  |  |
+| `test_a_split_the_raw_prices_already_carry_is_caught` |  |  |
+| `test_clean_values_blanks_nonpositive_prices_and_negative_volume` |  |  |
+| `test_matching_returns_at_a_different_price_level_pass` |  |  |
+| `test_another_company_with_the_same_ticker_fails` |  |  |
+| `test_uncorrelated_quiet_series_fail_even_when_differences_are_small` |  |  |
+| `test_missing_sessions_inside_the_needed_span_fail` |  |  |
+| `test_reference_check_only_judges_the_span_the_universe_needs` |  |  |
+| `test_export_proves_each_mapping_and_publishes_a_verifiable_package` |  |  |
+| `test_export_stops_without_a_manifest_when_no_candidate_matches` |  |  |
+| `test_the_key_is_never_written` |  |  |
+| `test_client_never_stores_or_reports_the_key` |  |  |
+| `test_inputs_must_match_the_reference_manifest` |  |  |
+| `test_notebook_is_the_generator_output` |  |  |
+| `test_notebook_pins_the_reference_package_the_lseg_config_pins` |  |  |
+| `test_notebook_reads_the_key_from_secrets_and_never_prints_it` |  |  |
+
 ## `tests/test_evaluation_portfolio.py`
 
 **Exercises:** `mci_gru.evaluation.portfolio`
