@@ -802,6 +802,10 @@ def test_the_frozen_recipe_requests_its_six_fred_regime_series_without_a_source_
     assert not [line for line in overrides if "auxiliary_sources" in line]
     config = _compose(overrides)
     assert config.data.auxiliary_sources["regime"] == "fred"
+    # The recipe also extends SP500 from an index file (#276); that splice has its own
+    # tests in test_regime_market_history_fill.py, so this check stays FRED-only.
+    assert config.features.regime_market_history_csv.endswith("sp500_index.csv")
+    config = replace(config, features=replace(config.features, regime_market_history_csv=None))
     requested = []
 
     class Fred:

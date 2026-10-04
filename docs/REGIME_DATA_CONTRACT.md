@@ -65,6 +65,36 @@ stage `validate` whose facts carry the reason and dates; it is also recorded as
 an `invalid` item, and the ledger so far travels with the error into
 `run_failure.json`.
 
+### S&P 500 history fill (#276)
+
+FRED serves only the last ten years of `SP500`. Under the rules above, the
+market level therefore entered the regime distance only from 2019-09 in the
+first-run recipe, and the stock-bond correlation only from 2022-07. Following the
+owner decision of 2026-10-04, `features.regime_market_history_csv` names a
+`dt,close` file of the same index that extends the market role backwards.
+`configs/features/with_momentum.yaml` points it at the EODHD GSPC file
+`data/raw/market/eodhd_sp500_2010_20260919/sp500_index.csv`, which starts on
+2008-01-02. `null` keeps the market role FRED-only.
+
+- **Splice:** only file observations dated strictly before FRED's first
+  observation are used. From that date on, FRED's own values stand. The spliced
+  series then goes through every rule above unchanged.
+- **Agreement:** before splicing, the file must match FRED on at least 20 shared
+  dates, with a median relative difference no larger than `1e-3`. Otherwise the
+  role stops with `history_fill_mismatch` or `history_fill_overlap_too_short`.
+  On the 2026-09-19 EODHD file the median difference is 2.5e-8 over 2,412 shared
+  sessions, and the largest is 1.2e-3, on 2021-08-12.
+- **Identity:** the file is read through the input snapshots as role
+  `eodhd.sp500_index`, without basename fallback, so capture keeps it and replay
+  reads it back.
+- **Record:** the market verdict carries a `history_fill` block with the path,
+  the splice date, the fill's first and last observations, its observation count,
+  and the overlap agreement.
+
+With the fill, the market level enters the regime distance from 2010-12 and the
+stock-bond correlation from 2013-10. All seven inputs are then present in every
+training month of the 2016-2023 recipe window.
+
 Index mode (`load_index_series`), standalone VIX, credit and the legacy CSV
 below are disabled in the recipe and keep their earlier behaviour.
 

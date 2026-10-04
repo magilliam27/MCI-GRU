@@ -36,6 +36,10 @@ PREDICTION_CLOCK = "20:00 America/New_York"
 SESSION_CALENDAR = "weekdays"
 MAX_CARRY_SESSIONS = 5
 MONTHLY_RELEASE_LAG_MONTHS = 2
+# A history fill must agree with the provider series it extends (#276): the
+# median relative difference over at least this many shared observation dates.
+HISTORY_FILL_TOLERANCE = 1e-3
+HISTORY_FILL_MIN_OVERLAP = 20
 VALID_FOR_STATED_SCOPE = "valid for stated scope"
 ADMISSION_RULE = "regime_historical_availability"
 _MAX_REPORTED_DATES = 10
@@ -143,6 +147,63 @@ def parse_observations(
             role, reason, f"{rule} on {dates}", dates=dates, count=int(bad.sum())
         )
     return numeric, int(gap.sum())
+
+
+def splice_history(
+    raw: pd.Series,
+    history: pd.Series,
+    role: RegimeRole,
+    *,
+    missing_markers: tuple[str, ...],
+) -> tuple[pd.Series, dict[str, Any]]:
+    """
+    Extend a provider series backwards with an earlier history of the same quantity (#276).
+
+    Only history observations dated strictly before the provider's first value are
+    used; from that date on the provider's own observations stand. Both sides go
+    through the role's value rules first, and the history must agree with the
+    provider on their shared dates, or the role stops. The returned series still
+    goes through ``qualify_role``, so availability, carry and back-fill rules are
+    unchanged.
+    """
+    provider = parse_observations(raw, role, missing_markers)[0].dropna()
+    earlier = parse_observations(history, role, ())[0].dropna()
+    shared = provider.index.intersection(earlier.index)
+    if len(shared) < HISTORY_FILL_MIN_OVERLAP:
+        raise RegimeInputError(
+            role,
+            "history_fill_overlap_too_short",
+            f"history shares {len(shared)} observation dates with the provider series; "
+            f"at least {HISTORY_FILL_MIN_OVERLAP} are required",
+            overlap_observations=len(shared),
+        )
+    relative = (earlier.loc[shared] / provider.loc[shared] - 1.0).abs()
+    median = float(relative.median())
+    if median > HISTORY_FILL_TOLERANCE:
+        raise RegimeInputError(
+            role,
+            "history_fill_mismatch",
+            f"history differs from the provider series by a median {median:.3g} "
+            f"(tolerance {HISTORY_FILL_TOLERANCE:g}) over {len(shared)} shared dates",
+            overlap_observations=len(shared),
+            overlap_median_relative_difference=median,
+        )
+    fill = earlier.loc[earlier.index < provider.index[0]]
+    evidence: dict[str, Any] = {
+        "splice_before": provider.index[0].strftime("%Y-%m-%d"),
+        "fill_observations": len(fill),
+        "fill_first_observation": fill.index[0].strftime("%Y-%m-%d") if len(fill) else None,
+        "fill_last_observation": fill.index[-1].strftime("%Y-%m-%d") if len(fill) else None,
+        "overlap_observations": len(shared),
+        "overlap_median_relative_difference": median,
+        "overlap_max_relative_difference": float(relative.max()),
+        "tolerance": HISTORY_FILL_TOLERANCE,
+    }
+    original = pd.Series(
+        raw.to_numpy(dtype=object), index=pd.DatetimeIndex(pd.to_datetime(raw.index))
+    )
+    spliced = pd.concat([fill.astype(object), original.loc[original.index >= provider.index[0]]])
+    return spliced, evidence
 
 
 def _carry_violation(

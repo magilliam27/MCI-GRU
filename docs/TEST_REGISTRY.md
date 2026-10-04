@@ -1340,6 +1340,20 @@ Regime forward context is refused unless the matching excludes the current month
 | `test_feature_engineer_refuses_the_combination_when_the_config_guard_is_bypassed` | Keyword construction skips ``FeatureConfig``; the computation-time copy still refuses. |  |
 | `test_add_regime_features_refuses_subsequent_returns_without_exclusion` |  |  |
 
+## `tests/test_regime_market_history_fill.py`
+
+#276: an S&P 500 index file extends FRED SP500 backwards past its ten-year window.
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.auxiliary_quality`, `mci_gru.data.data_manager`, `mci_gru.data.input_snapshots`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_history_fills_before_fred_and_replays_without_the_file` |  |  |
+| `test_fred_values_stand_from_its_first_observation` |  |  |
+| `test_history_that_disagrees_or_barely_overlaps_stops_the_run` |  | parametrize |
+| `test_without_history_the_market_role_is_fred_only` |  |  |
+| `test_a_missing_history_file_is_not_substituted_by_basename` |  |  |
+
 ## `tests/test_repository_retirement_guard.py`
 
 Prevent retired repository surfaces from being reintroduced.

@@ -16,6 +16,7 @@ from mci_gru.data.auxiliary_quality import (
     RegimeInputError,
     RegimeRole,
     qualify_role,
+    splice_history,
 )
 from mci_gru.data.input_snapshots import InputSnapshotError, InputSnapshots
 
@@ -197,9 +198,15 @@ class FREDLoader:
         role: RegimeRole,
         sessions: pd.DatetimeIndex,
         buffer_days: int | None = None,
+        history: pd.Series | None = None,
+        history_source: dict | None = None,
     ) -> QualifiedRole:
         """
         Fetch one regime role and apply the ruled #224 availability rules.
+
+        ``history``, when given, extends the FRED series backwards before the
+        rules apply (``auxiliary_quality.splice_history``, #276); ``history_source``
+        describes it in the role's verdict.
 
         A daily role requests what get_series requests, so a capture serves
         either; a monthly role reaches back far enough for month X-2.
@@ -230,14 +237,22 @@ class FREDLoader:
         try:
             with self.snapshots.accepted(observation):
                 try:
+                    raw = observation.data
+                    fill = None
+                    if history is not None:
+                        raw, fill = splice_history(
+                            raw, history, role, missing_markers=FRED_MISSING_MARKERS
+                        )
                     qualified = qualify_role(
-                        observation.data,
+                        raw,
                         role,
                         sessions,
                         source="fred",
                         series_id=series_id,
                         missing_markers=FRED_MISSING_MARKERS,
                     )
+                    if fill is not None:
+                        qualified.verdict["history_fill"] = {**(history_source or {}), **fill}
                 except RegimeInputError as error:
                     rejection = error
                     raise
