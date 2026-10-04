@@ -124,8 +124,9 @@ features.regime_min_history_months=24
   `tests/test_default_experiment_recipe.py` composes this block the way
   `run_experiment.py` does and checks the model it builds.
 - No cessation (delisting) event file is declared:
-  `data.pit_cessation_events_csv` stays `null` (decided 2026-10-04, #273). Five
-  panel names carry LSEG delisted suffixes. A declared cessation changes only
+  `data.pit_cessation_events_csv` stays `null` (decided 2026-10-04, #273). Six
+  panel names carry LSEG delisted suffixes (ATVI.OQ^J23, DD.N^I17, DOW.N^I17,
+  HES.N^G25, PXD.N^E24, WBA.OQ^H25). A declared cessation changes only
   `eligible`, and the traded population also needs a close on the date itself
   (`tradable = eligible & feature_ready & price_observed` in `build_pit_masks`).
   So while a delisted name has no close after its last real session, the file
@@ -139,7 +140,9 @@ features.regime_min_history_months=24
     in repeated closes or zero volume. That name then needs a cessation row dated
     to its real last session, or the carried rows removed at source. The #223
     frozen-price rule does not catch this, because it flags only a history that
-    is constant throughout.
+    is constant throughout. Run on 2026-10-04 against the preserved panel: exit
+    0, all six delisted names end cleanly (0 repeated closes, 0 zero-volume
+    sessions), and with `--all` so do all 206 names.
   - A cessation dated on a name's final session and known by 20:00 New York that
     day would also drop that one session from the cross-section. Its own loss is
     unchanged, but other names' scores on that date move slightly. The likely
