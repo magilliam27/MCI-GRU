@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from nb_lib import backtest_engine_path_expr, write_notebook
+from nb_lib import (
+    EODHD_MARKET_DRIVE_PATH,
+    backtest_engine_path_expr,
+    eodhd_market_staging_source,
+    write_notebook,
+)
 from nb_lib import code_lines as code
 from nb_lib import md_lines as md
 
@@ -13,7 +18,7 @@ OUT = Path("notebooks/pit_universe_validation_colab.ipynb")
 
 cells = [
     md(
-        """
+        f"""
         # MCI-GRU PIT Universe Validation
 
         This notebook tests whether the frozen MCI-GRU proof recipe survives survivorship and future-completeness controls.
@@ -27,6 +32,8 @@ cells = [
         `masked_panel` is the only accepted PIT mode and it ignores `data.filter_stocks_per_split`, so the `pit_plus_per_split` control is kept for reference but inactive: it would rerun `pit_universe`.
 
         If `PIT_UNIVERSE_CSV` is blank, the notebook first runs the Joiner/Leaver PIT exporter and uses the generated `*_pit_universe.csv`. That export requires an LSEG/Refinitiv-enabled environment. If you already generated the PIT CSV and stored it in Drive, set `PIT_UNIVERSE_CSV` to that path and skip generation.
+
+        With global regime features on (`REGIME_STRICT = True`) and `REGIME_INPUTS_CSV` blank, the EODHD S&P 500 index file must be on Drive at `{EODHD_MARKET_DRIVE_PATH}`; section 4 copies it into the checkout and verifies its SHA-256.
         """
     ),
     md("## 1. Mount Drive, Clone Repo, Install Dependencies"),
@@ -490,6 +497,24 @@ cells = [
             if w['enabled']
         ]))
         """
+    ),
+    # The runs set features.include_global_regime from REGIME_STRICT; without a
+    # legacy regime CSV they read features.regime_market_csv on a checkout whose
+    # config names it (#278).
+    code(
+        eodhd_market_staging_source(
+            call=(
+                "if not REGIME_STRICT or REGIME_INPUTS_CSV:\n"
+                '    print("Skipped EODHD S&P 500 staging: global regime is off (REGIME_STRICT) or REGIME_INPUTS_CSV supplies it.")\n'
+                "elif not eodhd_market_file_is_read(REPO_DIR):\n"
+                "    print(\n"
+                '        "Skipped EODHD S&P 500 staging: this checkout\'s "\n'
+                '        "configs/features/with_momentum.yaml does not set regime_market_csv."\n'
+                "    )\n"
+                "else:\n"
+                "    stage_eodhd_market_file(REPO_DIR)"
+            )
+        )
     ),
     md("## 5. Build Training And Backtest Jobs"),
     code(
