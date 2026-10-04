@@ -41,16 +41,21 @@ if TYPE_CHECKING:
 
 STOCK_BOND_CORR_WINDOW_DAYS = 756
 STOCK_BOND_CORR_MIN_PERIODS = STOCK_BOND_CORR_WINDOW_DAYS
-MARKET_HISTORY_ROLE = "eodhd.sp500_index"
+# The market regime role read from an EODHD S&P 500 index file (#276).
+MARKET_FILE_ROLE = "eodhd.sp500_index"
+MARKET_FILE_SOURCE = "eodhd"
+MARKET_FILE_SERIES_ID = "GSPC.INDX"
 
 
-def _parse_market_history_csv(content: bytes) -> pd.Series:
+def _parse_market_csv(content: bytes) -> pd.Series:
     """Read a ``dt,close`` index file as raw observations keyed by date (#276)."""
-    frame = pd.read_csv(BytesIO(content), dtype={"close": object})
+    frame = pd.read_csv(BytesIO(content), dtype={"dt": str, "close": object})
     missing = sorted({"dt", "close"} - set(frame.columns))
     if missing:
-        raise ValueError(f"Market history file is missing required columns: {missing}")
-    return pd.Series(frame["close"].to_numpy(dtype=object), index=pd.to_datetime(frame["dt"]))
+        raise ValueError(f"Market index file is missing required columns: {missing}")
+    # Plain dates only: a time of day or offset would silently miss FRED's dates.
+    dates = pd.to_datetime(frame["dt"], format="%Y-%m-%d")
+    return pd.Series(frame["close"].to_numpy(dtype=object), index=dates)
 
 
 def _parse_regime_inputs_csv(
@@ -408,7 +413,7 @@ class DataManager:
         regime_inputs_csv: str | None = None,
         regime_enforce_lag_days: int = 0,
         end: str | None = None,
-        regime_market_history_csv: str | None = None,
+        regime_market_csv: str | None = None,
     ) -> pd.DataFrame:
         """
         Load the selected FRED regime inputs or explicit legacy regime CSV.
@@ -425,10 +430,11 @@ class DataManager:
                 defaults to self.config.test_end. Pass the inference/prediction date
                 here so FRED series are fetched through the live date, not the frozen
                 training config end date.
-            regime_market_history_csv: Optional ``dt,close`` file of the same S&P 500
-                index that extends FRED SP500 backwards past its ten-year window
-                (#276). It is read as role ``eodhd.sp500_index`` through the input
-                snapshots, so capture keeps it and replay reads it back.
+            regime_market_csv: Optional ``dt,close`` S&P 500 index file (#276). When
+                set, the market role is read from it instead of FRED SP500, whose
+                ten-year window starts too late, and the same #224 rules apply. It is
+                read as role ``eodhd.sp500_index`` through the input snapshots, so
+                capture keeps it and replay reads it back.
 
         The FRED path applies the #224 rulings (mci_gru.data.auxiliary_quality):
         one row per weekday session, each value the last one known by 20:00
@@ -513,37 +519,66 @@ class DataManager:
 
         sessions = auxiliary_quality.session_calendar(start_ts, pd.Timestamp(end))
 
-        market_history = None
-        if regime_market_history_csv:
-            market_history = self.input_snapshots.read_file(
-                None
-                if self.input_snapshots.mode == "replay"
-                else resolve_project_data_path(
-                    regime_market_history_csv, allow_basename_fallback=False
-                ),
-                role=MARKET_HISTORY_ROLE,
-                configured_path=regime_market_history_csv,
-                parse=_parse_market_history_csv,
-                parser={
-                    "name": "regime_market_history_csv",
-                    "options": {"columns": ["dt", "close"]},
-                },
+        market_file = None
+        if regime_market_csv:
+            market_path = None
+            if self.input_snapshots.mode != "replay":
+                try:
+                    market_path = resolve_project_data_path(
+                        regime_market_csv, allow_basename_fallback=False
+                    )
+                except FileNotFoundError:
+                    raise InputSnapshotError(
+                        role=MARKET_FILE_ROLE,
+                        source="file",
+                        request={"configured_path": regime_market_csv},
+                        stage="resolve",
+                        reason="file_not_found",
+                        configured_path=regime_market_csv,
+                    ) from None
+            market_file = self.input_snapshots.read_file(
+                market_path,
+                role=MARKET_FILE_ROLE,
+                configured_path=regime_market_csv,
+                parse=_parse_market_csv,
+                parser={"name": "regime_market_csv", "options": {"columns": ["dt", "close"]}},
             )
+
+        def qualify_market_file():
+            """The #224 rules applied to the market role read from the index file."""
+            role = auxiliary_quality.REGIME_INPUT_ROLES["regime_market"]
+            try:
+                qualified = auxiliary_quality.qualify_role(
+                    market_file,
+                    role,
+                    sessions,
+                    source=MARKET_FILE_SOURCE,
+                    series_id=MARKET_FILE_SERIES_ID,
+                    missing_markers=(),
+                )
+            except auxiliary_quality.RegimeInputError as rejection:
+                error = InputSnapshotError(
+                    role=f"{MARKET_FILE_SOURCE}.regime_market",
+                    source=MARKET_FILE_SOURCE,
+                    request={"configured_path": regime_market_csv},
+                    stage="validate",
+                    **{
+                        **rejection.facts,
+                        "configured_path": regime_market_csv,
+                        "detail": str(rejection),
+                    },
+                )
+                self.admission.record(auxiliary_quality.rejection_item(error.facts))
+                error.admission = self.admission.to_dict()
+                raise error from None
+            qualified.verdict["configured_path"] = regime_market_csv
+            return qualified
 
         def fetch(series_id, column):
             role = auxiliary_quality.REGIME_INPUT_ROLES[column]
-            extra = {}
-            if column == "regime_market" and market_history is not None:
-                extra = {
-                    "history": market_history,
-                    "history_source": {
-                        "role": MARKET_HISTORY_ROLE,
-                        "configured_path": regime_market_history_csv,
-                    },
-                }
             for attempt in range(attempts):
                 try:
-                    return fred.get_regime_role(series_id, start, end, role, sessions, **extra)
+                    return fred.get_regime_role(series_id, start, end, role, sessions)
                 except Exception as error:
                     retryable = isinstance(error, (TimeoutError, ConnectionError)) or (
                         isinstance(error, InputSnapshotError)
@@ -578,7 +613,10 @@ class DataManager:
             (fred_loader.FRED_SERIES_SP500, "regime_market"),
             (fred_loader.FRED_SERIES_COPPER, "regime_copper"),
         ):
-            qualified[column] = fetch(series_id, column)
+            if column == "regime_market" and market_file is not None:
+                qualified[column] = qualify_market_file()
+            else:
+                qualified[column] = fetch(series_id, column)
             self.admission.record(auxiliary_quality.admission_item(qualified[column].verdict))
         base = pd.DataFrame({column: item.values for column, item in qualified.items()})
         base["regime_yield_curve"] = base["yield_10y"] - base["yield_3m"]

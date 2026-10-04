@@ -204,7 +204,7 @@ def load_auxiliary_data(
                 lseg_vix_ric=config.features.regime_lseg_vix_ric,
                 regime_inputs_csv=config.features.regime_inputs_csv or None,
                 regime_enforce_lag_days=config.features.regime_enforce_lag_days,
-                regime_market_history_csv=config.features.regime_market_history_csv or None,
+                regime_market_csv=config.features.regime_market_csv or None,
             )
             logger.info(f"Loaded regime input data: {len(regime_df)} observations")
         except Exception as exc:
