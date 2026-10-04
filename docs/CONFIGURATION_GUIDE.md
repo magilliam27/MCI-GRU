@@ -209,7 +209,7 @@ inference, or notebook runs.
 Production-style confirmation notebooks and PIT validation runs should use the
 frozen recipe documented in
 [`DEFAULT_EXPERIMENT_RECIPE.md`](DEFAULT_EXPERIMENT_RECIPE.md):
-`static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1`.
+`static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual`.
 
 Core overrides:
 
@@ -224,6 +224,9 @@ Core overrides:
 | Training | selection_metric | `val_ic` |
 | Training | shuffle_train | `true` |
 | Model | label_t | `5` |
+| Model | temporal_encoder / use_nn_multihead_attention | `gru_attn` / `true` |
+| Model | market_latent_mode | `data_dependent` (since 2026-10-04; base default is `static`) |
+| Model | cross_section_block | `residual` (since 2026-10-04; base default is `legacy`) |
 | Graph | update_frequency_months | `0` |
 | Graph | corr_lookback_days | `252` |
 | Graph | top_k / top_k_metric | `0` / `corr` |
