@@ -96,9 +96,11 @@ features.regime_min_history_months=24
   bytes. With no `data.auxiliary_snapshot_directory`, they go to
   `input_snapshots/` in the run's output folder. Each window's input attachment
   (#208) then binds every regime read to its snapshot, so the run's inputs verify
-  as `complete`. In `source` mode they read as `incomplete`. Keep that folder
-  with the run, because it is the only copy of what FRED returned and of the
-  index file the run read.
+  as `complete`. In `source` mode they read as `incomplete`. `complete` means
+  every input is declared and bound to a retained manifest; it does not check
+  that the snapshot bytes are still on disk (preservation is #207). Keep that
+  folder with the run, because it is the only copy of what FRED returned and of
+  the index file the run read, and replay needs it.
 - The graph is the static threshold graph, not top-K and not dynamic schedule.
 - The objective is pure IC on raw 5-day return labels. Do not substitute rank
   labels for performance scoring unless the rank-label evaluation scale has

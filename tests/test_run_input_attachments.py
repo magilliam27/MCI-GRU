@@ -208,7 +208,7 @@ def test_missing_or_altered_retained_evidence_is_never_complete(tmp_path, damage
     fixture = _fixture(tmp_path)
     reference = _relocate(fixture, _attach(fixture))
     attachments = reference.path.parent
-    manifest = attachments / "manifests" / f"{fixture.stock.sha256}.json"
+    manifest = attachments / "manifests" / f"{fixture.stock.sha256[:16]}.json"
     observations = attachments / "input_observations.json"
     if damage == "delete_stock_manifest":
         manifest.unlink()

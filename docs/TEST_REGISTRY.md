@@ -463,6 +463,7 @@ Execution evidence from ensemble members and from the runner (#144).
 | `test_a_stock_run_links_its_start_metadata_members_and_outputs` |  |  |
 | `test_an_index_level_run_is_linked_the_same_way` |  |  |
 | `test_a_window_retains_its_declared_inputs_and_its_receipt_binds_them` |  |  |
+| `test_a_failed_attachment_is_recorded_and_the_run_finishes` |  |  |
 | `test_a_capture_run_keeps_its_regime_snapshots_and_its_inputs_verify` |  |  |
 | `test_an_undeclared_panel_leaves_the_attachment_incomplete_but_the_run_finishes` |  |  |
 | `test_each_window_gets_its_own_attempt_and_the_run_survives_relocation` |  |  |

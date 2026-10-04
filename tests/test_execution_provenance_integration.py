@@ -774,7 +774,7 @@ def test_a_window_retains_its_declared_inputs_and_its_receipt_binds_them(tmp_pat
     assert attached["status"] == "complete"
     receipt = json.loads(_window_files(out, window)[2].read_bytes())
     assert receipt["artifacts"][attached["path"]] == attached["sha256"]
-    for name in ("input_observations.json", f"manifests/{package_sha256}.json"):
+    for name in ("input_observations.json", f"manifests/{package_sha256[:16]}.json"):
         retained = Path(attached["path"]).parent / name
         assert receipt["artifacts"][retained.as_posix()] == _sha256(out / retained)
 
@@ -786,6 +786,21 @@ def test_a_window_retains_its_declared_inputs_and_its_receipt_binds_them(tmp_pat
     assert (inputs.status, inputs.problems) == ("complete", [])
     assert inputs.execution == {"status": "unknown", "start": metadata["execution_start"]}
     assert [role["role"] for role in inputs.roles] == ["data.filename"]
+
+
+def test_a_failed_attachment_is_recorded_and_the_run_finishes(tmp_path):
+    # A pinned package digest that does not match its manifest makes attaching raise.
+    base, _, _, overrides = _declared_panel(tmp_path)
+    overrides[1] = f"data.input_package_manifest_sha256={'0' * 64}"
+    out = _run(base, overrides)
+    attached = json.loads((out / "run_metadata.json").read_text())["input_attachment"]
+    assert (attached["path"], attached["sha256"], attached["status"]) == (None, None, "failed")
+    assert attached["error"].startswith("ManifestDigestMismatchError")
+    run = read_execution_run(_plan(out))
+    assert run.status == "complete"
+    (window,) = run.windows
+    receipt = json.loads(_window_files(out, window)[2].read_bytes())
+    assert not any(name.startswith("input_attachments/") for name in receipt["artifacts"])
 
 
 class _Fred:

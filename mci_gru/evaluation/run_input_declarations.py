@@ -196,7 +196,9 @@ def attach_window_inputs(
     The attempt has only started, so execution is ``unknown`` and points at the
     start record (#144) exactly as ``run_metadata.json`` does, relative to the
     window directory; preservation is never proven here (#207). Incomplete
-    evidence is logged and retained, never raised: admission gates the run.
+    evidence is logged and retained, never raised: admission gates the run. A
+    configuration that names a missing or altered package raises; the runner
+    records that as a failed attachment and carries on.
     """
     declarations = declare_window_inputs(config, observations)
     directory = Path(window_dir) / ATTACHMENT_DIR / attempt_id
