@@ -1340,6 +1340,22 @@ Regime forward context is refused unless the matching excludes the current month
 | `test_feature_engineer_refuses_the_combination_when_the_config_guard_is_bypassed` | Keyword construction skips ``FeatureConfig``; the computation-time copy still refuses. |  |
 | `test_add_regime_features_refuses_subsequent_returns_without_exclusion` |  |  |
 
+## `tests/test_regime_market_file.py`
+
+#276: the market regime role can come from an S&P 500 index file instead of FRED.
+
+**Exercises:** `mci_gru.config`, `mci_gru.data`, `mci_gru.data.auxiliary_quality`, `mci_gru.data.data_manager`, `mci_gru.data.input_snapshots`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_the_market_role_comes_from_the_file_and_replays_without_it` |  |  |
+| `test_file_values_obey_next_session_availability` |  |  |
+| `test_a_file_breaking_a_224_rule_stops_the_run_naming_the_file` |  | parametrize |
+| `test_without_the_file_the_market_role_is_fred` |  |  |
+| `test_a_malformed_market_date_stops_naming_the_file` |  | parametrize |
+| `test_only_a_blank_close_is_a_gap` |  | parametrize |
+| `test_a_missing_market_file_is_not_substituted_by_basename` |  |  |
+
 ## `tests/test_repository_retirement_guard.py`
 
 Prevent retired repository surfaces from being reintroduced.
