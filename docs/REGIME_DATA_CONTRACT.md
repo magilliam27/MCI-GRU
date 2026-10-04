@@ -16,7 +16,7 @@ seven-variable surface:
 | Column | Source / derivation | Description |
 |--------|----------------------|-------------|
 | `dt` | session grid | One row per weekday session. |
-| `regime_market` | LSEG market RIC or FRED `SP500` fallback | Market proxy level. |
+| `regime_market` | FRED `SP500`, or the EODHD S&P 500 file when `features.regime_market_csv` is set (#276) | Market proxy level. |
 | `regime_yield_curve` | FRED/LSEG 10Y minus 3M yield | Yield curve spread. |
 | `regime_oil` | FRED WTI or LSEG oil RIC fallback | Oil proxy level. |
 | `regime_copper` | LSEG copper RIC or FRED copper fallback | Copper proxy level. |
@@ -26,8 +26,8 @@ seven-variable surface:
 
 ## Historical Availability Rules (#224)
 
-The owner rulings of 2026-10-03 on #224 apply to the six FRED inputs the
-frozen recipe enables. They are written per role (market level, 10-year yield,
+The owner rulings of 2026-10-03 on #224 apply to the six regime inputs the
+frozen recipe enables (five from FRED and, since #276, the market level from EODHD). They are written per role (market level, 10-year yield,
 3-month yield, oil, copper, volatility), so a later source for the same role
 inherits them, and they are declared conventions, not measured publication
 latency. The code lives in `mci_gru/data/auxiliary_quality.py`; the proof is
@@ -64,6 +64,47 @@ reach `admission.json` on success. A stop raises an `InputSnapshotError` at
 stage `validate` whose facts carry the reason and dates; it is also recorded as
 an `invalid` item, and the ledger so far travels with the error into
 `run_failure.json`.
+
+### S&P 500 market input from EODHD (#276)
+
+FRED serves only the last ten years of `SP500`. Under the rules above, the
+market level therefore entered the regime distance only from 2019-09 in the
+first-run recipe, and the stock-bond correlation only from 2022-07. The owner
+decided on 2026-10-04 (UTC) to take the market role fully from EODHD. When
+`features.regime_market_csv` names a `dt,close` file of the S&P 500 index, the
+market role is read from that file and FRED `SP500` is not requested.
+`configs/features/with_momentum.yaml` points it at the EODHD GSPC file
+`data/raw/market/eodhd_sp500_2010_20260919/sp500_index.csv`, which runs from
+2008-01-02 to 2026-09-18. `null` keeps FRED `SP500`.
+
+- **Rules:** every rule above applies unchanged: next-session availability, the
+  5-session carry limit, positive values, no back-fill, and the leading-gap count.
+  Only a blank close is a genuine gap. Any other token, including `NaN`, `N/A` or
+  `null`, stops the run as `malformed_value`. There is no `.` marker.
+- **Format:** `dt` must be a plain `YYYY-MM-DD` date. A blank date, a time of day
+  or an offset stops the run as `eodhd.sp500_index` / `parse` / `parse_failed`
+  with the path, so a value cannot land on the wrong session.
+- **Identity:** the file is read through the input snapshots as role
+  `eodhd.sp500_index`, without basename fallback, so capture keeps it and replay
+  reads it back. A missing file stops as `eodhd.sp500_index` / `resolve` /
+  `file_not_found`. Captures made before #276 hold no such snapshot, so replaying
+  them under this recipe stops with `missing_snapshot` unless
+  `features.regime_market_csv=null`. Replay matches the configured path as
+  written, so capture and replay must spell it the same way.
+- **Record:** the market verdict and admission item are `eodhd.regime_market`
+  (source `eodhd`, series `GSPC.INDX`) and carry the configured path. A rule stop
+  is filed under the same role with the path in its facts.
+- **Freshness:** the file is a fixed vintage. A value is usable from the next
+  session and carries five more, so the last close, 2026-09-18, covers sessions
+  through 2026-09-28. A test window ending on or after 2026-09-29 stops on the
+  carry limit until the file is re-pulled.
+- **Agreement with FRED:** where both exist, the 2026-09-19 EODHD file matches
+  FRED `SP500` to a median relative difference of 2.5e-8 over 2,412 sessions,
+  with a maximum of 1.2e-3, on 2021-08-12.
+
+With the EODHD input, the market level enters the regime distance from 2010-12
+and the stock-bond correlation from 2013-10. All seven inputs are then present
+in every training month of the 2016-2023 recipe window.
 
 Index mode (`load_index_series`), standalone VIX, credit and the legacy CSV
 below are disabled in the recipe and keep their earlier behaviour.

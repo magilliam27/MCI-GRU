@@ -240,6 +240,9 @@ class FeatureConfig:
             set it takes precedence over data.auxiliary_sources.regime; leave null to load
             the selected source (FRED by default)
         regime_enforce_lag_days: If deprecated regime_inputs_csv is set, shift dates by this many days (0 or 1) to avoid look-ahead
+        regime_market_csv: Optional ``dt,close`` S&P 500 index file that replaces FRED
+            SP500 as the market regime input (#276); FRED serves only ten years. The
+            #224 rules apply unchanged. Null keeps FRED SP500.
         regime_include_subsequent_returns: Whether to emit post-similarity return features
         regime_subsequent_return_horizons: Forward monthly return horizons used for similarity-conditioned features
         include_rsi: Whether to add RSI features
@@ -290,6 +293,7 @@ class FeatureConfig:
     regime_lseg_vix_ric: str = "VIX"
     regime_inputs_csv: str | None = None
     regime_enforce_lag_days: int = 0
+    regime_market_csv: str | None = None
     regime_include_subsequent_returns: bool = True
     regime_subsequent_return_horizons: list[int] = field(default_factory=lambda: [1, 3])
     include_rsi: bool = False
