@@ -49,11 +49,15 @@ MARKET_FILE_SERIES_ID = "GSPC.INDX"
 
 def _parse_market_csv(content: bytes) -> pd.Series:
     """Read a ``dt,close`` index file as raw observations keyed by date (#276)."""
-    frame = pd.read_csv(BytesIO(content), dtype={"dt": str, "close": object})
+    # Only a blank close is a gap (#224): tokens such as "NaN" or "N/A" stay text and
+    # are refused as malformed by the role's value rules.
+    frame = pd.read_csv(BytesIO(content), dtype=str, keep_default_na=False)
     missing = sorted({"dt", "close"} - set(frame.columns))
     if missing:
         raise ValueError(f"Market index file is missing required columns: {missing}")
-    # Plain dates only: a time of day or offset would silently miss FRED's dates.
+    if (frame["dt"].str.strip() == "").any():
+        raise ValueError("Market index file has rows with a blank dt")
+    # Plain dates only: a time of day or offset could land a value on the wrong session.
     dates = pd.to_datetime(frame["dt"], format="%Y-%m-%d")
     return pd.Series(frame["close"].to_numpy(dtype=object), index=dates)
 
@@ -449,6 +453,13 @@ class DataManager:
             regime_stock_bond_corr, regime_monetary_policy, regime_volatility
         """
         self.regime_input_receipt = None
+        if regime_inputs_csv and regime_market_csv:
+            warnings.warn(
+                "regime_market_csv is ignored because the legacy regime_inputs_csv is set "
+                "and supplies all seven regime variables.",
+                UserWarning,
+                stacklevel=2,
+            )
         if regime_inputs_csv:
             warnings.warn(
                 "regime_inputs_csv is deprecated; explicitly select the FRED regime input path "
@@ -536,13 +547,31 @@ class DataManager:
                         reason="file_not_found",
                         configured_path=regime_market_csv,
                     ) from None
-            market_file = self.input_snapshots.read_file(
-                market_path,
-                role=MARKET_FILE_ROLE,
-                configured_path=regime_market_csv,
-                parse=_parse_market_csv,
-                parser={"name": "regime_market_csv", "options": {"columns": ["dt", "close"]}},
-            )
+            try:
+                market_file = self.input_snapshots.read_file(
+                    market_path,
+                    role=MARKET_FILE_ROLE,
+                    configured_path=regime_market_csv,
+                    parse=_parse_market_csv,
+                    parser={
+                        "name": "regime_market_csv",
+                        "options": {"columns": ["dt", "close"], "na": "blank close only"},
+                    },
+                )
+            except InputSnapshotError:
+                raise
+            except Exception as error:
+                # Name the file in run_failure.json rather than the generic regime role.
+                raise InputSnapshotError(
+                    role=MARKET_FILE_ROLE,
+                    source="file",
+                    request={"configured_path": regime_market_csv},
+                    stage="parse",
+                    reason="parse_failed",
+                    error_code=type(error).__name__,
+                    detail=str(error),
+                    configured_path=regime_market_csv,
+                ) from None
 
         def qualify_market_file():
             """The #224 rules applied to the market role read from the index file."""

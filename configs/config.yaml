@@ -13,7 +13,8 @@ defaults:
 # Auxiliary acquisition is explicitly selected per enabled role (vix, credit,
 # regime, index). A missing file never selects a provider automatically.
 # regime and index are declared fred (maintainer decision of 2026-09-28 on
-# #206), so the frozen recipe still requests its six FRED regime series. The
+# #206), so the frozen recipe still requests its FRED regime series: five of them,
+# because its feature group reads the market level from an EODHD file (#276). The
 # typed DataConfig default is the same mapping.
 # credit stays unselected: FRED's ICE BofA OAS history is reportedly only about
 # three years long, and the credit features zero-fill missing history instead

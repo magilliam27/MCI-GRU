@@ -187,14 +187,56 @@ def test_without_the_file_the_market_role_is_fred(tmp_path, monkeypatch) -> None
     assert "fred.regime_market" in {item["role"] for item in regime_items(manager)}
 
 
-def test_a_market_date_with_a_time_of_day_is_refused(tmp_path, monkeypatch) -> None:
+def write_rows(tmp_path, dts: list[str], closes: list[str]) -> str:
     path = tmp_path / "sp500_index.csv"
-    pd.DataFrame(
-        {"dt": [f"{date:%Y-%m-%d} 16:00:00" for date in DATES], "close": market().to_numpy()}
-    ).to_csv(path, index=False)
+    path.write_text(
+        "dt,close\n" + "".join(f"{dt},{close}\n" for dt, close in zip(dts, closes, strict=True)),
+        encoding="utf-8",
+    )
+    return str(path)
+
+
+PLAIN_DATES = [f"{date:%Y-%m-%d}" for date in DATES]
+CLOSES = [str(value) for value in market()]
+
+
+@pytest.mark.parametrize(
+    ("dts", "closes"),
+    [
+        ([f"{dt} 16:00:00" for dt in PLAIN_DATES], CLOSES),
+        ([f"{dt}T00:00:00-05:00" for dt in PLAIN_DATES], CLOSES),
+        (["", *PLAIN_DATES[1:]], CLOSES),
+    ],
+    ids=["time_of_day", "offset", "blank_dt"],
+)
+def test_a_malformed_market_date_stops_naming_the_file(tmp_path, monkeypatch, dts, closes) -> None:
+    path = write_rows(tmp_path, dts, closes)
     install_sdk(monkeypatch, fred_series())
-    with pytest.raises(ValueError):
-        DataManager(config(tmp_path)).load_regime_inputs(regime_market_csv=str(path))
+    with pytest.raises(InputSnapshotError) as caught:
+        DataManager(config(tmp_path)).load_regime_inputs(regime_market_csv=path)
+    facts = caught.value.facts
+    assert (facts["role"], facts["stage"], facts["reason_code"]) == (
+        MARKET_FILE_ROLE,
+        "parse",
+        "parse_failed",
+    )
+    assert facts["configured_path"] == path
+
+
+@pytest.mark.parametrize("token", ["NaN", "N/A", "null", "#N/A", "None"])
+def test_only_a_blank_close_is_a_gap(tmp_path, monkeypatch, token) -> None:
+    install_sdk(monkeypatch, fred_series())
+    gap = DataManager(config(tmp_path / "gap"))
+    gap.load_regime_inputs(regime_market_csv=write_rows(tmp_path, PLAIN_DATES, ["", *CLOSES[1:]]))
+    market_verdict = {item["role"]: item for item in regime_items(gap)}["eodhd.regime_market"]
+    assert market_verdict["evidence"]["missing_observations"] == 1
+
+    with pytest.raises(InputSnapshotError) as caught:
+        DataManager(config(tmp_path)).load_regime_inputs(
+            regime_market_csv=write_rows(tmp_path, PLAIN_DATES, [token, *CLOSES[1:]])
+        )
+    assert caught.value.facts["role"] == "eodhd.regime_market"
+    assert caught.value.facts["reason_code"] == "malformed_value"
 
 
 def test_a_missing_market_file_is_not_substituted_by_basename(tmp_path, monkeypatch) -> None:
