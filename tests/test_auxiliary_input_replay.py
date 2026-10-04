@@ -806,6 +806,10 @@ def test_the_frozen_recipe_requests_its_six_fred_regime_series_without_a_source_
     assert not [line for line in overrides if "auxiliary_sources" in line]
     config = _compose(overrides, tmp_path)
     assert config.data.auxiliary_sources["regime"] == "fred"
+    # The recipe reads the market role from an EODHD index file instead (#276), which
+    # test_regime_market_file.py covers; this check keeps the six-series FRED path.
+    assert config.features.regime_market_csv.endswith("sp500_index.csv")
+    config = replace(config, features=replace(config.features, regime_market_csv=None))
     requested = []
 
     class Fred:
