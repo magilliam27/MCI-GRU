@@ -565,7 +565,7 @@ class DataManager:
             )
             stop: InputSnapshotError | None = None
             try:
-                with self.input_snapshots.accepted(observation):
+                with self.input_snapshots.accepted(observation, configured_path=regime_market_csv):
                     try:
                         raw = _parse_market_csv(observation.data)
                     except Exception as error:

@@ -21,7 +21,7 @@ from mci_gru.config import DataConfig
 from mci_gru.data import path_resolver
 from mci_gru.data.auxiliary_quality import ADMISSION_RULE, MAX_CARRY_SESSIONS
 from mci_gru.data.data_manager import MARKET_FILE_ROLE, DataManager
-from mci_gru.data.input_snapshots import InputSnapshotError
+from mci_gru.data.input_snapshots import InputSnapshotError, InputSnapshots
 
 DATES = pd.bdate_range("2024-12-02", "2025-03-13")
 DAILY = {
@@ -262,6 +262,13 @@ def recorded(manager: DataManager) -> tuple[dict[int, dict], list[dict]]:
     return {event["observation_id"]: event for event in window["observations"]}, window["uses"]
 
 
+def serialised(snapshots: InputSnapshots) -> dict[str, list[dict]]:
+    return {
+        key: [{**asdict(entry), "manifest_path": str(entry.manifest_path)} for entry in values]
+        for key, values in snapshots.references.items()
+    }
+
+
 @pytest.mark.parametrize("mode", ["source", "capture"])
 def test_the_market_verdict_names_the_read_it_was_ruled_on(tmp_path, monkeypatch, mode) -> None:
     install_sdk(monkeypatch, fred_series())
@@ -279,6 +286,9 @@ def test_the_market_verdict_names_the_read_it_was_ruled_on(tmp_path, monkeypatch
     assert [use["observation_id"] for use in uses if use["role"] == MARKET_FILE_ROLE] == [
         observation_id
     ]
+    # run_metadata.json's data_inputs still names the file the role was read from.
+    window = manager.input_snapshots.input_observations.freeze()
+    assert window.data_inputs()[MARKET_FILE_ROLE]["configured_path"] == path
 
 
 @pytest.mark.parametrize(
@@ -291,7 +301,7 @@ def test_the_market_verdict_names_the_read_it_was_ruled_on(tmp_path, monkeypatch
 def test_a_stopped_market_file_is_recorded_as_read_but_never_used(
     tmp_path, monkeypatch, closes, reason
 ) -> None:
-    install_sdk(monkeypatch, fred_series())
+    requested = install_sdk(monkeypatch, fred_series())
     path = (
         write_market(tmp_path, closes)
         if closes is not None
@@ -301,6 +311,8 @@ def test_a_stopped_market_file_is_recorded_as_read_but_never_used(
     with pytest.raises(InputSnapshotError) as caught:
         manager.load_regime_inputs(regime_market_csv=path)
     assert caught.value.facts["reason_code"] == reason
+    # The file is ruled on before any FRED request.
+    assert requested == []
 
     events, uses = recorded(manager)
     assert MARKET_FILE_ROLE not in {use["role"] for use in uses}
@@ -315,3 +327,33 @@ def test_a_stopped_market_file_is_recorded_as_read_but_never_used(
         for event in events.values()
         if event["role"] == MARKET_FILE_ROLE and event["outcome"] == "error"
     ] == [read["observation_id"]]
+
+
+def test_a_market_file_captured_through_read_file_still_replays(tmp_path, monkeypatch) -> None:
+    # Captures made before the read moved to observe (#276's read_file path) share its key.
+    path = write_market(tmp_path, market())
+    install_sdk(monkeypatch, fred_series())
+    capture = DataManager(config(tmp_path))
+    captured = capture.load_regime_inputs(regime_market_csv=path)
+    legacy = InputSnapshots(mode="capture", directory=tmp_path / "legacy")
+    legacy.read_file(
+        Path(path),
+        role=MARKET_FILE_ROLE,
+        configured_path=path,
+        parse=lambda content: content,
+        parser={
+            "name": "regime_market_csv",
+            "options": {"columns": ["dt", "close"], "na": "blank close only"},
+        },
+    )
+    (key,) = legacy.references
+    assert key in capture.input_snapshots.references
+
+    references = {**serialised(capture.input_snapshots), key: serialised(legacy)[key]}
+    (tmp_path / "sp500_index.csv").unlink()
+    monkeypatch.delenv("FRED_API_KEY", raising=False)
+    monkeypatch.setitem(sys.modules, "fredapi", None)
+    replay = DataManager(config(tmp_path, "replay", references))
+    pd.testing.assert_frame_equal(
+        replay.load_regime_inputs(regime_market_csv=path), captured, check_exact=True
+    )

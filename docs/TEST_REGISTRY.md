@@ -1357,6 +1357,7 @@ Regime forward context is refused unless the matching excludes the current month
 | `test_a_missing_market_file_is_not_substituted_by_basename` |  |  |
 | `test_the_market_verdict_names_the_read_it_was_ruled_on` |  | parametrize |
 | `test_a_stopped_market_file_is_recorded_as_read_but_never_used` |  | parametrize |
+| `test_a_market_file_captured_through_read_file_still_replays` |  |  |
 
 ## `tests/test_repository_retirement_guard.py`
 
