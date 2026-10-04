@@ -57,6 +57,8 @@ from mci_gru.evaluation.experiment_summary import (
     select_training_objective_value,
     write_resolved_config,
 )
+from mci_gru.evaluation.run_input_attachments import ATTACHMENT_DIR
+from mci_gru.evaluation.run_input_declarations import attach_window_inputs, keep_captures_with_run
 from mci_gru.features import FeatureEngineer
 from mci_gru.graph.utils import edge_feature_dim
 from mci_gru.models import create_model
@@ -103,6 +105,9 @@ def main(cfg: DictConfig):
     logger.info("\nConfiguration:")
     logger.info("\n" + OmegaConf.to_yaml(cfg))
     config = create_config_from_dict(OmegaConf.to_container(cfg, resolve=True))
+    snapshot_directory = keep_captures_with_run(config.data, output_path)
+    if snapshot_directory is not None:
+        logger.info(f"Captured auxiliary inputs will be retained in: {snapshot_directory}")
     set_seed(config.seed)
     logger.info(f"\nBase random seed: {config.seed}")
     logger.info(f"Output directory: {output_path}")
@@ -221,6 +226,35 @@ def main(cfg: DictConfig):
                 json.dump(data["admission"], f, indent=2)
             logger.info(f"Input admission saved to: {admission_path}")
 
+            execution_start = {
+                "path": f"{EVIDENCE_DIR}/{execution.path.name}",
+                "sha256": execution.sha256,
+            }
+            # Declared package files and this attempt's observed reads (#208). Provenance
+            # never stops a run: a failure to attach is logged and recorded instead.
+            try:
+                input_attachment = attach_window_inputs(
+                    cfg_w,
+                    data["input_observations"],
+                    wpath,
+                    attempt_id=execution.path.stem,
+                    execution_start=execution_start,
+                    logger=logger,
+                )
+                logger.info(
+                    "Input attachment saved to: %s (%s)",
+                    input_attachment["path"],
+                    input_attachment["status"],
+                )
+            except Exception as exc:
+                logger.error("Input attachment failed: %s: %s", type(exc).__name__, exc)
+                input_attachment = {
+                    "path": None,
+                    "sha256": None,
+                    "status": "failed",
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+
             metadata = build_run_metadata(
                 cfg_w,
                 data,
@@ -228,10 +262,8 @@ def main(cfg: DictConfig):
                 resolved_config_identity=resolved_config_identity,
                 logger=logger,
             )
-            metadata["execution_start"] = {
-                "path": f"{EVIDENCE_DIR}/{execution.path.name}",
-                "sha256": execution.sha256,
-            }
+            metadata["execution_start"] = execution_start
+            metadata["input_attachment"] = input_attachment
             metadata_path = os.path.join(wpath, "run_metadata.json")
             with open(metadata_path, "w") as f:
                 json.dump(metadata, f, indent=2)
@@ -423,6 +455,11 @@ def main(cfg: DictConfig):
                 walkforward_window=wi,
                 artifacts=[
                     "run_metadata.json",
+                    *(
+                        [f"{ATTACHMENT_DIR}/{execution.path.stem}"]
+                        if input_attachment["path"] is not None
+                        else []
+                    ),
                     "feature_reference.json",
                     "graph_data.pt",
                     "checkpoints",

@@ -460,6 +460,7 @@ output/
 ├── mlflow_run.json                         # when tracking is enabled
 ├── resolved_config.json                    # fully resolved ExperimentConfig for this window
 ├── run_metadata.json                       # stock list, features, z-score stats, PIT breadth, provenance
+├── input_attachments/<attempt_id>/         # declared package manifests + observed reads (#208)
 ├── feature_reference.json                  # train-only normalized feature histograms
 ├── graph_data.pt                           # train-start correlation graph + optional sector edges
 ├── checkpoints/model_<id>_best.pth
@@ -486,6 +487,22 @@ artifact by default; `run_experiment.py` passes `force=True` because its sibling
 artifacts all overwrite unconditionally.
 `mci_gru/evaluation/run_bundle.py` accepts both `resolved_config.json` and the
 legacy `resolved_config.yaml` in its `CONFIG_CANDIDATES`.
+
+`attach_window_inputs()` (`mci_gru/evaluation/run_input_declarations.py`) retains,
+for every window attempt, the manifest of each package its required inputs were
+declared in and the sealed input observations, under
+`input_attachments/<attempt_id>/`; `run_metadata.json` carries the record's path,
+SHA-256 and status as `input_attachment`, and the window receipt binds the files.
+Attaching never stops a run: if it raises (for example, a pinned manifest whose
+digest does not match), the error is logged, `input_attachment` records status
+`failed` with the error, and the receipt binds no attachment files.
+Required roles come from the configuration, never from what was read. A selected
+file under `data.input_package_root` binds to its entry in the pinned
+`data.input_package_manifest`; an auxiliary input binds to its capture or replay
+snapshot; anything else, including a live provider read, is required but
+undeclared, so the attachment reads `incomplete`. `read_run_inputs()` verifies a
+relocated attachment from its own files. The attachment never gates the run:
+admission does.
 
 MLflow logging (`mci_gru/tracking/mlflow_manager.py`) is optional and mirrors
 parameters, metrics, and selected artifacts according to `TrackingConfig`, with a
