@@ -41,6 +41,12 @@ pit_universe_mode: masked_panel
 # The export cutoff of the PIT file above. A blank valid_to means membership
 # through this date; without it a blank valid_to stops preparation (#223).
 pit_export_cutoff: "2026-07-31"
+# The published package the two files above belong to (#208). Each window
+# retains this manifest and binds both reads to their declared entries; a
+# manifest with other bytes stops the run.
+input_package_manifest: data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731.r1.json
+input_package_manifest_sha256: 1e2043dcb4f00a88de128985cc94423c122e480034c16ec741710a2460653ecf
+input_package_root: data/raw
 
 # Measured floor is 108, so 104 sits four below it - the same margin
 # gics_top10_110.yaml uses against its own floor of 109. The S&P-scale default of

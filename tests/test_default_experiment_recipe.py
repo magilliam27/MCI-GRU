@@ -25,6 +25,7 @@ RECIPE = REPO_ROOT / "docs" / "DEFAULT_EXPERIMENT_RECIPE.md"
 # `data=<group>` on its own line inside the Hydra overrides block.
 DATA_SELECTOR = re.compile(r"^data=([A-Za-z0-9_]+)$", re.M)
 OVERRIDE_BLOCK = re.compile(r"^## Hydra Overrides\n+```text\n(.*?)^```", re.M | re.S)
+SNAPSHOT_MODE = re.compile(r"^data\.auxiliary_snapshot_mode=(\w+)$", re.M)
 
 
 def _pinned_data_group(text: str) -> str | None:
@@ -148,3 +149,17 @@ def test_the_override_block_parser_reads_the_block():
     assert "data=gics_top10_110_2016" in overrides
     assert "model.market_latent_mode=data_dependent" in overrides
     assert all("```" not in line for line in overrides)
+
+
+def test_recipe_captures_its_provider_inputs():
+    """The owner chose capture for the first run (2026-10-04); source leaves inputs unverifiable."""
+    match = SNAPSHOT_MODE.search(RECIPE.read_text(encoding="utf-8"))
+    assert match is not None, "the recipe does not select an auxiliary snapshot mode"
+    assert match.group(1) == "capture"
+    # Control: the detector reads another mode as that mode, and absence as absence.
+    assert SNAPSHOT_MODE.search("data.auxiliary_snapshot_mode=source\n").group(1) == "source"
+    assert SNAPSHOT_MODE.search("seed=1729\n") is None
+    # Control: the base default is source, so the recipe line is what selects capture.
+    assert (
+        OmegaConf.load(REPO_ROOT / "configs/config.yaml").data.auxiliary_snapshot_mode == "source"
+    )

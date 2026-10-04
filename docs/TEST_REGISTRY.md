@@ -10,7 +10,7 @@ This file records the test inventory only, with no counts, dates, or last-run st
 
 Public auxiliary loader and preparation capture/replay contracts.
 
-**Exercises:** `mci_gru.config`, `mci_gru.data.data_manager`, `mci_gru.data.fred_loader`, `mci_gru.data.input_observations`, `mci_gru.data.input_snapshots`, `mci_gru.data.lseg_loader`, `mci_gru.features`, `mci_gru.pipeline`
+**Exercises:** `mci_gru.config`, `mci_gru.data.data_manager`, `mci_gru.data.fred_loader`, `mci_gru.data.input_observations`, `mci_gru.data.input_snapshots`, `mci_gru.data.lseg_loader`, `mci_gru.evaluation.run_input_declarations`, `mci_gru.features`, `mci_gru.pipeline`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -298,6 +298,7 @@ Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
 | `test_the_recipe_builds_gru_attn_layers_at_32_then_10` | Issue 131: [32, 10] must mean a 32-wide layer then a 10-wide one. |  |
 | `test_the_base_config_alone_still_builds_the_legacy_forms` | Control: the two tests above must come from the recipe's own pins. |  |
 | `test_the_override_block_parser_reads_the_block` | Control: an empty parse would make every composition test vacuous. |  |
+| `test_recipe_captures_its_provider_inputs` | The owner chose capture for the first run (2026-10-04); source leaves inputs unverifiable. |  |
 
 ## `tests/test_drop_edge_rng_isolation.py`
 
@@ -446,7 +447,7 @@ Execution evidence remains inspectable without the live checkout or runtime.
 
 Execution evidence from ensemble members and from the runner (#144).
 
-**Exercises:** `mci_gru.config`, `mci_gru.evaluation`, `mci_gru.evaluation.artifacts`, `mci_gru.evaluation.execution_provenance`, `mci_gru.evaluation.experiment_summary`, `mci_gru.training`, `mci_gru.training.ensemble`, `mci_gru.training.trainer`, `run_experiment`
+**Exercises:** `mci_gru.config`, `mci_gru.data.input_manifest`, `mci_gru.evaluation`, `mci_gru.evaluation.artifacts`, `mci_gru.evaluation.execution_provenance`, `mci_gru.evaluation.experiment_summary`, `mci_gru.evaluation.run_input_attachments`, `mci_gru.training`, `mci_gru.training.ensemble`, `mci_gru.training.trainer`, `run_experiment`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -468,6 +469,10 @@ Execution evidence from ensemble members and from the runner (#144).
 | `test_recording_refuses_a_second_writer_for_the_same_attempt` |  |  |
 | `test_a_stock_run_links_its_start_metadata_members_and_outputs` |  |  |
 | `test_an_index_level_run_is_linked_the_same_way` |  |  |
+| `test_a_window_retains_its_declared_inputs_and_its_receipt_binds_them` |  |  |
+| `test_a_failed_attachment_is_recorded_and_the_run_finishes` |  |  |
+| `test_a_capture_run_keeps_its_regime_snapshots_and_its_inputs_verify` |  |  |
+| `test_an_undeclared_panel_leaves_the_attachment_incomplete_but_the_run_finishes` |  |  |
 | `test_each_window_gets_its_own_attempt_and_the_run_survives_relocation` |  |  |
 | `test_a_preparation_failure_leaves_an_incomplete_attempt_and_no_receipt` |  |  |
 | `test_a_member_failure_marks_the_window_and_run_failed` |  |  |
@@ -1423,6 +1428,51 @@ Prevent retired repository surfaces from being reintroduced.
 | `test_validate_run_bundle_reports_missing_artifacts` |  |  |
 | `test_validate_run_bundle_rejects_empty_prediction_directory` |  |  |
 | `test_write_run_manifest_refuses_overwrite_without_force` |  |  |
+
+## `tests/test_run_input_attachments.py`
+
+Saved-run input attachment: exact declarations linked to observed reads (#208).
+
+**Exercises:** `mci_gru.data.input_manifest`, `mci_gru.data.input_observations`, `mci_gru.data.input_snapshots`, `mci_gru.evaluation.artifacts`, `mci_gru.evaluation.run_input_attachments`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_relocated_attachment_recovers_exact_declarations_and_their_reads` |  |  |
+| `test_missing_or_altered_retained_evidence_is_never_complete` |  | parametrize |
+| `test_a_same_size_read_with_different_bytes_is_not_the_declared_input` |  |  |
+| `test_a_required_role_that_was_never_read_is_explicit` |  |  |
+| `test_a_read_with_no_declaration_is_explicit_even_when_every_declared_file_matches` |  |  |
+| `test_identical_bytes_from_another_package_revision_are_not_the_declared_read` |  |  |
+| `test_a_declaration_naming_a_file_its_manifest_lacks_is_explicit` |  |  |
+| `test_a_required_read_with_no_declared_package_is_linked_but_never_complete` |  |  |
+| `test_a_required_role_needs_both_a_manifest_and_a_path` |  |  |
+| `test_supplied_execution_and_preservation_status_are_carried_unchanged` |  |  |
+| `test_an_unknown_status_is_refused` |  | parametrize |
+| `test_a_required_role_must_name_an_attached_manifest` |  |  |
+| `test_an_existing_attachment_is_never_replaced` |  |  |
+| `test_an_attachment_record_that_differs_from_its_anchor_is_rejected` |  |  |
+
+## `tests/test_run_input_declarations.py`
+
+Runner wiring for saved-run inputs: configured roles bound to declared packages (#208).
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.data_manager`, `mci_gru.data.input_manifest`, `mci_gru.data.input_observations`, `mci_gru.evaluation.run_input_attachments`, `mci_gru.evaluation.run_input_declarations`, `mci_gru.features`, `mci_gru.pipeline`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_a_captured_window_is_complete_after_every_source_is_gone` |  |  |
+| `test_a_captured_market_file_binds_to_its_own_snapshot` |  |  |
+| `test_replay_binds_the_snapshots_the_configuration_references` |  |  |
+| `test_live_provider_reads_are_linked_but_never_complete` |  |  |
+| `test_a_selected_file_outside_the_declared_package_has_no_declared_package` |  |  |
+| `test_a_package_file_changed_after_its_manifest_is_not_the_declared_read` |  |  |
+| `test_a_declared_manifest_that_is_not_the_pinned_one_stops_the_run` |  |  |
+| `test_a_snapshot_manifest_changed_after_capture_is_refused` |  |  |
+| `test_required_roles_are_exactly_the_roles_a_real_preparation_consumes` |  | parametrize |
+| `test_the_recipe_data_config_binds_both_selected_files_to_the_preserved_package` |  |  |
+| `test_a_partial_or_malformed_package_declaration_is_refused` |  | parametrize |
+| `test_a_capture_with_no_named_folder_keeps_its_snapshots_in_the_run` |  |  |
+| `test_a_named_folder_or_another_mode_is_left_as_configured` |  | parametrize |
 
 ## `tests/test_run_pytest_isolated.py`
 

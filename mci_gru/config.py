@@ -61,6 +61,13 @@ class DataConfig:
         prediction_clock_time: ``HH:MM`` local time the forecast for date D is made.
         prediction_clock_timezone: Timezone of ``prediction_clock_time``. Together they
             default to 20:00 America/New_York (#225 ruling 1).
+        input_package_manifest: Manifest of the published package the selected stock
+            files belong to (#208). Each window retains it byte-exact and binds every
+            selected file under ``input_package_root`` to its declared entry. Set with
+            ``input_package_manifest_sha256`` and ``input_package_root``, or not at all.
+        input_package_manifest_sha256: Expected SHA-256 of that manifest's bytes; a
+            different manifest stops the run.
+        input_package_root: Directory the manifest's package-relative paths start from.
     """
 
     universe: str = "sp500"
@@ -95,6 +102,9 @@ class DataConfig:
     pit_cessation_events_csv: str | None = None
     prediction_clock_time: str = "20:00"
     prediction_clock_timezone: str = "America/New_York"
+    input_package_manifest: str | None = None
+    input_package_manifest_sha256: str | None = None
+    input_package_root: str | None = None
 
     def __post_init__(self):
         if self.experiment_mode not in ("stock_level", "index_level"):
@@ -146,6 +156,22 @@ class DataConfig:
         if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", str(self.prediction_clock_time)):
             raise ValueError(
                 f"data.prediction_clock_time must be HH:MM, got {self.prediction_clock_time!r}"
+            )
+        package = (
+            self.input_package_manifest,
+            self.input_package_manifest_sha256,
+            self.input_package_root,
+        )
+        if any(package) and not all(package):
+            raise ValueError(
+                "data.input_package_manifest, data.input_package_manifest_sha256 and "
+                "data.input_package_root are set together or not at all"
+            )
+        if self.input_package_manifest_sha256 is not None and not re.fullmatch(
+            r"[0-9a-f]{64}", str(self.input_package_manifest_sha256)
+        ):
+            raise ValueError(
+                "data.input_package_manifest_sha256 must be 64 lowercase hex characters"
             )
         # Role keys only: each role checks its source value when it loads.
         roles = ("vix", "credit", "regime", "index")
