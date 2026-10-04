@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mci_gru.data.auxiliary_quality import REGIME_INPUT_ROLES
+from mci_gru.data.data_manager import MARKET_FILE_ROLE
 from mci_gru.data.input_manifest import read_input_manifest
 from mci_gru.data.path_resolver import PROJECT_ROOT, resolve_project_data_path
 from mci_gru.data.pit import CESSATION_EVENTS_ROLE
@@ -119,9 +120,15 @@ def required_input_roles(config: ExperimentConfig) -> tuple[RequiredRole, ...]:
                 )
             )
         else:
+            # An index file replaces FRED's SP500 for the market role (#276).
+            market_csv = features.regime_market_csv
             roles += [
-                RequiredRole(f"fred.{column}", auxiliary=True) for column in REGIME_INPUT_ROLES
+                RequiredRole(f"fred.{column}", auxiliary=True)
+                for column in REGIME_INPUT_ROLES
+                if not (market_csv and column == "regime_market")
             ]
+            if market_csv:
+                roles.append(RequiredRole(MARKET_FILE_ROLE, market_csv, auxiliary=True))
     return tuple(roles)
 
 

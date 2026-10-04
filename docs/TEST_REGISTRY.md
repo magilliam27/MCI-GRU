@@ -1415,11 +1415,12 @@ Saved-run input attachment: exact declarations linked to observed reads (#208).
 
 Runner wiring for saved-run inputs: configured roles bound to declared packages (#208).
 
-**Exercises:** `mci_gru.config`, `mci_gru.data.input_manifest`, `mci_gru.data.input_observations`, `mci_gru.evaluation.run_input_attachments`, `mci_gru.evaluation.run_input_declarations`, `mci_gru.features`, `mci_gru.pipeline`
+**Exercises:** `mci_gru.config`, `mci_gru.data.data_manager`, `mci_gru.data.input_manifest`, `mci_gru.data.input_observations`, `mci_gru.evaluation.run_input_attachments`, `mci_gru.evaluation.run_input_declarations`, `mci_gru.features`, `mci_gru.pipeline`
 
 | Test | Description | Markers |
 |---|---|---|
 | `test_a_captured_window_is_complete_after_every_source_is_gone` |  |  |
+| `test_a_captured_market_file_binds_to_its_own_snapshot` |  |  |
 | `test_replay_binds_the_snapshots_the_configuration_references` |  |  |
 | `test_live_provider_reads_are_linked_but_never_complete` |  |  |
 | `test_a_selected_file_outside_the_declared_package_has_no_declared_package` |  |  |
