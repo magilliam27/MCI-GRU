@@ -27,7 +27,7 @@ runs unless an experiment is explicitly testing one of these factors.
 
 > **The model changed on 2026-10-04, before the first admitted run (#187).**
 >
-> Until then the recipe named no `model.*` key, so it inherited the two legacy
+> Until then the recipe named no `model.*` key, so it inherited the legacy
 > forms that `configs/config.yaml` keeps for checkpoint compatibility. It now
 > pins the fixed forms, and the slug gained a suffix to say so (#273).
 >
@@ -35,15 +35,16 @@ runs unless an experiment is explicitly testing one of these factors.
 > |---|---|---|
 > | `model.market_latent_mode` | `static` (inherited): the B1/B2 latents are fixed parameters that cannot see the date (#198) | `data_dependent` (pinned): the latents read each date's PIT-active names first |
 > | `model.cross_section_block` | `legacy` (inherited): the cross-stock block replaces `z` and discards most of the variation between stocks (#197) | `residual` (pinned): the block corrects `z` as `z + Attn(LayerNorm(z))` |
-> | slug | `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1` | `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual` |
+> | `model.gru_attn_layer_widths` | `shared` (inherited): `gru_hidden_sizes: [32, 10]` built two GRU layers of width 10 (#131) | `per_layer` (pinned): a 32-wide layer feeding a 10-wide one |
+> | slug | `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1` | `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10` |
 >
-> Both forms hold different parameters from the legacy ones, so a checkpoint
+> All three forms hold different parameters from the legacy ones, so a checkpoint
 > trained under the earlier slug does not load into this recipe's model.
 
 Recipe slug:
 
 ```text
-static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual
+static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10
 ```
 
 ## Hydra Overrides
@@ -66,6 +67,7 @@ model.temporal_encoder=gru_attn
 model.use_nn_multihead_attention=true
 model.market_latent_mode=data_dependent
 model.cross_section_block=residual
+model.gru_attn_layer_widths=per_layer
 
 graph.judge_value=0.8
 graph.update_frequency_months=0
@@ -107,17 +109,19 @@ features.regime_min_history_months=24
   `scripts/ci_smoke.py` does.
 - `FRED_API_KEY` is required when `features.include_global_regime=true` and
   `features.regime_strict=true`.
-- The four `model.*` keys are pinned for the same reason as the data config.
+- The five `model.*` keys are pinned for the same reason as the data config.
   `market_latent_mode=data_dependent` and `cross_section_block=residual` are the
-  fixed forms of #198 and #197; `configs/config.yaml` keeps the legacy forms as
+  fixed forms of #198 and #197, and `gru_attn_layer_widths=per_layer` makes
+  `gru_hidden_sizes: [32, 10]` mean a 32-wide layer then a 10-wide one, the
+  maintainer's decision on #131. `configs/config.yaml` keeps the legacy forms as
   its defaults so older checkpoint directories still rebuild. Data-dependent
   latents need `use_nn_multihead_attention=true` and `ModelConfig` refuses the
   combination without it, so that key is pinned too. `temporal_encoder=gru_attn`
   is pinned so the recipe does not move if the base encoder default does.
   `tests/test_default_experiment_recipe.py` composes this block the way
   `run_experiment.py` does and checks the model it builds.
-- `model.gru_hidden_sizes` is still inherited as `[32, 10]`, which under
-  `gru_attn` builds two layers of width 10, not 32 then 10 (#131, undecided).
+- `model.gru_hidden_sizes` is inherited as `[32, 10]`; with the pin above it
+  builds 32 then 10 under `gru_attn`.
 - The graph is the static threshold graph, not top-K and not dynamic schedule.
 - The objective is pure IC on raw 5-day return labels. Do not substitute rank
   labels for performance scoring unless the rank-label evaluation scale has

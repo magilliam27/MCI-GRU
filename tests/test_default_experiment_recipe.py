@@ -118,6 +118,13 @@ def test_the_recipe_builds_the_residual_cross_stock_block():
     assert isinstance(model.self_attention, ResidualCrossSectionBlock)
 
 
+def test_the_recipe_builds_gru_attn_layers_at_32_then_10():
+    """Issue 131: [32, 10] must mean a 32-wide layer then a 10-wide one."""
+    model = _build_model(_compose(_recipe_overrides()))
+    for branch in (model.temporal_encoder.fast_gru, model.temporal_encoder.slow_gru):
+        assert [layer.hidden_size for layer in branch.grus] == [32, 10]
+
+
 def test_the_base_config_alone_still_builds_the_legacy_forms():
     """Control: the two tests above must come from the recipe's own pins.
 
@@ -131,6 +138,8 @@ def test_the_base_config_alone_still_builds_the_legacy_forms():
     model = _build_model(_compose(without_model_pins))
     assert model.latent_learner.market_latent_mode == "static"
     assert not isinstance(model.self_attention, ResidualCrossSectionBlock)
+    assert model.temporal_encoder.fast_gru.grus is None
+    assert model.temporal_encoder.fast_gru.gru.hidden_size == 10
 
 
 def test_the_override_block_parser_reads_the_block():

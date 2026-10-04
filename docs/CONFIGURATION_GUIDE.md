@@ -209,7 +209,7 @@ inference, or notebook runs.
 Production-style confirmation notebooks and PIT validation runs should use the
 frozen recipe documented in
 [`DEFAULT_EXPERIMENT_RECIPE.md`](DEFAULT_EXPERIMENT_RECIPE.md):
-`static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual`.
+`static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10`.
 
 Core overrides:
 
@@ -227,6 +227,7 @@ Core overrides:
 | Model | temporal_encoder / use_nn_multihead_attention | `gru_attn` / `true` |
 | Model | market_latent_mode | `data_dependent` (since 2026-10-04; base default is `static`) |
 | Model | cross_section_block | `residual` (since 2026-10-04; base default is `legacy`) |
+| Model | gru_attn_layer_widths | `per_layer` (since 2026-10-04; base default is `shared`) |
 | Graph | update_frequency_months | `0` |
 | Graph | corr_lookback_days | `252` |
 | Graph | top_k / top_k_metric | `0` / `corr` |
@@ -261,6 +262,7 @@ Values below reflect **`configs/config.yaml`** merged with **`configs/data/gics_
 | Model | gru_hidden_sizes | [32, 10] |
 | Model | cross_section_block | `legacy` — how the cross-stock attention is applied. `legacy` replaces `z` with the attention output; `residual` applies it as `z + Attn(LayerNorm(z))` so it corrects `z` instead (issue #197). The two forms have disjoint parameter names, so a checkpoint belongs to the form that produced it. |
 | Model | market_latent_mode | `static` — what the B1/B2 latent states are. `static` keeps `R1`/`R2` as frozen parameters, so the streams cannot observe the date's market (issue #198). `data_dependent` lets the latents read the date's active cross-section first. The two modes hold different parameters, so a checkpoint belongs to the mode that produced it. |
+| Model | gru_attn_layer_widths | `shared` — how `gru_attn` reads `gru_hidden_sizes` (issue #131). `shared` uses the list length as the layer count and the last entry as every layer's width, so `[32, 10]` is two width-10 layers; `per_layer` builds one layer per entry at its own width, so `[32, 10]` is 32 then 10. The two forms hold different parameters, so a checkpoint belongs to the form that produced it. |
 | Graph | use_multi_feature_edges | `true` (4-D edge features; `paper_faithful` preset pins `false`) |
 | Training | batch_size | 32 |
 | Training | learning_rate | 5e-5 |

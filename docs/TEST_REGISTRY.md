@@ -295,6 +295,7 @@ Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
 | `test_recipe_last_updated_is_not_stale_relative_to_the_change` |  |  |
 | `test_the_recipe_builds_data_dependent_market_latents` | Issue 198: static latents cannot see the date, so the first run must not use them. |  |
 | `test_the_recipe_builds_the_residual_cross_stock_block` | Issue 197: the legacy block replaces z and discards most cross-sectional variation. |  |
+| `test_the_recipe_builds_gru_attn_layers_at_32_then_10` | Issue 131: [32, 10] must mean a 32-wide layer then a 10-wide one. |  |
 | `test_the_base_config_alone_still_builds_the_legacy_forms` | Control: the two tests above must come from the recipe's own pins. |  |
 | `test_the_override_block_parser_reads_the_block` | Control: an empty parse would make every composition test vacuous. |  |
 
@@ -723,6 +724,24 @@ Graph-zeroed control arm (issue 165, semantics fixed by the issue-164 protocol).
 | `test_zeroed_build_scalar_and_lead_lag_widths` |  |  |
 | `test_zeroed_build_still_builds_sector_branch` |  |  |
 | `test_zeroed_output_invariant_to_panel_correlation_structure` | Two panels whose correlation structure is opposite (+1 vs -1) must give |  |
+
+## `tests/test_gru_attn_layer_widths.py`
+
+Issue 131: how ``gru_attn`` reads ``model.gru_hidden_sizes``.
+
+**Exercises:** `mci_gru.config`, `mci_gru.models`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_per_layer_builds_each_entry_at_its_own_width` |  |  |
+| `test_shared_still_builds_two_layers_of_the_last_width` | Control: the shipped form is unchanged, so old checkpoints still match it. |  |
+| `test_per_layer_forward_and_sequence_shapes_and_gradients` |  |  |
+| `test_per_layer_output_depends_on_the_first_layer` | The 32-wide layer must feed the 10-wide one, not sit beside it. |  |
+| `test_create_model_routes_the_setting_to_both_multi_scale_branches` |  |  |
+| `test_create_model_default_keeps_the_shared_form` | Control for the routing test: without the key the model is the shipped one. |  |
+| `test_create_model_routes_the_setting_without_multi_scale` |  |  |
+| `test_model_config_validates_and_serialises_the_setting` |  |  |
+| `test_encoder_rejects_an_unknown_layer_widths_value` |  |  |
 
 ## `tests/test_index_level_mode.py`
 
