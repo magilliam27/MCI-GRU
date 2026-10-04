@@ -10,7 +10,7 @@ This file records the test inventory only, with no counts, dates, or last-run st
 
 Public auxiliary loader and preparation capture/replay contracts.
 
-**Exercises:** `mci_gru.config`, `mci_gru.data.data_manager`, `mci_gru.data.fred_loader`, `mci_gru.data.input_observations`, `mci_gru.data.input_snapshots`, `mci_gru.data.lseg_loader`, `mci_gru.features`, `mci_gru.pipeline`
+**Exercises:** `mci_gru.config`, `mci_gru.data.data_manager`, `mci_gru.data.fred_loader`, `mci_gru.data.input_observations`, `mci_gru.data.input_snapshots`, `mci_gru.data.lseg_loader`, `mci_gru.evaluation.run_input_declarations`, `mci_gru.features`, `mci_gru.pipeline`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -291,6 +291,7 @@ Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
 | `test_the_pinned_universe_is_a_csv_source_not_lseg` | The recipe must not silently depend on the live-LSEG path. |  |
 | `test_recipe_records_that_the_universe_changed` | The change must be stated, or pre- and post-change evidence gets compared. |  |
 | `test_recipe_last_updated_is_not_stale_relative_to_the_change` |  |  |
+| `test_recipe_captures_its_provider_inputs` | The owner chose capture for the first run (2026-10-04); source leaves inputs unverifiable. |  |
 
 ## `tests/test_drop_edge_rng_isolation.py`
 
@@ -463,6 +464,7 @@ Execution evidence from ensemble members and from the runner (#144).
 | `test_an_index_level_run_is_linked_the_same_way` |  |  |
 | `test_a_window_retains_its_declared_inputs_and_its_receipt_binds_them` |  |  |
 | `test_a_failed_attachment_is_recorded_and_the_run_finishes` |  |  |
+| `test_a_capture_run_keeps_its_regime_snapshots_and_its_inputs_verify` |  |  |
 | `test_an_undeclared_panel_leaves_the_attachment_incomplete_but_the_run_finishes` |  |  |
 | `test_each_window_gets_its_own_attempt_and_the_run_survives_relocation` |  |  |
 | `test_a_preparation_failure_leaves_an_incomplete_attempt_and_no_receipt` |  |  |
@@ -1496,11 +1498,12 @@ Saved-run input attachment: exact declarations linked to observed reads (#208).
 
 Runner wiring for saved-run inputs: configured roles bound to declared packages (#208).
 
-**Exercises:** `mci_gru.config`, `mci_gru.data.input_manifest`, `mci_gru.data.input_observations`, `mci_gru.evaluation.run_input_attachments`, `mci_gru.evaluation.run_input_declarations`, `mci_gru.features`, `mci_gru.pipeline`
+**Exercises:** `mci_gru.config`, `mci_gru.data.data_manager`, `mci_gru.data.input_manifest`, `mci_gru.data.input_observations`, `mci_gru.evaluation.run_input_attachments`, `mci_gru.evaluation.run_input_declarations`, `mci_gru.features`, `mci_gru.pipeline`
 
 | Test | Description | Markers |
 |---|---|---|
 | `test_a_captured_window_is_complete_after_every_source_is_gone` |  |  |
+| `test_a_captured_market_file_binds_to_its_own_snapshot` |  |  |
 | `test_replay_binds_the_snapshots_the_configuration_references` |  |  |
 | `test_live_provider_reads_are_linked_but_never_complete` |  |  |
 | `test_a_selected_file_outside_the_declared_package_has_no_declared_package` |  |  |
@@ -1510,6 +1513,8 @@ Runner wiring for saved-run inputs: configured roles bound to declared packages 
 | `test_required_roles_are_exactly_the_roles_a_real_preparation_consumes` |  | parametrize |
 | `test_the_recipe_data_config_binds_both_selected_files_to_the_preserved_package` |  |  |
 | `test_a_partial_or_malformed_package_declaration_is_refused` |  | parametrize |
+| `test_a_capture_with_no_named_folder_keeps_its_snapshots_in_the_run` |  |  |
+| `test_a_named_folder_or_another_mode_is_left_as_configured` |  | parametrize |
 
 ## `tests/test_run_pytest_isolated.py`
 

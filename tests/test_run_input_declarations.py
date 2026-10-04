@@ -18,7 +18,8 @@ import pytest
 from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 
-from mci_gru.config import create_config_from_dict
+from mci_gru.config import DataConfig, create_config_from_dict
+from mci_gru.data.data_manager import MARKET_FILE_ROLE
 from mci_gru.data.input_manifest import (
     InputFileSpec,
     ManifestDigestMismatchError,
@@ -30,6 +31,7 @@ from mci_gru.evaluation.run_input_attachments import AttachmentReference, read_r
 from mci_gru.evaluation.run_input_declarations import (
     attach_window_inputs,
     declare_window_inputs,
+    keep_captures_with_run,
     required_input_roles,
 )
 from mci_gru.features import FeatureEngineer
@@ -65,6 +67,17 @@ class Fred:
         frequency = "MS" if series_id == "PCOPPUSDM" else "B"
         dates = pd.date_range(observation_start, observation_end, freq=frequency)
         return pd.Series(np.linspace(10.0, 100.0, len(dates)), index=dates)
+
+
+def _market_file(tmp_path: Path) -> dict:
+    """An S&P 500 index file that replaces FRED's SP500 for the market role (#276)."""
+    path = tmp_path / "eodhd" / "sp500_index.csv"
+    path.parent.mkdir()
+    dates = pd.bdate_range("2004-01-02", "2020-03-31")
+    pd.DataFrame(
+        {"dt": dates.strftime("%Y-%m-%d"), "close": np.linspace(1000.0, 3000.0, len(dates))}
+    ).to_csv(path, index=False)
+    return {"regime_market_csv": str(path)}
 
 
 @dataclass
@@ -220,6 +233,24 @@ def test_a_captured_window_is_complete_after_every_source_is_gone(tmp_path, monk
     assert inputs.preservation == {"status": "unproven"}
 
 
+def test_a_captured_market_file_binds_to_its_own_snapshot(tmp_path, monkeypatch):
+    setup = _setup(tmp_path, monkeypatch)
+    config = _config(setup.data, **_market_file(tmp_path))
+    observations = _prepare(config)
+    shutil.rmtree(tmp_path / "eodhd")
+
+    inputs = read_run_inputs(_relocated(setup, _attach(setup, config, observations)))
+
+    assert (inputs.status, inputs.problems) == ("complete", [])
+    bindings = _bindings(inputs)
+    assert "fred.regime_market" not in bindings
+    fred_digests = {bindings[role][0] for role in REGIME_ROLES if role != "fred.regime_market"}
+    digest, path = bindings[MARKET_FILE_ROLE]
+    assert path == "observations.bin"
+    assert len(fred_digests) == 5 and digest not in fred_digests
+    assert digest != setup.data["input_package_manifest_sha256"]
+
+
 def test_replay_binds_the_snapshots_the_configuration_references(tmp_path, monkeypatch):
     setup = _setup(tmp_path, monkeypatch)
     _prepare(_config(setup.data))
@@ -323,6 +354,7 @@ def test_a_snapshot_manifest_changed_after_capture_is_refused(tmp_path, monkeypa
         "cessation_and_sector_map",
         "index_file",
         "index_fred",
+        "market_file",
     ],
 )
 def test_required_roles_are_exactly_the_roles_a_real_preparation_consumes(
@@ -361,6 +393,8 @@ def test_required_roles_are_exactly_the_roles_a_real_preparation_consumes(
             }
         ).to_csv(regime, index=False)
         features = {"regime_inputs_csv": str(regime)}
+    if case == "market_file":
+        features = _market_file(tmp_path)
     graph = {}
     if case == "cessation_and_sector_map":
         cessation = tmp_path / "cessation.csv"
@@ -390,6 +424,7 @@ def test_required_roles_are_exactly_the_roles_a_real_preparation_consumes(
 
     required = [entry.role for entry in required_input_roles(config)]
     assert len(required) == len(set(required))
+    assert (MARKET_FILE_ROLE in required) == (case == "market_file")
     assert set(required) == {use.role for use in observations.uses}
 
 
@@ -400,7 +435,9 @@ def _recipe_config(overrides: list[str]):
 
 
 def test_the_recipe_data_config_binds_both_selected_files_to_the_preserved_package():
-    config = _recipe_config(["features.include_global_regime=true"])
+    config = _recipe_config(
+        ["features.include_global_regime=true", "data.auxiliary_snapshot_mode=capture"]
+    )
     observations = InputObservationContext().freeze()
 
     declarations = declare_window_inputs(config, observations)
@@ -415,9 +452,10 @@ def test_the_recipe_data_config_binds_both_selected_files_to_the_preserved_packa
         assert bindings[role].path in files
     assert bindings["data.filename"].path.startswith("market/")
     assert bindings["data.pit_universe_csv"].path.startswith("constituents/")
-    # The recipe's six regime inputs are provider reads: declared only once captured.
-    assert {role for role, binding in bindings.items() if binding.manifest_sha256 is None} == set(
-        REGIME_ROLES
+    # The recipe's regime inputs, five FRED series and the S&P 500 index file that
+    # replaces FRED's SP500 (#276), are declared only once captured.
+    assert {role for role, binding in bindings.items() if binding.manifest_sha256 is None} == (
+        set(REGIME_ROLES) - {"fred.regime_market"} | {MARKET_FILE_ROLE}
     )
 
 
@@ -436,3 +474,26 @@ def test_a_partial_or_malformed_package_declaration_is_refused(
     setup = _setup(tmp_path, monkeypatch)
     with pytest.raises(ValueError, match=message):
         _config({**setup.data, **overrides})
+
+
+def test_a_capture_with_no_named_folder_keeps_its_snapshots_in_the_run(tmp_path):
+    data = DataConfig(auxiliary_snapshot_mode="capture")
+
+    chosen = keep_captures_with_run(data, tmp_path / "run")
+
+    assert chosen == data.auxiliary_snapshot_directory == str(tmp_path / "run" / "input_snapshots")
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        DataConfig(auxiliary_snapshot_mode="capture", auxiliary_snapshot_directory="named"),
+        DataConfig(auxiliary_snapshot_mode="source"),
+        DataConfig(auxiliary_snapshot_mode="replay"),
+    ],
+)
+def test_a_named_folder_or_another_mode_is_left_as_configured(tmp_path, data):
+    before = data.auxiliary_snapshot_directory
+
+    assert keep_captures_with_run(data, tmp_path) is None
+    assert data.auxiliary_snapshot_directory == before
