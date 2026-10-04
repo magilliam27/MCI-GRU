@@ -283,6 +283,8 @@ Input admission at the confirmed #223 seams: native read, preparation, runner.
 
 Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
 
+**Exercises:** `mci_gru.config`, `mci_gru.graph.utils`, `mci_gru.models`
+
 | Test | Description | Markers |
 |---|---|---|
 | `test_recipe_pins_a_data_config_explicitly` | Without this, the recipe silently inherits configs/config.yaml. |  |
@@ -291,6 +293,10 @@ Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
 | `test_the_pinned_universe_is_a_csv_source_not_lseg` | The recipe must not silently depend on the live-LSEG path. |  |
 | `test_recipe_records_that_the_universe_changed` | The change must be stated, or pre- and post-change evidence gets compared. |  |
 | `test_recipe_last_updated_is_not_stale_relative_to_the_change` |  |  |
+| `test_the_recipe_builds_data_dependent_market_latents` | Issue 198: static latents cannot see the date, so the first run must not use them. |  |
+| `test_the_recipe_builds_the_residual_cross_stock_block` | Issue 197: the legacy block replaces z and discards most cross-sectional variation. |  |
+| `test_the_base_config_alone_still_builds_the_legacy_forms` | Control: the two tests above must come from the recipe's own pins. |  |
+| `test_the_override_block_parser_reads_the_block` | Control: an empty parse would make every composition test vacuous. |  |
 
 ## `tests/test_drop_edge_rng_isolation.py`
 

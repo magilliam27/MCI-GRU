@@ -1,6 +1,6 @@
 # Default Frozen Experiment Recipe
 
-Last updated: 2026-08-08
+Last updated: 2026-10-04
 
 Use this recipe for production-style confirmation notebooks and PIT validation
 runs unless an experiment is explicitly testing one of these factors.
@@ -25,10 +25,25 @@ runs unless an experiment is explicitly testing one of these factors.
 > produced under the inherited S&P 500 universe and are not comparable with
 > recipe-labelled runs.
 
+> **The model changed on 2026-10-04, before the first admitted run (#187).**
+>
+> Until then the recipe named no `model.*` key, so it inherited the two legacy
+> forms that `configs/config.yaml` keeps for checkpoint compatibility. It now
+> pins the fixed forms, and the slug gained a suffix to say so (#273).
+>
+> | | before 2026-10-04 | from 2026-10-04 |
+> |---|---|---|
+> | `model.market_latent_mode` | `static` (inherited): the B1/B2 latents are fixed parameters that cannot see the date (#198) | `data_dependent` (pinned): the latents read each date's PIT-active names first |
+> | `model.cross_section_block` | `legacy` (inherited): the cross-stock block replaces `z` and discards most of the variation between stocks (#197) | `residual` (pinned): the block corrects `z` as `z + Attn(LayerNorm(z))` |
+> | slug | `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1` | `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual` |
+>
+> Both forms hold different parameters from the legacy ones, so a checkpoint
+> trained under the earlier slug does not load into this recipe's model.
+
 Recipe slug:
 
 ```text
-static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1
+static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual
 ```
 
 ## Hydra Overrides
@@ -47,6 +62,10 @@ training.label_type=returns
 training.selection_metric=val_ic
 training.shuffle_train=true
 model.label_t=5
+model.temporal_encoder=gru_attn
+model.use_nn_multihead_attention=true
+model.market_latent_mode=data_dependent
+model.cross_section_block=residual
 
 graph.judge_value=0.8
 graph.update_frequency_months=0
@@ -88,6 +107,17 @@ features.regime_min_history_months=24
   `scripts/ci_smoke.py` does.
 - `FRED_API_KEY` is required when `features.include_global_regime=true` and
   `features.regime_strict=true`.
+- The four `model.*` keys are pinned for the same reason as the data config.
+  `market_latent_mode=data_dependent` and `cross_section_block=residual` are the
+  fixed forms of #198 and #197; `configs/config.yaml` keeps the legacy forms as
+  its defaults so older checkpoint directories still rebuild. Data-dependent
+  latents need `use_nn_multihead_attention=true` and `ModelConfig` refuses the
+  combination without it, so that key is pinned too. `temporal_encoder=gru_attn`
+  is pinned so the recipe does not move if the base encoder default does.
+  `tests/test_default_experiment_recipe.py` composes this block the way
+  `run_experiment.py` does and checks the model it builds.
+- `model.gru_hidden_sizes` is still inherited as `[32, 10]`, which under
+  `gru_attn` builds two layers of width 10, not 32 then 10 (#131, undecided).
 - The graph is the static threshold graph, not top-K and not dynamic schedule.
 - The objective is pure IC on raw 5-day return labels. Do not substitute rank
   labels for performance scoring unless the rank-label evaluation scale has
@@ -97,7 +127,9 @@ features.regime_min_history_months=24
   resamples, and patience, but should keep the recipe's feature, graph, loss,
   label, and selection semantics unless the smoke is explicitly mechanics-only.
 
-Canonical notebook generators that already encode this recipe:
+Notebook generators that encode the recipe as it stood before 2026-10-04 (the
+earlier slug, with the legacy model forms). They are historical and have not
+been moved to this recipe:
 
 - `scripts/gen_temporal_rolling_backtest_nb.py`
 - `scripts/gen_performance_proof_nb.py`

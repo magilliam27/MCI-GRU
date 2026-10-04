@@ -15,11 +15,12 @@
 
 For production-style confirmation notebooks and PIT validation runs, use the
 frozen recipe in `docs/DEFAULT_EXPERIMENT_RECIPE.md`:
-`static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1`.
+`static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual`.
 It means a 20-model, 100-epoch, patience-15 ensemble; pure IC loss; raw 5-day
 return labels; `selection_metric=val_ic`; shuffled static threshold graph;
-multi-feature edges; `drop_edge_p=0.1`; static weekly momentum; and strict
-current-only global regime features. `FRED_API_KEY` is required unless a smoke
+multi-feature edges; `drop_edge_p=0.1`; static weekly momentum; strict
+current-only global regime features; data-dependent market latents; and the
+residual cross-stock block. `FRED_API_KEY` is required unless a smoke
 run explicitly disables global regime.
 
 ## Agent skills
