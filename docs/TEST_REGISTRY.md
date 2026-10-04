@@ -38,7 +38,7 @@ Public auxiliary loader and preparation capture/replay contracts.
 
 #224 regime input rulings, proven through public DataManager.load_regime_inputs.
 
-**Exercises:** `mci_gru.config`, `mci_gru.data.auxiliary_quality`, `mci_gru.data.data_manager`, `mci_gru.data.input_snapshots`
+**Exercises:** `mci_gru.config`, `mci_gru.data.auxiliary_quality`, `mci_gru.data.data_manager`, `mci_gru.data.input_snapshots`, `mci_gru.data.quality_contract`, `mci_gru.features`, `mci_gru.pipeline`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -52,6 +52,9 @@ Public auxiliary loader and preparation capture/replay contracts.
 | `test_gaps_negative_oil_and_low_yields_are_valid` |  |  |
 | `test_a_stop_keeps_its_facts_through_the_preparation_failure` |  |  |
 | `test_a_source_covering_the_request_leaves_no_leading_gap` | Copper's request reaches back to month X-2, so its first session is usable. |  |
+| `test_each_role_lands_in_the_admission_ledger_as_valid` |  |  |
+| `test_a_rule_stop_reaches_the_run_failure_with_the_verdicts_so_far` |  |  |
+| `test_preparation_returns_the_regime_verdicts_for_admission_json` |  |  |
 
 ## `tests/test_backtest_engine_golden.py`
 

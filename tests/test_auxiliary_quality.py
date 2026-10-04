@@ -14,10 +14,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mci_gru.config import DataConfig
-from mci_gru.data.auxiliary_quality import MAX_CARRY_SESSIONS
+from mci_gru.config import DataConfig, create_config_from_dict
+from mci_gru.data.auxiliary_quality import ADMISSION_RULE, MAX_CARRY_SESSIONS
 from mci_gru.data.data_manager import DataManager
 from mci_gru.data.input_snapshots import InputSnapshotError
+from mci_gru.data.quality_contract import build_run_failure
+from mci_gru.features import FeatureEngineer
+from mci_gru.pipeline import prepare_data
 
 DAILY_DATES = pd.bdate_range("2024-12-02", "2025-03-13")
 DAILY = {
@@ -281,3 +284,88 @@ def test_a_source_covering_the_request_leaves_no_leading_gap(tmp_path, monkeypat
         )
     }
     assert out["regime_copper"].notna().all()
+
+
+def regime_items(admission: dict) -> list[dict]:
+    return [item for item in admission["items"] if item["rule"] == ADMISSION_RULE]
+
+
+def test_each_role_lands_in_the_admission_ledger_as_valid(tmp_path, monkeypatch) -> None:
+    _, manager = replay(tmp_path, monkeypatch, fixture_series())
+    admission = manager.admission.to_dict()
+    items = regime_items(admission)
+    assert admission["admitted"] is True
+    assert [item["role"] for item in items] == [
+        "fred.yield_10y",
+        "fred.yield_3m",
+        "fred.regime_oil",
+        "fred.regime_volatility",
+        "fred.regime_market",
+        "fred.regime_copper",
+    ]
+    assert {item["verdict"] for item in items} == {"valid"}
+    assert {item["source"] for item in items} == {"fred"}
+    assert [item["evidence"] for item in items] == manager.regime_input_receipt["verdicts"]
+    assert all(item["evidence"]["revisions"] == "unchecked" for item in items)
+    assert admission["coverage"]["regime"] == manager.regime_input_receipt["leading_gap_sessions"]
+
+
+def test_a_rule_stop_reaches_the_run_failure_with_the_verdicts_so_far(
+    tmp_path, monkeypatch
+) -> None:
+    install_sdk(monkeypatch, fixture_series(DCOILWTICO={"2025-01-08": "n/a"}))
+    manager = DataManager(fixture_config(tmp_path))
+    with pytest.raises(InputSnapshotError) as caught:
+        manager.load_regime_inputs()
+    failure = manager.required_input_failure(caught.value, role="regime", source="fred")
+    report = build_run_failure(failure, walkforward_window=0, resolved_config_identity=None)
+
+    [stop] = report["failures"]
+    assert (stop["role"], stop["stage"], stop["reason_code"]) == (
+        "fred.regime_oil",
+        "validate",
+        "malformed_value",
+    )
+    assert stop["evidence"]["dates"] == ["2025-01-08"]
+    admission = report["admission"]
+    assert admission["admitted"] is False
+    assert [(item["role"], item["verdict"]) for item in regime_items(admission)] == [
+        ("fred.yield_10y", "valid"),
+        ("fred.yield_3m", "valid"),
+        ("fred.regime_oil", "invalid"),
+    ]
+    rejected = regime_items(admission)[-1]
+    assert rejected["reason_code"] == "malformed_value"
+    assert rejected["evidence"]["dates"] == ["2025-01-08"]
+    assert "oil" in rejected["reason"]
+
+
+def test_preparation_returns_the_regime_verdicts_for_admission_json(tmp_path, monkeypatch) -> None:
+    rows = ["kdcode,dt,open,high,low,close,volume"]
+    for day in pd.bdate_range("2025-01-02", "2025-03-14"):
+        for stock, offset in (("AAA", 0), ("BBB", 20)):
+            value = 100 + offset + day.dayofyear
+            rows.append(f"{stock},{day:%Y-%m-%d},{value},{value + 1},{value - 1},{value},1000")
+    panel = tmp_path / "panel.csv"
+    panel.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    data = asdict(fixture_config(tmp_path))
+    data.update(filename=str(panel), use_pit_universe=False)
+    config = create_config_from_dict(
+        {
+            "data": data,
+            "features": {
+                "include_momentum": False,
+                "include_weekly_momentum": False,
+                "include_global_regime": True,
+            },
+            "model": {"his_t": 2, "label_t": 2},
+            "graph": {"use_multi_feature_edges": False},
+            "training": {"label_type": "returns"},
+            "tracking": {"enabled": False},
+        }
+    )
+    install_sdk(monkeypatch, fixture_series())
+    prepared = prepare_data(config, FeatureEngineer(config.features))
+    items = regime_items(prepared["admission"])
+    assert prepared["admission"]["admitted"] is True
+    assert len(items) == 6 and {item["verdict"] for item in items} == {"valid"}

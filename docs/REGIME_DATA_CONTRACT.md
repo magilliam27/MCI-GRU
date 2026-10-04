@@ -56,9 +56,14 @@ empty.
 `label`, `source`, `series_id`, `observation_id`, the rules and scope applied,
 first observation, first usable session, leading-gap sessions, missing
 observations, the longest carry seen, and `revisions: unchecked`) plus the
-leading-gap count of each of the seven output columns. It is input to #223's
-single run report; #224 adds no aggregator of its own. A stop raises an
-`InputSnapshotError` at stage `validate` whose facts carry the reason and dates.
+leading-gap count of each of the seven output columns. The same verdicts go
+into #223's admission ledger (`DataManager.admission`) as one `valid` item per
+role, rule `regime_historical_availability`, role `fred.<column>`, with the
+verdict as evidence and the leading-gap counts as `coverage["regime"]`, so they
+reach `admission.json` on success. A stop raises an `InputSnapshotError` at
+stage `validate` whose facts carry the reason and dates; it is also recorded as
+an `invalid` item, and the ledger so far travels with the error into
+`run_failure.json`.
 
 Index mode (`load_index_series`), standalone VIX, credit and the legacy CSV
 below are disabled in the recipe and keep their earlier behaviour.

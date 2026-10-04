@@ -419,7 +419,9 @@ class DataManager:
         one row per weekday session, each value the last one known by 20:00
         New York on that session, no back-fill, and a stop with the role and
         dates on a malformed value or a gap longer than the carry limit. The
-        per-role verdicts land in ``regime_input_receipt`` for the run report.
+        per-role verdicts land in ``regime_input_receipt`` and, as one item per
+        role, in ``self.admission``: admission.json on success, and with the
+        stop in run_failure.json.
 
         Output columns:
             dt, regime_market, regime_yield_curve, regime_oil, regime_copper,
@@ -507,6 +509,12 @@ class DataManager:
                         and error.facts["reason"] == "acquisition_failed"
                         and error.facts.get("error_code") in {"TimeoutError", "ConnectionError"}
                     )
+                    if isinstance(error, InputSnapshotError) and "regime_role" in error.facts:
+                        # A #224 rule stop: the ledger, verdicts so far included,
+                        # travels with the error into run_failure.json.
+                        self.admission.record(auxiliary_quality.rejection_item(error.facts))
+                        error.admission = self.admission.to_dict()
+                        raise
                     if (
                         self.input_snapshots.mode == "replay"
                         or not retryable
@@ -520,17 +528,17 @@ class DataManager:
         # #224 rulings: each role is already on the session grid, holding the
         # last value known by 20:00 New York on that session, carried at most
         # five sessions (copper: month M only during M+2), never back-filled.
-        qualified = {
-            column: fetch(series_id, column)
-            for series_id, column in (
-                (fred_loader.FRED_SERIES_10Y, "yield_10y"),
-                (fred_loader.FRED_SERIES_3M, "yield_3m"),
-                (fred_loader.FRED_SERIES_OIL_WTI, "regime_oil"),
-                (fred_loader.FRED_SERIES_VIX, "regime_volatility"),
-                (fred_loader.FRED_SERIES_SP500, "regime_market"),
-                (fred_loader.FRED_SERIES_COPPER, "regime_copper"),
-            )
-        }
+        qualified = {}
+        for series_id, column in (
+            (fred_loader.FRED_SERIES_10Y, "yield_10y"),
+            (fred_loader.FRED_SERIES_3M, "yield_3m"),
+            (fred_loader.FRED_SERIES_OIL_WTI, "regime_oil"),
+            (fred_loader.FRED_SERIES_VIX, "regime_volatility"),
+            (fred_loader.FRED_SERIES_SP500, "regime_market"),
+            (fred_loader.FRED_SERIES_COPPER, "regime_copper"),
+        ):
+            qualified[column] = fetch(series_id, column)
+            self.admission.record(auxiliary_quality.admission_item(qualified[column].verdict))
         base = pd.DataFrame({column: item.values for column, item in qualified.items()})
         base["regime_yield_curve"] = base["yield_10y"] - base["yield_3m"]
         base["regime_monetary_policy"] = base["yield_3m"]
@@ -553,6 +561,7 @@ class DataManager:
                 for column in REGIME_VARIABLES
             },
         }
+        self.admission.record_coverage("regime", self.regime_input_receipt["leading_gap_sessions"])
         base.insert(0, "dt", base.index.strftime("%Y-%m-%d"))
         base = base.reset_index(drop=True)
         self.regime_df = base
