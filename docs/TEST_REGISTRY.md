@@ -1404,6 +1404,7 @@ Runner wiring for saved-run inputs: configured roles bound to declared packages 
 | `test_a_selected_file_outside_the_declared_package_has_no_declared_package` |  |  |
 | `test_a_package_file_changed_after_its_manifest_is_not_the_declared_read` |  |  |
 | `test_a_declared_manifest_that_is_not_the_pinned_one_stops_the_run` |  |  |
+| `test_a_snapshot_manifest_changed_after_capture_is_refused` |  |  |
 | `test_required_roles_are_exactly_the_roles_a_real_preparation_consumes` |  | parametrize |
 | `test_the_recipe_data_config_binds_both_selected_files_to_the_preserved_package` |  |  |
 | `test_a_partial_or_malformed_package_declaration_is_refused` |  | parametrize |

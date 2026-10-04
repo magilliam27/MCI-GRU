@@ -303,6 +303,17 @@ def test_a_declared_manifest_that_is_not_the_pinned_one_stops_the_run(tmp_path, 
         declare_window_inputs(_config(setup.data), observations)
 
 
+def test_a_snapshot_manifest_changed_after_capture_is_refused(tmp_path, monkeypatch):
+    setup = _setup(tmp_path, monkeypatch)
+    config = _config(setup.data)
+    observations = _prepare(config)
+    manifest = sorted((setup.root / "snapshots").glob("*/manifest.json"))[0]
+    manifest.write_bytes(manifest.read_bytes() + b" ")
+
+    with pytest.raises(ManifestDigestMismatchError):
+        declare_window_inputs(config, observations)
+
+
 @pytest.mark.parametrize(
     "case",
     [
