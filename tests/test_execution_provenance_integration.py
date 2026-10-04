@@ -770,7 +770,7 @@ def test_a_window_retains_its_declared_inputs_and_its_receipt_binds_them(tmp_pat
     assert attached["status"] == "complete"
     receipt = json.loads(_window_files(out, window)[2].read_bytes())
     assert receipt["artifacts"][attached["path"]] == attached["sha256"]
-    for name in ("input_observations.json", f"manifests/{package.sha256}.json"):
+    for name in ("input_observations.json", f"manifests/{package.sha256[:16]}.json"):
         retained = Path(attached["path"]).parent / name
         assert receipt["artifacts"][retained.as_posix()] == _sha256(out / retained)
 
@@ -782,6 +782,46 @@ def test_a_window_retains_its_declared_inputs_and_its_receipt_binds_them(tmp_pat
     assert (inputs.status, inputs.problems) == ("complete", [])
     assert inputs.execution == {"status": "unknown", "start": metadata["execution_start"]}
     assert [role["role"] for role in inputs.roles] == ["data.filename"]
+
+
+def test_a_failed_attachment_is_recorded_and_the_run_finishes(tmp_path):
+    # A pinned package digest that does not match its manifest makes attaching raise.
+    base = tmp_path / "failed_attachment"
+    base.mkdir()
+    _write_panel(base / "panel.csv", days=60)
+    manifest = tmp_path / "declared" / "panel.r1.json"
+    manifest.parent.mkdir()
+    write_input_manifest(
+        manifest,
+        base,
+        package_id="runner-panel",
+        package_revision="r1",
+        files=[InputFileSpec("panel.csv", "price panel")],
+        provenance={
+            "source": "synthetic fixture",
+            "acquisition_mode": "fixture",
+            "acquired_at": "2020-04-01T00:00:00+00:00",
+            "producing_command": None,
+            "producing_arguments": None,
+            "unknowns": ["Fixture packages have no producing command"],
+        },
+    )
+    out = _run(
+        base,
+        [
+            f"data.input_package_manifest={manifest.as_posix()}",
+            f"data.input_package_manifest_sha256={'0' * 64}",
+            f"data.input_package_root={base.as_posix()}",
+        ],
+    )
+    attached = json.loads((out / "run_metadata.json").read_text())["input_attachment"]
+    assert (attached["path"], attached["sha256"], attached["status"]) == (None, None, "failed")
+    assert attached["error"].startswith("ManifestDigestMismatchError")
+    run = read_execution_run(_plan(out))
+    assert run.status == "complete"
+    (window,) = run.windows
+    receipt = json.loads(_window_files(out, window)[2].read_bytes())
+    assert not any(name.startswith("input_attachments/") for name in receipt["artifacts"])
 
 
 def test_an_undeclared_panel_leaves_the_attachment_incomplete_but_the_run_finishes(stock_run):

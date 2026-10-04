@@ -118,7 +118,9 @@ def attach_run_inputs(
 
     packages = []
     for snapshot in manifests:
-        relative = f"manifests/{snapshot.sha256}.json"
+        # A digest prefix keeps the path short for Windows' 260-character limit;
+        # the record carries the full digest, which reading verifies.
+        relative = f"manifests/{snapshot.sha256[:16]}.json"
         _write_new(directory / relative, snapshot.raw_bytes)
         packages.append(
             {

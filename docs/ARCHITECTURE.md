@@ -493,6 +493,9 @@ for every window attempt, the manifest of each package its required inputs were
 declared in and the sealed input observations, under
 `input_attachments/<attempt_id>/`; `run_metadata.json` carries the record's path,
 SHA-256 and status as `input_attachment`, and the window receipt binds the files.
+Attaching never stops a run: if it raises (for example, a pinned manifest whose
+digest does not match), the error is logged, `input_attachment` records status
+`failed` with the error, and the receipt binds no attachment files.
 Required roles come from the configuration, never from what was read. A selected
 file under `data.input_package_root` binds to its entry in the pinned
 `data.input_package_manifest`; an auxiliary input binds to its capture or replay

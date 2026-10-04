@@ -227,20 +227,30 @@ def main(cfg: DictConfig):
                 "path": f"{EVIDENCE_DIR}/{execution.path.name}",
                 "sha256": execution.sha256,
             }
-            # Declared package files and this attempt's observed reads (#208).
-            input_attachment = attach_window_inputs(
-                cfg_w,
-                data["input_observations"],
-                wpath,
-                attempt_id=execution.path.stem,
-                execution_start=execution_start,
-                logger=logger,
-            )
-            logger.info(
-                "Input attachment saved to: %s (%s)",
-                input_attachment["path"],
-                input_attachment["status"],
-            )
+            # Declared package files and this attempt's observed reads (#208). Provenance
+            # never stops a run: a failure to attach is logged and recorded instead.
+            try:
+                input_attachment = attach_window_inputs(
+                    cfg_w,
+                    data["input_observations"],
+                    wpath,
+                    attempt_id=execution.path.stem,
+                    execution_start=execution_start,
+                    logger=logger,
+                )
+                logger.info(
+                    "Input attachment saved to: %s (%s)",
+                    input_attachment["path"],
+                    input_attachment["status"],
+                )
+            except Exception as exc:
+                logger.error("Input attachment failed: %s: %s", type(exc).__name__, exc)
+                input_attachment = {
+                    "path": None,
+                    "sha256": None,
+                    "status": "failed",
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
 
             metadata = build_run_metadata(
                 cfg_w,
@@ -442,7 +452,11 @@ def main(cfg: DictConfig):
                 walkforward_window=wi,
                 artifacts=[
                     "run_metadata.json",
-                    f"{ATTACHMENT_DIR}/{execution.path.stem}",
+                    *(
+                        [f"{ATTACHMENT_DIR}/{execution.path.stem}"]
+                        if input_attachment["path"] is not None
+                        else []
+                    ),
                     "feature_reference.json",
                     "graph_data.pt",
                     "checkpoints",
