@@ -1,6 +1,6 @@
 # Default Frozen Experiment Recipe
 
-Last updated: 2026-08-08
+Last updated: 2026-10-04
 
 Use this recipe for production-style confirmation notebooks and PIT validation
 runs unless an experiment is explicitly testing one of these factors.
@@ -35,6 +35,7 @@ static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemb
 
 ```text
 data=gics_top10_110_2016
+data.auxiliary_snapshot_mode=capture
 
 seed=1729
 training.num_models=20
@@ -88,6 +89,14 @@ features.regime_min_history_months=24
   `scripts/ci_smoke.py` does.
 - `FRED_API_KEY` is required when `features.include_global_regime=true` and
   `features.regime_strict=true`.
+- `data.auxiliary_snapshot_mode=capture` was added on 2026-10-04, when the owner
+  chose to capture the six FRED regime inputs for the first run. It changes no
+  input value: the run still reads FRED, and it also keeps the exact provider
+  responses. With no `data.auxiliary_snapshot_directory`, they go to
+  `input_snapshots/` in the run's output folder. Each window's input attachment
+  (#208) then binds every regime read to its snapshot, so the run's inputs verify
+  as `complete`. In `source` mode they read as `incomplete`. Keep that folder
+  with the run, because it is the only copy of what FRED returned.
 - The graph is the static threshold graph, not top-K and not dynamic schedule.
 - The objective is pure IC on raw 5-day return labels. Do not substitute rank
   labels for performance scoring unless the rank-label evaluation scale has

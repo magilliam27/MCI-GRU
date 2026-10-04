@@ -18,7 +18,7 @@ import pytest
 from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 
-from mci_gru.config import create_config_from_dict
+from mci_gru.config import DataConfig, create_config_from_dict
 from mci_gru.data.input_manifest import (
     InputFileSpec,
     ManifestDigestMismatchError,
@@ -30,6 +30,7 @@ from mci_gru.evaluation.run_input_attachments import AttachmentReference, read_r
 from mci_gru.evaluation.run_input_declarations import (
     attach_window_inputs,
     declare_window_inputs,
+    keep_captures_with_run,
     required_input_roles,
 )
 from mci_gru.features import FeatureEngineer
@@ -436,3 +437,26 @@ def test_a_partial_or_malformed_package_declaration_is_refused(
     setup = _setup(tmp_path, monkeypatch)
     with pytest.raises(ValueError, match=message):
         _config({**setup.data, **overrides})
+
+
+def test_a_capture_with_no_named_folder_keeps_its_snapshots_in_the_run(tmp_path):
+    data = DataConfig(auxiliary_snapshot_mode="capture")
+
+    chosen = keep_captures_with_run(data, tmp_path / "run")
+
+    assert chosen == data.auxiliary_snapshot_directory == str(tmp_path / "run" / "input_snapshots")
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        DataConfig(auxiliary_snapshot_mode="capture", auxiliary_snapshot_directory="named"),
+        DataConfig(auxiliary_snapshot_mode="source"),
+        DataConfig(auxiliary_snapshot_mode="replay"),
+    ],
+)
+def test_a_named_folder_or_another_mode_is_left_as_configured(tmp_path, data):
+    before = data.auxiliary_snapshot_directory
+
+    assert keep_captures_with_run(data, tmp_path) is None
+    assert data.auxiliary_snapshot_directory == before

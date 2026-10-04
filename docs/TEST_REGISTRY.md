@@ -288,6 +288,7 @@ Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
 | `test_the_pinned_universe_is_a_csv_source_not_lseg` | The recipe must not silently depend on the live-LSEG path. |  |
 | `test_recipe_records_that_the_universe_changed` | The change must be stated, or pre- and post-change evidence gets compared. |  |
 | `test_recipe_last_updated_is_not_stale_relative_to_the_change` |  |  |
+| `test_recipe_captures_its_provider_inputs` | The owner chose capture for the first run (2026-10-04); source leaves inputs unverifiable. |  |
 
 ## `tests/test_drop_edge_rng_isolation.py`
 
@@ -459,6 +460,7 @@ Execution evidence from ensemble members and from the runner (#144).
 | `test_a_stock_run_links_its_start_metadata_members_and_outputs` |  |  |
 | `test_an_index_level_run_is_linked_the_same_way` |  |  |
 | `test_a_window_retains_its_declared_inputs_and_its_receipt_binds_them` |  |  |
+| `test_a_capture_run_keeps_its_regime_snapshots_and_its_inputs_verify` |  |  |
 | `test_an_undeclared_panel_leaves_the_attachment_incomplete_but_the_run_finishes` |  |  |
 | `test_each_window_gets_its_own_attempt_and_the_run_survives_relocation` |  |  |
 | `test_a_preparation_failure_leaves_an_incomplete_attempt_and_no_receipt` |  |  |
@@ -1408,6 +1410,8 @@ Runner wiring for saved-run inputs: configured roles bound to declared packages 
 | `test_required_roles_are_exactly_the_roles_a_real_preparation_consumes` |  | parametrize |
 | `test_the_recipe_data_config_binds_both_selected_files_to_the_preserved_package` |  |  |
 | `test_a_partial_or_malformed_package_declaration_is_refused` |  | parametrize |
+| `test_a_capture_with_no_named_folder_keeps_its_snapshots_in_the_run` |  |  |
+| `test_a_named_folder_or_another_mode_is_left_as_configured` |  | parametrize |
 
 ## `tests/test_run_pytest_isolated.py`
 
