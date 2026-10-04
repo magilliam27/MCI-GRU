@@ -8,8 +8,10 @@ FRED SDK for the other five roles. The file is captured with the run and replays
 without the file or the provider.
 """
 
+import hashlib
 import sys
 from dataclasses import asdict
+from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
@@ -252,3 +254,64 @@ def test_a_missing_market_file_is_not_substituted_by_basename(tmp_path, monkeypa
     assert caught.value.facts["role"] == MARKET_FILE_ROLE
     assert caught.value.facts["reason_code"] == "file_not_found"
     assert caught.value.facts["configured_path"] == missing
+
+
+def recorded(manager: DataManager) -> tuple[dict[int, dict], list[dict]]:
+    """The window's observations by id, and its uses."""
+    window = manager.input_snapshots.input_observations.freeze().to_dict()
+    return {event["observation_id"]: event for event in window["observations"]}, window["uses"]
+
+
+@pytest.mark.parametrize("mode", ["source", "capture"])
+def test_the_market_verdict_names_the_read_it_was_ruled_on(tmp_path, monkeypatch, mode) -> None:
+    install_sdk(monkeypatch, fred_series())
+    path = write_market(tmp_path, market())
+    manager = DataManager(config(tmp_path, mode))
+    manager.load_regime_inputs(regime_market_csv=path)
+
+    verdict = {item["role"]: item for item in regime_items(manager)}["eodhd.regime_market"]
+    observation_id = verdict["evidence"]["observation_id"]
+    events, uses = recorded(manager)
+    read = events[observation_id]
+    assert read["role"] == MARKET_FILE_ROLE
+    assert read["identity"]["sha256"] == hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    assert ("manifest_sha256" in read["identity"]) == (mode == "capture")
+    assert [use["observation_id"] for use in uses if use["role"] == MARKET_FILE_ROLE] == [
+        observation_id
+    ]
+
+
+@pytest.mark.parametrize(
+    ("closes", "reason"),
+    [
+        (edited(set_values={"2025-02-03": 0.0}), "non_positive_value"),
+        (None, "parse_failed"),
+    ],
+)
+def test_a_stopped_market_file_is_recorded_as_read_but_never_used(
+    tmp_path, monkeypatch, closes, reason
+) -> None:
+    install_sdk(monkeypatch, fred_series())
+    path = (
+        write_market(tmp_path, closes)
+        if closes is not None
+        else write_rows(tmp_path, ["", *PLAIN_DATES[1:]], CLOSES)
+    )
+    manager = DataManager(config(tmp_path))
+    with pytest.raises(InputSnapshotError) as caught:
+        manager.load_regime_inputs(regime_market_csv=path)
+    assert caught.value.facts["reason_code"] == reason
+
+    events, uses = recorded(manager)
+    assert MARKET_FILE_ROLE not in {use["role"] for use in uses}
+    (read,) = [
+        event
+        for event in events.values()
+        if event["role"] == MARKET_FILE_ROLE and event["outcome"] == "success"
+    ]
+    # The rejection is linked to the read it rejected.
+    assert [
+        event["source_observation_id"]
+        for event in events.values()
+        if event["role"] == MARKET_FILE_ROLE and event["outcome"] == "error"
+    ] == [read["observation_id"]]
