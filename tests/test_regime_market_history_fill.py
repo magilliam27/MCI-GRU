@@ -16,6 +16,7 @@ import pandas as pd
 import pytest
 
 from mci_gru.config import DataConfig
+from mci_gru.data import path_resolver
 from mci_gru.data.auxiliary_quality import ADMISSION_RULE, HISTORY_FILL_TOLERANCE
 from mci_gru.data.data_manager import MARKET_HISTORY_ROLE, DataManager
 from mci_gru.data.input_snapshots import InputSnapshotError
@@ -171,6 +172,11 @@ def test_without_history_the_market_role_is_fred_only(tmp_path, monkeypatch) -> 
 
 
 def test_a_missing_history_file_is_not_substituted_by_basename(tmp_path, monkeypatch) -> None:
+    # A same-named file sits where the resolver's basename fallback would look.
+    decoy = tmp_path / "root" / "data" / "raw" / "market"
+    decoy.mkdir(parents=True)
+    write_history(decoy, market(DATES))
+    monkeypatch.setattr(path_resolver, "PROJECT_ROOT", tmp_path / "root")
     install_sdk(monkeypatch, fred_series())
     with pytest.raises(FileNotFoundError):
         DataManager(config(tmp_path)).load_regime_inputs(
