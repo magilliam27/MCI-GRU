@@ -8,9 +8,10 @@ draft is [`ADMISSION_RECEIPT_AND_CHARTER_DRAFT.md`](ADMISSION_RECEIPT_AND_CHARTE
 
 ## Once, before the first run
 
-1. **Merge the open recipe pull requests in order:** #270, then #274, then #275,
-   then the pull request that adds this runbook. In `full` mode the notebook checks
-   the cloned commit for each one and names any that is missing.
+1. **Merge the open recipe pull requests in order:** #274, then #275, then the
+   pull request that adds this runbook (#270 is already merged). In `full` mode the
+   notebook checks the cloned commit for #270, #274 and #275 and names any that is
+   missing.
 2. **Put the EODHD S&P 500 file on Drive.** Copy the whole folder
    `C:\Users\magil\MCI-GRU\data\raw\market\eodhd_sp500_2010_20260919\` (it holds
    `sp500_index.csv` and the pull's `inventory.json`) into
