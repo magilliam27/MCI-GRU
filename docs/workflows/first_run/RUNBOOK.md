@@ -10,7 +10,7 @@ draft is [`ADMISSION_RECEIPT_AND_CHARTER_DRAFT.md`](ADMISSION_RECEIPT_AND_CHARTE
 
 1. **Merge what the run needs.** #270, #274, #275 and #280 are merged. The run
    on EODHD prices also needs #282 (the EODHD price package, r2), #284 (the recipe
-   selects it) and the staging follow-up, which gives the notebook r2's pin. In
+   selects it) and #286, which gives the notebook r2's pin. In
    `full` mode the notebook checks the cloned commit and names anything missing.
    The EODHD price package itself is published to Drive by the Colab pull, so
    there is nothing to copy for it.
@@ -59,19 +59,20 @@ draft is [`ADMISSION_RECEIPT_AND_CHARTER_DRAFT.md`](ADMISSION_RECEIPT_AND_CHARTE
 | `Environment check FAILED` with `No CUDA GPU visible` on a GPU runtime | The PyPI `torch==2.12.1` wheel targets a newer CUDA driver than the runtime has | Set `TORCH_INDEX_URL` to a PyTorch wheel index for an older CUDA build of the same version (for example `https://download.pytorch.org/whl/cu128`), disconnect and delete the runtime, and run all again |
 | `Environment check FAILED` listing packages | A pin did not install, or Colab's Python is not 3.12 | Read the list; do not run with a mismatched lock |
 | `MISSING #270` / `#274` / `#275` | The commit lacks that pull request | Merge it, or run `smoke` for a mechanics check only |
-| `does not declare a package this notebook knows` | The recipe's data config names a stock package the notebook has no pin for | Run a commit whose notebook pins that package; never add a pin that was not checked against the published manifest |
+| `MISSING #285` or `does not declare a package this notebook knows` | The recipe's data config names a stock package the notebook has no pin for. Smoke mode cannot stage it either | Run a commit whose notebook pins that package; never add a pin that was not checked against the published manifest |
 | `Missing on Drive` or `does not match its pin` | A staged file is absent or has other bytes | Fix the Drive copy; never edit the pin to match |
 | `run_failure.json` in the run folder | An input failed admission before training | Report it as it stands; do not edit inputs to get past it |
 | The runtime disconnects | The run is incomplete | Start again from the top; the new run gets a new tag and folder |
 
 ## What the notebook changes in the clone
 
-- For the LSEG package only: two of its sidecar `.json` files are tracked in git with LF line
+- Two of the LSEG package's sidecar `.json` files are tracked in git with LF line
   endings, while the package pins the CRLF bytes they were preserved with. Staging
   checks that the committed file with CRLF endings has exactly the pinned digest,
   marks those two paths `text eol=crlf` in the clone's `.git/info/attributes`, and
   has git check them out again, which writes those bytes. Git then reports no
-  change. Any other difference stops.
+  change. Any other difference stops. The same check runs for any staged file of
+  another package that git tracks, such as the shared membership sidecar.
 - MLflow tracking is switched off (`tracking.enabled=false`): `requirements.lock`
   does not include the `tracking` extra, and the run's own records do not use it.
 - `pip freeze` is saved as `pip_freeze.txt` in the run folder, because the lock

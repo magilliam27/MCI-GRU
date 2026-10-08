@@ -568,7 +568,8 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_every_prerequisite_present_reads_as_ready` |  |  |
 | `test_each_missing_prerequisite_is_named_by_its_pull_request` |  | parametrize |
 | `test_one_of_three_model_pins_is_not_enough_for_275` |  |  |
-| `test_270_needs_the_manifest_this_notebook_stages_not_just_the_key` |  |  |
+| `test_a_digest_without_a_pin_is_named_as_the_pin_not_as_270` |  |  |
+| `test_270_needs_the_package_declaration_in_the_data_config` |  |  |
 | `test_the_recipe_data_config_chooses_the_package_to_stage` |  | parametrize |
 | `test_a_package_the_notebook_does_not_know_is_refused` |  |  |
 | `test_a_known_digest_under_another_manifest_path_is_refused` |  |  |
@@ -576,6 +577,8 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_every_data_config_naming_a_published_digest_names_its_manifest` |  |  |
 | `test_prerequisite_check_runs_on_this_checkout` |  |  |
 | `test_full_mode_cli_refuses_when_a_prerequisite_is_missing` |  |  |
+| `test_neither_mode_runs_without_a_pin_for_the_declared_package` |  | parametrize |
+| `test_staging_hands_the_selected_package_to_stage_package` |  | parametrize |
 | `test_stage_verified_file_copies_and_then_reuses` |  |  |
 | `test_a_wrong_drive_copy_is_never_copied` |  |  |
 | `test_a_file_in_place_with_other_bytes_is_never_replaced` |  |  |

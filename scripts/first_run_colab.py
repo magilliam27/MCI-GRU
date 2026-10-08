@@ -167,6 +167,17 @@ def replace_override(overrides: Sequence[str], key: str, value: str) -> list[str
     return result
 
 
+#: The keys #270 added to a data config to declare its input package.
+PACKAGE_DECLARATION_KEYS = (
+    "input_package_manifest",
+    "input_package_manifest_sha256",
+    "input_package_root",
+)
+#: The prerequisite row for the notebook's own pin table (#285). Neither mode can run
+#: without it, because no other package is ever staged in its place.
+PACKAGE_PIN_PREREQUISITE = "#285"
+
+
 def recipe_data_config(repo_dir: Path) -> dict[str, Any]:
     """The data config the recipe selects with ``data=``, or ``{}`` if there is none."""
     repo_dir = Path(repo_dir)
@@ -215,9 +226,15 @@ def admitted_run_prerequisites(repo_dir: Path) -> list[Prerequisite]:
         Prerequisite(
             "#270",
             "each window attaches its declared package and observed reads "
-            "(the data config declares a published package this notebook stages)",
+            "(the data config declares a package manifest, its SHA-256 and the package root)",
             (repo_dir / "mci_gru" / "evaluation" / "run_input_attachments.py").exists()
-            and declared_package(data_config) is not None,
+            and all(data_config.get(key) for key in PACKAGE_DECLARATION_KEYS)
+            and data_config.get("input_package_root") == PACKAGE_ROOT,
+        ),
+        Prerequisite(
+            PACKAGE_PIN_PREREQUISITE,
+            "this notebook holds a pin for the package the recipe's data config declares",
+            declared_package(data_config) is not None,
         ),
         Prerequisite(
             "#274",
@@ -437,12 +454,13 @@ def stage_package(
 ) -> StagedPackage:
     """Stage a preserved package from Drive into ``data/raw`` and verify all of it.
 
-    Three independent checks: the Drive copy's inventory must be the one the
-    committed manifest vouches for (a ``MANIFEST.txt`` with the digest the manifest
-    records for its historical inventory, or a byte-identical copy of the manifest);
-    that inventory must equal the manifest's file records path for path, hash for
-    hash and size for size; and the staged files must pass ``validate_input_package``
-    with the inventory's paths as the independently required set.
+    The Drive copy must carry the inventory the committed manifest vouches for:
+    either a ``MANIFEST.txt`` with the digest the manifest records for its historical
+    inventory, which must then equal the manifest's file records path for path, hash
+    for hash and size for size; or a byte-identical copy of the manifest, whose own
+    records are then the inventory. Every staged file must have its pinned bytes, and
+    the staged package must pass ``validate_input_package``. Only the
+    ``MANIFEST.txt`` route is an independent second inventory.
     """
     repo_dir, drive_dir = Path(repo_dir), Path(drive_dir)
     snapshot = read_input_manifest(repo_dir / manifest, expected_sha256=manifest_sha256)
@@ -475,8 +493,8 @@ def stage_package(
     )
     if inventory != declared:
         raise StagingError(
-            "The Drive inventory and the r1 manifest disagree: only on Drive "
-            f"{sorted(set(inventory) - set(declared))}, only in r1 "
+            "The Drive inventory and the manifest disagree: only on Drive "
+            f"{sorted(set(inventory) - set(declared))}, only in the manifest "
             f"{sorted(set(declared) - set(inventory))}, different bytes "
             f"{sorted(p for p in set(inventory) & set(declared) if inventory[p] != declared[p])}"
         )
@@ -701,6 +719,13 @@ def _command_prerequisites(args: Any) -> int:
     for prerequisite in prerequisites:
         mark = "ok     " if prerequisite.present else "MISSING"
         print(f"{mark} {prerequisite.pull_request}: {prerequisite.description}")
+    if any(p.pull_request == PACKAGE_PIN_PREREQUISITE for p in missing):
+        print(
+            "This notebook holds no pin for the stock package the recipe's data config "
+            "declares, so neither mode can stage it. Run a commit whose notebook pins that "
+            "package; never add a pin that was not checked against the published manifest."
+        )
+        return 1
     if missing and args.mode == "full":
         print(
             "This commit lacks what the admitted run needs from "

@@ -33,11 +33,10 @@ Each row is an item the run depends on, the work that delivers it, and its state
 | Colab launcher, EODHD staging in the regime notebooks, this draft | #278 | #280 | **Merged** at `46889bd` | Done |
 | Stock prices from EODHD: the same 110-name membership, priced from an EODHD pull | #281 | #282 | Draft. The r1 package published on 2026-10-08 is replaced by r2, which drops carried zero-volume final rows on delisted codes; r2's manifest is not published yet | r2 published and pinned in the data config; owner merges |
 | Recipe selects the EODHD data config (`data=gics_top10_110_2016_eodhd`) | #283 | #284 | Draft, lands after #282. Its delisting check found a carried zero-volume final row for `ATVI.OQ^J23`, `HES.N^G25` and `WBA.OQ^H25` on r1 | The check is clean on r2; owner merges |
-| The notebook stages the package the recipe's data config declares, and no other | #285 | the staging follow-up pull request | Draft | r2's entry added once published; owner merges |
+| The notebook stages the package the recipe's data config declares, and no other | #285 | #286 | Draft | r2's entry added once published; owner merges |
 
 Merged: #270 at `6d02778`, #274 at `1dcd818`, #279 at `24d1d2a`, #275 at `f2beea0`
-and #280 at `46889bd`. Still open before the run: #282, #284 and the staging
-follow-up.
+and #280 at `46889bd`. Still open before the run: #282, #284 and #286.
 
 ## 2. The six receipt sections of #187 (comment 5862836271)
 
@@ -137,7 +136,7 @@ recipe gets a new recipe id and is compared against this one (owner decision,
 | Model and training | `gru_attn`, 20 models x 100 epochs, patience 15, pure IC loss on raw 5-day returns, selection on validation IC |
 | Inputs | Section 2.1, captured (`data.auxiliary_snapshot_mode=capture`) |
 | Compute | Google Colab GPU runtime, `notebooks/first_run_colab.ipynb` in `full` mode |
-| Commit | _to fill: the `main` commit after the last of #282, #284 and the staging follow-up merges; set as `EXPECTED_COMMIT`_ |
+| Commit | _to fill: the `main` commit after the last of #282, #284 and #286 merges; set as `EXPECTED_COMMIT`_ |
 | Run tag and Drive folder | _to fill from `colab_run_record.json`_ |
 | Success | Exit code 0; no `run_failure.json`; every role admitted in `admission.json`; input attachment `complete`; 20 member records |
 | Stop rules | Any `run_failure.json` stops the run and is reported as it stands, without editing inputs. A lost runtime leaves an incomplete run: start again from the top under a new tag, never resume into the same folder |
