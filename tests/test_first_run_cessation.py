@@ -19,6 +19,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 
@@ -138,3 +139,17 @@ def test_tail_check_exit_code_follows_the_finding(tmp_path, capsys):
     assert check_delisted_tails.main(["--market-csv", str(clean_csv)]) == 0
     assert check_delisted_tails.main(["--market-csv", str(stale_csv)]) == 1
     assert "GONE.N^J23" in capsys.readouterr().out
+
+
+def test_tail_check_reads_the_panel_the_recipe_selects(tmp_path):
+    """The precondition must run on the panel the first run reads (issue 283)."""
+    assert check_delisted_tails.recipe_data_config() == (
+        REPO_ROOT / "configs" / "data" / "gics_top10_110_2016_eodhd.yaml"
+    )
+    # Control: it follows the selector rather than naming a fixed config.
+    other = tmp_path / "recipe.md"
+    other.write_text("```text\ndata=gics_top10_110_2016\nseed=1729\n```\n", encoding="utf-8")
+    assert check_delisted_tails.recipe_data_config(other).name == "gics_top10_110_2016.yaml"
+    other.write_text("seed=1729\ndata.source=csv\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        check_delisted_tails.recipe_data_config(other)

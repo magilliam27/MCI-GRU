@@ -299,6 +299,9 @@ Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
 | `test_the_base_config_alone_still_builds_the_legacy_forms` | Control: the two tests above must come from the recipe's own pins. |  |
 | `test_the_override_block_parser_reads_the_block` | Control: an empty parse would make every composition test vacuous. |  |
 | `test_recipe_captures_its_provider_inputs` | The owner chose capture for the first run (2026-10-04); source leaves inputs unverifiable. |  |
+| `test_the_recipe_trains_on_the_eodhd_price_panel` | Issue 283: the first run reads the EODHD package, not the LSEG one (owner, 2026-10-08). |  |
+| `test_without_its_data_line_the_recipe_would_read_the_lseg_panel` | Control: the test above must come from the recipe's selector, not the base default. |  |
+| `test_recipe_records_the_price_panel_change` |  |  |
 
 ## `tests/test_drop_edge_rng_isolation.py`
 
@@ -602,6 +605,7 @@ The first run declares no cessation file; this pins why that is safe, and when n
 | `test_the_recipe_declares_no_cessation_file` | The decision this module justifies; a declared file needs the recipe note revisited. |  |
 | `test_tail_check_flags_a_carried_tail_and_passes_a_clean_history` |  |  |
 | `test_tail_check_exit_code_follows_the_finding` |  |  |
+| `test_tail_check_reads_the_panel_the_recipe_selects` | The precondition must run on the panel the first run reads (issue 283). |  |
 
 ## `tests/test_generate_test_registry.py`
 

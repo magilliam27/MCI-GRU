@@ -85,6 +85,7 @@ panel, for experiments free of stock-level survivorship bias.
 | Universe | Names | Preset |
 | --- | ---: | --- |
 | GICS top-10 by market cap, point-in-time, 2016 start | ~110 | `data=gics_top10_110_2016` (default) |
+| The same universe, priced from EODHD (#281); the frozen recipe uses it | ~110 (109 in 2016-01..2017-08) | `data=gics_top10_110_2016_eodhd` |
 | GICS top-10 by market cap, point-in-time, 2021 start | ~110 | `data=gics_top10_110` |
 | S&P 500, LSEG | ~500 | `data=sp500`, `data=lseg_sp500` |
 | S&P 500, CSV | ~500 | `data=csv_sp500` |
@@ -215,6 +216,7 @@ Core overrides:
 
 | Category | Setting | Frozen recipe value |
 |----------|---------|---------------------|
+| Data | data config | `gics_top10_110_2016_eodhd` (since 2026-10-08; base default is `gics_top10_110_2016`) |
 | Experiment | seed | `1729` |
 | Training | num_models | `20` |
 | Training | num_epochs | `100` |

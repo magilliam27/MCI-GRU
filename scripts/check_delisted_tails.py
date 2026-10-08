@@ -8,10 +8,12 @@ label or metric. A vendor tail of carried or frozen closes would break that, and
 the #223 frozen-price rule does not catch it, because it flags a stock only when
 its whole history is constant. See docs/DEFAULT_EXPERIMENT_RECIPE.md.
 
-Read-only. By default it inspects the names carrying an LSEG delisted suffix
-(``^``) in the recipe's market CSV, prints one line per name, and exits 1 when a
-name ends in a run of identical closes or zero volume at least ``--min-stale``
-sessions long.
+Read-only. By default it reads the market CSV of the data config the recipe
+selects (its ``data=<group>`` line), inspects the names carrying an LSEG delisted
+suffix (``^``), prints one line per name, and exits 1 when a name ends in a run
+of identical closes or zero volume at least ``--min-stale`` sessions long. The
+EODHD panel keeps the LSEG identifiers, so the suffix still marks its delisted
+names.
 
     python scripts/check_delisted_tails.py
     python scripts/check_delisted_tails.py --market-csv path/to/panel.csv --all
@@ -21,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -30,7 +33,9 @@ import pandas as pd
 from omegaconf import OmegaConf
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-RECIPE_DATA_CONFIG = PROJECT_ROOT / "configs" / "data" / "gics_top10_110_2016.yaml"
+RECIPE = PROJECT_ROOT / "docs" / "DEFAULT_EXPERIMENT_RECIPE.md"
+# `data=<group>` on its own line, as the recipe's override block writes it.
+DATA_SELECTOR = re.compile(r"^data=([A-Za-z0-9_]+)$", re.M)
 DELISTED_MARKER = "^"
 
 
@@ -92,8 +97,16 @@ def tail_report(
     return records
 
 
+def recipe_data_config(recipe: Path = RECIPE) -> Path:
+    """The data config the recipe selects, so the check reads the panel the run reads."""
+    match = DATA_SELECTOR.search(recipe.read_text(encoding="utf-8"))
+    if match is None:
+        raise SystemExit(f"{recipe} selects no data config; pass --market-csv")
+    return PROJECT_ROOT / "configs" / "data" / f"{match.group(1)}.yaml"
+
+
 def _default_market_csv() -> Path:
-    return PROJECT_ROOT / str(OmegaConf.load(RECIPE_DATA_CONFIG).filename)
+    return PROJECT_ROOT / str(OmegaConf.load(recipe_data_config()).filename)
 
 
 def main(argv: list[str] | None = None) -> int:

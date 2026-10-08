@@ -1,6 +1,6 @@
 # Default Frozen Experiment Recipe
 
-Last updated: 2026-10-04
+Last updated: 2026-10-08
 
 Use this recipe for production-style confirmation notebooks and PIT validation
 runs unless an experiment is explicitly testing one of these factors.
@@ -41,6 +41,25 @@ runs unless an experiment is explicitly testing one of these factors.
 > All three forms hold different parameters from the legacy ones, so a checkpoint
 > trained under the earlier slug does not load into this recipe's model.
 
+> **The price panel changed on 2026-10-08, before the first admitted run (#187).**
+>
+> The LSEG subscription has ended (#232), so the owner chose to train the first
+> run on EODHD prices (#281). The universe is unchanged: the same point-in-time
+> membership file, byte for byte. Only the price and volume panel changes source
+> (#283). The slug is unchanged, because it has never encoded the data config.
+>
+> | | before 2026-10-08 | from 2026-10-08 |
+> |---|---|---|
+> | data config | `configs/data/gics_top10_110_2016.yaml` | `configs/data/gics_top10_110_2016_eodhd.yaml` |
+> | price panel | LSEG export, `..._lseg_20150101_20260731.csv` | EODHD pull of 2026-10-08, `..._eodhd_20150101_20260731.csv` |
+> | input package | LSEG r1 manifest | `data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_eodhd.r1.json` |
+> | names scored in 2016-01..2017-08 | at most 110 | at most 109: the pre-merger DuPont (`DD.N^I17`) has no EODHD history |
+>
+> Each name's EODHD daily returns were checked against the LSEG panel over the
+> span the universe needs before the package was accepted. The prices are
+> split-adjusted and carry no dividends, which is the LSEG panel's basis. Results
+> on the two panels are close but are not the same run.
+
 Recipe slug:
 
 ```text
@@ -50,7 +69,7 @@ static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemb
 ## Hydra Overrides
 
 ```text
-data=gics_top10_110_2016
+data=gics_top10_110_2016_eodhd
 data.auxiliary_snapshot_mode=capture
 
 seed=1729
@@ -101,10 +120,19 @@ features.regime_min_history_months=24
 
 ## Notes
 
-- `data=gics_top10_110_2016` is pinned deliberately. The recipe must not inherit
-  its universe from `configs/config.yaml`; a recipe whose data moves when a
-  default moves is not frozen. `tests/test_default_experiment_recipe.py` pins
-  that the selector is present and names a config that exists.
+- `data=gics_top10_110_2016_eodhd` is pinned deliberately. The recipe must not
+  inherit its universe from `configs/config.yaml`; a recipe whose data moves when
+  a default moves is not frozen. `tests/test_default_experiment_recipe.py` pins
+  that the selector is present and names a config that exists. The base default
+  stays the LSEG config `gics_top10_110_2016`, which has the same universe,
+  windows and breadth floor; the two differ only in the price panel and its
+  manifest.
+- The pre-merger DuPont (`DD.N^I17`, a member from 2016-01-04 to 2017-08-31) has
+  no EODHD history and is absent from the panel; the owner chose to leave it out
+  (2026-10-08). The masked-panel pipeline drops a member with no rows from the
+  stock axis, so those months score at most 109 names, still above
+  `pit_min_scoreable_stocks: 104`. The manifest records the gap in
+  `provenance.unknowns`.
 - That config sets `use_pit_universe: true` against a `pit_universe_csv` that is
   **not committed**, with `pit_min_scoreable_stocks: 104` and
   `pit_breadth_policy: error`. Confirmation runs must supply that CSV. Runs that
@@ -125,9 +153,10 @@ features.regime_min_history_months=24
   `tests/test_default_experiment_recipe.py` composes this block the way
   `run_experiment.py` does and checks the model it builds.
 - No cessation (delisting) event file is declared:
-  `data.pit_cessation_events_csv` stays `null` (decided 2026-10-04, #273). Six
-  panel names carry LSEG delisted suffixes (ATVI.OQ^J23, DD.N^I17, DOW.N^I17,
-  HES.N^G25, PXD.N^E24, WBA.OQ^H25). A declared cessation changes only
+  `data.pit_cessation_events_csv` stays `null` (decided 2026-10-04, #273). The
+  EODHD panel keeps the LSEG identifiers. Five of its names carry LSEG delisted
+  suffixes (ATVI.OQ^J23, DOW.N^I17, HES.N^G25, PXD.N^E24, WBA.OQ^H25); DD.N^I17,
+  the sixth in the universe, has no rows. A declared cessation changes only
   `eligible`, and the traded population also needs a close on the date itself
   (`tradable = eligible & feature_ready & price_observed` in `build_pit_masks`).
   So while a delisted name has no close after its last real session, the file
@@ -137,17 +166,22 @@ features.regime_min_history_months=24
   `tests/test_first_run_cessation.py` pins this, with a control showing that
   carried closes after delisting do change the masks.
   - **Precondition, checked on the real panel before the run:**
-    `python scripts/check_delisted_tails.py`. Exit 1 means a delisted name ends
+    `python scripts/check_delisted_tails.py`. By default it reads the panel of
+    the data config this recipe selects. Exit 1 means a delisted name ends
     in repeated closes or zero volume. That name then needs a cessation row dated
     to its real last session, or the carried rows removed at source. The #223
     frozen-price rule does not catch this, because it flags only a history that
-    is constant throughout. Run on 2026-10-04 against the preserved panel: exit
-    0, all six delisted names end cleanly (0 repeated closes, 0 zero-volume
-    sessions), and with `--all` so do all 206 names.
+    is constant throughout. On 2026-10-04 it passed against the LSEG panel: exit
+    0, all six delisted names ended cleanly (0 repeated closes, 0 zero-volume
+    sessions), and with `--all` so did all 206 names. That result does not carry
+    over to the EODHD panel: #281's acceptance compares returns only up to each
+    name's last window, so rows after a delisting are unchecked there. Run it
+    again on the EODHD panel before the first run.
   - A cessation dated on a name's final session and known by 20:00 New York that
     day would also drop that one session from the cross-section. Its own loss is
     unchanged, but other names' scores on that date move slightly. The likely
-    case is DD and DOW at the DowDuPont merger close on 2017-08-31. The
+    case was DD and DOW at the DowDuPont merger close on 2017-08-31; on the EODHD
+    panel only DOW remains. The
     2017-09-01..09-13 gap that the data config calls a pricing gap is most likely
     those two names after the merger (inferred, not checked against the CSV).
   - The last sessions before each delisting have unobservable 5-day labels,
