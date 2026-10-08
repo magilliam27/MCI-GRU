@@ -113,6 +113,17 @@ def test_committed_symbol_map_parses_and_names_only_ric_shaped_identifiers():
         ("2022-05-09", None),
         (None, "2022-05-10"),
     ]
+    # Corporate actions the first pull (2026-10-08) showed EODHD's split records miss.
+    (charter,) = plans["CHTR.OQ"].adjustments
+    assert (charter.date, charter.share_conversion) == ("2016-05-18", True)
+    assert charter.factor == pytest.approx(1 / 0.9)
+    (baker,) = plans["BKR.OQ"].adjustments
+    assert (baker.date, baker.cash, baker.factor) == ("2017-07-05", 17.5, None)
+    vendor_dated = {k: [a.date for a in plans[k].adjustments] for k in ("COST.OQ", "EQR.N")}
+    assert vendor_dated == {
+        "COST.OQ": ["2015-02-05", "2017-05-08"],
+        "EQR.N": ["2016-03-01", "2016-09-22"],
+    }
 
 
 @pytest.mark.parametrize(
@@ -240,6 +251,104 @@ def test_a_vendor_factor_with_no_rows_on_its_date_blocks():
     )
     assert not applied
     assert [(f.code, f.blocking) for f in findings] == [("adjustment_unresolved", True)]
+
+
+def test_a_cash_distribution_uses_the_last_close_before_its_date():
+    dates = _sessions("2017-06-28", 5)
+    raw = [55.0, 54.0, 54.6, 35.3, 35.0]  # $17.50 cash plus a new share on day 3
+    frame = eod_rows_frame(_raw_rows(dates, raw))
+    out, applied, findings = apply_adjustments(
+        "BKR.OQ", frame, [PriceAdjustment(dates[3], "special dividend", cash=17.5)]
+    )
+    factor = 1 - 17.5 / 54.6
+    assert not findings
+    assert applied[0]["basis"] == "declared_cash"
+    assert applied[0]["factor"] == pytest.approx(factor)
+    assert out["close"].tolist() == pytest.approx([c * factor for c in raw[:3]] + raw[3:])
+    assert out["volume"].tolist() == frame["volume"].tolist()
+
+
+def test_a_cash_distribution_above_the_prior_close_blocks():
+    dates = _sessions("2017-06-28", 3)
+    frame = eod_rows_frame(_raw_rows(dates, [10.0, 11.0, 12.0]))
+    out, applied, findings = apply_adjustments(
+        "X.N", frame, [PriceAdjustment(dates[2], "typo", cash=50.0)]
+    )
+    assert not applied
+    assert [(f.code, f.blocking) for f in findings] == [("adjustment_unresolved", True)]
+    assert out["close"].tolist() == frame["close"].tolist()
+
+
+def test_a_share_conversion_rescales_volume_as_well_as_prices():
+    dates = _sessions("2016-05-13", 5)
+    raw = [180.0, 182.0, 184.0, 205.0, 206.0]  # 0.9 new shares per old share on day 3
+    frame = eod_rows_frame(_raw_rows(dates, raw, volume=900.0))
+    out, applied, _ = apply_adjustments(
+        "CHTR.OQ",
+        frame,
+        [PriceAdjustment(dates[3], "merger", factor=1 / 0.9, share_conversion=True)],
+    )
+    assert out["close"].tolist() == pytest.approx(
+        [200.0, 202.0 + 2 / 9, 204.0 + 4 / 9, 205.0, 206.0]
+    )
+    assert out["volume"].tolist() == pytest.approx([810.0] * 3 + [900.0] * 2)
+    assert applied[0]["share_conversion"] is True
+
+
+def test_rows_with_nothing_before_the_date_need_no_adjustment():
+    dates = _sessions("2017-07-05", 3)
+    frame = eod_rows_frame(_raw_rows(dates, [35.0, 36.0, 37.0]))
+    out, applied, findings = apply_adjustments(
+        "BKR.OQ",
+        frame,
+        [
+            PriceAdjustment(dates[0], "special dividend", cash=17.5),
+            PriceAdjustment(dates[0], "spin-off"),
+        ],
+    )
+    assert not applied and not findings
+    assert out["close"].tolist() == frame["close"].tolist()
+
+
+@pytest.mark.parametrize(
+    ("entry", "message"),
+    [
+        ({"factor": 0.9, "cash": 1.0}, "not both"),
+        ({"share_conversion": True}, "stated factor"),
+        ({"factor": 1.1, "share_conversion": "yes"}, "true or false"),
+        ({"cash": -1.0}, "cash must be a positive number"),
+        ({"cash": True}, "cash must be a positive number"),
+    ],
+)
+def test_symbol_map_rejects_contradictory_adjustments(entry, message):
+    adjustment = {"date": "2016-05-18", "reason": "test", **entry}
+    payload = {"schema": 1, "overrides": {"CHTR.OQ": {"adjustments": [adjustment]}}}
+    with pytest.raises(SymbolMapError, match=message):
+        parse_symbol_map(payload)
+
+
+def test_symbol_map_reads_cash_and_share_conversion():
+    payload = {
+        "schema": 1,
+        "overrides": {
+            "CHTR.OQ": {
+                "adjustments": [
+                    {
+                        "date": "2016-05-18",
+                        "reason": "merger",
+                        "factor": 1.25,
+                        "share_conversion": True,
+                    }
+                ]
+            },
+            "BKR.OQ": {"adjustments": [{"date": "2017-07-05", "reason": "cash", "cash": 17.5}]},
+        },
+    }
+    overrides = parse_symbol_map(payload)
+    assert overrides["CHTR.OQ"].adjustments == (
+        PriceAdjustment("2016-05-18", "merger", factor=1.25, share_conversion=True),
+    )
+    assert overrides["BKR.OQ"].adjustments == (PriceAdjustment("2017-07-05", "cash", cash=17.5),)
 
 
 def test_a_dividend_sized_step_is_quiet_and_a_larger_one_is_reported():

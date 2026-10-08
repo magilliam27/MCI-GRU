@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "description": "EODHD symbols for identifiers of the 110-name 2016 PIT universe that the rule in mci_gru/data/eodhd_prices.py default_symbol cannot map: renamed, reused, predecessor and delisted tickers (#281). Each segment lists candidate symbols tried in order, then EODHD's US listings whose company name contains name_hint. When the pull is given the preserved LSEG panel, a candidate is accepted only if its returns agree with that panel over the span the universe needs, so a wrong guess here stops the pull rather than entering the panel. Dates are inclusive and follow the listing changes. An entry may also declare adjustments (a corporate action the split records miss, such as a spin-off: prices before the date are multiplied by factor, or by the step in EODHD adjusted_close on that date when no factor is given) and accepted_differences (dates whose one-day difference from the reference is explained); each needs a reason.",
+  "description": "EODHD symbols for identifiers of the 110-name 2016 PIT universe that the rule in mci_gru/data/eodhd_prices.py default_symbol cannot map: renamed, reused, predecessor and delisted tickers (#281). Each segment lists candidate symbols tried in order, then EODHD's US listings whose company name contains name_hint. When the pull is given the preserved LSEG panel, a candidate is accepted only if its returns agree with that panel over the span the universe needs, so a wrong guess here stops the pull rather than entering the panel. Dates are inclusive and follow the listing changes. An entry may also declare adjustments (a corporate action the split records miss, such as a spin-off: prices before the date are multiplied by factor; by 1 - cash / the last close before the date when cash per share is given; or by the step in EODHD adjusted_close on that date when neither is given; share_conversion also divides earlier volume by the factor) and accepted_differences (dates whose one-day difference from the reference is explained); each needs a reason.",
   "overrides": {
     "DD.N^I17": {
       "note": "E. I. du Pont de Nemours, traded as DD until the Dow merger closed on 2017-08-31. The merged DowDuPont traded as DWDP; the DD ticker was reused on 2019-06-03 when DowDuPont became DuPont de Nemours.",
@@ -38,6 +38,10 @@
       "segments": [
         {"candidates": ["BKR.US", "BHI.US"], "name_hint": "Baker Hughes", "end": "2017-07-03"},
         {"candidates": ["BKR.US", "BHGE.US"], "start": "2017-07-05"}
+      ]
+    ,
+      "adjustments": [
+        {"date": "2017-07-05", "cash": 17.5, "reason": "Baker Hughes Inc holders received $17.50 per share in cash plus one BHGE share when the combination with GE Oil & Gas closed, so BHI prices are restated net of the cash. The BHI-to-BHGE splice falls -35.4% against LSEG -7.3% that day in the first EODHD pull of 2026-10-08."}
       ]
     },
     "PSKY.OQ": {
@@ -111,6 +115,50 @@
       "note": "Delisted 2025-08-28 when taken private.",
       "segments": [
         {"candidates": ["WBA.US"], "name_hint": "Walgreens Boots Alliance"}
+      ]
+    },
+    "CHTR.OQ": {
+      "note": "Charter Communications. When the Time Warner Cable merger closed on 2016-05-18, each legacy Charter share became 0.9 shares of the new Charter; EODHD's split records do not carry the conversion.",
+      "adjustments": [
+        {"date": "2016-05-18", "factor": 1.1111111111111112, "share_conversion": true, "reason": "Legacy Charter shares converted 0.9 for 1 in the Time Warner Cable merger, so earlier prices are restated per new share. EODHD +11.85% against LSEG +1.11% that day in the first EODHD pull of 2026-10-08."}
+      ]
+    },
+    "COST.OQ": {
+      "note": "Costco special dividends larger than the 3% daily limit.",
+      "adjustments": [
+        {"date": "2015-02-05", "reason": "$5 special dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -4.38% against -1.21% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.968."},
+        {"date": "2017-05-08", "reason": "$7 special dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -4.20% against -0.32% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.961."}
+      ]
+    },
+    "EQIX.OQ": {
+      "note": "Equinix special distribution.",
+      "adjustments": [
+        {"date": "2015-10-06", "reason": "Special distribution, several times the regular dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -4.19% against -0.60% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.961."}
+      ]
+    },
+    "EQR.N": {
+      "note": "Equity Residential special dividends in 2016.",
+      "adjustments": [
+        {"date": "2016-03-01", "reason": "Special dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -7.88% against +3.20% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.893."},
+        {"date": "2016-09-22", "reason": "Special dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -2.50% against +2.14% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.947."}
+      ]
+    },
+    "F.N": {
+      "note": "Ford supplemental dividend.",
+      "adjustments": [
+        {"date": "2023-02-10", "reason": "$0.65 supplemental dividend paid with the regular $0.15. EODHD's split-only prices drop with it and the LSEG panel does not: -5.63% against -0.86% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.941."}
+      ]
+    },
+    "LYB.N": {
+      "note": "LyondellBasell special dividend.",
+      "adjustments": [
+        {"date": "2022-06-03", "reason": "$5.20 special dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -6.81% against -2.41% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.945."}
+      ]
+    },
+    "PSA.N": {
+      "note": "Public Storage special dividend.",
+      "adjustments": [
+        {"date": "2022-07-29", "reason": "$13.15 special dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -3.17% against +0.76% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.961."}
       ]
     }
   }

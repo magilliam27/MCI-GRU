@@ -103,13 +103,18 @@ class SymbolSegment:
 class PriceAdjustment:
     """A corporate action the split records do not carry, such as a spin-off.
 
-    Prices before ``date`` are multiplied by ``factor``. With no factor, the
-    factor is the step EODHD's ``adjusted_close`` takes on that date.
+    Prices before ``date`` are multiplied by a factor: ``factor`` when stated;
+    ``1 - cash / close`` when ``cash`` per share is stated, using the last close
+    before the date; otherwise the step EODHD's ``adjusted_close`` takes on that
+    date. ``share_conversion`` marks a change in share count, such as a merger
+    exchange ratio, so volume before the date is divided by the factor too.
     """
 
     date: str
     reason: str
     factor: float | None = None
+    cash: float | None = None
+    share_conversion: bool = False
 
 
 @dataclass(frozen=True)
@@ -252,26 +257,43 @@ def _parse_adjustments(kdcode: str, raw_list: Any) -> tuple[PriceAdjustment, ...
     adjustments = []
     for index, raw in enumerate(raw_list):
         where = f"{kdcode} adjustment {index}"
-        if not isinstance(raw, dict) or set(raw) - {"date", "reason", "factor"}:
-            raise SymbolMapError(f"{where}: allowed fields are date, reason and factor")
-        factor = raw.get("factor")
-        if factor is not None and (
-            isinstance(factor, bool)
-            or not isinstance(factor, (int, float))
-            or not math.isfinite(factor)
-            or factor <= 0
-        ):
-            raise SymbolMapError(f"{where}: factor must be a positive number")
+        allowed = {"date", "reason", "factor", "cash", "share_conversion"}
+        if not isinstance(raw, dict) or set(raw) - allowed:
+            raise SymbolMapError(
+                f"{where}: allowed fields are date, reason, factor, cash and share_conversion"
+            )
+        factor = _positive_or_none(raw.get("factor"), f"{where}: factor")
+        cash = _positive_or_none(raw.get("cash"), f"{where}: cash")
+        if factor is not None and cash is not None:
+            raise SymbolMapError(f"{where}: state a factor or a cash amount, not both")
+        share_conversion = raw.get("share_conversion", False)
+        if not isinstance(share_conversion, bool):
+            raise SymbolMapError(f"{where}: share_conversion must be true or false")
+        if share_conversion and factor is None:
+            raise SymbolMapError(f"{where}: a share conversion needs a stated factor")
         date = _date_or_none(raw.get("date"), where)
         if date is None:
             raise SymbolMapError(f"{where}: needs a date")
         adjustments.append(
-            PriceAdjustment(date, _reason(raw, where), None if factor is None else float(factor))
+            PriceAdjustment(date, _reason(raw, where), factor, cash, share_conversion)
         )
     dates = [a.date for a in adjustments]
     if len(set(dates)) != len(dates):
         raise SymbolMapError(f"{kdcode}: adjustments repeat a date")
     return tuple(sorted(adjustments, key=lambda a: a.date))
+
+
+def _positive_or_none(value: Any, where: str) -> float | None:
+    if value is None:
+        return None
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value <= 0
+    ):
+        raise SymbolMapError(f"{where} must be a positive number")
+    return float(value)
 
 
 def _parse_accepted(kdcode: str, raw_list: Any) -> tuple[str, ...]:
@@ -479,34 +501,55 @@ def apply_adjustments(
 ) -> tuple[pd.DataFrame, list[dict[str, Any]], list[Finding]]:
     """Apply the map's declared corporate actions to one identifier's rows.
 
-    Prices before each date are multiplied by its factor; volume is unchanged.
-    A factor read from ``adjusted_close`` needs vendor rows on and before the date.
+    Prices before each date are multiplied by its factor. Volume is unchanged
+    unless the adjustment is a share conversion. Rows that hold nothing before the
+    date, such as a segment that starts on it, need no adjustment. A factor read
+    from ``adjusted_close`` needs vendor rows on and before the date; a cash
+    factor needs a close before it.
     """
     out = frame.copy()
     applied, findings = [], []
     steps = adjustment_steps(frame).set_index("dt")["step"]
     for adjustment in adjustments:
-        factor = adjustment.factor
-        basis = "declared_factor"
-        if factor is None:
+        before = out["dt"] < adjustment.date
+        if not before.any():
+            continue
+        factor, basis, problem = adjustment.factor, "declared_factor", None
+        if factor is None and adjustment.cash is not None:
+            basis = "declared_cash"
+            closes = out.loc[before & out["close"].notna(), "close"]
+            prior = float(closes.iloc[-1]) if len(closes) else np.nan
+            factor = 1.0 - adjustment.cash / prior
+            if not (math.isfinite(factor) and factor > 0):
+                problem = f"No close before {adjustment.date} above the cash amount"
+        elif factor is None:
             basis = "vendor_adjusted_close"
             factor = float(steps.get(adjustment.date, np.nan))
             if not math.isfinite(factor):
-                findings.append(
-                    Finding(
-                        kdcode,
-                        "adjustment_unresolved",
-                        True,
-                        f"No adjusted_close step on {adjustment.date} to read the factor from",
-                        {"date": adjustment.date, "reason": adjustment.reason},
-                    )
+                problem = f"No adjusted_close step on {adjustment.date} to read the factor from"
+        if problem is not None:
+            findings.append(
+                Finding(
+                    kdcode,
+                    "adjustment_unresolved",
+                    True,
+                    problem,
+                    {"date": adjustment.date, "reason": adjustment.reason},
                 )
-                continue
-        before = out["dt"] < adjustment.date
+            )
+            continue
         for column in PRICE_FIELDS:
             out.loc[before, column] = out.loc[before, column] * factor
+        if adjustment.share_conversion:
+            out.loc[before, "volume"] = out.loc[before, "volume"] / factor
         applied.append(
-            {"date": adjustment.date, "factor": factor, "basis": basis, "reason": adjustment.reason}
+            {
+                "date": adjustment.date,
+                "factor": factor,
+                "basis": basis,
+                "share_conversion": adjustment.share_conversion,
+                "reason": adjustment.reason,
+            }
         )
     return out, applied, findings
 

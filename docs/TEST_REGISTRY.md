@@ -406,6 +406,12 @@ EODHD daily prices for the point-in-time universe (#281).
 | `test_clean_values_blanks_nonpositive_prices_and_negative_volume` |  |  |
 | `test_a_declared_spin_off_rescales_earlier_prices_only` |  |  |
 | `test_a_vendor_factor_with_no_rows_on_its_date_blocks` |  |  |
+| `test_a_cash_distribution_uses_the_last_close_before_its_date` |  |  |
+| `test_a_cash_distribution_above_the_prior_close_blocks` |  |  |
+| `test_a_share_conversion_rescales_volume_as_well_as_prices` |  |  |
+| `test_rows_with_nothing_before_the_date_need_no_adjustment` |  |  |
+| `test_symbol_map_rejects_contradictory_adjustments` |  | parametrize |
+| `test_symbol_map_reads_cash_and_share_conversion` |  |  |
 | `test_a_dividend_sized_step_is_quiet_and_a_larger_one_is_reported` |  |  |
 | `test_needed_spans_refuse_blank_valid_to` |  |  |
 | `test_symbol_map_reads_adjustments_and_accepted_differences` |  |  |
