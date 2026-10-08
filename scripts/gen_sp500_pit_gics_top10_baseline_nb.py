@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import textwrap
 from pathlib import Path
 
-from nb_lib import COLAB_GPU_METADATA_BARE_KERNEL, backtest_engine_path_expr, write_notebook
+from nb_lib import (
+    COLAB_GPU_METADATA_BARE_KERNEL,
+    EODHD_MARKET_DRIVE_PATH,
+    backtest_engine_path_expr,
+    eodhd_market_staging_source,
+    write_notebook,
+)
 from nb_lib import code_lines as code
 from nb_lib import md_lines as md
 
@@ -13,7 +20,7 @@ OUT = Path("notebooks/sp500_pit_gics_top10_baseline_colab.ipynb")
 
 cells = [
     md(
-        """
+        f"""
         # Reduced PIT GICS Top-10 Multiyear Baseline
 
         Runs the frozen default MCI-GRU recipe from
@@ -28,6 +35,10 @@ cells = [
         snapshots first, or explicitly set
         `REQUIRE_APPLES_TO_APPLES_SELECTOR_HISTORY = False` and label the run as
         not apples-to-apples.
+
+        The recipe enables global regime features, so the EODHD S&P 500 index
+        file must be on Drive at `{EODHD_MARKET_DRIVE_PATH}`; the run copies it
+        into the checkout and verifies its SHA-256 before training.
         """
     ),
     code(
@@ -326,6 +337,8 @@ cells = [
         ]:
             stage_named_file(source_name, dest)
 
+        __EODHD_MARKET_STAGING__
+
         market_preview = pd.read_csv(repo_market_csv, usecols=["kdcode", "dt"])
         pit_preview = pd.read_csv(repo_pit_csv)
         snapshots = pd.read_csv(repo_snapshot_csv)
@@ -467,6 +480,24 @@ cells = [
         """.replace(
             "__BACKTEST_ENGINE_PATH_EXPR__",
             backtest_engine_path_expr("backtest_sp500_daily", quote='"'),
+        ).replace(
+            # Every run enables global regime features without a legacy regime
+            # CSV, so it reads features.regime_market_csv (#278).
+            "        __EODHD_MARKET_STAGING__",
+            textwrap.indent(
+                eodhd_market_staging_source(
+                    call=(
+                        "if eodhd_market_file_is_read(REPO_DIR):\n"
+                        "    stage_eodhd_market_file(REPO_DIR)\n"
+                        "else:\n"
+                        "    print(\n"
+                        '        "Skipped EODHD S&P 500 staging: this checkout\'s "\n'
+                        '        "configs/features/with_momentum.yaml does not set regime_market_csv."\n'
+                        "    )"
+                    )
+                ),
+                " " * 8,
+            ),
         )
     ),
 ]

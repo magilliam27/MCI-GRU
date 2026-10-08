@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from nb_lib import COLAB_GPU_METADATA_BARE_KERNEL, backtest_engine_path_expr, write_notebook
+from nb_lib import (
+    COLAB_GPU_METADATA_BARE_KERNEL,
+    EODHD_MARKET_DRIVE_PATH,
+    backtest_engine_path_expr,
+    eodhd_market_staging_source,
+    write_notebook,
+)
 from nb_lib import code_lines as code
 from nb_lib import md_lines as md
 
@@ -13,7 +19,7 @@ OUT = Path("notebooks/long_history_pit_eval_colab.ipynb")
 
 cells = [
     md(
-        """
+        f"""
         # MCI-GRU Long-History PIT Evaluation
 
         This generated Colab notebook evaluates issue #23: whether longer
@@ -28,6 +34,10 @@ cells = [
         interpretation must come from the PIT masked-panel rows generated here.
 
         Recipe reference: `docs/DEFAULT_EXPERIMENT_RECIPE.md`.
+
+        The recipe enables global regime features, so the EODHD S&P 500 index
+        file must be on Drive at `{EODHD_MARKET_DRIVE_PATH}`; section 2 copies
+        it into the checkout and verifies its SHA-256.
         """
     ),
     md("## 1. Setup: Mount Drive, Clone Repo, Install Dependencies"),
@@ -233,6 +243,22 @@ cells = [
         print('Columns:', list(pit_preview.columns))
         display(pit_preview.head())
         """
+    ),
+    # Every run enables global regime features without a legacy regime CSV, so
+    # a checkout whose features config names regime_market_csv reads it (#278).
+    # BRANCH's own config predates #276 and does not, so the call skips there.
+    code(
+        eodhd_market_staging_source(
+            call=(
+                "if eodhd_market_file_is_read(REPO_DIR):\n"
+                "    stage_eodhd_market_file(REPO_DIR)\n"
+                "else:\n"
+                "    print(\n"
+                '        "Skipped EODHD S&P 500 staging: this checkout\'s "\n'
+                '        "configs/features/with_momentum.yaml does not set regime_market_csv."\n'
+                "    )"
+            )
+        )
     ),
     md("## 3. FRED Key And Matrix Configuration"),
     code(

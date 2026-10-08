@@ -29,7 +29,14 @@ import textwrap
 from pathlib import Path
 from pprint import pformat
 
-from nb_lib import build_notebook, code, colab_setup_cell, md
+from nb_lib import (
+    EODHD_MARKET_DRIVE_PATH,
+    build_notebook,
+    code,
+    colab_setup_cell,
+    eodhd_market_staging_source,
+    md,
+)
 
 OUT = Path("notebooks/graph_specification_ablation_colab.ipynb")
 
@@ -484,7 +491,7 @@ def _embed_source(func) -> str:
 def build_cells() -> list[dict]:
     return [
         md(
-            """
+            f"""
             # Graph-Specification Ablation (Wayfinder map 157, tickets 166 and 183)
 
             Runnable form of the multi-year protocol pre-registered on ticket
@@ -518,6 +525,10 @@ def build_cells() -> list[dict]:
             mechanics-and-sanity pass, then `RUN_STAGE = "confirm"`. Resume is
             keyed on (fold, arm, stage) and the manifest, not this notebook's
             display, is the record.
+
+            The recipe enables global regime features, so the EODHD S&P 500
+            index file must be on Drive at `{EODHD_MARKET_DRIVE_PATH}`;
+            section 2 copies it into the checkout and verifies its SHA-256.
             """
         ),
         md("## 1. Setup"),
@@ -589,6 +600,21 @@ def build_cells() -> list[dict]:
             # opens 2015-01-02, exactly 252 sessions before the 2016-01-04
             # universe opening, which is what the first fold's lookback needs.
             """
+        ),
+        # The recipe always enables global regime features without a legacy
+        # regime CSV, so every run reads features.regime_market_csv (#278).
+        code(
+            eodhd_market_staging_source(
+                call=(
+                    "if eodhd_market_file_is_read(REPO_DIR):\n"
+                    "    stage_eodhd_market_file(REPO_DIR)\n"
+                    "else:\n"
+                    "    print(\n"
+                    '        "Skipped EODHD S&P 500 staging: this checkout\'s "\n'
+                    '        "configs/features/with_momentum.yaml does not set regime_market_csv."\n'
+                    "    )"
+                )
+            )
         ),
         md("## 3. Protocol: Arms, Folds, Recipe Semantics, Budgets"),
         code(

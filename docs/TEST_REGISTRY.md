@@ -609,6 +609,60 @@ The first run declares no cessation file; this pins why that is safe, and when n
 | `test_tail_check_reads_the_selector_only_inside_the_override_block` |  |  |
 | `test_tail_check_flags_one_carried_zero_volume_row` | A vendor row for the delisting day repeats the close at zero volume (EODHD, 2026-10-08). |  |
 
+## `tests/test_first_run_colab.py`
+
+Tests for the first admitted run's Colab helpers and notebook (#187, #278).
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.input_manifest`, `scripts`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_recipe_overrides_are_read_from_the_recipe_document` |  |  |
+| `test_recipe_parsing_refuses_a_missing_block_or_a_key_set_twice` |  |  |
+| `test_smoke_replaces_the_budget_in_place_and_full_keeps_it` |  |  |
+| `test_capture_is_added_only_when_the_recipe_does_not_select_it` |  |  |
+| `test_replace_override_refuses_a_key_the_recipe_does_not_set` |  |  |
+| `test_run_overrides_compose_into_the_typed_config` | The notebook's overrides go through Hydra the way run_experiment.py takes them. | parametrize |
+| `test_every_prerequisite_present_reads_as_ready` |  |  |
+| `test_each_missing_prerequisite_is_named_by_its_pull_request` |  | parametrize |
+| `test_one_of_three_model_pins_is_not_enough_for_275` |  |  |
+| `test_270_needs_the_manifest_this_notebook_stages_not_just_the_key` |  |  |
+| `test_prerequisite_check_runs_on_this_checkout` |  |  |
+| `test_full_mode_cli_refuses_when_a_prerequisite_is_missing` |  |  |
+| `test_stage_verified_file_copies_and_then_reuses` |  |  |
+| `test_a_wrong_drive_copy_is_never_copied` |  |  |
+| `test_a_file_in_place_with_other_bytes_is_never_replaced` |  |  |
+| `test_a_missing_drive_file_names_its_path` |  |  |
+| `test_a_corrupt_copy_is_refused_and_never_published` |  |  |
+| `test_eodhd_pins_match_the_notebook_library` |  |  |
+| `test_the_drive_inventory_is_the_one_the_committed_r1_manifest_records` | The Drive MANIFEST.txt, downloaded 2026-10-04, agrees with r1 byte for byte. |  |
+| `test_malformed_inventory_lines_stop` |  | parametrize |
+| `test_an_inventory_listing_a_path_twice_stops` |  |  |
+| `test_stage_package_copies_and_verifies_every_file` |  |  |
+| `test_a_drive_inventory_other_than_the_recorded_one_stops` |  |  |
+| `test_an_inventory_that_disagrees_with_r1_stops_even_with_the_recorded_digest` | r1 records this inventory's digest, but the inventory lists a file r1 lacks. |  |
+| `test_a_corrupt_drive_package_file_stops_before_it_is_copied` |  |  |
+| `test_a_manifest_with_other_bytes_stops` |  |  |
+| `test_lock_pins_read_the_lock_and_allow_only_a_local_suffix` |  |  |
+| `test_sync_copies_new_and_changed_files_and_never_deletes` |  |  |
+| `test_run_with_drive_sync_copies_outputs_and_reports_the_exit_code` |  | parametrize |
+| `test_committed_notebook_matches_its_generator` |  |  |
+| `test_notebook_reads_the_fred_key_from_colab_secrets_only` |  |  |
+| `test_notebook_installs_the_lock_and_names_the_pinned_drive_paths` |  |  |
+| `test_notebook_holds_no_recipe_values_of_its_own` | The recipe is read at the cloned commit; a copy in the notebook would drift. |  |
+| `test_cli_help_runs_as_a_script` |  |  |
+| `test_the_tracked_package_sidecars_are_the_pinned_bytes_with_crlf_endings` | On a Linux clone the two tracked sidecars hold LF bytes; their CRLF form is the pin. |  |
+| `test_tracked_lf_files_are_realigned_to_their_crlf_pins_and_git_stays_clean` |  |  |
+| `test_a_tracked_file_with_other_content_is_not_realigned` |  |  |
+| `test_stage_package_in_a_clone_realigns_a_tracked_sidecar` |  |  |
+| `test_a_failed_drive_copy_is_reported_and_does_not_stop_the_run` |  |  |
+| `test_sync_skips_capture_staging_files` |  |  |
+| `test_a_full_run_refuses_a_missing_prerequisite` |  |  |
+| `test_a_run_refuses_without_the_fred_key` |  |  |
+| `test_a_full_run_refuses_source_changes_including_untracked_files` |  |  |
+| `test_a_run_refuses_to_reuse_a_folder` |  |  |
+| `test_a_run_records_itself_without_the_key` |  |  |
+
 ## `tests/test_generate_test_registry.py`
 
 Contract tests for scripts/generate_test_registry.py.
@@ -1067,6 +1121,34 @@ Admissible range for `model.label_t` (issue 107).
 | `test_dynamic_estimator_uses_only_prior_observations` |  |  |
 | `test_dynamic_estimator_activates_after_sufficient_history` |  |  |
 | `test_feature_config_validates_dynamic_controls_and_yaml_merge` |  |  |
+
+## `tests/test_notebook_eodhd_staging.py`
+
+EODHD S&P 500 staging in the regime-enabled Colab notebooks (#278).
+
+**Exercises:** `mci_gru.config`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_helper_pins_the_file_with_momentum_reads` |  |  |
+| `test_notebook_defines_the_pinned_staging_helper` |  | parametrize |
+| `test_notebook_stages_after_clone_and_before_the_first_training_run` |  | parametrize |
+| `test_notebook_gate_variables_drive_the_runs_regime_overrides` |  | parametrize |
+| `test_notebook_markdown_names_the_drive_path` |  | parametrize |
+| `test_notebook_staging_call_follows_its_regime_toggle_and_checkout` |  | parametrize |
+| `test_legacy_regime_csv_runs_clear_the_unread_market_file` |  | parametrize |
+| `test_null_market_file_override_composes_beside_a_legacy_regime_csv` |  |  |
+| `test_helper_source_defines_and_does_not_call_without_a_call` |  |  |
+| `test_helper_finds_the_file_read_by_this_repository` |  |  |
+| `test_helper_reports_a_checkout_without_the_key_as_not_reading_it` |  |  |
+| `test_helper_reports_a_null_market_file_as_not_reading_it` |  |  |
+| `test_helper_reports_the_pinned_market_file_as_read` |  |  |
+| `test_helper_refuses_a_checkout_naming_another_market_file` |  |  |
+| `test_helper_copies_and_verifies` |  |  |
+| `test_helper_names_a_missing_drive_file` |  |  |
+| `test_helper_refuses_a_drive_file_with_other_bytes` |  |  |
+| `test_helper_never_replaces_a_mismatched_file_in_place` |  |  |
+| `test_helper_checks_the_copy_after_writing_it` |  |  |
 
 ## `tests/test_output_management.py`
 
