@@ -413,6 +413,9 @@ EODHD daily prices for the point-in-time universe (#281).
 | `test_a_cash_distribution_above_the_prior_close_blocks` |  |  |
 | `test_a_share_conversion_rescales_volume_as_well_as_prices` |  |  |
 | `test_rows_with_nothing_before_the_date_need_no_adjustment` |  |  |
+| `test_a_carried_close_at_zero_volume_is_trimmed_from_the_tail` |  |  |
+| `test_only_a_final_zero_volume_repeat_counts_as_carried` |  | parametrize |
+| `test_only_lseg_delisted_codes_are_trimmed` |  |  |
 | `test_symbol_map_rejects_contradictory_adjustments` |  | parametrize |
 | `test_symbol_map_reads_cash_and_share_conversion` |  |  |
 | `test_a_dividend_sized_step_is_quiet_and_a_larger_one_is_reported` |  |  |
@@ -430,6 +433,7 @@ EODHD daily prices for the point-in-time universe (#281).
 | `test_export_stops_without_a_manifest_when_no_candidate_matches` |  |  |
 | `test_a_declared_unavailable_name_is_left_out_and_disclosed` |  |  |
 | `test_a_name_with_no_rows_still_blocks_unless_declared` |  |  |
+| `test_a_delisted_name_stops_at_its_last_trade` |  |  |
 | `test_symbol_map_rejects_a_malformed_unavailable_entry` |  | parametrize |
 | `test_the_key_is_never_written` |  |  |
 | `test_client_never_stores_or_reports_the_key` |  |  |

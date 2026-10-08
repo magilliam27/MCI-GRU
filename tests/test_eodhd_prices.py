@@ -31,6 +31,7 @@ from mci_gru.data.eodhd_prices import (
     clean_values,
     default_symbol,
     eod_rows_frame,
+    is_delisted,
     load_symbol_map,
     name_hint_candidates,
     needed_spans,
@@ -41,6 +42,7 @@ from mci_gru.data.eodhd_prices import (
     split_adjust,
     split_basis_findings,
     splits_frame,
+    trim_carried_tail,
 )
 from mci_gru.data.input_manifest import (
     InputFileSpec,
@@ -319,6 +321,42 @@ def test_rows_with_nothing_before_the_date_need_no_adjustment():
     assert {f.code for f in findings} == {"adjustment_not_applied"}
     assert not [f for f in findings if f.blocking]
     assert out["close"].tolist() == frame["close"].tolist()
+
+
+def _tail_frame(closes, volumes):
+    dates = _sessions("2023-10-09", len(closes))
+    rows = _raw_rows(dates, closes)
+    for row, volume in zip(rows, volumes, strict=True):
+        row["volume"] = volume
+    return eod_rows_frame(rows), dates
+
+
+def test_a_carried_close_at_zero_volume_is_trimmed_from_the_tail():
+    frame, dates = _tail_frame([10.0, 11.0, 12.0, 12.0, 12.0], [5.0, 5.0, 5.0, 0.0, 0.0])
+    out, dropped = trim_carried_tail(frame)
+    assert dropped == dates[3:]
+    assert out["dt"].tolist() == dates[:3]
+
+
+@pytest.mark.parametrize(
+    ("closes", "volumes"),
+    [
+        ([10.0, 11.0, 11.0], [5.0, 5.0, 3.0]),  # a repeat close that traded
+        ([10.0, 11.0, 11.5], [5.0, 5.0, 0.0]),  # zero volume at a new price
+        ([10.0, 11.0, 11.0], [5.0, 5.0, np.nan]),  # volume unknown, not zero
+        ([10.0, 11.0, 11.0, 12.0], [5.0, 0.0, 0.0, 5.0]),  # carried rows mid-history
+    ],
+)
+def test_only_a_final_zero_volume_repeat_counts_as_carried(closes, volumes):
+    frame, _ = _tail_frame(closes, volumes)
+    out, dropped = trim_carried_tail(frame)
+    assert dropped == []
+    assert len(out) == len(frame)
+
+
+def test_only_lseg_delisted_codes_are_trimmed():
+    assert is_delisted("ATVI.OQ^J23")
+    assert not is_delisted("PSKY.OQ")
 
 
 @pytest.mark.parametrize(
@@ -712,6 +750,27 @@ def test_a_name_with_no_rows_still_blocks_unless_declared(vendor):
     assert meta["missing_identifiers"] == ["OLD.N^A16"]
     codes = {(f["kdcode"], f["code"]) for f in meta["findings"] if f["blocking"]}
     assert ("OLD.N^A16", "no_rows") in codes
+
+
+def test_a_delisted_name_stops_at_its_last_trade(vendor):
+    # EODHD carries the old company one session past its last trade, at zero volume.
+    carried = dict(FakeClient.eod_rows["OLD_OLD.US"][-1])
+    carried.update(date=vendor["dates"][280], volume=0.0)
+    FakeClient.eod_rows = {**FakeClient.eod_rows}
+    FakeClient.eod_rows["OLD_OLD.US"] = [*FakeClient.eod_rows["OLD_OLD.US"], carried]
+
+    assert export.main(_argv(vendor)) == 0
+
+    market = vendor["tmp"] / "package" / "market"
+    panel = pd.read_csv(next(market.glob("*_20160729.csv")), dtype={"dt": str})
+    old = panel[panel["kdcode"] == "OLD.N^A16"]
+    assert old["dt"].max() == vendor["dates"][279]
+    symbols = json.loads(next(market.glob("*_symbols.json")).read_text())
+    assert symbols["OLD.N^A16"]["carried_tail_dropped"] == [vendor["dates"][280]]
+    assert symbols["GOOD.OQ"]["carried_tail_dropped"] == []
+    meta = json.loads(next(market.glob("*.meta.json")).read_text())
+    codes = {(f["kdcode"], f["code"], f["blocking"]) for f in meta["findings"]}
+    assert ("OLD.N^A16", "carried_tail_dropped", False) in codes
 
 
 @pytest.mark.parametrize(

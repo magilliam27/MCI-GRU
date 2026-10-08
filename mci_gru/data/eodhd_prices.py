@@ -46,6 +46,7 @@ if TYPE_CHECKING:
 
 PANEL_COLUMNS = ("kdcode", "dt", "open", "high", "low", "close", "volume")
 PRICE_FIELDS = ("open", "high", "low", "close")
+DELISTED_MARKER = "^"
 DATE_FORMAT = "%Y-%m-%d"
 SYMBOL_MAP_SCHEMA = 1
 
@@ -619,6 +620,31 @@ def clip_segment(frame: pd.DataFrame, segment: SymbolSegment) -> pd.DataFrame:
     if segment.end:
         mask &= frame["dt"] <= segment.end
     return frame[mask]
+
+
+def is_delisted(kdcode: str) -> bool:
+    """LSEG marks a delisted RIC with ``^`` (``ATVI.OQ^J23``)."""
+    return DELISTED_MARKER in kdcode
+
+
+def trim_carried_tail(frame: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+    """Drop trailing rows that carry the previous close forward at zero volume.
+
+    EODHD can end a delisted name with a session after its last trade that repeats
+    the prior close and trades nothing. The pipeline treats any finite close as
+    observed, so such a row would keep the name tradable for a session it did not
+    trade. Only a final run of rows with zero volume *and* the preceding close is
+    dropped; a zero-volume row at a new price, or a traded row, ends the trim.
+    Returns the frame and the dropped dates in order.
+    """
+    rows = frame.sort_values("dt").reset_index(drop=True)
+    end = len(rows)
+    while end >= 2:
+        last, prior = rows.iloc[end - 1], rows.iloc[end - 2]
+        if not (last["volume"] == 0 and last["close"] == prior["close"]):
+            break
+        end -= 1
+    return rows.iloc[:end].copy(), [str(d) for d in rows["dt"].iloc[end:]]
 
 
 def assemble_panel(pieces: Mapping[str, list[pd.DataFrame]]) -> pd.DataFrame:

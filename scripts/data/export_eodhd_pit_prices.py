@@ -60,6 +60,7 @@ from mci_gru.data.eodhd_prices import (
     clip_segment,
     coverage_table,
     eod_rows_frame,
+    is_delisted,
     load_symbol_map,
     name_hint_candidates,
     needed_spans,
@@ -69,6 +70,7 @@ from mci_gru.data.eodhd_prices import (
     split_adjust,
     split_basis_findings,
     splits_frame,
+    trim_carried_tail,
 )
 from mci_gru.data.input_manifest import InputFileSpec, read_input_manifest, write_input_manifest
 from mci_gru.data.quality_contract import Verdict, assess_market_panel, fill_open_valid_to
@@ -445,12 +447,26 @@ def main(argv: list[str] | None = None) -> int:
             blanked_total += choice["values_blanked"]
         nonempty = [part for part in parts if not part.empty]
         applied: list[dict[str, Any]] = []
+        carried: list[str] = []
         if nonempty:
             joined = pd.concat(nonempty, ignore_index=True)
             joined, applied, adjustment_findings = apply_adjustments(
                 kdcode, joined, plan.adjustments
             )
             findings.extend(adjustment_findings)
+            if is_delisted(kdcode):
+                joined, carried = trim_carried_tail(joined)
+                if carried:
+                    findings.append(
+                        Finding(
+                            kdcode,
+                            "carried_tail_dropped",
+                            False,
+                            "Trailing rows repeating the last close at zero volume after the "
+                            "last trade; dropped so the name stops at its last real session",
+                            {"dates": carried},
+                        )
+                    )
             nonempty = [joined]
         pieces[kdcode] = nonempty
         resolved[kdcode] = {
@@ -458,6 +474,7 @@ def main(argv: list[str] | None = None) -> int:
             "note": plan.note,
             "segments": chosen,
             "adjustments_applied": applied,
+            "carried_tail_dropped": carried,
             "accepted_differences": list(plan.accepted_differences),
         }
         symbols = ", ".join(str(c["symbol"]) for c in chosen)

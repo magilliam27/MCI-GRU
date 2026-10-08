@@ -69,11 +69,12 @@ def build_cells() -> list[dict]:
             REFERENCE_MANIFEST_SHA256 = "1e2043dcb4f00a88de128985cc94423c122e480034c16ec741710a2460653ecf"
 
             START, END = "2015-01-01", "2026-07-31"  # the LSEG panel's span
-            OUTPUT_NAME = f"eodhd_{PREFIX}_r1"
+            REVISION = "r2"  # r1 kept carried rows after three delistings; never reuse one
+            OUTPUT_NAME = f"eodhd_{PREFIX}_{REVISION}"
             OUTPUT_DRIVE_DIR = f"/content/drive/MyDrive/MCI_GRU_shared/preservation/{OUTPUT_NAME}"
             CACHE_DRIVE_DIR = "/content/drive/MyDrive/MCI_GRU_shared/eodhd_cache/gics_top10_110_2016"
             LOCAL_PACKAGE = "/content/eodhd_package"
-            LOCAL_MANIFEST = f"/content/{PREFIX}_eodhd.r1.json"
+            LOCAL_MANIFEST = f"/content/{PREFIX}_eodhd.{REVISION}.json"
             """
         ),
         code(
@@ -137,7 +138,7 @@ def build_cells() -> list[dict]:
         code(
             """
             # Pull. The PIT file and the LSEG panel are read from Drive and must match the
-            # committed r1 manifest. Exit status 1 means a blocking finding: the evidence files
+            # committed LSEG r1 manifest. Exit status 1 means a blocking finding: the evidence files
             # are still written under LOCAL_PACKAGE, but no manifest is published.
             lseg = Path(LSEG_PACKAGE_DRIVE_DIR)
             exit_code = stream(
@@ -152,6 +153,7 @@ def build_cells() -> list[dict]:
                     "--package-root", LOCAL_PACKAGE,
                     "--cache-dir", CACHE_DRIVE_DIR,
                     "--manifest-output", LOCAL_MANIFEST,
+                    "--package-revision", REVISION,
                 ],
                 cwd=REPO_DIR,
                 check=False,
@@ -198,7 +200,7 @@ def build_cells() -> list[dict]:
             """
             ## After the pull
 
-            - **Exit code 0:** the package and `<PREFIX>_eodhd.r1.json` are on Drive.
+            - **Exit code 0:** the package and `<PREFIX>_eodhd.<REVISION>.json` are on Drive.
               Tell the thread the pull finished. The manifest gets committed to
               `data/manifests/`, and a data config pins its SHA-256, so the first run can
               stage this package the way it stages the LSEG one.
