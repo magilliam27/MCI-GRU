@@ -146,6 +146,7 @@ class StockPredictionModel(nn.Module):
         cross_a2_num_heads: int = 4,
         cross_section_block: str = "legacy",
         market_latent_mode: str = "static",
+        gru_attn_layer_widths: str = "shared",
     ):
         super().__init__()
         if cross_section_block not in _CROSS_SECTION_BLOCKS:
@@ -172,13 +173,16 @@ class StockPredictionModel(nn.Module):
                 slow_kernel=slow_kernel,
                 slow_stride=slow_stride,
                 temporal_encoder=temporal_encoder,
+                gru_attn_layer_widths=gru_attn_layer_widths,
             )
         elif temporal_encoder == "legacy":
             self.temporal_encoder = ImprovedGRU(input_size, hidden_sizes=gru_hidden_sizes)
         elif temporal_encoder == "transformer":
             self.temporal_encoder = CausalTransformerEncoder(input_size, gru_hidden_sizes[-1])
         else:
-            self.temporal_encoder = GRUWithAttention(input_size, gru_hidden_sizes)
+            self.temporal_encoder = GRUWithAttention(
+                input_size, gru_hidden_sizes, gru_attn_layer_widths
+            )
 
         gru_output_size = self.temporal_encoder.output_size
         self.edge_feature_dim = edge_feature_dim

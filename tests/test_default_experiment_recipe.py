@@ -12,13 +12,19 @@ Every assertion here is paired with a case in which it must fail.
 import re
 from pathlib import Path
 
+from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
+
+from mci_gru.config import create_config_from_dict
+from mci_gru.graph.utils import edge_feature_dim
+from mci_gru.models import ResidualCrossSectionBlock, create_model
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RECIPE = REPO_ROOT / "docs" / "DEFAULT_EXPERIMENT_RECIPE.md"
 
 # `data=<group>` on its own line inside the Hydra overrides block.
 DATA_SELECTOR = re.compile(r"^data=([A-Za-z0-9_]+)$", re.M)
+OVERRIDE_BLOCK = re.compile(r"^## Hydra Overrides\n+```text\n(.*?)^```", re.M | re.S)
 SNAPSHOT_MODE = re.compile(r"^data\.auxiliary_snapshot_mode=(\w+)$", re.M)
 
 
@@ -73,6 +79,76 @@ def test_recipe_last_updated_is_not_stale_relative_to_the_change():
     assert match.group(1) >= "2026-08-08", (
         f"Last updated is {match.group(1)}, older than the universe change it now describes"
     )
+
+
+def _recipe_overrides() -> list[str]:
+    block = OVERRIDE_BLOCK.search(RECIPE.read_text(encoding="utf-8"))
+    assert block, "the recipe has no Hydra override block"
+    return [line.strip() for line in block.group(1).splitlines() if line.strip()]
+
+
+def _compose(overrides: list[str]):
+    """Build the typed config the way run_experiment.py does."""
+    with initialize_config_dir(config_dir=str(REPO_ROOT / "configs"), version_base=None):
+        cfg = compose(config_name="config", overrides=overrides)
+    return create_config_from_dict(OmegaConf.to_container(cfg, resolve=True))
+
+
+def _build_model(config):
+    """Mirror run_experiment.py's model_cfg_dict, so the test sees what a run builds."""
+    model_cfg = {
+        **config.model.to_dict(),
+        "edge_feature_dim": edge_feature_dim(config.graph),
+        "drop_edge_p": config.graph.drop_edge_p,
+        "isolate_edge_dropout_rng": config.graph.isolate_edge_dropout_rng,
+        "use_sector_relation": config.graph.use_sector_relation,
+    }
+    return create_model(8, model_cfg)
+
+
+def test_the_recipe_builds_data_dependent_market_latents():
+    """Issue 198: static latents cannot see the date, so the first run must not use them."""
+    model = _build_model(_compose(_recipe_overrides()))
+    assert model.latent_learner.market_latent_mode == "data_dependent"
+    assert hasattr(model.latent_learner, "gather1"), "no per-date gather was built"
+
+
+def test_the_recipe_builds_the_residual_cross_stock_block():
+    """Issue 197: the legacy block replaces z and discards most cross-sectional variation."""
+    model = _build_model(_compose(_recipe_overrides()))
+    assert isinstance(model.self_attention, ResidualCrossSectionBlock)
+
+
+def test_the_recipe_builds_gru_attn_layers_at_32_then_10():
+    """Issue 131: [32, 10] must mean a 32-wide layer then a 10-wide one."""
+    model = _build_model(_compose(_recipe_overrides()))
+    for branch in (model.temporal_encoder.fast_gru, model.temporal_encoder.slow_gru):
+        assert [layer.hidden_size for layer in branch.grus] == [32, 10]
+
+
+def test_the_base_config_alone_still_builds_the_legacy_forms():
+    """Control: the two tests above must come from the recipe's own pins.
+
+    configs/config.yaml keeps the legacy forms so older checkpoint directories
+    rebuild. If it ever moved, the recipe tests would pass without the pins, and
+    this control says so rather than letting them pass for the wrong reason.
+    """
+    without_model_pins = [line for line in _recipe_overrides() if not line.startswith("model.")] + [
+        "model.label_t=5"
+    ]
+    model = _build_model(_compose(without_model_pins))
+    assert model.latent_learner.market_latent_mode == "static"
+    assert not isinstance(model.self_attention, ResidualCrossSectionBlock)
+    assert model.temporal_encoder.fast_gru.grus is None
+    assert model.temporal_encoder.fast_gru.gru.hidden_size == 10
+
+
+def test_the_override_block_parser_reads_the_block():
+    """Control: an empty parse would make every composition test vacuous."""
+    overrides = _recipe_overrides()
+    assert "data=gics_top10_110_2016" in overrides
+    assert "model.market_latent_mode=data_dependent" in overrides
+    assert all("```" not in line for line in overrides)
 
 
 def test_recipe_captures_its_provider_inputs():

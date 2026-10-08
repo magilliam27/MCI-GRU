@@ -25,10 +25,26 @@ runs unless an experiment is explicitly testing one of these factors.
 > produced under the inherited S&P 500 universe and are not comparable with
 > recipe-labelled runs.
 
+> **The model changed on 2026-10-04, before the first admitted run (#187).**
+>
+> Until then the recipe named no `model.*` key, so it inherited the legacy
+> forms that `configs/config.yaml` keeps for checkpoint compatibility. It now
+> pins the fixed forms, and the slug gained a suffix to say so (#273).
+>
+> | | before 2026-10-04 | from 2026-10-04 |
+> |---|---|---|
+> | `model.market_latent_mode` | `static` (inherited): the B1/B2 latents are fixed parameters that cannot see the date, issue #198 | `data_dependent` (pinned): the latents read each date's PIT-active names first |
+> | `model.cross_section_block` | `legacy` (inherited): the cross-stock block replaces `z` and discards most of the variation between stocks (#197) | `residual` (pinned): the block corrects `z` as `z + Attn(LayerNorm(z))` |
+> | `model.gru_attn_layer_widths` | `shared` (inherited): `gru_hidden_sizes: [32, 10]` built two GRU layers of width 10 (#131) | `per_layer` (pinned): a 32-wide layer feeding a 10-wide one |
+> | slug | `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1` | `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10` |
+>
+> All three forms hold different parameters from the legacy ones, so a checkpoint
+> trained under the earlier slug does not load into this recipe's model.
+
 Recipe slug:
 
 ```text
-static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1
+static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10
 ```
 
 ## Hydra Overrides
@@ -48,6 +64,13 @@ training.label_type=returns
 training.selection_metric=val_ic
 training.shuffle_train=true
 model.label_t=5
+model.temporal_encoder=gru_attn
+model.use_multi_scale=true
+model.gru_hidden_sizes=[32,10]
+model.use_nn_multihead_attention=true
+model.market_latent_mode=data_dependent
+model.cross_section_block=residual
+model.gru_attn_layer_widths=per_layer
 
 graph.judge_value=0.8
 graph.update_frequency_months=0
@@ -89,6 +112,47 @@ features.regime_min_history_months=24
   `scripts/ci_smoke.py` does.
 - `FRED_API_KEY` is required when `features.include_global_regime=true` and
   `features.regime_strict=true`.
+- The seven `model.*` keys after `model.label_t` are pinned for the same reason
+  as the data config. `market_latent_mode=data_dependent` and
+  `cross_section_block=residual` are the corrected forms from #198 and #197, and `gru_attn_layer_widths=per_layer` makes
+  `gru_hidden_sizes: [32, 10]` mean a 32-wide layer then a 10-wide one, the
+  maintainer's decision on #131. `configs/config.yaml` keeps the legacy forms as
+  its defaults so older checkpoint directories still rebuild. Data-dependent
+  latents need `use_nn_multihead_attention=true` and `ModelConfig` refuses the
+  combination without it, so that key is pinned too. `temporal_encoder=gru_attn`,
+  `use_multi_scale=true` and `gru_hidden_sizes=[32,10]` are pinned so the slug's
+  `gru-32-10` does not move if a base default does.
+  `tests/test_default_experiment_recipe.py` composes this block the way
+  `run_experiment.py` does and checks the model it builds.
+- No cessation (delisting) event file is declared:
+  `data.pit_cessation_events_csv` stays `null` (decided 2026-10-04, #273). Six
+  panel names carry LSEG delisted suffixes (ATVI.OQ^J23, DD.N^I17, DOW.N^I17,
+  HES.N^G25, PXD.N^E24, WBA.OQ^H25). A declared cessation changes only
+  `eligible`, and the traded population also needs a close on the date itself
+  (`tradable = eligible & feature_ready & price_observed` in `build_pit_masks`).
+  So while a delisted name has no close after its last real session, the file
+  would change no prediction, label, loss or metric. It would change only the
+  input manifest and how the PIT eligibility report classes those sessions
+  (`cessation_excluded` rather than `price_gap`).
+  `tests/test_first_run_cessation.py` pins this, with a control showing that
+  carried closes after delisting do change the masks.
+  - **Precondition, checked on the real panel before the run:**
+    `python scripts/check_delisted_tails.py`. Exit 1 means a delisted name ends
+    in repeated closes or zero volume. That name then needs a cessation row dated
+    to its real last session, or the carried rows removed at source. The #223
+    frozen-price rule does not catch this, because it flags only a history that
+    is constant throughout. Run on 2026-10-04 against the preserved panel: exit
+    0, all six delisted names end cleanly (0 repeated closes, 0 zero-volume
+    sessions), and with `--all` so do all 206 names.
+  - A cessation dated on a name's final session and known by 20:00 New York that
+    day would also drop that one session from the cross-section. Its own loss is
+    unchanged, but other names' scores on that date move slightly. The likely
+    case is DD and DOW at the DowDuPont merger close on 2017-08-31. The
+    2017-09-01..09-13 gap that the data config calls a pricing gap is most likely
+    those two names after the merger (inferred, not checked against the CSV).
+  - The last sessions before each delisting have unobservable 5-day labels,
+    which are omitted and counted until #129 values terminal outcomes. A
+    cessation file would not change that.
 - `data.auxiliary_snapshot_mode=capture` was added on 2026-10-04, when the owner
   chose to capture the regime inputs for the first run: five FRED series and the
   S&P 500 index file named by `features.regime_market_csv` (#276). It changes no
@@ -110,9 +174,16 @@ features.regime_min_history_months=24
   resamples, and patience, but should keep the recipe's feature, graph, loss,
   label, and selection semantics unless the smoke is explicitly mechanics-only.
 
-Canonical notebook generators that already encode this recipe:
+Notebook generators that encode the recipe as it stood before 2026-10-04 (the
+earlier slug, with the legacy model forms). They are historical and have not
+been moved to this recipe:
 
 - `scripts/gen_temporal_rolling_backtest_nb.py`
 - `scripts/gen_performance_proof_nb.py`
 - `scripts/gen_pit_universe_validation_nb.py`
 - `scripts/gen_pit_masked_panel_2022_2025_nb.py`
+- `scripts/gen_long_history_pit_eval_nb.py`
+- `scripts/gen_pit_repeated_seed_replication_nb.py`
+- `scripts/gen_sp500_pit_gics_top10_baseline_nb.py`
+
+Where one of them calls itself the frozen recipe, it means the earlier slug.
