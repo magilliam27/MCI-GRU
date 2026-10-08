@@ -530,6 +530,10 @@ class DataManager:
 
         sessions = auxiliary_quality.session_calendar(start_ts, pd.Timestamp(end))
 
+        # The index file is read, parsed and ruled on up front, as
+        # FREDLoader.get_regime_role treats a provider response: the read is
+        # linked to the role only once its #224 rules pass, and the verdict
+        # names that read, so a stopped run never records the file as used.
         market_file = None
         if regime_market_csv:
             market_path = None
@@ -547,61 +551,66 @@ class DataManager:
                         reason="file_not_found",
                         configured_path=regime_market_csv,
                     ) from None
-            try:
-                market_file = self.input_snapshots.read_file(
-                    market_path,
-                    role=MARKET_FILE_ROLE,
-                    configured_path=regime_market_csv,
-                    parse=_parse_market_csv,
-                    parser={
+            observation = self.input_snapshots.observe(
+                role=MARKET_FILE_ROLE,
+                source="file",
+                request={
+                    "configured_path": regime_market_csv,
+                    "parser": {
                         "name": "regime_market_csv",
                         "options": {"columns": ["dt", "close"], "na": "blank close only"},
                     },
-                )
-            except InputSnapshotError:
-                raise
-            except Exception as error:
-                # Name the file in run_failure.json rather than the generic regime role.
-                raise InputSnapshotError(
-                    role=MARKET_FILE_ROLE,
-                    source="file",
-                    request={"configured_path": regime_market_csv},
-                    stage="parse",
-                    reason="parse_failed",
-                    error_code=type(error).__name__,
-                    detail=str(error),
-                    configured_path=regime_market_csv,
-                ) from None
-
-        def qualify_market_file():
-            """The #224 rules applied to the market role read from the index file."""
-            role = auxiliary_quality.REGIME_INPUT_ROLES["regime_market"]
+                },
+                acquire=lambda: market_path.read_bytes(),
+            )
+            stop: InputSnapshotError | None = None
             try:
-                qualified = auxiliary_quality.qualify_role(
-                    market_file,
-                    role,
-                    sessions,
-                    source=MARKET_FILE_SOURCE,
-                    series_id=MARKET_FILE_SERIES_ID,
-                    missing_markers=(),
-                )
-            except auxiliary_quality.RegimeInputError as rejection:
-                error = InputSnapshotError(
-                    role=f"{MARKET_FILE_SOURCE}.regime_market",
-                    source=MARKET_FILE_SOURCE,
-                    request={"configured_path": regime_market_csv},
-                    stage="validate",
-                    **{
-                        **rejection.facts,
-                        "configured_path": regime_market_csv,
-                        "detail": str(rejection),
-                    },
-                )
-                self.admission.record(auxiliary_quality.rejection_item(error.facts))
-                error.admission = self.admission.to_dict()
-                raise error from None
-            qualified.verdict["configured_path"] = regime_market_csv
-            return qualified
+                with self.input_snapshots.accepted(observation, configured_path=regime_market_csv):
+                    try:
+                        raw = _parse_market_csv(observation.data)
+                    except Exception as error:
+                        # Name the file in run_failure.json rather than the generic regime role.
+                        stop = InputSnapshotError(
+                            role=MARKET_FILE_ROLE,
+                            source="file",
+                            request={"configured_path": regime_market_csv},
+                            stage="parse",
+                            reason="parse_failed",
+                            error_code=type(error).__name__,
+                            detail=str(error),
+                            configured_path=regime_market_csv,
+                        )
+                        raise
+                    try:
+                        market_file = auxiliary_quality.qualify_role(
+                            raw,
+                            auxiliary_quality.REGIME_INPUT_ROLES["regime_market"],
+                            sessions,
+                            source=MARKET_FILE_SOURCE,
+                            series_id=MARKET_FILE_SERIES_ID,
+                            missing_markers=(),
+                        )
+                    except auxiliary_quality.RegimeInputError as rejection:
+                        stop = InputSnapshotError(
+                            role=f"{MARKET_FILE_SOURCE}.regime_market",
+                            source=MARKET_FILE_SOURCE,
+                            request={"configured_path": regime_market_csv},
+                            stage="validate",
+                            **{
+                                **rejection.facts,
+                                "configured_path": regime_market_csv,
+                                "detail": str(rejection),
+                            },
+                        )
+                        self.admission.record(auxiliary_quality.rejection_item(stop.facts))
+                        stop.admission = self.admission.to_dict()
+                        raise
+            except InputSnapshotError:
+                if stop is None:
+                    raise
+                raise stop from None
+            market_file.verdict["configured_path"] = regime_market_csv
+            market_file.verdict["observation_id"] = observation.observation_id.index
 
         def fetch(series_id, column):
             role = auxiliary_quality.REGIME_INPUT_ROLES[column]
@@ -643,7 +652,7 @@ class DataManager:
             (fred_loader.FRED_SERIES_COPPER, "regime_copper"),
         ):
             if column == "regime_market" and market_file is not None:
-                qualified[column] = qualify_market_file()
+                qualified[column] = market_file
             else:
                 qualified[column] = fetch(series_id, column)
             self.admission.record(auxiliary_quality.admission_item(qualified[column].verdict))
