@@ -393,6 +393,58 @@ Ensemble invariant: prediction = mean of independently trained models.
 | `test_ensemble_averaging_matches_numpy_mean` | avg_predictions returned in-memory equals the numpy mean of member outputs. |  |
 | `test_ensemble_completes_and_forwards_missing_checkpoint_metrics` | Members without an IC at their selected checkpoint complete and forward None. |  |
 
+## `tests/test_eodhd_prices.py`
+
+EODHD daily prices for the point-in-time universe (#281).
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.eodhd_prices`, `mci_gru.data.input_manifest`, `mci_gru.data.input_observations`, `mci_gru.data.quality_contract`, `mci_gru.evaluation.run_input_declarations`, `scripts.data.export_eodhd_pit_prices`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_default_symbol_follows_the_ric_rule` |  | parametrize |
+| `test_committed_symbol_map_parses_and_names_only_ric_shaped_identifiers` |  |  |
+| `test_symbol_map_rejects_ambiguous_segments` |  | parametrize |
+| `test_plans_reject_overrides_for_names_outside_the_universe` |  |  |
+| `test_name_hint_matches_common_stock_names_case_insensitively` |  |  |
+| `test_parse_split_ratio_reads_new_over_old` |  |  |
+| `test_split_adjust_divides_prices_and_multiplies_volume_before_the_split` |  |  |
+| `test_splits_after_the_panel_end_are_not_applied` |  |  |
+| `test_a_split_the_raw_prices_already_carry_is_caught` |  |  |
+| `test_clean_values_blanks_nonpositive_prices_and_negative_volume` |  |  |
+| `test_a_declared_spin_off_rescales_earlier_prices_only` |  |  |
+| `test_a_vendor_factor_with_no_rows_on_its_date_blocks` |  |  |
+| `test_a_cash_distribution_uses_the_last_close_before_its_date` |  |  |
+| `test_a_cash_distribution_above_the_prior_close_blocks` |  |  |
+| `test_a_share_conversion_rescales_volume_as_well_as_prices` |  |  |
+| `test_rows_with_nothing_before_the_date_need_no_adjustment` |  |  |
+| `test_symbol_map_rejects_contradictory_adjustments` |  | parametrize |
+| `test_symbol_map_reads_cash_and_share_conversion` |  |  |
+| `test_a_dividend_sized_step_is_quiet_and_a_larger_one_is_reported` |  |  |
+| `test_needed_spans_refuse_blank_valid_to` |  |  |
+| `test_symbol_map_reads_adjustments_and_accepted_differences` |  |  |
+| `test_matching_returns_at_a_different_price_level_pass` |  |  |
+| `test_another_company_with_the_same_ticker_fails` |  |  |
+| `test_uncorrelated_quiet_series_fail_even_when_differences_are_small` |  |  |
+| `test_one_large_daily_difference_fails_unless_the_map_accepts_it` |  |  |
+| `test_a_short_window_with_full_coverage_passes_without_a_correlation` |  |  |
+| `test_missing_sessions_inside_the_needed_span_fail` |  |  |
+| `test_reference_check_only_judges_the_span_the_universe_needs` |  |  |
+| `test_export_proves_each_mapping_and_publishes_a_verifiable_package` |  |  |
+| `test_export_stops_without_a_manifest_when_no_candidate_matches` |  |  |
+| `test_a_declared_unavailable_name_is_left_out_and_disclosed` |  |  |
+| `test_a_name_with_no_rows_still_blocks_unless_declared` |  |  |
+| `test_symbol_map_rejects_a_malformed_unavailable_entry` |  | parametrize |
+| `test_the_key_is_never_written` |  |  |
+| `test_client_never_stores_or_reports_the_key` |  |  |
+| `test_client_quotes_symbols_and_retries_dropped_connections` |  |  |
+| `test_inputs_must_match_the_reference_manifest` |  |  |
+| `test_notebook_is_the_generator_output` |  |  |
+| `test_notebook_pins_the_reference_package_the_lseg_config_pins` |  |  |
+| `test_notebook_reads_the_key_from_secrets_and_never_prints_it` |  |  |
+| `test_the_eodhd_config_changes_only_the_price_panel_and_its_package` |  |  |
+| `test_the_eodhd_package_carries_the_lseg_membership_byte_for_byte` |  |  |
+| `test_the_eodhd_config_binds_both_selected_files_to_its_package` |  |  |
+
 ## `tests/test_evaluation_portfolio.py`
 
 **Exercises:** `mci_gru.evaluation.portfolio`
