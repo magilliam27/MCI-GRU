@@ -273,6 +273,9 @@ Input admission at the confirmed #223 seams: native read, preparation, runner.
 | `test_a_blank_valid_to_is_membership_through_the_export_cutoff` |  |  |
 | `test_a_blank_valid_to_without_a_declared_cutoff_stops` |  |  |
 | `test_pit_structure_failures_stop_and_name_the_stock` |  | parametrize |
+| `test_a_declared_absent_member_is_admitted_and_recorded` |  |  |
+| `test_a_declared_absence_that_does_not_hold_stops` |  | parametrize |
+| `test_pit_absent_kdcodes_must_be_a_clean_pit_declaration` |  | parametrize |
 | `test_adjacent_intervals_for_one_name_are_not_an_overlap` |  |  |
 | `test_the_session_breadth_floor_stops_through_the_failure_report` |  |  |
 | `test_the_runner_reports_a_missing_selected_file_and_never_reads_the_decoy` |  | slow |
@@ -422,6 +425,7 @@ EODHD daily prices for the point-in-time universe (#281).
 | `test_a_short_window_with_full_coverage_passes_without_a_correlation` |  |  |
 | `test_missing_sessions_inside_the_needed_span_fail` |  |  |
 | `test_reference_check_only_judges_the_span_the_universe_needs` |  |  |
+| `test_rows_for_a_name_declared_unavailable_block` |  |  |
 | `test_export_proves_each_mapping_and_publishes_a_verifiable_package` |  |  |
 | `test_export_stops_without_a_manifest_when_no_candidate_matches` |  |  |
 | `test_a_declared_unavailable_name_is_left_out_and_disclosed` |  |  |

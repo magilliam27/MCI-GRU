@@ -106,7 +106,9 @@ class PriceAdjustment:
     Prices before ``date`` are multiplied by a factor: ``factor`` when stated;
     ``1 - cash / close`` when ``cash`` per share is stated, using the last close
     before the date; otherwise the step EODHD's ``adjusted_close`` takes on that
-    date. ``share_conversion`` marks a change in share count, such as a merger
+    date. That close is split-adjusted to the end of the pull, so ``cash`` must be
+    stated on the same basis: divide the nominal amount by any later split ratio.
+    ``share_conversion`` marks a change in share count, such as a merger
     exchange ratio, so volume before the date is divided by the factor too.
     """
 
@@ -524,7 +526,9 @@ def apply_adjustments(
 
     Prices before each date are multiplied by its factor. Volume is unchanged
     unless the adjustment is a share conversion. Rows that hold nothing before the
-    date, such as a segment that starts on it, need no adjustment. A factor read
+    date, such as a segment that starts on it, need no adjustment; that is recorded
+    with basis ``no_rows_before`` and a non-blocking finding, so a mistyped date on
+    the whole identifier stays visible. A factor read
     from ``adjusted_close`` needs vendor rows on and before the date; a cash
     factor needs a close before it.
     """
@@ -534,6 +538,24 @@ def apply_adjustments(
     for adjustment in adjustments:
         before = out["dt"] < adjustment.date
         if not before.any():
+            applied.append(
+                {
+                    "date": adjustment.date,
+                    "factor": None,
+                    "basis": "no_rows_before",
+                    "share_conversion": adjustment.share_conversion,
+                    "reason": adjustment.reason,
+                }
+            )
+            findings.append(
+                Finding(
+                    kdcode,
+                    "adjustment_not_applied",
+                    False,
+                    f"No rows before {adjustment.date}; nothing to adjust",
+                    {"date": adjustment.date, "reason": adjustment.reason},
+                )
+            )
             continue
         factor, basis, problem = adjustment.factor, "declared_factor", None
         if factor is None and adjustment.cash is not None:
@@ -774,7 +796,8 @@ def reference_check(
 ) -> tuple[pd.DataFrame, list[Finding]]:
     """Compare every identifier against the reference over its needed span.
 
-    Identifiers declared ``unavailable`` are reported as such and not compared.
+    Identifiers declared ``unavailable`` are reported as such and not compared;
+    panel rows for one of them are a blocking finding.
     """
     accepted = accepted or {}
     unavailable = set(unavailable)
@@ -798,6 +821,15 @@ def reference_check(
         if kdcode in unavailable:
             row.update(verdict="declared_unavailable")
             rows.append(row)
+            if not mine.empty:
+                findings.append(
+                    Finding(
+                        kdcode,
+                        "declared_unavailable_has_rows",
+                        True,
+                        "The map declares this name unavailable, yet the panel has rows for it",
+                    )
+                )
             continue
         if window is None:
             row.update(verdict="no_reference")

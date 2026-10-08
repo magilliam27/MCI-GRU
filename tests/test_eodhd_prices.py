@@ -313,7 +313,11 @@ def test_rows_with_nothing_before_the_date_need_no_adjustment():
             PriceAdjustment(dates[0], "spin-off"),
         ],
     )
-    assert not applied and not findings
+    assert [a["basis"] for a in applied] == ["no_rows_before", "no_rows_before"]
+    assert [a["factor"] for a in applied] == [None, None]
+    # Disclosed rather than silent, so a mistyped date stays visible; it never blocks.
+    assert {f.code for f in findings} == {"adjustment_not_applied"}
+    assert not [f for f in findings if f.blocking]
     assert out["close"].tolist() == frame["close"].tolist()
 
 
@@ -498,6 +502,23 @@ def test_reference_check_only_judges_the_span_the_universe_needs():
     assert check.loc[0, "check_start"] == "2016-01-04"
     assert check.loc[0, "verdict"] == "pass", check.to_dict("records")
     assert not [f for f in findings if f.blocking]
+
+
+def test_rows_for_a_name_declared_unavailable_block():
+    dates = _sessions("2016-01-04", 40)
+    closes = _walk(5, 40)
+    reference = _reference("X.N", dates, closes)
+    panel = pd.DataFrame({"kdcode": "X.N", "dt": dates, "close": closes, "adjusted_close": closes})
+    pit = pd.DataFrame(
+        {"kdcode": ["X.N"], "valid_from": ["2016-01-04"], "valid_to": ["2016-02-26"]}
+    )
+
+    check, findings = reference_check(panel, reference, pit, unavailable=["X.N"])
+    _, clean = reference_check(panel.iloc[0:0], reference, pit, unavailable=["X.N"])
+
+    assert check.loc[0, "verdict"] == "declared_unavailable"
+    assert [(f.code, f.blocking) for f in findings] == [("declared_unavailable_has_rows", True)]
+    assert not clean
 
 
 # ---------------------------------------------------------------------------
@@ -876,8 +897,9 @@ def test_the_eodhd_config_changes_only_the_price_panel_and_its_package():
     eodhd = OmegaConf.to_container(OmegaConf.load(EODHD_CONFIG))
     lseg = OmegaConf.to_container(OmegaConf.load(LSEG_CONFIG))
     package_keys = {"filename", "input_package_manifest", "input_package_manifest_sha256"}
-    assert set(eodhd) == set(lseg)
-    assert {k for k in eodhd if eodhd[k] != lseg[k]} == package_keys
+    assert set(eodhd) == set(lseg) | {"pit_absent_kdcodes"}
+    assert {k for k in lseg if eodhd[k] != lseg[k]} == package_keys
+    assert eodhd["pit_absent_kdcodes"] == ["DD.N^I17"]
     assert "_eodhd_" in eodhd["filename"]
 
 
@@ -900,7 +922,10 @@ def test_the_eodhd_package_carries_the_lseg_membership_byte_for_byte():
     # The pull ran with the committed symbol map, and declared the one gap.
     map_record = next(r for r in mine.files if r.path.endswith("_symbol_map.json"))
     assert map_record.sha256 == hashlib.sha256(COMMITTED_MAP.read_bytes()).hexdigest()
-    assert [u.split(":")[0] for u in mine.provenance["unknowns"]] == ["DD.N^I17"]
+    unknowns = [u.split(":")[0] for u in mine.provenance["unknowns"]]
+    assert unknowns == ["DD.N^I17"]
+    # Admission accepts exactly the gap the package records, no more.
+    assert list(eodhd.pit_absent_kdcodes) == unknowns
 
 
 def test_the_eodhd_config_binds_both_selected_files_to_its_package():
@@ -910,6 +935,7 @@ def test_the_eodhd_config_binds_both_selected_files_to_its_package():
 
     declarations = declare_window_inputs(config, InputObservationContext().freeze())
 
+    assert config.data.pit_absent_kdcodes == ["DD.N^I17"]
     (package,) = declarations.manifests
     assert package.manifest.package_id.endswith("_eodhd")
     assert package.sha256 == config.data.input_package_manifest_sha256

@@ -27,6 +27,8 @@ import pandas as pd
 from mci_gru.data.input_observations import InputObservationError, InputObservations
 
 if TYPE_CHECKING:
+    from collections.abc import Collection
+
     from mci_gru.data.input_observations import InputObservationContext
 
 logger = logging.getLogger(__name__)
@@ -516,23 +518,67 @@ def assess_pit_panel_coverage(
     end: str,
     *,
     configured_path: str | None,
+    declared_absent: Collection[str] = (),
 ) -> list[AdmissionItem]:
-    """PIT members in the experiment period must have panel rows; none are dropped."""
+    """PIT members in the experiment period must have panel rows; none are dropped.
+
+    ``declared_absent`` names members the panel declares it does not carry
+    (``data.pit_absent_kdcodes``). Their missing rows are admitted and recorded;
+    a declaration that is not true of this panel, because the name has rows or
+    no membership in the period, stops the run.
+    """
     active = intervals[(intervals["valid_from"] <= end) & (intervals["valid_to"] >= start)]
-    absent = sorted(set(active["kdcode"].astype(str)) - {str(k) for k in panel_kdcodes})
-    if not absent:
-        return []
-    return [
-        AdmissionItem(
-            role="data.pit_universe_csv",
-            rule="pit_panel_coverage",
-            verdict=Verdict.INVALID,
-            reason_code="pit_names_without_panel_rows",
-            reason="PIT members in the experiment period with no rows in the market panel",
-            configured_path=configured_path,
-            evidence={"count": len(absent), "kdcodes": absent},
+    active_names = set(active["kdcode"].astype(str))
+    panel = {str(k) for k in panel_kdcodes}
+    declared = {str(k) for k in declared_absent}
+    absent = active_names - panel
+    undeclared = sorted(absent - declared)
+    stale = sorted(declared - absent)
+    items = []
+    if undeclared:
+        items.append(
+            AdmissionItem(
+                role="data.pit_universe_csv",
+                rule="pit_panel_coverage",
+                verdict=Verdict.INVALID,
+                reason_code="pit_names_without_panel_rows",
+                reason="PIT members in the experiment period with no rows in the market panel",
+                configured_path=configured_path,
+                evidence={"count": len(undeclared), "kdcodes": undeclared},
+            )
         )
-    ]
+    if stale:
+        items.append(
+            AdmissionItem(
+                role="data.pit_universe_csv",
+                rule="pit_panel_coverage",
+                verdict=Verdict.INVALID,
+                reason_code="pit_declared_absent_not_absent",
+                reason=(
+                    "Names declared absent from the panel that have panel rows, or no "
+                    "PIT membership in the experiment period"
+                ),
+                configured_path=configured_path,
+                evidence={
+                    "count": len(stale),
+                    "kdcodes": stale,
+                    "with_panel_rows": sorted(set(stale) & panel),
+                },
+            )
+        )
+    if declared & absent:
+        items.append(
+            AdmissionItem(
+                role="data.pit_universe_csv",
+                rule="pit_panel_coverage",
+                verdict=Verdict.VALID,
+                reason_code="pit_names_declared_absent",
+                reason="PIT members the panel declares it does not carry; left off the stock axis",
+                configured_path=configured_path,
+                evidence={"count": len(declared & absent), "kdcodes": sorted(declared & absent)},
+            )
+        )
+    return items
 
 
 def breadth_floor_failure(
