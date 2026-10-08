@@ -233,13 +233,24 @@ class InputSnapshots:
             )
             raise failure from None
 
-    def use(self, observation: ObservedInput, role: str) -> None:
+    def use(
+        self, observation: ObservedInput, role: str, configured_path: str | None = None
+    ) -> None:
         """Link an accepted original observation to its actual downstream role."""
-        self.input_observations.record_use(observation.observation_id, role)
+        self.input_observations.record_use(observation.observation_id, role, configured_path)
 
     @contextmanager
-    def accepted(self, *observations: ObservedInput, role: str | None = None) -> Iterator[None]:
-        """Associate transformation success or rejection with its original inputs."""
+    def accepted(
+        self,
+        *observations: ObservedInput,
+        role: str | None = None,
+        configured_path: str | None = None,
+    ) -> Iterator[None]:
+        """Associate transformation success or rejection with its original inputs.
+
+        ``configured_path`` names the file behind an observed file read, so its use
+        carries the path as a ``read_file`` use does.
+        """
         try:
             yield
         except Exception as error:
@@ -283,7 +294,7 @@ class InputSnapshots:
             raise failure from None
         else:
             for observation in observations:
-                self.use(observation, observation.record["role"])
+                self.use(observation, observation.record["role"], configured_path)
 
     def read_file(
         self,
