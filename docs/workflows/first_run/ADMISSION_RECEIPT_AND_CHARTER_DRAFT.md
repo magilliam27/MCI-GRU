@@ -5,7 +5,7 @@
 > (ticket #278). Admission stays on **HOLD** (#187, comment 5862836271) until the
 > owner edits this, signs the release in section 3, and posts it on #187.
 > Ticket states below were read from GitHub on 2026-10-04 around 06:25 UTC, and
-> updated on 2026-10-08 for #279.
+> updated on 2026-10-08 for #279 and #275.
 
 The run this governs is the first admitted real-data run of the frozen recipe
 (`docs/DEFAULT_EXPERIMENT_RECIPE.md`) on the preserved 110-name LSEG package,
@@ -23,7 +23,7 @@ Each row is an item the run depends on, the work that delivers it, and its state
 | Two EODHD record gaps: a rule stop leaves the file read recorded as used, and the `eodhd.regime_market` verdict carries no `observation_id` | #208 | #279 | **Merged** at `24d1d2a` (gaps logged on #208, comment 5976533692) | Done |
 | Execution provenance: code, config, environment and member facts captured at execution time | #144 | #261, #265, #266 merged | Done; issue open for the owner to close (status comment 5972582665) | Owner closes the issue |
 | Interpreter and lock policy | #143 | #263 merged | Done; issue open for the owner to close (evidence comment 5975806936) | Owner closes the issue |
-| Recipe pins the fixed model forms: data-dependent latents (#198), residual cross-stock block (#197), 32-then-10 `gru_attn` layers (#131); edge channels kept as they are | #273 | #275 | Draft, awaiting the owner's merge | Merge #275 |
+| Recipe pins the fixed model forms: data-dependent latents (#198), residual cross-stock block (#197), 32-then-10 `gru_attn` layers (#131); edge channels kept as they are | #273 | #275 | **Merged** at `f2beea0` | Done |
 | S&P 500 regime input read fully from EODHD (`GSPC.INDX`), no FRED splice | #276 | #277 | **Merged** at `1a0a17b`; #276 closed | Done |
 | Raw-input validation and `run_failure.json` | #223 | #268 merged | First-run rules in force; issue stays open for the deferred index, sector and exporter rules | Nothing for this run |
 | Historical availability of the regime inputs | #224 | #272 merged (with #269, the back-fill removal) | Closed | Done |
@@ -32,11 +32,8 @@ Each row is an item the run depends on, the work that delivers it, and its state
 | Retrieval and two-copy preservation | #207 | none | Stock package: two new copies, each restored on its own 10/10 (comment 5964915801). The rest is **deferred until after the run** by the owner (2026-10-04 02:33 UTC) | Nothing for this run; see limitation 2.6 |
 | Colab launcher, EODHD staging in the regime notebooks, this draft | #278 | this pull request | Draft | Owner review and merge |
 
-Merge order the open items need: **#275, then this pull request** (#270 merged at
-`6d02778`, #274 at `1dcd818`). #275 needs `main` merged into it first, because it
-and #274 both edit `docs/DEFAULT_EXPERIMENT_RECIPE.md` and
-`tests/test_default_experiment_recipe.py`; a local trial merge on 2026-10-04
-conflicted only there, and both sides' additions apply together.
+Every recipe pull request is merged: #270 at `6d02778`, #274 at `1dcd818`, #279 at
+`24d1d2a` and #275 at `f2beea0`. Only this pull request remains.
 
 #279 merged at `24d1d2a`, and `main` with it is merged into this pull request.
 
@@ -126,12 +123,12 @@ recipe gets a new recipe id and is compared against this one (owner decision,
 | Field | Value |
 | --- | --- |
 | Purpose | First admitted real-data run of the frozen recipe; becomes the baseline for its recipe slug |
-| Recipe | `docs/DEFAULT_EXPERIMENT_RECIPE.md` at the run commit. After #275 the slug is `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10` |
+| Recipe | `docs/DEFAULT_EXPERIMENT_RECIPE.md` at the run commit. Since #275 the slug is `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10` |
 | Data | `data=gics_top10_110_2016`: PIT masked panel, 104-name session floor, train 2016-01-04 to 2023-12-31, validation 2024-01-22 to 2024-12-31, test 2025-01-22 to 2025-12-31 |
 | Model and training | `gru_attn`, 20 models x 100 epochs, patience 15, pure IC loss on raw 5-day returns, selection on validation IC |
 | Inputs | Section 2.1, captured (`data.auxiliary_snapshot_mode=capture`) |
 | Compute | Google Colab GPU runtime, `notebooks/first_run_colab.ipynb` in `full` mode |
-| Commit | _to fill: the `main` commit after #275 and this pull request merge; set as `EXPECTED_COMMIT`_ |
+| Commit | _to fill: the `main` commit after this pull request merges; set as `EXPECTED_COMMIT`_ |
 | Run tag and Drive folder | _to fill from `colab_run_record.json`_ |
 | Success | Exit code 0; no `run_failure.json`; every role admitted in `admission.json`; input attachment `complete`; 20 member records |
 | Stop rules | Any `run_failure.json` stops the run and is reported as it stands, without editing inputs. A lost runtime leaves an incomplete run: start again from the top under a new tag, never resume into the same folder |
