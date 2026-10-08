@@ -8,7 +8,8 @@ network refuses it), with the key in the environment only::
         --reference-panel <package>/market/<prefix>_lseg_20150101_20260731.csv \\
         --package-root /content/eodhd_package \\
         --cache-dir /content/eodhd_cache \\
-        --manifest-output /content/<prefix>_eodhd.r1.json
+        --manifest-output /content/<prefix>_eodhd.r2.json \\
+        --package-revision r2
 
 What it writes under ``--package-root``, as a package beside the LSEG one:
 
@@ -20,6 +21,11 @@ What it writes under ``--package-root``, as a package beside the LSEG one:
   That is per-name coverage, agreement with the reference panel, the symbol each
   stretch was read from, the reviewed map used, every vendor response as
   received, and the pull's provenance and findings.
+
+Prices are split-adjusted from EODHD's split records, plus the corporate actions
+the reviewed symbol map declares. A name with an LSEG delisted code (``^``)
+stops at its last trade: a final run of rows that repeat the previous close at
+zero volume is dropped and listed per name as ``carried_tail_dropped``.
 
 A blocking finding stops the package: the files are written for inspection,
 no manifest is published, and the exit status is 1. The key is read from

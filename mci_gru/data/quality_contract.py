@@ -523,17 +523,19 @@ def assess_pit_panel_coverage(
     """PIT members in the experiment period must have panel rows; none are dropped.
 
     ``declared_absent`` names members the panel declares it does not carry
-    (``data.pit_absent_kdcodes``). Their missing rows are admitted and recorded;
-    a declaration that is not true of this panel, because the name has rows or
-    no membership in the period, stops the run.
+    (``data.pit_absent_kdcodes``), a fact about the package rather than the
+    window. Their missing rows are admitted and recorded, whether or not they are
+    members in this period. A declaration that is not true of this panel, because
+    the name has panel rows or is in no PIT interval at all, stops the run.
     """
     active = intervals[(intervals["valid_from"] <= end) & (intervals["valid_to"] >= start)]
     active_names = set(active["kdcode"].astype(str))
+    members = set(intervals["kdcode"].astype(str))
     panel = {str(k) for k in panel_kdcodes}
     declared = {str(k) for k in declared_absent}
     absent = active_names - panel
     undeclared = sorted(absent - declared)
-    stale = sorted(declared - absent)
+    stale = sorted((declared & panel) | (declared - members))
     items = []
     if undeclared:
         items.append(
@@ -555,18 +557,19 @@ def assess_pit_panel_coverage(
                 verdict=Verdict.INVALID,
                 reason_code="pit_declared_absent_not_absent",
                 reason=(
-                    "Names declared absent from the panel that have panel rows, or no "
-                    "PIT membership in the experiment period"
+                    "Names declared absent from the panel that have panel rows, or are in "
+                    "no PIT interval"
                 ),
                 configured_path=configured_path,
                 evidence={
                     "count": len(stale),
                     "kdcodes": stale,
-                    "with_panel_rows": sorted(set(stale) & panel),
+                    "with_panel_rows": sorted(declared & panel),
                 },
             )
         )
-    if declared & absent:
+    admitted = declared - set(stale)
+    if admitted:
         items.append(
             AdmissionItem(
                 role="data.pit_universe_csv",
@@ -575,7 +578,11 @@ def assess_pit_panel_coverage(
                 reason_code="pit_names_declared_absent",
                 reason="PIT members the panel declares it does not carry; left off the stock axis",
                 configured_path=configured_path,
-                evidence={"count": len(declared & absent), "kdcodes": sorted(declared & absent)},
+                evidence={
+                    "count": len(admitted),
+                    "kdcodes": sorted(admitted),
+                    "members_in_period": sorted(admitted & active_names),
+                },
             )
         )
     return items

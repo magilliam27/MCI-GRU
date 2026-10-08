@@ -57,7 +57,8 @@ class DataConfig:
         pit_absent_kdcodes: PIT members the market panel declares it does not carry
             (#281). Admission accepts their missing rows and records the gap; any
             other member with no rows still stops the run, and a declared name that
-            has rows, or no membership in the experiment period, stops it too.
+            has rows, or is in no PIT interval, stops it too. A declared name outside
+            the experiment period is admitted: the declaration describes the package.
             Requires ``use_pit_universe``. Empty declares no gap.
         pit_cessation_events_csv: Optional declared cessation event file (#225). A stock
             leaves daily eligibility once its cessation is both effective and known by
@@ -154,6 +155,11 @@ class DataConfig:
                 raise ValueError(
                     f"pit_export_cutoff must be a YYYY-MM-DD date, got {self.pit_export_cutoff!r}"
                 ) from exc
+        if isinstance(self.pit_absent_kdcodes, str):
+            raise ValueError(
+                "data.pit_absent_kdcodes must be a list of identifiers, "
+                f"got the string {self.pit_absent_kdcodes!r}"
+            )
         self.pit_absent_kdcodes = list(self.pit_absent_kdcodes)
         if self.pit_absent_kdcodes and not self.use_pit_universe:
             raise ValueError(

@@ -128,6 +128,9 @@ def test_committed_symbol_map_parses_and_names_only_ric_shaped_identifiers():
     assert charter.factor == pytest.approx(1 / 0.9)
     (baker,) = plans["BKR.OQ"].adjustments
     assert (baker.date, baker.cash, baker.factor) == ("2017-07-05", 17.5, None)
+    # Only Ford's supplemental is restated; the vendor step would take the regular too.
+    (ford,) = plans["F.N"].adjustments
+    assert (ford.date, ford.cash) == ("2023-02-10", 0.65)
     vendor_dated = {k: [a.date for a in plans[k].adjustments] for k in ("COST.OQ", "EQR.N")}
     assert vendor_dated == {
         "COST.OQ": ["2015-02-05", "2017-05-08"],
@@ -758,6 +761,14 @@ def test_a_delisted_name_stops_at_its_last_trade(vendor):
     carried.update(date=vendor["dates"][280], volume=0.0)
     FakeClient.eod_rows = {**FakeClient.eod_rows}
     FakeClient.eod_rows["OLD_OLD.US"] = [*FakeClient.eod_rows["OLD_OLD.US"], carried]
+    # A live name ending the same way keeps its row: a quiet session is not a cessation.
+    good = [dict(row) for row in FakeClient.eod_rows["GOOD.US"]]
+    last = max(i for i, row in enumerate(good) if row["date"] <= "2016-07-29")
+    good[last].update(
+        {k: good[last - 1][k] for k in ("open", "high", "low", "close", "adjusted_close")},
+        volume=0.0,
+    )
+    FakeClient.eod_rows["GOOD.US"] = good
 
     assert export.main(_argv(vendor)) == 0
 
@@ -768,6 +779,7 @@ def test_a_delisted_name_stops_at_its_last_trade(vendor):
     symbols = json.loads(next(market.glob("*_symbols.json")).read_text())
     assert symbols["OLD.N^A16"]["carried_tail_dropped"] == [vendor["dates"][280]]
     assert symbols["GOOD.OQ"]["carried_tail_dropped"] == []
+    assert panel[panel["kdcode"] == "GOOD.OQ"]["dt"].max() == good[last]["date"]
     meta = json.loads(next(market.glob("*.meta.json")).read_text())
     codes = {(f["kdcode"], f["code"], f["blocking"]) for f in meta["findings"]}
     assert ("OLD.N^A16", "carried_tail_dropped", False) in codes

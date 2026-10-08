@@ -275,6 +275,7 @@ Input admission at the confirmed #223 seams: native read, preparation, runner.
 | `test_pit_structure_failures_stop_and_name_the_stock` |  | parametrize |
 | `test_a_declared_absent_member_is_admitted_and_recorded` |  |  |
 | `test_a_declared_absence_that_does_not_hold_stops` |  | parametrize |
+| `test_a_declared_absence_holds_for_a_window_the_name_is_not_a_member_in` |  |  |
 | `test_pit_absent_kdcodes_must_be_a_clean_pit_declaration` |  | parametrize |
 | `test_adjacent_intervals_for_one_name_are_not_an_overlap` |  |  |
 | `test_the_session_breadth_floor_stops_through_the_failure_report` |  |  |

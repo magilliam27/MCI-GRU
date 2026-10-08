@@ -431,6 +431,7 @@ def test_a_declared_absent_member_is_admitted_and_recorded(tmp_path):
     ]
     assert item["verdict"] == "valid"
     assert item["evidence"]["kdcodes"] == ["CCC"]
+    assert item["evidence"]["members_in_period"] == ["CCC"]
 
 
 @pytest.mark.parametrize(
@@ -450,13 +451,8 @@ def test_a_declared_absent_member_is_admitted_and_recorded(tmp_path):
             "pit_declared_absent_not_absent",
             "BBB",
         ),
-        # So is one with no membership in the experiment period.
-        (
-            ["AAA,2020-01-01,2020-03-31", "BBB,2020-01-01,2020-03-31", "CCC,2019-01-01,2019-06-30"],
-            ["CCC"],
-            "pit_declared_absent_not_absent",
-            "CCC",
-        ),
+        # So is one in no PIT interval at all, such as a mistyped code.
+        (_CCC_ABSENT, ["CCC", "CCX"], "pit_declared_absent_not_absent", "CCX"),
     ],
 )
 def test_a_declared_absence_that_does_not_hold_stops(
@@ -469,10 +465,27 @@ def test_a_declared_absence_that_does_not_hold_stops(
     assert "engineer_features" not in feature_calls
 
 
+def test_a_declared_absence_holds_for_a_window_the_name_is_not_a_member_in(tmp_path):
+    # The declaration describes the package, so a later window keeps it unchanged.
+    rows = ["AAA,2020-01-01,2020-03-31", "BBB,2020-01-01,2020-03-31", "CCC,2019-01-01,2019-06-30"]
+    config = _pit_config(tmp_path, rows, pit_absent_kdcodes=["CCC"])
+
+    data = prepare_data(config, FeatureEngineer(config.features))
+
+    (item,) = [
+        item
+        for item in data["admission"]["items"]
+        if item["reason_code"] == "pit_names_declared_absent"
+    ]
+    assert item["evidence"]["kdcodes"] == ["CCC"]
+    assert item["evidence"]["members_in_period"] == []
+
+
 @pytest.mark.parametrize(
     ("settings", "message"),
     [
         ({"pit_absent_kdcodes": ["CCC"]}, "requires data.use_pit_universe"),
+        ({"use_pit_universe": True, "pit_absent_kdcodes": "CCC"}, "list of identifiers"),
         ({"use_pit_universe": True, "pit_absent_kdcodes": [" "]}, "distinct non-blank"),
         ({"use_pit_universe": True, "pit_absent_kdcodes": ["C", "C"]}, "distinct non-blank"),
     ],
