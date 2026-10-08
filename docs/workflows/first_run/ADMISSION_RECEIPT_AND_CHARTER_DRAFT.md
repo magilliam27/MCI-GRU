@@ -5,18 +5,18 @@
 > (ticket #278). Admission stays on **HOLD** (#187, comment 5862836271) until the
 > owner edits this, signs the release in section 3, and posts it on #187.
 > Ticket states below were read from GitHub on 2026-10-04 around 06:25 UTC, and
-> updated on 2026-10-08 for #279 and #275.
+> updated on 2026-10-08 for #279, #275, #280 and the move to EODHD stock prices.
 
 The run this governs is the first admitted real-data run of the frozen recipe
-(`docs/DEFAULT_EXPERIMENT_RECIPE.md`) on the preserved 110-name LSEG package,
-launched from `notebooks/first_run_colab.ipynb`. Runbook:
+(`docs/DEFAULT_EXPERIMENT_RECIPE.md`) on the 110-name universe with EODHD stock
+prices (owner decision, 2026-10-08), launched from `notebooks/first_run_colab.ipynb`. Runbook:
 [`RUNBOOK.md`](RUNBOOK.md).
 
 ## 1. Receipt items
 
 Each row is an item the run depends on, the work that delivers it, and its state.
 
-| Item | Ticket | Pull requests | State, 2026-10-04 | What still closes it |
+| Item | Ticket | Pull requests | State, 2026-10-08 | What still closes it |
 | --- | --- | --- | --- | --- |
 | Run input attachment: each window keeps the package manifest and binds every read to it | #208 | #270 | **Merged** at `6d02778` | Done |
 | Capture of the regime inputs, kept in the run folder; EODHD file declared as a required input role | #208 | #274 | **Merged** at `1dcd818` | Done |
@@ -30,12 +30,14 @@ Each row is an item the run depends on, the work that delivers it, and its state
 | Dated PIT eligibility and fixed-session labels | #225 | #267 merged | Closed | Done |
 | Never-finite selection metric fails the run; walk-forward means skip NaN windows with coverage | #252, #253 | #260 merged | Closed | Done |
 | Retrieval and two-copy preservation | #207 | none | Stock package: two new copies, each restored on its own 10/10 (comment 5964915801). The rest is **deferred until after the run** by the owner (2026-10-04 02:33 UTC) | Nothing for this run; see limitation 2.6 |
-| Colab launcher, EODHD staging in the regime notebooks, this draft | #278 | this pull request | Draft | Owner review and merge |
+| Colab launcher, EODHD staging in the regime notebooks, this draft | #278 | #280 | **Merged** at `46889bd` | Done |
+| Stock prices from EODHD: the same 110-name membership, priced from an EODHD pull | #281 | #282 | Draft. The r1 package published on 2026-10-08 is replaced by r2, which drops carried zero-volume final rows on delisted codes; r2's manifest is not published yet | r2 published and pinned in the data config; owner merges |
+| Recipe selects the EODHD data config (`data=gics_top10_110_2016_eodhd`) | #283 | #284 | Draft, lands after #282. Its delisting check found a carried zero-volume final row for `ATVI.OQ^J23`, `HES.N^G25` and `WBA.OQ^H25` on r1 | The check is clean on r2; owner merges |
+| The notebook stages the package the recipe's data config declares, and no other | #285 | the staging follow-up pull request | Draft | r2's entry added once published; owner merges |
 
-Every recipe pull request is merged: #270 at `6d02778`, #274 at `1dcd818`, #279 at
-`24d1d2a` and #275 at `f2beea0`. Only this pull request remains.
-
-#279 merged at `24d1d2a`, and `main` with it is merged into this pull request.
+Merged: #270 at `6d02778`, #274 at `1dcd818`, #279 at `24d1d2a`, #275 at `f2beea0`
+and #280 at `46889bd`. Still open before the run: #282, #284 and the staging
+follow-up.
 
 ## 2. The six receipt sections of #187 (comment 5862836271)
 
@@ -43,17 +45,20 @@ Every recipe pull request is merged: #270 at `6d02778`, #274 at `1dcd818`, #279 
 
 | Input | Identity | Where the run gets it |
 | --- | --- | --- |
-| Stock package `sp500_pit_gics_top10_mcap_monthly_20160104_20260731` r1 | Manifest `data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731.r1.json`, SHA-256 `1e2043dcb4f00a88de128985cc94423c122e480034c16ec741710a2460653ecf`; 10 files, 46,502,119 bytes | Drive `MCI_GRU_shared/preservation/2026-10-02-110-universe-2016`. The notebook checks Drive `MANIFEST.txt` against the digest r1 records for it (`2a35394d…e502`, 1,888 bytes), requires its inventory to equal r1's records, and runs `validate_input_package` on the staged files |
+| Stock package `sp500_pit_gics_top10_mcap_monthly_20160104_20260731`, EODHD prices, r2 | Manifest path and SHA-256: _to fill when r2 is published_. Its point-in-time membership file is byte-identical to the LSEG package's. Pre-merger DuPont (`DD.N^I17`) has no EODHD price history and is declared absent in `data.pit_absent_kdcodes` (#282) | Drive, the r2 package folder under `MCI_GRU_shared/preservation/` (_to fill_). The notebook stages the package the recipe's data config declares, requires the copy of the manifest at the folder's top to have the pinned bytes, and runs `validate_input_package` on the staged files |
 | EODHD S&P 500 index (`GSPC.INDX`), pull of 2026-09-19 | `data/raw/market/eodhd_sp500_2010_20260919/sp500_index.csv`, 351,815 bytes, SHA-256 `9f5cfaf5e9f057065b83619b01568164e1f61a45df9453c66269fb54f080f5ac` (matches that pull's `inventory.json`) | Drive `MCI_GRU_shared/preservation/eodhd_sp500_2010_20260919/`, beside the package folder. The notebook stops on any other bytes |
 | Five FRED regime series: `DGS10`, `DGS3MO`, `DCOILWTICO`, `VIXCLS`, `PCOPPUSDM` | Values as FRED serves them on the run date; revisions unchecked (agenda answer 3) | Requested live with the owner's key from Colab secrets, captured byte-exact into `input_snapshots/` in the run folder (#274) |
 
 No basename fallback for required selected files (#223), and no provider or symbol
 substitution (#187 ruling of 2026-09-21).
 
-**Pending change (2026-10-08):** the owner plans to move the run's stock prices to
-an EODHD pull (#282). The stock package row above, and the notebook's staging,
-change once that package's manifest exists; until then they describe the LSEG
-package.
+The LSEG package (manifest
+`data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731.r1.json`,
+SHA-256 `1e2043dcb4f00a88de128985cc94423c122e480034c16ec741710a2460653ecf`, Drive
+`MCI_GRU_shared/preservation/2026-10-02-110-universe-2016`) stays the base default
+in `configs/config.yaml`, and the notebook stages it when the recipe names
+`data=gics_top10_110_2016`. It is not this run's input. The EODHD r1 package is
+replaced by r2 and must not be staged; the notebook carries no pin for it.
 
 ### 2.2 Admission findings
 
@@ -117,6 +122,10 @@ recipe gets a new recipe id and is compared against this one (owner decision,
    uses none of those inputs.
 7. MLflow tracking is off for the run (`tracking.enabled=false`), because the lock
    does not carry the `tracking` extra.
+8. **Pre-merger DuPont is absent** (`DD.N^I17`, owner decision 2026-10-08 02:32
+   UTC). EODHD has no price history for it, and no LSEG prices are mixed in, so
+   from January 2016 to August 2017 the panel scores at most 109 names (session
+   floor 104). The data config declares the gap in `data.pit_absent_kdcodes`.
 
 ## 3. Run charter
 
@@ -124,11 +133,11 @@ recipe gets a new recipe id and is compared against this one (owner decision,
 | --- | --- |
 | Purpose | First admitted real-data run of the frozen recipe; becomes the baseline for its recipe slug |
 | Recipe | `docs/DEFAULT_EXPERIMENT_RECIPE.md` at the run commit. Since #275 the slug is `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10` |
-| Data | `data=gics_top10_110_2016`: PIT masked panel, 104-name session floor, train 2016-01-04 to 2023-12-31, validation 2024-01-22 to 2024-12-31, test 2025-01-22 to 2025-12-31 |
+| Data | `data=gics_top10_110_2016_eodhd`: EODHD prices on the same PIT membership file and windows as `gics_top10_110_2016`; PIT masked panel, 104-name session floor, train 2016-01-04 to 2023-12-31, validation 2024-01-22 to 2024-12-31, test 2025-01-22 to 2025-12-31 |
 | Model and training | `gru_attn`, 20 models x 100 epochs, patience 15, pure IC loss on raw 5-day returns, selection on validation IC |
 | Inputs | Section 2.1, captured (`data.auxiliary_snapshot_mode=capture`) |
 | Compute | Google Colab GPU runtime, `notebooks/first_run_colab.ipynb` in `full` mode |
-| Commit | _to fill: the `main` commit after this pull request merges; set as `EXPECTED_COMMIT`_ |
+| Commit | _to fill: the `main` commit after the last of #282, #284 and the staging follow-up merges; set as `EXPECTED_COMMIT`_ |
 | Run tag and Drive folder | _to fill from `colab_run_record.json`_ |
 | Success | Exit code 0; no `run_failure.json`; every role admitted in `admission.json`; input attachment `complete`; 20 member records |
 | Stop rules | Any `run_failure.json` stops the run and is reported as it stands, without editing inputs. A lost runtime leaves an incomplete run: start again from the top under a new tag, never resume into the same folder |

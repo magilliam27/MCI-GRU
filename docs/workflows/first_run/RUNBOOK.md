@@ -8,9 +8,12 @@ draft is [`ADMISSION_RECEIPT_AND_CHARTER_DRAFT.md`](ADMISSION_RECEIPT_AND_CHARTE
 
 ## Once, before the first run
 
-1. **Merge the pull request that adds this runbook.** #270, #274 and #275 are
-   already merged. In `full` mode the notebook checks the cloned commit for each
-   of them and names any that is missing.
+1. **Merge what the run needs.** #270, #274, #275 and #280 are merged. The run
+   on EODHD prices also needs #282 (the EODHD price package, r2), #284 (the recipe
+   selects it) and the staging follow-up, which gives the notebook r2's pin. In
+   `full` mode the notebook checks the cloned commit and names anything missing.
+   The EODHD price package itself is published to Drive by the Colab pull, so
+   there is nothing to copy for it.
 2. **Put the EODHD S&P 500 file on Drive.** Copy the whole folder
    `C:\Users\magil\MCI-GRU\data\raw\market\eodhd_sp500_2010_20260919\` (it holds
    `sp500_index.csv` and the pull's `inventory.json`) into
@@ -40,7 +43,8 @@ draft is [`ADMISSION_RECEIPT_AND_CHARTER_DRAFT.md`](ADMISSION_RECEIPT_AND_CHARTE
    - install `requirements.lock`, then the repository with `--no-deps`, and check
      that every pin is installed and a CUDA GPU is visible;
    - check the commit for #270, #274 and #275;
-   - stage and verify the package and the EODHD file;
+   - stage and verify the stock package the recipe's data config declares, and
+     the EODHD S&P 500 file;
    - run the recipe (it stages and verifies again first), copying the run folder to
      `MyDrive/MCI_GRU_shared/runs/first_run/<run tag>/` every 10 minutes and at
      the end;
@@ -55,13 +59,14 @@ draft is [`ADMISSION_RECEIPT_AND_CHARTER_DRAFT.md`](ADMISSION_RECEIPT_AND_CHARTE
 | `Environment check FAILED` with `No CUDA GPU visible` on a GPU runtime | The PyPI `torch==2.12.1` wheel targets a newer CUDA driver than the runtime has | Set `TORCH_INDEX_URL` to a PyTorch wheel index for an older CUDA build of the same version (for example `https://download.pytorch.org/whl/cu128`), disconnect and delete the runtime, and run all again |
 | `Environment check FAILED` listing packages | A pin did not install, or Colab's Python is not 3.12 | Read the list; do not run with a mismatched lock |
 | `MISSING #270` / `#274` / `#275` | The commit lacks that pull request | Merge it, or run `smoke` for a mechanics check only |
+| `does not declare a package this notebook knows` | The recipe's data config names a stock package the notebook has no pin for | Run a commit whose notebook pins that package; never add a pin that was not checked against the published manifest |
 | `Missing on Drive` or `does not match its pin` | A staged file is absent or has other bytes | Fix the Drive copy; never edit the pin to match |
 | `run_failure.json` in the run folder | An input failed admission before training | Report it as it stands; do not edit inputs to get past it |
 | The runtime disconnects | The run is incomplete | Start again from the top; the new run gets a new tag and folder |
 
 ## What the notebook changes in the clone
 
-- Two of the package's sidecar `.json` files are tracked in git with LF line
+- For the LSEG package only: two of its sidecar `.json` files are tracked in git with LF line
   endings, while the package pins the CRLF bytes they were preserved with. Staging
   checks that the committed file with CRLF endings has exactly the pinned digest,
   marks those two paths `text eol=crlf` in the clone's `.git/info/attributes`, and
