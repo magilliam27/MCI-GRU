@@ -188,6 +188,7 @@ def test_without_its_data_line_the_recipe_would_read_the_lseg_panel():
 
 
 def test_recipe_records_the_price_panel_change():
+    """The 2026-10-08 EODHD switch is dated, so LSEG- and EODHD-panel evidence stay apart."""
     text = RECIPE.read_text(encoding="utf-8")
     assert "The price panel changed on 2026-10-08" in text
     match = re.search(r"^Last updated:\s*(\d{4}-\d{2}-\d{2})$", text, re.M)

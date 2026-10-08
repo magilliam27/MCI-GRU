@@ -301,7 +301,7 @@ Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
 | `test_recipe_captures_its_provider_inputs` | The owner chose capture for the first run (2026-10-04); source leaves inputs unverifiable. |  |
 | `test_the_recipe_trains_on_the_eodhd_price_panel` | Issue 283: the first run reads the EODHD package, not the LSEG one (owner, 2026-10-08). |  |
 | `test_without_its_data_line_the_recipe_would_read_the_lseg_panel` | Control: the test above must come from the recipe's selector, not the base default. |  |
-| `test_recipe_records_the_price_panel_change` |  |  |
+| `test_recipe_records_the_price_panel_change` | The 2026-10-08 EODHD switch is dated, so LSEG- and EODHD-panel evidence stay apart. |  |
 
 ## `tests/test_drop_edge_rng_isolation.py`
 
@@ -606,6 +606,8 @@ The first run declares no cessation file; this pins why that is safe, and when n
 | `test_tail_check_flags_a_carried_tail_and_passes_a_clean_history` |  |  |
 | `test_tail_check_exit_code_follows_the_finding` |  |  |
 | `test_tail_check_reads_the_panel_the_recipe_selects` | The precondition must run on the panel the first run reads (issue 283). |  |
+| `test_tail_check_reads_the_selector_only_inside_the_override_block` |  |  |
+| `test_tail_check_flags_one_carried_zero_volume_row` | A vendor row for the delisting day repeats the close at zero volume (EODHD, 2026-10-08). |  |
 
 ## `tests/test_generate_test_registry.py`
 

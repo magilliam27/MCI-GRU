@@ -55,10 +55,12 @@ runs unless an experiment is explicitly testing one of these factors.
 > | input package | LSEG r1 manifest | `data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_eodhd.r1.json` |
 > | names scored in 2016-01..2017-08 | at most 110 | at most 109: the pre-merger DuPont (`DD.N^I17`) has no EODHD history |
 >
-> Each name's EODHD daily returns were checked against the LSEG panel over the
-> span the universe needs before the package was accepted. The prices are
-> split-adjusted and carry no dividends, which is the LSEG panel's basis. Results
-> on the two panels are close but are not the same run.
+> Before the package was accepted, each name in the panel had its EODHD daily
+> returns checked against the LSEG panel over the span the universe needs. The
+> prices are split-adjusted, plus the spin-offs, share conversions and special
+> dividends declared in `data/mappings/eodhd_symbols_gics_top10_110_2016.json`.
+> Regular dividends are not applied, which matches the LSEG panel's basis.
+> Results on the two panels are close but are not the same run.
 
 Recipe slug:
 
@@ -168,15 +170,29 @@ features.regime_min_history_months=24
   - **Precondition, checked on the real panel before the run:**
     `python scripts/check_delisted_tails.py`. By default it reads the panel of
     the data config this recipe selects. Exit 1 means a delisted name ends
-    in repeated closes or zero volume. That name then needs a cessation row dated
+    in repeated closes or zero volume, or in a single row that repeats the
+    previous close with no volume. That name then needs a cessation row dated
     to its real last session, or the carried rows removed at source. The #223
     frozen-price rule does not catch this, because it flags only a history that
     is constant throughout. On 2026-10-04 it passed against the LSEG panel: exit
     0, all six delisted names ended cleanly (0 repeated closes, 0 zero-volume
     sessions), and with `--all` so did all 206 names. That result does not carry
-    over to the EODHD panel: #281's acceptance compares returns only up to each
-    name's last window, so rows after a delisting are unchecked there. Run it
-    again on the EODHD panel before the first run.
+    over to the EODHD panel. #281's acceptance compares returns only on LSEG
+    sessions, up to 10 days after each name's last window, so a row after a
+    delisting is unchecked there.
+  - **On the EODHD panel the precondition is not yet met.** Run on 2026-10-08
+    against the published r1 panel (sha256 matches the manifest), the check
+    flags three names. Each keeps one row on its delisting day that repeats the
+    previous close at zero volume, one session after its last LSEG close:
+    ATVI.OQ^J23 (2023-10-13), HES.N^G25 (2025-07-18) and WBA.OQ^H25
+    (2025-08-28). Each row keeps that name tradable for one session. It adds a
+    0-return, zero-volume row to the features and to that date's cross-section,
+    and HES and WBA fall in the 2025 test window. Labels on those rows are
+    unobservable, so the loss is unchanged. The fix belongs to the price
+    package (#281): drop the rows at source, or declare cessations with
+    `known_from` evidence before each delisting day. PSKY.OQ, a live name, also ends in
+    two zero-volume repeats, in its last rows to 2026-07-31. That is after the
+    test window and its labels, so it does not touch this run.
   - A cessation dated on a name's final session and known by 20:00 New York that
     day would also drop that one session from the cross-section. Its own loss is
     unchanged, but other names' scores on that date move slightly. The likely

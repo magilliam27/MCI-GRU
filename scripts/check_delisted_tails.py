@@ -11,9 +11,10 @@ its whole history is constant. See docs/DEFAULT_EXPERIMENT_RECIPE.md.
 Read-only. By default it reads the market CSV of the data config the recipe
 selects (its ``data=<group>`` line), inspects the names carrying an LSEG delisted
 suffix (``^``), prints one line per name, and exits 1 when a name ends in a run
-of identical closes or zero volume at least ``--min-stale`` sessions long. The
-EODHD panel keeps the LSEG identifiers, so the suffix still marks its delisted
-names.
+of identical closes or zero volume at least ``--min-stale`` sessions long, or in
+one row that repeats the previous close with zero volume: a carried row, such as
+a vendor's entry for the delisting day itself. The EODHD panel keeps the LSEG
+identifiers, so the suffix still marks its delisted names.
 
     python scripts/check_delisted_tails.py
     python scripts/check_delisted_tails.py --market-csv path/to/panel.csv --all
@@ -34,7 +35,8 @@ from omegaconf import OmegaConf
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RECIPE = PROJECT_ROOT / "docs" / "DEFAULT_EXPERIMENT_RECIPE.md"
-# `data=<group>` on its own line, as the recipe's override block writes it.
+# The recipe's override block, and `data=<group>` on its own line inside it.
+OVERRIDE_BLOCK = re.compile(r"^## Hydra Overrides\n+```text\n(.*?)^```", re.M | re.S)
 DATA_SELECTOR = re.compile(r"^data=([A-Za-z0-9_]+)$", re.M)
 DELISTED_MARKER = "^"
 
@@ -56,7 +58,8 @@ def tail_report(
 
     ``trailing_repeat_sessions`` counts sessions after the first of a final run
     of identical finite closes, so a clean history scores 0. ``stale`` is true
-    when that count or the final run of zero-volume rows reaches ``min_stale``.
+    when that count or the final run of zero-volume rows reaches ``min_stale``,
+    or when the last row both repeats the previous close and has zero volume.
     """
     records = []
     for kdcode in kdcodes:
@@ -91,7 +94,11 @@ def tail_report(
                 "last_finite_close_dt": str(dates[-1]),
                 "trailing_repeat_sessions": int(repeat),
                 "trailing_zero_volume_sessions": int(zero_volume),
-                "stale": bool(repeat >= min_stale or zero_volume >= min_stale),
+                "stale": bool(
+                    repeat >= min_stale
+                    or zero_volume >= min_stale
+                    or (repeat >= 1 and zero_volume >= 1)
+                ),
             }
         )
     return records
@@ -99,9 +106,10 @@ def tail_report(
 
 def recipe_data_config(recipe: Path = RECIPE) -> Path:
     """The data config the recipe selects, so the check reads the panel the run reads."""
-    match = DATA_SELECTOR.search(recipe.read_text(encoding="utf-8"))
+    block = OVERRIDE_BLOCK.search(recipe.read_text(encoding="utf-8"))
+    match = DATA_SELECTOR.search(block.group(1)) if block else None
     if match is None:
-        raise SystemExit(f"{recipe} selects no data config; pass --market-csv")
+        raise SystemExit(f"{recipe}'s override block selects no data config; pass --market-csv")
     return PROJECT_ROOT / "configs" / "data" / f"{match.group(1)}.yaml"
 
 
