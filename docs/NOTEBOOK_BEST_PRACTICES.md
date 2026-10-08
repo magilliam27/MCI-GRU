@@ -210,7 +210,7 @@ Keep matrices small enough to answer the stated question.
 Run names should be deterministic, readable, and path-safe:
 
 ```text
-static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1
+static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10
 ```
 
 ## Hydra Overrides
@@ -219,7 +219,9 @@ Build overrides as lists and compose them from named factor blocks. Avoid inline
 string construction scattered across cells.
 
 Every notebook should include these baseline overrides unless the experiment is
-specifically testing them:
+specifically testing them. They follow the frozen recipe in
+[DEFAULT_EXPERIMENT_RECIPE.md](DEFAULT_EXPERIMENT_RECIPE.md), which is the
+source of truth when the two differ:
 
 ```text
 seed=1729
@@ -243,6 +245,13 @@ training.label_type=returns
 training.selection_metric=val_ic
 training.shuffle_train=true
 model.label_t=5
+model.temporal_encoder=gru_attn
+model.use_multi_scale=true
+model.gru_hidden_sizes=[32,10]
+model.gru_attn_layer_widths=per_layer
+model.use_nn_multihead_attention=true
+model.market_latent_mode=data_dependent
+model.cross_section_block=residual
 ```
 
 For graph experiments, always record:

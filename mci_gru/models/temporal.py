@@ -94,35 +94,75 @@ class ImprovedGRU(nn.Module):
         return layer_input
 
 
+GRU_ATTN_LAYER_WIDTHS = ("shared", "per_layer")
+
+
 class GRUWithAttention(nn.Module):
     """
     Fused `nn.GRU` over time + single post-hoc scaled dot-product readout.
 
-    Stacked `nn.GRU` uses one hidden size (the last in ``hidden_sizes``) for all
-    layers — unlike :class:`ImprovedGRU`, which can use different per-layer sizes.
+    ``layer_widths`` says how ``hidden_sizes`` is read (issue #131):
+
+    - ``"shared"`` (the shipped behaviour): one stacked ``nn.GRU`` with
+      ``len(hidden_sizes)`` layers, all of width ``hidden_sizes[-1]``, so
+      ``[32, 10]`` builds two layers of width 10.
+    - ``"per_layer"``: one single-layer ``nn.GRU`` per entry, each entry that
+      layer's width, as :class:`ImprovedGRU` reads it, so ``[32, 10]`` builds a
+      32-wide layer feeding a 10-wide one. Each layer is still CuDNN-fused.
+
+    The two forms hold different parameter names, so a checkpoint belongs to
+    the form that produced it.
     """
 
-    def __init__(self, input_size: int, hidden_sizes: list[int] = None):
+    def __init__(
+        self,
+        input_size: int,
+        hidden_sizes: list[int] = None,
+        layer_widths: str = "shared",
+    ):
         super().__init__()
         if hidden_sizes is None:
             hidden_sizes = [32, 10]
+        if layer_widths not in GRU_ATTN_LAYER_WIDTHS:
+            raise ValueError(
+                f"layer_widths must be one of {GRU_ATTN_LAYER_WIDTHS}, got {layer_widths!r}"
+            )
         self.hidden_sizes = hidden_sizes
-        n_layers = len(hidden_sizes)
+        self.layer_widths = layer_widths
         d_h = hidden_sizes[-1]
         self.output_size = d_h
-        self.gru = nn.GRU(
-            input_size,
-            d_h,
-            num_layers=n_layers,
-            batch_first=True,
-        )
+        if layer_widths == "per_layer":
+            self.gru = None
+            widths = [input_size, *hidden_sizes]
+            self.grus = nn.ModuleList(
+                nn.GRU(widths[i], widths[i + 1], num_layers=1, batch_first=True)
+                for i in range(len(hidden_sizes))
+            )
+        else:
+            self.gru = nn.GRU(
+                input_size,
+                d_h,
+                num_layers=len(hidden_sizes),
+                batch_first=True,
+            )
+            self.grus = None
         self.ln = nn.LayerNorm(d_h)
         self.scale = d_h**-0.5
+
+    def _run_gru(self, x2: torch.Tensor) -> torch.Tensor:
+        """Hidden states of the last layer at every step, ``(B*N, T, H)``."""
+        if self.grus is None:
+            out, _ = self.gru(x2)
+            return out
+        out = x2
+        for layer in self.grus:
+            out, _ = layer(out)
+        return out
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         batch, num_stocks, tlen, f_in = x.shape
         x2 = x.reshape(batch * num_stocks, tlen, f_in)
-        out, _ = self.gru(x2)
+        out = self._run_gru(x2)
         h_t = out[:, -1, :]
         scores = (out * h_t.unsqueeze(1)).sum(-1) * self.scale
         alpha = F.softmax(scores, dim=-1)
@@ -134,7 +174,7 @@ class GRUWithAttention(nn.Module):
         """GRU hidden states at every step (before attention readout), ``(B, N, T, H)``."""
         batch, num_stocks, tlen, f_in = x.shape
         x2 = x.reshape(batch * num_stocks, tlen, f_in)
-        out, _ = self.gru(x2)
+        out = self._run_gru(x2)
         return out.view(batch, num_stocks, tlen, -1)
 
 
@@ -224,6 +264,7 @@ class MultiScaleTemporalEncoder(nn.Module):
         slow_kernel: int = 5,
         slow_stride: int = 2,
         temporal_encoder: str = "legacy",
+        gru_attn_layer_widths: str = "shared",
     ):
         super().__init__()
         if hidden_sizes is None:
@@ -239,10 +280,10 @@ class MultiScaleTemporalEncoder(nn.Module):
         elif temporal_encoder == "transformer":
             d_h = hidden_sizes[-1]
             self.fast_gru = CausalTransformerEncoder(input_size, d_h)
-            self.slow_gru = GRUWithAttention(input_size, hidden_sizes)
+            self.slow_gru = GRUWithAttention(input_size, hidden_sizes, gru_attn_layer_widths)
         else:
-            self.fast_gru = GRUWithAttention(input_size, hidden_sizes)
-            self.slow_gru = GRUWithAttention(input_size, hidden_sizes)
+            self.fast_gru = GRUWithAttention(input_size, hidden_sizes, gru_attn_layer_widths)
+            self.slow_gru = GRUWithAttention(input_size, hidden_sizes, gru_attn_layer_widths)
 
         self.slow_aggregator = nn.Conv1d(
             in_channels=input_size,

@@ -70,6 +70,7 @@ model:
   cross_a2_num_heads: 4
   cross_section_block: legacy  # legacy | residual (issue #197; legacy replaces z, residual corrects it)
   market_latent_mode: static  # static | data_dependent (issue #198; static latents cannot see the date)
+  gru_attn_layer_widths: shared  # shared | per_layer (issue #131; shared builds [32, 10] as two width-10 layers)
 
 # Graph configuration
 graph:

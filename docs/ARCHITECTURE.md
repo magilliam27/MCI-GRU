@@ -213,7 +213,13 @@ Input: time_series (B, N, T, F)        graph_features (B*N, F)
 
 - `legacy` — `ImprovedGRU`, built from `AttentionResetGRUCell`, which replaces
   the GRU reset gate with a scaled dot-product attention term;
-- `gru_attn` — stacked `nn.GRU` plus a single post-hoc attention readout;
+- `gru_attn` — stacked `nn.GRU` plus a single post-hoc attention readout.
+  `model.gru_attn_layer_widths` says how it reads `model.gru_hidden_sizes`
+  (issue #131): `shared`, the default, builds `len(gru_hidden_sizes)` layers all
+  at the last entry's width, so `[32, 10]` is two width-10 layers; `per_layer`
+  builds one layer per entry at that entry's width, so `[32, 10]` is 32 then 10.
+  The two forms hold different parameter names, so a checkpoint belongs to the
+  form that produced it;
 - `transformer` — a causal `nn.TransformerEncoder` stack.
 
 With `model.use_multi_scale=true`, `MultiScaleTemporalEncoder` runs a fast branch

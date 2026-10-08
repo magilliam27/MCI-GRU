@@ -45,4 +45,5 @@ def create_model(input_size: int, config: dict[str, Any]) -> StockPredictionMode
         cross_a2_num_heads=int(config.get("cross_a2_num_heads", 4)),
         cross_section_block=config.get("cross_section_block", "legacy"),
         market_latent_mode=config.get("market_latent_mode", "static"),
+        gru_attn_layer_widths=config.get("gru_attn_layer_widths", "shared"),
     )

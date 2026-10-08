@@ -553,10 +553,13 @@ class ModelConfig:
             ``close[t + label_t] / close[t + 1] - 1``, so values below 2 are
             rejected: 1 makes every label zero, and 0 or less exits before entry.
         gru_hidden_sizes: Encoder-dependent recurrent shape. ``legacy`` uses each
-            entry as that layer's width; ``gru_attn`` uses the list length as
-            the layer count and the final entry as the shared width. With
-            ``transformer``, the final entry is the fast-path ``d_model`` and
-            the slow multi-scale branch keeps the ``gru_attn`` semantics.
+            entry as that layer's width. ``gru_attn`` reads it as
+            ``gru_attn_layer_widths`` says: ``shared`` uses the list length as
+            the layer count and the final entry as the shared width;
+            ``per_layer`` uses each entry as that layer's width, as ``legacy``
+            does. With ``transformer``, the final entry is the fast-path
+            ``d_model`` and the slow multi-scale branch keeps the ``gru_attn``
+            semantics.
         hidden_size_gat1: Hidden size for first GAT layer
         output_gat1: Output size for first GAT layer
         gat_heads: Number of attention heads in GAT
@@ -595,6 +598,13 @@ class ModelConfig:
             ``"data_dependent"`` lets the latents read the date's active
             cross-section before each stock reads them. Defaults to ``"static"``
             for checkpoint compatibility.
+        gru_attn_layer_widths: How ``gru_attn`` reads ``gru_hidden_sizes``
+            (issue #131). ``"shared"`` keeps the shipped behaviour, where
+            ``[32, 10]`` builds two layers of width 10. ``"per_layer"`` builds
+            one layer per entry at that entry's width, so ``[32, 10]`` builds a
+            32-wide layer then a 10-wide one. Defaults to ``"shared"`` for
+            checkpoint compatibility; ``legacy`` and the transformer fast path
+            do not read it.
     """
 
     his_t: int = 10
@@ -623,11 +633,13 @@ class ModelConfig:
     cross_a2_num_heads: int = 4
     cross_section_block: str = "legacy"
     market_latent_mode: str = "static"
+    gru_attn_layer_widths: str = "shared"
 
     _VALID_OUTPUT_ACTIVATIONS = ("none", "elu", "relu", "sigmoid")
     _VALID_TEMPORAL_ENCODERS = ("legacy", "gru_attn", "transformer")
     _VALID_CROSS_SECTION_BLOCKS = ("legacy", "residual")
     _VALID_MARKET_LATENT_MODES = ("static", "data_dependent")
+    _VALID_GRU_ATTN_LAYER_WIDTHS = ("shared", "per_layer")
 
     def __post_init__(self):
         if self.label_t < 2:
@@ -660,6 +672,11 @@ class ModelConfig:
             raise ValueError(
                 f"market_latent_mode must be one of {self._VALID_MARKET_LATENT_MODES}, "
                 f"got {self.market_latent_mode!r}"
+            )
+        if self.gru_attn_layer_widths not in self._VALID_GRU_ATTN_LAYER_WIDTHS:
+            raise ValueError(
+                f"gru_attn_layer_widths must be one of {self._VALID_GRU_ATTN_LAYER_WIDTHS}, "
+                f"got {self.gru_attn_layer_widths!r}"
             )
         if self.market_latent_mode == "data_dependent" and not self.use_nn_multihead_attention:
             # Per-date latents need per-date keys, which the legacy 8-Linear
@@ -705,6 +722,7 @@ class ModelConfig:
             "cross_a2_num_heads": self.cross_a2_num_heads,
             "cross_section_block": self.cross_section_block,
             "market_latent_mode": self.market_latent_mode,
+            "gru_attn_layer_widths": self.gru_attn_layer_widths,
         }
 
 

@@ -283,6 +283,8 @@ Input admission at the confirmed #223 seams: native read, preparation, runner.
 
 Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
 
+**Exercises:** `mci_gru.config`, `mci_gru.graph.utils`, `mci_gru.models`
+
 | Test | Description | Markers |
 |---|---|---|
 | `test_recipe_pins_a_data_config_explicitly` | Without this, the recipe silently inherits configs/config.yaml. |  |
@@ -291,6 +293,11 @@ Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
 | `test_the_pinned_universe_is_a_csv_source_not_lseg` | The recipe must not silently depend on the live-LSEG path. |  |
 | `test_recipe_records_that_the_universe_changed` | The change must be stated, or pre- and post-change evidence gets compared. |  |
 | `test_recipe_last_updated_is_not_stale_relative_to_the_change` |  |  |
+| `test_the_recipe_builds_data_dependent_market_latents` | Issue 198: static latents cannot see the date, so the first run must not use them. |  |
+| `test_the_recipe_builds_the_residual_cross_stock_block` | Issue 197: the legacy block replaces z and discards most cross-sectional variation. |  |
+| `test_the_recipe_builds_gru_attn_layers_at_32_then_10` | Issue 131: [32, 10] must mean a 32-wide layer then a 10-wide one. |  |
+| `test_the_base_config_alone_still_builds_the_legacy_forms` | Control: the two tests above must come from the recipe's own pins. |  |
+| `test_the_override_block_parser_reads_the_block` | Control: an empty parse would make every composition test vacuous. |  |
 | `test_recipe_captures_its_provider_inputs` | The owner chose capture for the first run (2026-10-04); source leaves inputs unverifiable. |  |
 
 ## `tests/test_drop_edge_rng_isolation.py`
@@ -529,6 +536,20 @@ Every feature group must accept the regime overrides that launchers pass, withou
 | `test_feature_drift_is_near_zero_for_matching_distribution` |  |  |
 | `test_feature_drift_flags_shifted_distribution` |  |  |
 | `test_missing_feature_reference_returns_not_available` |  |  |
+
+## `tests/test_first_run_cessation.py`
+
+The first run declares no cessation file; this pins why that is safe, and when not.
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.pit`, `mci_gru.data.preprocessing`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_without_a_price_tail_the_cessation_file_changes_no_tradable_or_loss_row` |  |  |
+| `test_with_a_carried_price_tail_the_cessation_file_does_change_the_masks` | Control: carried closes after delisting make the undeclared run train on them. |  |
+| `test_the_recipe_declares_no_cessation_file` | The decision this module justifies; a declared file needs the recipe note revisited. |  |
+| `test_tail_check_flags_a_carried_tail_and_passes_a_clean_history` |  |  |
+| `test_tail_check_exit_code_follows_the_finding` |  |  |
 
 ## `tests/test_first_run_colab.py`
 
@@ -776,6 +797,25 @@ Graph-zeroed control arm (issue 165, semantics fixed by the issue-164 protocol).
 | `test_zeroed_build_scalar_and_lead_lag_widths` |  |  |
 | `test_zeroed_build_still_builds_sector_branch` |  |  |
 | `test_zeroed_output_invariant_to_panel_correlation_structure` | Two panels whose correlation structure is opposite (+1 vs -1) must give |  |
+
+## `tests/test_gru_attn_layer_widths.py`
+
+Issue 131: how ``gru_attn`` reads ``model.gru_hidden_sizes``.
+
+**Exercises:** `mci_gru.config`, `mci_gru.models`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_per_layer_builds_each_entry_at_its_own_width` |  |  |
+| `test_shared_still_builds_two_layers_of_the_last_width` | Control: the shipped form is unchanged, so old checkpoints still match it. |  |
+| `test_per_layer_forward_and_sequence_shapes_and_gradients` |  |  |
+| `test_per_layer_output_depends_on_the_first_layer` | The 32-wide layer must feed the 10-wide one, not sit beside it. |  |
+| `test_create_model_routes_the_setting_to_both_multi_scale_branches` |  |  |
+| `test_create_model_default_keeps_the_shared_form` | Control for the routing test: without the key the model is the shipped one. |  |
+| `test_create_model_routes_the_setting_without_multi_scale` |  |  |
+| `test_create_model_routes_the_setting_to_the_transformer_slow_branch` | Transformer mode keeps a gru_attn slow branch, which must read the setting too. |  |
+| `test_model_config_validates_and_serialises_the_setting` |  |  |
+| `test_encoder_rejects_an_unknown_layer_widths_value` |  |  |
 
 ## `tests/test_index_level_mode.py`
 
