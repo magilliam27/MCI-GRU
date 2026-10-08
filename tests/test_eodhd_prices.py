@@ -8,6 +8,7 @@ to a manifest the run can verify.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -16,8 +17,11 @@ import numpy as np
 import pandas as pd
 import pytest
 import yaml
+from hydra import compose, initialize_config_dir
+from omegaconf import OmegaConf
 
 import scripts.data.export_eodhd_pit_prices as export
+from mci_gru.config import create_config_from_dict
 from mci_gru.data.eodhd_prices import (
     PriceAdjustment,
     SymbolMapError,
@@ -44,7 +48,9 @@ from mci_gru.data.input_manifest import (
     validate_input_package,
     write_input_manifest,
 )
+from mci_gru.data.input_observations import InputObservationContext
 from mci_gru.data.quality_contract import Verdict, assess_market_panel
+from mci_gru.evaluation.run_input_declarations import declare_window_inputs
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
@@ -856,3 +862,59 @@ def test_notebook_reads_the_key_from_secrets_and_never_prints_it():
     assert 'userdata.get("EODHD_API_KEY")' in source
     assert "print(os.environ" not in source
     assert "EODHD_API_KEY=" not in source
+
+
+# ---------------------------------------------------------------------------
+# The published package and its data config
+# ---------------------------------------------------------------------------
+
+EODHD_CONFIG = REPO_ROOT / "configs" / "data" / "gics_top10_110_2016_eodhd.yaml"
+LSEG_CONFIG = REPO_ROOT / "configs" / "data" / "gics_top10_110_2016.yaml"
+
+
+def test_the_eodhd_config_changes_only_the_price_panel_and_its_package():
+    eodhd = OmegaConf.to_container(OmegaConf.load(EODHD_CONFIG))
+    lseg = OmegaConf.to_container(OmegaConf.load(LSEG_CONFIG))
+    package_keys = {"filename", "input_package_manifest", "input_package_manifest_sha256"}
+    assert set(eodhd) == set(lseg)
+    assert {k for k in eodhd if eodhd[k] != lseg[k]} == package_keys
+    assert "_eodhd_" in eodhd["filename"]
+
+
+def test_the_eodhd_package_carries_the_lseg_membership_byte_for_byte():
+    eodhd = OmegaConf.load(EODHD_CONFIG)
+    lseg = OmegaConf.load(LSEG_CONFIG)
+    mine = read_input_manifest(
+        REPO_ROOT / eodhd.input_package_manifest,
+        expected_sha256=eodhd.input_package_manifest_sha256,
+    ).manifest
+    theirs = read_input_manifest(
+        REPO_ROOT / lseg.input_package_manifest,
+        expected_sha256=lseg.input_package_manifest_sha256,
+    ).manifest
+    pit = Path(eodhd.pit_universe_csv).name
+    by_path = {record.path: record for record in mine.files}
+    assert by_path[f"constituents/{pit}"].sha256 == (
+        {record.path: record for record in theirs.files}[f"constituents/{pit}"].sha256
+    )
+    # The pull ran with the committed symbol map, and declared the one gap.
+    map_record = next(r for r in mine.files if r.path.endswith("_symbol_map.json"))
+    assert map_record.sha256 == hashlib.sha256(COMMITTED_MAP.read_bytes()).hexdigest()
+    assert [u.split(":")[0] for u in mine.provenance["unknowns"]] == ["DD.N^I17"]
+
+
+def test_the_eodhd_config_binds_both_selected_files_to_its_package():
+    with initialize_config_dir(config_dir=str(REPO_ROOT / "configs"), version_base=None):
+        cfg = compose(config_name="config", overrides=["data=gics_top10_110_2016_eodhd"])
+    config = create_config_from_dict(OmegaConf.to_container(cfg, resolve=True))
+
+    declarations = declare_window_inputs(config, InputObservationContext().freeze())
+
+    (package,) = declarations.manifests
+    assert package.manifest.package_id.endswith("_eodhd")
+    assert package.sha256 == config.data.input_package_manifest_sha256
+    files = {record.path for record in package.manifest.files}
+    bindings = {binding.role: binding for binding in declarations.required}
+    for role in ("data.filename", "data.pit_universe_csv"):
+        assert bindings[role].manifest_sha256 == package.sha256
+        assert bindings[role].path in files

@@ -390,7 +390,7 @@ Ensemble invariant: prediction = mean of independently trained models.
 
 EODHD daily prices for the point-in-time universe (#281).
 
-**Exercises:** `mci_gru.data.eodhd_prices`, `mci_gru.data.input_manifest`, `mci_gru.data.quality_contract`, `scripts.data.export_eodhd_pit_prices`
+**Exercises:** `mci_gru.config`, `mci_gru.data.eodhd_prices`, `mci_gru.data.input_manifest`, `mci_gru.data.input_observations`, `mci_gru.data.quality_contract`, `mci_gru.evaluation.run_input_declarations`, `scripts.data.export_eodhd_pit_prices`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -434,6 +434,9 @@ EODHD daily prices for the point-in-time universe (#281).
 | `test_notebook_is_the_generator_output` |  |  |
 | `test_notebook_pins_the_reference_package_the_lseg_config_pins` |  |  |
 | `test_notebook_reads_the_key_from_secrets_and_never_prints_it` |  |  |
+| `test_the_eodhd_config_changes_only_the_price_panel_and_its_package` |  |  |
+| `test_the_eodhd_package_carries_the_lseg_membership_byte_for_byte` |  |  |
+| `test_the_eodhd_config_binds_both_selected_files_to_its_package` |  |  |
 
 ## `tests/test_evaluation_portfolio.py`
 
