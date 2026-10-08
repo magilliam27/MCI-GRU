@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from nb_lib import LOCAL_PY310_METADATA, backtest_engine_path_expr, write_notebook
+from nb_lib import (
+    EODHD_MARKET_DRIVE_PATH,
+    LOCAL_PY310_METADATA,
+    backtest_engine_path_expr,
+    eodhd_market_staging_source,
+    write_notebook,
+)
 from nb_lib import code_lines as code
 from nb_lib import md_lines as md
 
@@ -13,10 +19,12 @@ OUT = Path("notebooks/rolling_temporal_backtest_colab.ipynb")
 
 cells = [
     md(
-        """
+        f"""
         # MCI-GRU Rolling Temporal Backtest - 2022, 2023, 2024
 
         Trains the frozen promising recipe on rolling five-year windows and backtests the untouched test year for each vintage. The notebook keeps the model recipe fixed so the earlier years are validation evidence, not a fresh model-selection search.
+
+        Unless `REGIME_INPUTS_CSV` is set, the global regime features read the EODHD S&P 500 index file, which must be on Drive at `{EODHD_MARKET_DRIVE_PATH}`; section 4 copies it into the checkout and verifies its SHA-256.
         """
     ),
     md("## 1. Mount Drive, Clone Repo, Install Dependencies"),
@@ -241,6 +249,23 @@ cells = [
             raise RuntimeError('REGIME_STRICT=True and REGIME_INPUTS_CSV is blank, so set FRED_API_KEY before running.')
         """
     ),
+    # Every run enables global regime features; without a legacy regime CSV
+    # they read features.regime_market_csv (#278).
+    code(
+        eodhd_market_staging_source(
+            call=(
+                "if REGIME_INPUTS_CSV:\n"
+                '    print("Skipped EODHD S&P 500 staging: REGIME_INPUTS_CSV supplies the regime inputs.")\n'
+                "elif not eodhd_market_file_is_read(REPO_DIR):\n"
+                "    print(\n"
+                '        "Skipped EODHD S&P 500 staging: this checkout\'s "\n'
+                '        "configs/features/with_momentum.yaml does not set regime_market_csv."\n'
+                "    )\n"
+                "else:\n"
+                "    stage_eodhd_market_file(REPO_DIR)"
+            )
+        )
+    ),
     md("## 5. Matrix Definition"),
     code(
         r"""
@@ -291,6 +316,8 @@ cells = [
         ]
         if REGIME_INPUTS_CSV:
             BASE_OVERRIDES.append(f'features.regime_inputs_csv={REGIME_INPUTS_CSV}')
+            # The legacy CSV supplies the market variable, so the EODHD file is not read.
+            BASE_OVERRIDES.append('features.regime_market_csv=null')
 
         def safe_name(value: str, max_len: int = 110) -> str:
             cleaned = re.sub(r'[^A-Za-z0-9_.-]+', '_', value).strip('_')

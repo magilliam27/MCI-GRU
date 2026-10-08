@@ -289,3 +289,115 @@ def write_notebook(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(payload, encoding="utf-8")
     print(f"Wrote {out_path}")
+
+
+#: The EODHD S&P 500 index file the regime market input reads (#276). Its path is
+#: ``features.regime_market_csv`` in ``configs/features/with_momentum.yaml``;
+#: ``data/raw`` is gitignored, so a Colab checkout has to stage it from Drive.
+#: The SHA-256 and size are the 2026-09-19 pull's, as recorded in that pull's
+#: ``inventory.json``. ``scripts/first_run_colab.py`` pins the same values.
+EODHD_MARKET_RELATIVE = "data/raw/market/eodhd_sp500_2010_20260919/sp500_index.csv"
+EODHD_MARKET_SHA256 = "9f5cfaf5e9f057065b83619b01568164e1f61a45df9453c66269fb54f080f5ac"
+EODHD_MARKET_SIZE = 351815
+#: The Drive copy sits in its own folder beside the preserved LSEG package, so
+#: that package's verified ten-file inventory stays as it was restored (#207).
+EODHD_MARKET_DRIVE_PATH = (
+    "/content/drive/MyDrive/MCI_GRU_shared/preservation/eodhd_sp500_2010_20260919/sp500_index.csv"
+)
+
+_EODHD_STAGING_TEMPLATE = """
+# EODHD S&P 500 index file for the regime market input (#276, #278).
+# configs/features/with_momentum.yaml reads it from EODHD_MARKET_RELATIVE, and
+# data/raw is gitignored, so it is copied here from Drive. A wrong hash stops
+# the notebook, and a file already in place with other bytes is never replaced.
+import hashlib as _eodhd_hashlib
+import shutil as _eodhd_shutil
+from pathlib import Path as _EodhdPath
+
+import yaml as _eodhd_yaml
+
+EODHD_MARKET_RELATIVE = "§RELATIVE§"
+EODHD_MARKET_SHA256 = "§SHA256§"
+EODHD_MARKET_SIZE = §SIZE§
+EODHD_MARKET_DRIVE_PATH = _EodhdPath("§DRIVE§")
+
+
+def _eodhd_sha256(path):
+    digest = _eodhd_hashlib.sha256()
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _eodhd_check(path):
+    size = path.stat().st_size
+    sha256 = _eodhd_sha256(path)
+    if size != EODHD_MARKET_SIZE or sha256 != EODHD_MARKET_SHA256:
+        raise RuntimeError(
+            f"EODHD S&P 500 file {path} does not match the pinned pull: "
+            f"expected {EODHD_MARKET_SIZE} bytes, sha256 {EODHD_MARKET_SHA256}; "
+            f"found {size} bytes, sha256 {sha256}. Nothing was copied or replaced."
+        )
+
+
+def stage_eodhd_market_file(repo_dir, drive_path=EODHD_MARKET_DRIVE_PATH):
+    target = _EodhdPath(repo_dir) / EODHD_MARKET_RELATIVE
+    if target.exists():
+        _eodhd_check(target)
+        print("EODHD S&P 500 file already staged and verified:", target)
+        return target
+    source = _EodhdPath(drive_path)
+    if not source.exists():
+        raise FileNotFoundError(
+            "The regime market input needs the EODHD S&P 500 file, and it is not on Drive at "
+            f"{source}. Copy data/raw/market/eodhd_sp500_2010_20260919/ from the Windows "
+            "checkout to that Drive folder, or pass its Drive path to stage_eodhd_market_file()."
+        )
+    _eodhd_check(source)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    _eodhd_shutil.copyfile(source, target)
+    _eodhd_check(target)
+    print("Staged and verified EODHD S&P 500 file:", target)
+    return target
+
+
+def eodhd_market_file_is_read(repo_dir):
+    # True when the checkout's with_momentum features config reads the pinned file.
+    # A checkout from before #276 has no regime_market_csv key (or null), so it
+    # never reads it; a different path means the pin above is wrong.
+    config_path = _EodhdPath(repo_dir) / "configs" / "features" / "with_momentum.yaml"
+    with open(config_path, encoding="utf-8") as handle:
+        configured = (_eodhd_yaml.safe_load(handle) or {}).get("regime_market_csv")
+    if configured is None:
+        return False
+    if configured != EODHD_MARKET_RELATIVE:
+        raise RuntimeError(
+            f"{config_path} names regime_market_csv {configured!r}, but this notebook pins "
+            f"{EODHD_MARKET_RELATIVE!r}. Update the pinned EODHD file before running."
+        )
+    return True
+"""
+
+
+def eodhd_market_staging_source(*, call: str = "") -> str:
+    """Source text that defines ``stage_eodhd_market_file(repo_dir)`` in a notebook.
+
+    The generated function copies the pinned EODHD S&P 500 file from Drive to
+    ``EODHD_MARKET_RELATIVE`` under the checkout and checks its size and SHA-256
+    before and after the copy. It also defines ``eodhd_market_file_is_read(repo_dir)``,
+    which says whether the checkout's ``with_momentum`` config reads that file.
+    ``call`` is appended verbatim, so a generator can gate the call on its own
+    regime toggle and the checkout, e.g. ``"if USE_GLOBAL_REGIME and
+    eodhd_market_file_is_read(REPO_DIR):\\n    stage_eodhd_market_file(REPO_DIR)"``.
+    """
+    source = (
+        _EODHD_STAGING_TEMPLATE.replace("§RELATIVE§", EODHD_MARKET_RELATIVE)
+        .replace("§SHA256§", EODHD_MARKET_SHA256)
+        .replace("§SIZE§", str(EODHD_MARKET_SIZE))
+        .replace("§DRIVE§", EODHD_MARKET_DRIVE_PATH)
+        .strip("\n")
+    )
+    if call:
+        source += "\n\n" + textwrap.dedent(call).strip("\n")
+    return source

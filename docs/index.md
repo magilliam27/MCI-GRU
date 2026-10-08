@@ -25,6 +25,7 @@ The `docs/` root holds the canonical guides only. Research evidence lives under
 | --- | --- |
 | [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | Cheat sheet for common commands and workflows. |
 | [workflows/COLAB_CHROME_CONTROL_GUIDE.md](workflows/COLAB_CHROME_CONTROL_GUIDE.md) | Reusable agent runbook for operating authenticated Colab notebooks through Chrome control. |
+| [workflows/first_run/RUNBOOK.md](workflows/first_run/RUNBOOK.md) | Launching the first admitted run of the frozen recipe from the Colab notebook, with its draft admission receipt and charter. |
 | [OUTPUT_MANAGEMENT.md](OUTPUT_MANAGEMENT.md) | Output directory structure, naming, cleanup, and persistence. |
 | [MLFLOW_TRACKING.md](MLFLOW_TRACKING.md) | MLflow experiment tracking setup and usage. |
 | [evaluation/EVIDENCE_HARNESS.md](evaluation/EVIDENCE_HARNESS.md) | Additive run manifests, trial ledgers, saved-prediction audits, PIT availability reports, and capacity replay. |

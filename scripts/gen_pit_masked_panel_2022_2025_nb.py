@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from nb_lib import backtest_engine_path_expr, write_notebook
+from nb_lib import (
+    EODHD_MARKET_DRIVE_PATH,
+    backtest_engine_path_expr,
+    eodhd_market_staging_source,
+    write_notebook,
+)
 from nb_lib import code_lines as code
 from nb_lib import md_lines as md
 
@@ -13,7 +18,7 @@ OUT = Path("notebooks/pit_masked_panel_2022_2025_colab.ipynb")
 
 cells = [
     md(
-        """
+        f"""
         # MCI-GRU True PIT Masked-Panel Tests: 2022-2025
 
         This notebook runs strict point-in-time masked-panel checks for the 2022, 2023, 2024, and 2025 temporal presets.
@@ -32,6 +37,8 @@ cells = [
         Put them in `/content/drive/MyDrive/MCI_GRU_shared/data`, Drive root, or set explicit paths in the data cell.
 
         The frozen recipe uses FRED-backed current-only global regime features with strict loading, so add `FRED_API_KEY` before the full run.
+
+        With `USE_GLOBAL_REGIME = True`, the EODHD S&P 500 index file must also be on Drive at `{EODHD_MARKET_DRIVE_PATH}`; the cell after the regime toggle copies it into the checkout and verifies its SHA-256.
         """
     ),
     md("## 1. Setup: Mount Drive, Clone Repo, Install Dependencies"),
@@ -263,6 +270,23 @@ cells = [
                 'Add it as a Colab Secret named FRED_API_KEY or paste it into MY_FRED_KEY.'
             )
         """
+    ),
+    # Global regime features without a legacy regime CSV read
+    # features.regime_market_csv on a checkout whose config names it (#278).
+    code(
+        eodhd_market_staging_source(
+            call=(
+                "if not USE_GLOBAL_REGIME:\n"
+                '    print("Skipped EODHD S&P 500 staging: USE_GLOBAL_REGIME is False.")\n'
+                "elif not eodhd_market_file_is_read(REPO_DIR):\n"
+                "    print(\n"
+                '        "Skipped EODHD S&P 500 staging: this checkout\'s "\n'
+                '        "configs/features/with_momentum.yaml does not set regime_market_csv."\n'
+                "    )\n"
+                "else:\n"
+                "    stage_eodhd_market_file(REPO_DIR)"
+            )
+        )
     ),
     md("## 4. Test Configuration"),
     code(

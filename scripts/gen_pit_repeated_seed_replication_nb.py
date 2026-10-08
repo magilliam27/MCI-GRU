@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from nb_lib import backtest_engine_path_expr, write_notebook
+from nb_lib import (
+    EODHD_MARKET_DRIVE_PATH,
+    backtest_engine_path_expr,
+    eodhd_market_staging_source,
+    write_notebook,
+)
 from nb_lib import code_lines as code
 from nb_lib import md_lines as md
 
@@ -37,7 +42,7 @@ cells = [
         """
     ),
     md(
-        """
+        f"""
         ## Known Drive Locations
 
         Open this notebook from the PIT branch:
@@ -54,6 +59,8 @@ cells = [
 
         Reference run folder:
         [MCI-GRU-Ablations/pit_masked_panel_2022_2025/20260514_043539](https://drive.google.com/drive/folders/1p1F2NqY5C6ISBzjm7-JBkbvsE4K2E2LF)
+
+        Only with `USE_STATIC_REGIME_INPUTS = False` do the runs read the EODHD S&P 500 index file, which must then be on Drive at `{EODHD_MARKET_DRIVE_PATH}`; the cell after the run configuration copies it into the checkout and verifies its SHA-256.
         """
     ),
     md("## 1. Setup: Mount Drive, Clone Repo, Install Dependencies"),
@@ -418,6 +425,25 @@ cells = [
         print('Training job retries on regime fetch failure:', TRAINING_RETRY_ON_REGIME_FETCH_FAILURE)
         print('Run budget:', RUN_BUDGET)
         """
+    ),
+    # The static regime CSV is drawn with load_regime_inputs(end=...) and passed
+    # as the legacy features.regime_inputs_csv, so by default the runs never read
+    # features.regime_market_csv. Without it, a checkout whose config names that
+    # file reads it (#278).
+    code(
+        eodhd_market_staging_source(
+            call=(
+                "if USE_STATIC_REGIME_INPUTS:\n"
+                '    print("Skipped EODHD S&P 500 staging: the runs read the static regime CSV (USE_STATIC_REGIME_INPUTS).")\n'
+                "elif not eodhd_market_file_is_read(REPO_DIR):\n"
+                "    print(\n"
+                '        "Skipped EODHD S&P 500 staging: this checkout\'s "\n'
+                '        "configs/features/with_momentum.yaml does not set regime_market_csv."\n'
+                "    )\n"
+                "else:\n"
+                "    stage_eodhd_market_file(REPO_DIR)"
+            )
+        )
     ),
     md("## 4. Build Resumable Job Matrix"),
     code(
