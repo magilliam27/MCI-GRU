@@ -24,10 +24,12 @@ def build_cells() -> list[dict]:
             """
             # MCI-GRU first admitted run (Colab)
 
-            Runs the frozen recipe in `docs/DEFAULT_EXPERIMENT_RECIPE.md` on the
-            preserved 110-name LSEG package, as map #187 defines the first run. The
-            notebook carries no recipe values of its own: it reads the override block
-            and slug from the recipe at the commit it clones.
+            Runs the frozen recipe in `docs/DEFAULT_EXPERIMENT_RECIPE.md`, as map #187
+            defines the first run. The notebook carries no recipe values of its own: it
+            reads the override block and slug from the recipe at the commit it clones,
+            and stages the input package that recipe's data config declares (the
+            preserved LSEG package, or the EODHD-priced package once the recipe names
+            it).
 
             **Before you start**
 
@@ -65,7 +67,8 @@ def build_cells() -> list[dict]:
             BRANCH = "main"
             EXPECTED_COMMIT = ""  # optional: the full commit SHA to run; empty records whatever BRANCH is
 
-            PACKAGE_DRIVE_DIR = "/content/drive/MyDrive/MCI_GRU_shared/preservation/2026-10-02-110-universe-2016"
+            # Empty: the Drive folder of the package the recipe's data config declares.
+            PACKAGE_DRIVE_DIR = ""
             EODHD_DRIVE_PATH = "/content/drive/MyDrive/MCI_GRU_shared/preservation/eodhd_sp500_2010_20260919/sp500_index.csv"
             DRIVE_OUTPUT_ROOT = "/content/drive/MyDrive/MCI_GRU_shared/runs/first_run"
             LOCAL_RUN_ROOT = "/content/mci_gru_runs"
@@ -160,10 +163,11 @@ def build_cells() -> list[dict]:
         ),
         code(
             """
-            # Stage the preserved LSEG package and the EODHD S&P 500 file from Drive, and verify them.
-            # Drive MANIFEST.txt must carry the digest the r1 manifest records; its inventory must
-            # equal r1's records; every staged file must pass validate_input_package. A file with
-            # other bytes is never copied or replaced. The run cell stages again before it starts.
+            # Stage the recipe's input package and the EODHD S&P 500 file from Drive, and verify them.
+            # The Drive copy must carry the inventory the committed manifest vouches for; that
+            # inventory must equal the manifest's records; every staged file must pass
+            # validate_input_package. A file with other bytes is never copied or replaced.
+            # The run cell stages again before it starts.
             stream(
                 [
                     sys.executable, "scripts/first_run_colab.py", "stage",

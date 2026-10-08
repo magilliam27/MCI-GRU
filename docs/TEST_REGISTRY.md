@@ -569,6 +569,11 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_each_missing_prerequisite_is_named_by_its_pull_request` |  | parametrize |
 | `test_one_of_three_model_pins_is_not_enough_for_275` |  |  |
 | `test_270_needs_the_manifest_this_notebook_stages_not_just_the_key` |  |  |
+| `test_the_recipe_data_config_chooses_the_package_to_stage` |  | parametrize |
+| `test_a_package_the_notebook_does_not_know_is_refused` |  |  |
+| `test_a_known_digest_under_another_manifest_path_is_refused` |  |  |
+| `test_published_package_pins_match_their_committed_manifests` | A manifest not yet on this branch is checked once the commit that adds it lands. | parametrize |
+| `test_every_data_config_naming_a_published_digest_names_its_manifest` |  |  |
 | `test_prerequisite_check_runs_on_this_checkout` |  |  |
 | `test_full_mode_cli_refuses_when_a_prerequisite_is_missing` |  |  |
 | `test_stage_verified_file_copies_and_then_reuses` |  |  |
@@ -584,6 +589,9 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_a_drive_inventory_other_than_the_recorded_one_stops` |  |  |
 | `test_an_inventory_that_disagrees_with_r1_stops_even_with_the_recorded_digest` | r1 records this inventory's digest, but the inventory lists a file r1 lacks. |  |
 | `test_a_corrupt_drive_package_file_stops_before_it_is_copied` |  |  |
+| `test_a_drive_copy_proven_by_its_manifest_copy_is_staged` |  |  |
+| `test_a_drive_manifest_copy_with_other_bytes_stops` |  |  |
+| `test_a_drive_folder_without_its_manifest_copy_stops` |  |  |
 | `test_a_manifest_with_other_bytes_stops` |  |  |
 | `test_lock_pins_read_the_lock_and_allow_only_a_local_suffix` |  |  |
 | `test_sync_copies_new_and_changed_files_and_never_deletes` |  |  |

@@ -12,10 +12,11 @@ What it does:
   instead of a copy that can drift from it.
 - Says which open pull request a recipe still lacks before an admitted run
   (#270, #274, #275), so a run on a commit without them is refused by name.
-- Stages the preserved LSEG package from Drive into ``data/raw`` and verifies it.
-  The Drive copy's historical ``MANIFEST.txt`` is checked against the digest the
-  committed r1 manifest records for it, its inventory must equal the r1 manifest's
-  file records, and the staged package must pass ``validate_input_package``.
+- Stages, from Drive into ``data/raw``, the published package the recipe's data
+  config declares, and verifies it. The Drive copy must prove it is that package
+  (a historical ``MANIFEST.txt`` whose digest the manifest records, or a copy of
+  the manifest itself), its inventory must equal the manifest's file records, and
+  the staged package must pass ``validate_input_package``.
 - Stages the EODHD S&P 500 index file the regime market input reads (#276).
 - Copies the run folder to Drive while the run is going, without ever deleting.
 
@@ -60,6 +61,30 @@ PACKAGE_DRIVE_DIR = (
     "/content/drive/MyDrive/MCI_GRU_shared/preservation/2026-10-02-110-universe-2016"
 )
 HISTORICAL_INVENTORY_NAME = "MANIFEST.txt"
+
+
+@dataclass(frozen=True)
+class PublishedPackage:
+    """A published input package and where its preserved copy lives on Drive."""
+
+    manifest: str
+    manifest_sha256: str
+    drive_dir: str
+    #: How the Drive copy shows it is this package: ``historical_inventory`` (a
+    #: MANIFEST.txt whose digest the manifest records) or ``manifest_copy`` (the
+    #: manifest's own bytes at the top of the folder).
+    drive_inventory: str
+
+
+#: The packages a data config may declare for the run, by manifest digest. The
+#: notebook stages whichever one the recipe's data config names, so moving the
+#: recipe to another package is a change to the recipe, not to the notebook.
+LSEG_PACKAGE = PublishedPackage(
+    PACKAGE_MANIFEST, PACKAGE_MANIFEST_SHA256, PACKAGE_DRIVE_DIR, "historical_inventory"
+)
+#: The EODHD-priced package (#281, #282) joins this table once its manifest is
+#: published and committed; until then the recipe can only name the LSEG package.
+PUBLISHED_PACKAGES = {package.manifest_sha256: package for package in (LSEG_PACKAGE,)}
 
 #: Same values as ``scripts/nb_lib.py``; ``tests/test_first_run_colab.py`` pins that.
 EODHD_MARKET_RELATIVE = "data/raw/market/eodhd_sp500_2010_20260919/sp500_index.csv"
@@ -142,28 +167,57 @@ def replace_override(overrides: Sequence[str], key: str, value: str) -> list[str
     return result
 
 
+def recipe_data_config(repo_dir: Path) -> dict[str, Any]:
+    """The data config the recipe selects with ``data=``, or ``{}`` if there is none."""
+    repo_dir = Path(repo_dir)
+    overrides = recipe_overrides((repo_dir / RECIPE_PATH).read_text(encoding="utf-8"))
+    data_group = override_value(overrides, "data")
+    path = repo_dir / "configs" / "data" / f"{data_group}.yaml"
+    if not data_group or not path.exists():
+        return {}
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+
+def declared_package(data_config: dict[str, Any]) -> PublishedPackage | None:
+    """The published package a data config declares, if it is one this notebook knows."""
+    package = PUBLISHED_PACKAGES.get(data_config.get("input_package_manifest_sha256"))
+    if (
+        package is None
+        or data_config.get("input_package_manifest") != package.manifest
+        or data_config.get("input_package_root") != PACKAGE_ROOT
+    ):
+        return None
+    return package
+
+
+def selected_package(repo_dir: Path) -> PublishedPackage:
+    """The package the recipe at this checkout runs on; stops if it is not a known one."""
+    data_config = recipe_data_config(repo_dir)
+    package = declared_package(data_config)
+    if package is None:
+        raise StagingError(
+            "The recipe's data config does not declare a package this notebook knows: "
+            f"manifest {data_config.get('input_package_manifest')!r}, sha256 "
+            f"{data_config.get('input_package_manifest_sha256')!r}, root "
+            f"{data_config.get('input_package_root')!r}"
+        )
+    return package
+
+
 def admitted_run_prerequisites(repo_dir: Path) -> list[Prerequisite]:
     """What an admitted run needs from open pull requests, read from the checkout."""
     repo_dir = Path(repo_dir)
     overrides = recipe_overrides((repo_dir / RECIPE_PATH).read_text(encoding="utf-8"))
-    data_group = override_value(overrides, "data")
-    data_config_path = repo_dir / "configs" / "data" / f"{data_group}.yaml"
-    data_config = (
-        yaml.safe_load(data_config_path.read_text(encoding="utf-8")) or {}
-        if data_group and data_config_path.exists()
-        else {}
-    )
+    data_config = recipe_data_config(repo_dir)
     declarations = repo_dir / "mci_gru" / "evaluation" / "run_input_declarations.py"
     declarations_text = declarations.read_text(encoding="utf-8") if declarations.exists() else ""
     return [
         Prerequisite(
             "#270",
             "each window attaches its declared package and observed reads "
-            "(the data config declares the r1 manifest this notebook stages)",
+            "(the data config declares a published package this notebook stages)",
             (repo_dir / "mci_gru" / "evaluation" / "run_input_attachments.py").exists()
-            and data_config.get("input_package_manifest") == PACKAGE_MANIFEST
-            and data_config.get("input_package_manifest_sha256") == PACKAGE_MANIFEST_SHA256
-            and data_config.get("input_package_root") == PACKAGE_ROOT,
+            and declared_package(data_config) is not None,
         ),
         Prerequisite(
             "#274",
@@ -353,14 +407,14 @@ def parse_historical_inventory(raw: bytes) -> dict[str, tuple[str, int]]:
 class StagedPackage:
     verification: PackageVerification
     outcomes: dict[str, str]
-    historical_inventory_sha256: str
+    drive_inventory_sha256: str
 
     def summary(self) -> dict[str, Any]:
         return {
             "package_id": self.verification.snapshot.manifest.package_id,
             "package_revision": self.verification.snapshot.manifest.package_revision,
             "manifest_sha256": self.verification.snapshot.sha256,
-            "historical_inventory_sha256": self.historical_inventory_sha256,
+            "drive_inventory_sha256": self.drive_inventory_sha256,
             "files": [
                 {
                     "path": observation.record.path,
@@ -379,35 +433,46 @@ def stage_package(
     *,
     manifest: str = PACKAGE_MANIFEST,
     manifest_sha256: str = PACKAGE_MANIFEST_SHA256,
+    drive_inventory: str = "historical_inventory",
 ) -> StagedPackage:
-    """Stage the preserved package from Drive into ``data/raw`` and verify all of it.
+    """Stage a preserved package from Drive into ``data/raw`` and verify all of it.
 
-    Three independent checks: the Drive ``MANIFEST.txt`` must have the digest the r1
-    manifest records for its historical inventory; that inventory must equal the r1
-    manifest's file records path for path, hash for hash and size for size; and the
-    staged files must pass ``validate_input_package`` with the inventory's paths as
-    the independently required set.
+    Three independent checks: the Drive copy's inventory must be the one the
+    committed manifest vouches for (a ``MANIFEST.txt`` with the digest the manifest
+    records for its historical inventory, or a byte-identical copy of the manifest);
+    that inventory must equal the manifest's file records path for path, hash for
+    hash and size for size; and the staged files must pass ``validate_input_package``
+    with the inventory's paths as the independently required set.
     """
     repo_dir, drive_dir = Path(repo_dir), Path(drive_dir)
     snapshot = read_input_manifest(repo_dir / manifest, expected_sha256=manifest_sha256)
-    recorded = snapshot.manifest.metadata.get("historical_inventory", {})
-    inventory_path = drive_dir / HISTORICAL_INVENTORY_NAME
+    declared = {
+        record.path: (record.sha256, record.size_bytes) for record in snapshot.manifest.files
+    }
+    if drive_inventory == "historical_inventory":
+        recorded = snapshot.manifest.metadata.get("historical_inventory", {})
+        inventory_path = drive_dir / HISTORICAL_INVENTORY_NAME
+        expected = (recorded.get("sha256"), recorded.get("size_bytes"))
+    elif drive_inventory == "manifest_copy":
+        inventory_path = drive_dir / Path(manifest).name
+        expected = (snapshot.sha256, len(snapshot.raw_bytes))
+    else:
+        raise ValueError(f"Unknown Drive inventory kind {drive_inventory!r}")
     if not inventory_path.exists():
         raise StagingError(f"Missing on Drive: {inventory_path}")
     inventory_bytes = inventory_path.read_bytes()
     inventory_sha256 = hashlib.sha256(inventory_bytes).hexdigest()
-    if inventory_sha256 != recorded.get("sha256") or len(inventory_bytes) != recorded.get(
-        "size_bytes"
-    ):
+    if (inventory_sha256, len(inventory_bytes)) != expected:
         raise StagingError(
-            f"{inventory_path} is not the inventory the r1 manifest records: expected "
-            f"sha256 {recorded.get('sha256')} ({recorded.get('size_bytes')} bytes), found "
+            f"{inventory_path} is not the inventory the manifest vouches for: expected "
+            f"sha256 {expected[0]} ({expected[1]} bytes), found "
             f"{inventory_sha256} ({len(inventory_bytes)} bytes)"
         )
-    inventory = parse_historical_inventory(inventory_bytes)
-    declared = {
-        record.path: (record.sha256, record.size_bytes) for record in snapshot.manifest.files
-    }
+    inventory = (
+        parse_historical_inventory(inventory_bytes)
+        if drive_inventory == "historical_inventory"
+        else dict(declared)
+    )
     if inventory != declared:
         raise StagingError(
             "The Drive inventory and the r1 manifest disagree: only on Drive "
@@ -649,7 +714,14 @@ def _command_prerequisites(args: Any) -> int:
 
 
 def _stage_inputs(package_drive_dir: str, eodhd_drive_path: str) -> dict[str, Any]:
-    package = stage_package(REPO_DIR, Path(package_drive_dir))
+    selected = selected_package(REPO_DIR)
+    package = stage_package(
+        REPO_DIR,
+        Path(package_drive_dir or selected.drive_dir),
+        manifest=selected.manifest,
+        manifest_sha256=selected.manifest_sha256,
+        drive_inventory=selected.drive_inventory,
+    )
     eodhd = stage_eodhd_market_file(REPO_DIR, eodhd_drive_path)
     return {
         "staged_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -774,7 +846,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     prerequisites = commands.add_parser("prerequisites")
     prerequisites.add_argument("--mode", choices=sorted(EVIDENCE_LABELS), required=True)
     stage = commands.add_parser("stage")
-    stage.add_argument("--package-drive-dir", default=PACKAGE_DRIVE_DIR)
+    stage.add_argument("--package-drive-dir", default="")
     stage.add_argument("--eodhd-drive-path", default=EODHD_MARKET_DRIVE_PATH)
     run = commands.add_parser("run")
     run.add_argument("--mode", choices=sorted(EVIDENCE_LABELS), required=True)
@@ -782,7 +854,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     run.add_argument("--drive-root", required=True)
     run.add_argument("--run-tag", default="")
     run.add_argument("--sync-every", type=float, default=600.0)
-    run.add_argument("--package-drive-dir", default=PACKAGE_DRIVE_DIR)
+    run.add_argument("--package-drive-dir", default="")
     run.add_argument("--eodhd-drive-path", default=EODHD_MARKET_DRIVE_PATH)
     run.add_argument("--tag-file", default="")
     args = parser.parse_args(argv)
