@@ -92,8 +92,12 @@ market role is read from that file and FRED `SP500` is not requested.
   `features.regime_market_csv=null`. Replay matches the configured path as
   written, so capture and replay must spell it the same way.
 - **Record:** the market verdict and admission item are `eodhd.regime_market`
-  (source `eodhd`, series `GSPC.INDX`) and carry the configured path. A rule stop
-  is filed under the same role with the path in its facts.
+  (source `eodhd`, series `GSPC.INDX`) and carry the configured path and the
+  `observation_id` of the file read they were ruled on, as the FRED verdicts do.
+  A rule stop is filed under the same role with the path in its facts. The read
+  is linked to `eodhd.sp500_index` as a consumed input only once the file has
+  parsed and passed the rules; a parse failure or rule stop leaves the read
+  recorded with an error linked to it and no use, as a rejected FRED response is.
 - **Freshness:** the file is a fixed vintage. A value is usable from the next
   session and carries five more, so the last close, 2026-09-18, covers sessions
   through 2026-09-28. A test window ending on or after 2026-09-29 stops on the
