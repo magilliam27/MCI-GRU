@@ -128,6 +128,8 @@ class SymbolPlan:
     adjustments: tuple[PriceAdjustment, ...] = ()
     #: Dates whose one-day difference from the reference is explained and accepted.
     accepted_differences: tuple[str, ...] = ()
+    #: Why the vendor has no history for this identifier; such a plan has no segments.
+    unavailable: str | None = None
 
 
 @dataclass
@@ -200,9 +202,18 @@ def parse_symbol_map(payload: Mapping[str, Any]) -> dict[str, SymbolPlan]:
     for kdcode, entry in overrides.items():
         if not isinstance(entry, dict):
             raise SymbolMapError(f"{kdcode}: must be an object")
-        unknown = set(entry) - {"segments", "note", "adjustments", "accepted_differences"}
+        unknown = set(entry) - {
+            "segments",
+            "note",
+            "adjustments",
+            "accepted_differences",
+            "unavailable",
+        }
         if unknown:
             raise SymbolMapError(f"{kdcode}: unknown fields {sorted(unknown)}")
+        if "unavailable" in entry:
+            plans[kdcode] = _unavailable_plan(kdcode, entry)
+            continue
         raw_segments = entry.get("segments", [{"candidates": [default_symbol(kdcode)]}])
         if not isinstance(raw_segments, list):
             raise SymbolMapError(f"{kdcode}: 'segments' must be a list")
@@ -242,6 +253,16 @@ def parse_symbol_map(payload: Mapping[str, Any]) -> dict[str, SymbolPlan]:
             accepted_differences=_parse_accepted(kdcode, entry.get("accepted_differences", [])),
         )
     return plans
+
+
+def _unavailable_plan(kdcode: str, entry: Mapping[str, Any]) -> SymbolPlan:
+    """A declared gap: the vendor holds no history for this identifier."""
+    reason = entry["unavailable"]
+    if not isinstance(reason, str) or not reason.strip():
+        raise SymbolMapError(f"{kdcode}: 'unavailable' must be a nonempty reason")
+    if set(entry) - {"unavailable", "note"}:
+        raise SymbolMapError(f"{kdcode}: an unavailable identifier takes only a note")
+    return SymbolPlan(kdcode, (), note=entry.get("note"), overridden=True, unavailable=reason)
 
 
 def _reason(raw: Mapping[str, Any], where: str) -> str:
@@ -749,9 +770,14 @@ def reference_check(
     reference: pd.DataFrame,
     pit: pd.DataFrame,
     accepted: Mapping[str, Iterable[str]] | None = None,
+    unavailable: Iterable[str] = (),
 ) -> tuple[pd.DataFrame, list[Finding]]:
-    """Compare every identifier against the reference over its needed span."""
+    """Compare every identifier against the reference over its needed span.
+
+    Identifiers declared ``unavailable`` are reported as such and not compared.
+    """
     accepted = accepted or {}
+    unavailable = set(unavailable)
     spans = needed_spans(pit).set_index("kdcode")
     by_code = dict(tuple(panel.groupby("kdcode"))) if not panel.empty else {}
     ref_by_code = dict(tuple(reference.groupby("kdcode"))) if not reference.empty else {}
@@ -769,6 +795,10 @@ def reference_check(
             "check_start": window[0] if window else None,
             "check_end": window[1] if window else None,
         }
+        if kdcode in unavailable:
+            row.update(verdict="declared_unavailable")
+            rows.append(row)
+            continue
         if window is None:
             row.update(verdict="no_reference")
             findings.append(

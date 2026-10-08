@@ -424,6 +424,9 @@ EODHD daily prices for the point-in-time universe (#281).
 | `test_reference_check_only_judges_the_span_the_universe_needs` |  |  |
 | `test_export_proves_each_mapping_and_publishes_a_verifiable_package` |  |  |
 | `test_export_stops_without_a_manifest_when_no_candidate_matches` |  |  |
+| `test_a_declared_unavailable_name_is_left_out_and_disclosed` |  |  |
+| `test_a_name_with_no_rows_still_blocks_unless_declared` |  |  |
+| `test_symbol_map_rejects_a_malformed_unavailable_entry` |  | parametrize |
 | `test_the_key_is_never_written` |  |  |
 | `test_client_never_stores_or_reports_the_key` |  |  |
 | `test_client_quotes_symbols_and_retries_dropped_connections` |  |  |

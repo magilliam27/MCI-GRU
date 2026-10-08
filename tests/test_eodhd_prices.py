@@ -105,8 +105,9 @@ def test_committed_symbol_map_parses_and_names_only_ric_shaped_identifiers():
     for kdcode, plan in plans.items():
         assert "." in kdcode and kdcode == kdcode.strip()
         assert plan.overridden
-    # The reused tickers must be cut at the merger, not read whole.
-    assert plans["DD.N^I17"].segments[-1].end == "2017-08-31"
+    # The reused tickers must be cut at the merger, not read whole. EODHD has no
+    # pre-merger DuPont history at all: its DD.US rows before then are Dow Chemical's.
+    assert plans["DD.N^I17"].segments == () and "Dow Chemical" in plans["DD.N^I17"].unavailable
     assert plans["DD.N"].segments[0].start == "2017-09-01"
     # BLL became BALL at the open on 2022-05-10.
     assert [(s.end, s.start) for s in plans["BALL.N"].segments] == [
@@ -651,6 +652,52 @@ def test_export_stops_without_a_manifest_when_no_candidate_matches(vendor):
     codes = {(f["kdcode"], f["code"]) for f in meta["findings"] if f["blocking"]}
     assert ("OLD.N^A16", "no_candidate_matched") in codes
     assert ("OLD.N^A16", "reference_disagreement") in codes
+
+
+def test_a_declared_unavailable_name_is_left_out_and_disclosed(vendor):
+    payload = json.loads(vendor["map"].read_text())
+    payload["overrides"]["OLD.N^A16"] = {"unavailable": "The vendor has no history for it"}
+    vendor["map"].write_text(json.dumps(payload), encoding="utf-8")
+    FakeClient.listings = {True: [], False: []}
+    manifest = vendor["tmp"] / "out" / "toy.r1.json"
+    manifest.parent.mkdir()
+
+    assert export.main(_argv(vendor, manifest_output=manifest)) == 0
+
+    market = vendor["tmp"] / "package" / "market"
+    stem = f"{vendor['prefix']}_eodhd_20150101_20160729"
+    panel = pd.read_csv(market / f"{stem}.csv")
+    assert set(panel["kdcode"]) == {"GOOD.OQ"}
+    meta = json.loads((market / f"{stem}.meta.json").read_text())
+    assert meta["declared_unavailable"] == {"OLD.N^A16": "The vendor has no history for it"}
+    assert meta["missing_identifiers"] == []
+    check = pd.read_csv(market / f"{stem}_reference_check.csv").set_index("kdcode")
+    assert check.loc["OLD.N^A16", "verdict"] == "declared_unavailable"
+    unknowns = read_input_manifest(manifest).manifest.provenance["unknowns"]
+    assert any("OLD.N^A16" in item for item in unknowns)
+
+
+def test_a_name_with_no_rows_still_blocks_unless_declared(vendor):
+    FakeClient.eod_rows = {k: v for k, v in FakeClient.eod_rows.items() if k == "GOOD.US"}
+    FakeClient.listings = {True: [], False: []}
+    assert export.main(_argv(vendor)) == 1
+    meta = json.loads(next((vendor["tmp"] / "package" / "market").glob("*.meta.json")).read_text())
+    assert meta["missing_identifiers"] == ["OLD.N^A16"]
+    codes = {(f["kdcode"], f["code"]) for f in meta["findings"] if f["blocking"]}
+    assert ("OLD.N^A16", "no_rows") in codes
+
+
+@pytest.mark.parametrize(
+    ("entry", "message"),
+    [
+        ({"unavailable": ""}, "nonempty reason"),
+        ({"unavailable": "gone", "segments": [{"candidates": ["A.US"]}]}, "only a note"),
+        ({"unavailable": "gone", "adjustments": []}, "only a note"),
+    ],
+)
+def test_symbol_map_rejects_a_malformed_unavailable_entry(entry, message):
+    with pytest.raises(SymbolMapError, match=message):
+        parse_symbol_map({"schema": 1, "overrides": {"A.N": entry}})
 
 
 def test_the_key_is_never_written(vendor, monkeypatch):

@@ -424,6 +424,16 @@ def main(argv: list[str] | None = None) -> int:
         ref = ref_by_code.get(kdcode) if reference is not None else None
         if reference is not None and ref is None:
             ref = pd.DataFrame(columns=["kdcode", "dt", "close"])
+        if plan.unavailable is not None:
+            findings.append(Finding(kdcode, "declared_unavailable", False, plan.unavailable))
+            resolved[kdcode] = {
+                "overridden": True,
+                "note": plan.note,
+                "unavailable": plan.unavailable,
+                "segments": [],
+            }
+            print(f"[{index}/{len(plans)}] {kdcode}: declared unavailable", flush=True)
+            continue
         parts, chosen = [], []
         for segment in plan.segments:
             rows, choice, segment_findings = resolve_segment(
@@ -454,14 +464,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[{index}/{len(plans)}] {kdcode}: {symbols}", flush=True)
 
     panel = assemble_panel(pieces)
-    missing = sorted(set(plans) - set(panel["kdcode"]))
+    declared = sorted(k for k, plan in plans.items() if plan.unavailable is not None)
+    missing = sorted(set(plans) - set(panel["kdcode"]) - set(declared))
     for kdcode in missing:
         findings.append(Finding(kdcode, "no_rows", True, "The panel has no rows for this name"))
     check = pd.DataFrame()
     basis: dict[str, Any] = {}
     if reference is not None:
         accepted = {kdcode: plan.accepted_differences for kdcode, plan in plans.items()}
-        check, check_findings = reference_check(panel, reference, pit, accepted)
+        check, check_findings = reference_check(panel, reference, pit, accepted, declared)
         findings.extend(check_findings)
         basis = adjustment_basis_summary(check)
 
@@ -506,6 +517,7 @@ def main(argv: list[str] | None = None) -> int:
         "requested_identifiers": len(plans),
         "resolved_identifiers_with_rows": int(panel["kdcode"].nunique()) if len(panel) else 0,
         "missing_identifiers": missing,
+        "declared_unavailable": {k: plans[k].unavailable for k in declared},
         "rows": len(panel),
         "date_min": str(panel["dt"].min()) if len(panel) else None,
         "date_max": str(panel["dt"].max()) if len(panel) else None,
@@ -555,7 +567,10 @@ def main(argv: list[str] | None = None) -> int:
                 "acquired_at": acquired_at,
                 "producing_command": "python -m scripts.data.export_eodhd_pit_prices",
                 "producing_arguments": sys.argv[1:] if argv is None else list(argv),
-                "unknowns": [],
+                "unknowns": [
+                    f"{k}: no EODHD price history; absent from the panel ({plans[k].unavailable})"
+                    for k in declared
+                ],
             },
             metadata={
                 "description": "EODHD daily prices for the preserved 110-name PIT universe "
