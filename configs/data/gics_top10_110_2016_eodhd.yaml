@@ -12,12 +12,14 @@
 #
 # One member has no EODHD history and is absent from this panel: the pre-merger
 # E. I. du Pont de Nemours (DD.N^I17, a member from 2016-01-04 to 2017-08-31).
-# Mac chose to leave it out (2026-10-08). The masked-panel pipeline drops a member
-# with no rows from the stock axis, so those months score at most 109 names. The
-# manifest records the gap in provenance.unknowns.
+# Mac chose to leave it out (2026-10-08). The manifest records the gap in
+# provenance.unknowns, and pit_absent_kdcodes below declares it to admission,
+# which otherwise stops a run on a PIT member with no panel rows. The member is
+# then left off the stock axis, so those months score at most 109 names.
 #
-# Everything below the filename matches gics_top10_110_2016.yaml; see its header
-# for the measured breadth, the warmup margin and the embargo-safe split dates.
+# Apart from pit_absent_kdcodes, everything below the filename matches
+# gics_top10_110_2016.yaml; see its header for the measured breadth, the warmup
+# margin and the embargo-safe split dates.
 universe: sp500
 source: csv
 filename: data/raw/market/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_eodhd_20150101_20260731.csv
@@ -26,6 +28,8 @@ use_pit_universe: true
 pit_universe_csv: data/raw/constituents/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_pit_universe.csv
 pit_universe_mode: masked_panel
 pit_export_cutoff: "2026-07-31"
+# Must match the names in the manifest's provenance.unknowns (a test pins this).
+pit_absent_kdcodes: ["DD.N^I17"]
 # The published EODHD package the two files above belong to. It lives on Drive
 # at MCI_GRU_shared/preservation/eodhd_sp500_pit_gics_top10_mcap_monthly_20160104_20260731_r1/.
 input_package_manifest: data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_eodhd.r1.json

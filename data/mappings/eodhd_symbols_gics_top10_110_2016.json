@@ -4,7 +4,7 @@
   "overrides": {
     "DD.N^I17": {
       "note": "E. I. du Pont de Nemours, traded as DD until the Dow merger closed on 2017-08-31. The merged DowDuPont traded as DWDP; the DD ticker was reused on 2019-06-03 when DowDuPont became DuPont de Nemours.",
-      "unavailable": "EODHD holds no history for the pre-merger DuPont common stock. Its DD.US rows before 2017-09-01 are The Dow Chemical Company's (the same closes as DOW_old.US, e.g. 45.59 on 2015-01-02), and its US listings carry only DuPont preferred shares (CTA-PA, CTA-PB, DD-PA, DD-PB). Found in the first EODHD pull of 2026-10-08; the name is absent from the panel, which the masked-panel pipeline drops from the stock axis."
+      "unavailable": "EODHD holds no history for the pre-merger DuPont common stock. Its DD.US rows before 2017-09-01 are The Dow Chemical Company's (the same closes as DOW_old.US, e.g. 45.59 on 2015-01-02), and its US listings carry only DuPont preferred shares (CTA-PA, CTA-PB, DD-PA, DD-PB). Found in the first EODHD pull of 2026-10-08; the name is absent from the panel. A data config using the package declares it in data.pit_absent_kdcodes, and admission then keeps it off the stock axis."
     },
     "DOW.N^I17": {
       "note": "The Dow Chemical Company, traded as DOW until the DuPont merger closed on 2017-08-31. The DOW ticker was reused by Dow Inc. in 2019.",
@@ -36,8 +36,7 @@
       "segments": [
         {"candidates": ["BKR.US", "BHI.US"], "name_hint": "Baker Hughes", "end": "2017-07-03"},
         {"candidates": ["BKR.US", "BHGE.US"], "start": "2017-07-05"}
-      ]
-    ,
+      ],
       "adjustments": [
         {"date": "2017-07-05", "cash": 17.5, "reason": "Baker Hughes Inc holders received $17.50 per share in cash plus one BHGE share when the combination with GE Oil & Gas closed, so BHI prices are restated net of the cash. The BHI-to-BHGE splice falls -35.4% against LSEG -7.3% that day in the first EODHD pull of 2026-10-08."}
       ]
@@ -144,7 +143,7 @@
     "F.N": {
       "note": "Ford supplemental dividend.",
       "adjustments": [
-        {"date": "2023-02-10", "reason": "$0.65 supplemental dividend paid with the regular $0.15. EODHD's split-only prices drop with it and the LSEG panel does not: -5.63% against -0.86% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.941."}
+        {"date": "2023-02-10", "cash": 0.65, "reason": "$0.65 supplemental dividend paid with the regular $0.15. EODHD's split-only prices drop with it and the LSEG panel does not: -5.63% against -0.86% that day in the first EODHD pull of 2026-10-08. Only the supplemental is restated, because the LSEG panel carries regular dividends unadjusted; EODHD's adjusted_close step (0.941) would take out both. No Ford split since, so the cash is on the pull's price basis."}
       ]
     },
     "LYB.N": {

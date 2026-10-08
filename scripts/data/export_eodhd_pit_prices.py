@@ -8,7 +8,8 @@ network refuses it), with the key in the environment only::
         --reference-panel <package>/market/<prefix>_lseg_20150101_20260731.csv \\
         --package-root /content/eodhd_package \\
         --cache-dir /content/eodhd_cache \\
-        --manifest-output /content/<prefix>_eodhd.r1.json
+        --manifest-output /content/<prefix>_eodhd.r2.json \\
+        --package-revision r2
 
 What it writes under ``--package-root``, as a package beside the LSEG one:
 
@@ -20,6 +21,11 @@ What it writes under ``--package-root``, as a package beside the LSEG one:
   That is per-name coverage, agreement with the reference panel, the symbol each
   stretch was read from, the reviewed map used, every vendor response as
   received, and the pull's provenance and findings.
+
+Prices are split-adjusted from EODHD's split records, plus the corporate actions
+the reviewed symbol map declares. A name with an LSEG delisted code (``^``)
+stops at its last trade: a final run of rows that repeat the previous close at
+zero volume is dropped and listed per name as ``carried_tail_dropped``.
 
 A blocking finding stops the package: the files are written for inspection,
 no manifest is published, and the exit status is 1. The key is read from
@@ -60,6 +66,7 @@ from mci_gru.data.eodhd_prices import (
     clip_segment,
     coverage_table,
     eod_rows_frame,
+    is_delisted,
     load_symbol_map,
     name_hint_candidates,
     needed_spans,
@@ -69,6 +76,7 @@ from mci_gru.data.eodhd_prices import (
     split_adjust,
     split_basis_findings,
     splits_frame,
+    trim_carried_tail,
 )
 from mci_gru.data.input_manifest import InputFileSpec, read_input_manifest, write_input_manifest
 from mci_gru.data.quality_contract import Verdict, assess_market_panel, fill_open_valid_to
@@ -445,12 +453,26 @@ def main(argv: list[str] | None = None) -> int:
             blanked_total += choice["values_blanked"]
         nonempty = [part for part in parts if not part.empty]
         applied: list[dict[str, Any]] = []
+        carried: list[str] = []
         if nonempty:
             joined = pd.concat(nonempty, ignore_index=True)
             joined, applied, adjustment_findings = apply_adjustments(
                 kdcode, joined, plan.adjustments
             )
             findings.extend(adjustment_findings)
+            if is_delisted(kdcode):
+                joined, carried = trim_carried_tail(joined)
+                if carried:
+                    findings.append(
+                        Finding(
+                            kdcode,
+                            "carried_tail_dropped",
+                            False,
+                            "Trailing rows repeating the last close at zero volume after the "
+                            "last trade; dropped so the name stops at its last real session",
+                            {"dates": carried},
+                        )
+                    )
             nonempty = [joined]
         pieces[kdcode] = nonempty
         resolved[kdcode] = {
@@ -458,6 +480,7 @@ def main(argv: list[str] | None = None) -> int:
             "note": plan.note,
             "segments": chosen,
             "adjustments_applied": applied,
+            "carried_tail_dropped": carried,
             "accepted_differences": list(plan.accepted_differences),
         }
         symbols = ", ".join(str(c["symbol"]) for c in chosen)

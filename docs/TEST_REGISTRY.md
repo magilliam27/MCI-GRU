@@ -273,6 +273,10 @@ Input admission at the confirmed #223 seams: native read, preparation, runner.
 | `test_a_blank_valid_to_is_membership_through_the_export_cutoff` |  |  |
 | `test_a_blank_valid_to_without_a_declared_cutoff_stops` |  |  |
 | `test_pit_structure_failures_stop_and_name_the_stock` |  | parametrize |
+| `test_a_declared_absent_member_is_admitted_and_recorded` |  |  |
+| `test_a_declared_absence_that_does_not_hold_stops` |  | parametrize |
+| `test_a_declared_absence_holds_for_a_window_the_name_is_not_a_member_in` |  |  |
+| `test_pit_absent_kdcodes_must_be_a_clean_pit_declaration` |  | parametrize |
 | `test_adjacent_intervals_for_one_name_are_not_an_overlap` |  |  |
 | `test_the_session_breadth_floor_stops_through_the_failure_report` |  |  |
 | `test_the_runner_reports_a_missing_selected_file_and_never_reads_the_decoy` |  | slow |
@@ -420,6 +424,9 @@ EODHD daily prices for the point-in-time universe (#281).
 | `test_a_cash_distribution_above_the_prior_close_blocks` |  |  |
 | `test_a_share_conversion_rescales_volume_as_well_as_prices` |  |  |
 | `test_rows_with_nothing_before_the_date_need_no_adjustment` |  |  |
+| `test_a_carried_close_at_zero_volume_is_trimmed_from_the_tail` |  |  |
+| `test_only_a_final_zero_volume_repeat_counts_as_carried` |  | parametrize |
+| `test_only_lseg_delisted_codes_are_trimmed` |  |  |
 | `test_symbol_map_rejects_contradictory_adjustments` |  | parametrize |
 | `test_symbol_map_reads_cash_and_share_conversion` |  |  |
 | `test_a_dividend_sized_step_is_quiet_and_a_larger_one_is_reported` |  |  |
@@ -432,10 +439,12 @@ EODHD daily prices for the point-in-time universe (#281).
 | `test_a_short_window_with_full_coverage_passes_without_a_correlation` |  |  |
 | `test_missing_sessions_inside_the_needed_span_fail` |  |  |
 | `test_reference_check_only_judges_the_span_the_universe_needs` |  |  |
+| `test_rows_for_a_name_declared_unavailable_block` |  |  |
 | `test_export_proves_each_mapping_and_publishes_a_verifiable_package` |  |  |
 | `test_export_stops_without_a_manifest_when_no_candidate_matches` |  |  |
 | `test_a_declared_unavailable_name_is_left_out_and_disclosed` |  |  |
 | `test_a_name_with_no_rows_still_blocks_unless_declared` |  |  |
+| `test_a_delisted_name_stops_at_its_last_trade` |  |  |
 | `test_symbol_map_rejects_a_malformed_unavailable_entry` |  | parametrize |
 | `test_the_key_is_never_written` |  |  |
 | `test_client_never_stores_or_reports_the_key` |  |  |

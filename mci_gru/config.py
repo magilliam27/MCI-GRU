@@ -54,6 +54,12 @@ class DataConfig:
         pit_export_cutoff: Export cutoff (YYYY-MM-DD) of ``pit_universe_csv``. A blank
             ``valid_to`` means membership through this date; with none declared, a
             blank ``valid_to`` stops preparation (#223).
+        pit_absent_kdcodes: PIT members the market panel declares it does not carry
+            (#281). Admission accepts their missing rows and records the gap; any
+            other member with no rows still stops the run, and a declared name that
+            has rows, or is in no PIT interval, stops it too. A declared name outside
+            the experiment period is admitted: the declaration describes the package.
+            Requires ``use_pit_universe``. Empty declares no gap.
         pit_cessation_events_csv: Optional declared cessation event file (#225). A stock
             leaves daily eligibility once its cessation is both effective and known by
             the prediction clock. Requires ``use_pit_universe``. ``None`` declares no
@@ -99,6 +105,7 @@ class DataConfig:
     pit_min_scoreable_stocks: int = 450
     pit_breadth_policy: str = "error"
     pit_export_cutoff: str | None = None
+    pit_absent_kdcodes: list[str] = field(default_factory=list)
     pit_cessation_events_csv: str | None = None
     prediction_clock_time: str = "20:00"
     prediction_clock_timezone: str = "America/New_York"
@@ -148,6 +155,24 @@ class DataConfig:
                 raise ValueError(
                     f"pit_export_cutoff must be a YYYY-MM-DD date, got {self.pit_export_cutoff!r}"
                 ) from exc
+        if isinstance(self.pit_absent_kdcodes, str):
+            raise ValueError(
+                "data.pit_absent_kdcodes must be a list of identifiers, "
+                f"got the string {self.pit_absent_kdcodes!r}"
+            )
+        self.pit_absent_kdcodes = list(self.pit_absent_kdcodes)
+        if self.pit_absent_kdcodes and not self.use_pit_universe:
+            raise ValueError(
+                "data.pit_absent_kdcodes requires data.use_pit_universe=true: "
+                "it declares PIT members the market panel does not carry"
+            )
+        absent = self.pit_absent_kdcodes
+        if any(not isinstance(k, str) or not k.strip() for k in absent) or len(set(absent)) != len(
+            absent
+        ):
+            raise ValueError(
+                f"data.pit_absent_kdcodes must be distinct non-blank identifiers, got {absent!r}"
+            )
         if self.pit_cessation_events_csv and not self.use_pit_universe:
             raise ValueError(
                 "data.pit_cessation_events_csv requires data.use_pit_universe=true: "

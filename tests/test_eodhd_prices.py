@@ -31,6 +31,7 @@ from mci_gru.data.eodhd_prices import (
     clean_values,
     default_symbol,
     eod_rows_frame,
+    is_delisted,
     load_symbol_map,
     name_hint_candidates,
     needed_spans,
@@ -41,6 +42,7 @@ from mci_gru.data.eodhd_prices import (
     split_adjust,
     split_basis_findings,
     splits_frame,
+    trim_carried_tail,
 )
 from mci_gru.data.input_manifest import (
     InputFileSpec,
@@ -126,6 +128,9 @@ def test_committed_symbol_map_parses_and_names_only_ric_shaped_identifiers():
     assert charter.factor == pytest.approx(1 / 0.9)
     (baker,) = plans["BKR.OQ"].adjustments
     assert (baker.date, baker.cash, baker.factor) == ("2017-07-05", 17.5, None)
+    # Only Ford's supplemental is restated; the vendor step would take the regular too.
+    (ford,) = plans["F.N"].adjustments
+    assert (ford.date, ford.cash) == ("2023-02-10", 0.65)
     vendor_dated = {k: [a.date for a in plans[k].adjustments] for k in ("COST.OQ", "EQR.N")}
     assert vendor_dated == {
         "COST.OQ": ["2015-02-05", "2017-05-08"],
@@ -313,8 +318,48 @@ def test_rows_with_nothing_before_the_date_need_no_adjustment():
             PriceAdjustment(dates[0], "spin-off"),
         ],
     )
-    assert not applied and not findings
+    assert [a["basis"] for a in applied] == ["no_rows_before", "no_rows_before"]
+    assert [a["factor"] for a in applied] == [None, None]
+    # Disclosed rather than silent, so a mistyped date stays visible; it never blocks.
+    assert {f.code for f in findings} == {"adjustment_not_applied"}
+    assert not [f for f in findings if f.blocking]
     assert out["close"].tolist() == frame["close"].tolist()
+
+
+def _tail_frame(closes, volumes):
+    dates = _sessions("2023-10-09", len(closes))
+    rows = _raw_rows(dates, closes)
+    for row, volume in zip(rows, volumes, strict=True):
+        row["volume"] = volume
+    return eod_rows_frame(rows), dates
+
+
+def test_a_carried_close_at_zero_volume_is_trimmed_from_the_tail():
+    frame, dates = _tail_frame([10.0, 11.0, 12.0, 12.0, 12.0], [5.0, 5.0, 5.0, 0.0, 0.0])
+    out, dropped = trim_carried_tail(frame)
+    assert dropped == dates[3:]
+    assert out["dt"].tolist() == dates[:3]
+
+
+@pytest.mark.parametrize(
+    ("closes", "volumes"),
+    [
+        ([10.0, 11.0, 11.0], [5.0, 5.0, 3.0]),  # a repeat close that traded
+        ([10.0, 11.0, 11.5], [5.0, 5.0, 0.0]),  # zero volume at a new price
+        ([10.0, 11.0, 11.0], [5.0, 5.0, np.nan]),  # volume unknown, not zero
+        ([10.0, 11.0, 11.0, 12.0], [5.0, 0.0, 0.0, 5.0]),  # carried rows mid-history
+    ],
+)
+def test_only_a_final_zero_volume_repeat_counts_as_carried(closes, volumes):
+    frame, _ = _tail_frame(closes, volumes)
+    out, dropped = trim_carried_tail(frame)
+    assert dropped == []
+    assert len(out) == len(frame)
+
+
+def test_only_lseg_delisted_codes_are_trimmed():
+    assert is_delisted("ATVI.OQ^J23")
+    assert not is_delisted("PSKY.OQ")
 
 
 @pytest.mark.parametrize(
@@ -498,6 +543,23 @@ def test_reference_check_only_judges_the_span_the_universe_needs():
     assert check.loc[0, "check_start"] == "2016-01-04"
     assert check.loc[0, "verdict"] == "pass", check.to_dict("records")
     assert not [f for f in findings if f.blocking]
+
+
+def test_rows_for_a_name_declared_unavailable_block():
+    dates = _sessions("2016-01-04", 40)
+    closes = _walk(5, 40)
+    reference = _reference("X.N", dates, closes)
+    panel = pd.DataFrame({"kdcode": "X.N", "dt": dates, "close": closes, "adjusted_close": closes})
+    pit = pd.DataFrame(
+        {"kdcode": ["X.N"], "valid_from": ["2016-01-04"], "valid_to": ["2016-02-26"]}
+    )
+
+    check, findings = reference_check(panel, reference, pit, unavailable=["X.N"])
+    _, clean = reference_check(panel.iloc[0:0], reference, pit, unavailable=["X.N"])
+
+    assert check.loc[0, "verdict"] == "declared_unavailable"
+    assert [(f.code, f.blocking) for f in findings] == [("declared_unavailable_has_rows", True)]
+    assert not clean
 
 
 # ---------------------------------------------------------------------------
@@ -693,6 +755,36 @@ def test_a_name_with_no_rows_still_blocks_unless_declared(vendor):
     assert ("OLD.N^A16", "no_rows") in codes
 
 
+def test_a_delisted_name_stops_at_its_last_trade(vendor):
+    # EODHD carries the old company one session past its last trade, at zero volume.
+    carried = dict(FakeClient.eod_rows["OLD_OLD.US"][-1])
+    carried.update(date=vendor["dates"][280], volume=0.0)
+    FakeClient.eod_rows = {**FakeClient.eod_rows}
+    FakeClient.eod_rows["OLD_OLD.US"] = [*FakeClient.eod_rows["OLD_OLD.US"], carried]
+    # A live name ending the same way keeps its row: a quiet session is not a cessation.
+    good = [dict(row) for row in FakeClient.eod_rows["GOOD.US"]]
+    last = max(i for i, row in enumerate(good) if row["date"] <= "2016-07-29")
+    good[last].update(
+        {k: good[last - 1][k] for k in ("open", "high", "low", "close", "adjusted_close")},
+        volume=0.0,
+    )
+    FakeClient.eod_rows["GOOD.US"] = good
+
+    assert export.main(_argv(vendor)) == 0
+
+    market = vendor["tmp"] / "package" / "market"
+    panel = pd.read_csv(next(market.glob("*_20160729.csv")), dtype={"dt": str})
+    old = panel[panel["kdcode"] == "OLD.N^A16"]
+    assert old["dt"].max() == vendor["dates"][279]
+    symbols = json.loads(next(market.glob("*_symbols.json")).read_text())
+    assert symbols["OLD.N^A16"]["carried_tail_dropped"] == [vendor["dates"][280]]
+    assert symbols["GOOD.OQ"]["carried_tail_dropped"] == []
+    assert panel[panel["kdcode"] == "GOOD.OQ"]["dt"].max() == good[last]["date"]
+    meta = json.loads(next(market.glob("*.meta.json")).read_text())
+    codes = {(f["kdcode"], f["code"], f["blocking"]) for f in meta["findings"]}
+    assert ("OLD.N^A16", "carried_tail_dropped", False) in codes
+
+
 @pytest.mark.parametrize(
     ("entry", "message"),
     [
@@ -876,8 +968,9 @@ def test_the_eodhd_config_changes_only_the_price_panel_and_its_package():
     eodhd = OmegaConf.to_container(OmegaConf.load(EODHD_CONFIG))
     lseg = OmegaConf.to_container(OmegaConf.load(LSEG_CONFIG))
     package_keys = {"filename", "input_package_manifest", "input_package_manifest_sha256"}
-    assert set(eodhd) == set(lseg)
-    assert {k for k in eodhd if eodhd[k] != lseg[k]} == package_keys
+    assert set(eodhd) == set(lseg) | {"pit_absent_kdcodes"}
+    assert {k for k in lseg if eodhd[k] != lseg[k]} == package_keys
+    assert eodhd["pit_absent_kdcodes"] == ["DD.N^I17"]
     assert "_eodhd_" in eodhd["filename"]
 
 
@@ -900,7 +993,10 @@ def test_the_eodhd_package_carries_the_lseg_membership_byte_for_byte():
     # The pull ran with the committed symbol map, and declared the one gap.
     map_record = next(r for r in mine.files if r.path.endswith("_symbol_map.json"))
     assert map_record.sha256 == hashlib.sha256(COMMITTED_MAP.read_bytes()).hexdigest()
-    assert [u.split(":")[0] for u in mine.provenance["unknowns"]] == ["DD.N^I17"]
+    unknowns = [u.split(":")[0] for u in mine.provenance["unknowns"]]
+    assert unknowns == ["DD.N^I17"]
+    # Admission accepts exactly the gap the package records, no more.
+    assert list(eodhd.pit_absent_kdcodes) == unknowns
 
 
 def test_the_eodhd_config_binds_both_selected_files_to_its_package():
@@ -910,6 +1006,7 @@ def test_the_eodhd_config_binds_both_selected_files_to_its_package():
 
     declarations = declare_window_inputs(config, InputObservationContext().freeze())
 
+    assert config.data.pit_absent_kdcodes == ["DD.N^I17"]
     (package,) = declarations.manifests
     assert package.manifest.package_id.endswith("_eodhd")
     assert package.sha256 == config.data.input_package_manifest_sha256

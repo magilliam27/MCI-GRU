@@ -46,6 +46,7 @@ if TYPE_CHECKING:
 
 PANEL_COLUMNS = ("kdcode", "dt", "open", "high", "low", "close", "volume")
 PRICE_FIELDS = ("open", "high", "low", "close")
+DELISTED_MARKER = "^"
 DATE_FORMAT = "%Y-%m-%d"
 SYMBOL_MAP_SCHEMA = 1
 
@@ -106,7 +107,9 @@ class PriceAdjustment:
     Prices before ``date`` are multiplied by a factor: ``factor`` when stated;
     ``1 - cash / close`` when ``cash`` per share is stated, using the last close
     before the date; otherwise the step EODHD's ``adjusted_close`` takes on that
-    date. ``share_conversion`` marks a change in share count, such as a merger
+    date. That close is split-adjusted to the end of the pull, so ``cash`` must be
+    stated on the same basis: divide the nominal amount by any later split ratio.
+    ``share_conversion`` marks a change in share count, such as a merger
     exchange ratio, so volume before the date is divided by the factor too.
     """
 
@@ -524,7 +527,9 @@ def apply_adjustments(
 
     Prices before each date are multiplied by its factor. Volume is unchanged
     unless the adjustment is a share conversion. Rows that hold nothing before the
-    date, such as a segment that starts on it, need no adjustment. A factor read
+    date, such as a segment that starts on it, need no adjustment; that is recorded
+    with basis ``no_rows_before`` and a non-blocking finding, so a mistyped date on
+    the whole identifier stays visible. A factor read
     from ``adjusted_close`` needs vendor rows on and before the date; a cash
     factor needs a close before it.
     """
@@ -534,6 +539,24 @@ def apply_adjustments(
     for adjustment in adjustments:
         before = out["dt"] < adjustment.date
         if not before.any():
+            applied.append(
+                {
+                    "date": adjustment.date,
+                    "factor": None,
+                    "basis": "no_rows_before",
+                    "share_conversion": adjustment.share_conversion,
+                    "reason": adjustment.reason,
+                }
+            )
+            findings.append(
+                Finding(
+                    kdcode,
+                    "adjustment_not_applied",
+                    False,
+                    f"No rows before {adjustment.date}; nothing to adjust",
+                    {"date": adjustment.date, "reason": adjustment.reason},
+                )
+            )
             continue
         factor, basis, problem = adjustment.factor, "declared_factor", None
         if factor is None and adjustment.cash is not None:
@@ -597,6 +620,31 @@ def clip_segment(frame: pd.DataFrame, segment: SymbolSegment) -> pd.DataFrame:
     if segment.end:
         mask &= frame["dt"] <= segment.end
     return frame[mask]
+
+
+def is_delisted(kdcode: str) -> bool:
+    """LSEG marks a delisted RIC with ``^`` (``ATVI.OQ^J23``)."""
+    return DELISTED_MARKER in kdcode
+
+
+def trim_carried_tail(frame: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+    """Drop trailing rows that carry the previous close forward at zero volume.
+
+    EODHD can end a delisted name with a session after its last trade that repeats
+    the prior close and trades nothing. The pipeline treats any finite close as
+    observed, so such a row would keep the name tradable for a session it did not
+    trade. Only a final run of rows with zero volume *and* the preceding close is
+    dropped; a zero-volume row at a new price, or a traded row, ends the trim.
+    Returns the frame and the dropped dates in order.
+    """
+    rows = frame.sort_values("dt").reset_index(drop=True)
+    end = len(rows)
+    while end >= 2:
+        last, prior = rows.iloc[end - 1], rows.iloc[end - 2]
+        if not (last["volume"] == 0 and last["close"] == prior["close"]):
+            break
+        end -= 1
+    return rows.iloc[:end].copy(), [str(d) for d in rows["dt"].iloc[end:]]
 
 
 def assemble_panel(pieces: Mapping[str, list[pd.DataFrame]]) -> pd.DataFrame:
@@ -774,7 +822,8 @@ def reference_check(
 ) -> tuple[pd.DataFrame, list[Finding]]:
     """Compare every identifier against the reference over its needed span.
 
-    Identifiers declared ``unavailable`` are reported as such and not compared.
+    Identifiers declared ``unavailable`` are reported as such and not compared;
+    panel rows for one of them are a blocking finding.
     """
     accepted = accepted or {}
     unavailable = set(unavailable)
@@ -798,6 +847,15 @@ def reference_check(
         if kdcode in unavailable:
             row.update(verdict="declared_unavailable")
             rows.append(row)
+            if not mine.empty:
+                findings.append(
+                    Finding(
+                        kdcode,
+                        "declared_unavailable_has_rows",
+                        True,
+                        "The map declares this name unavailable, yet the panel has rows for it",
+                    )
+                )
             continue
         if window is None:
             row.update(verdict="no_reference")
