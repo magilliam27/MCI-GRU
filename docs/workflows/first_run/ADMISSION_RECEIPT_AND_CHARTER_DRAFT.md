@@ -4,7 +4,8 @@
 > Prepared 2026-10-04 by a Claude Code session working while the owner was away
 > (ticket #278). Admission stays on **HOLD** (#187, comment 5862836271) until the
 > owner edits this, signs the release in section 3, and posts it on #187.
-> Ticket states below were read from GitHub on 2026-10-04 around 06:25 UTC.
+> Ticket states below were read from GitHub on 2026-10-04 around 06:25 UTC, and
+> updated on 2026-10-08 for #279.
 
 The run this governs is the first admitted real-data run of the frozen recipe
 (`docs/DEFAULT_EXPERIMENT_RECIPE.md`) on the preserved 110-name LSEG package,
@@ -19,7 +20,7 @@ Each row is an item the run depends on, the work that delivers it, and its state
 | --- | --- | --- | --- | --- |
 | Run input attachment: each window keeps the package manifest and binds every read to it | #208 | #270 | **Merged** at `6d02778` | Done |
 | Capture of the regime inputs, kept in the run folder; EODHD file declared as a required input role | #208 | #274 | **Merged** at `1dcd818` | Done |
-| Two EODHD record gaps: a rule stop leaves the file read recorded as used, and the `eodhd.regime_market` verdict carries no `observation_id` | #208 | #279 (draft, green) | Logged on #208 (comment 5976533692). Judged not to change any output or input pin, so not blocking | Owner decides: merge #279 before the run, or record the gaps as limitations (section 2.6) |
+| Two EODHD record gaps: a rule stop leaves the file read recorded as used, and the `eodhd.regime_market` verdict carries no `observation_id` | #208 | #279 | **Merged** at `24d1d2a` (gaps logged on #208, comment 5976533692) | Done |
 | Execution provenance: code, config, environment and member facts captured at execution time | #144 | #261, #265, #266 merged | Done; issue open for the owner to close (status comment 5972582665) | Owner closes the issue |
 | Interpreter and lock policy | #143 | #263 merged | Done; issue open for the owner to close (evidence comment 5975806936) | Owner closes the issue |
 | Recipe pins the fixed model forms: data-dependent latents (#198), residual cross-stock block (#197), 32-then-10 `gru_attn` layers (#131); edge channels kept as they are | #273 | #275 | Draft, awaiting the owner's merge | Merge #275 |
@@ -37,11 +38,7 @@ and #274 both edit `docs/DEFAULT_EXPERIMENT_RECIPE.md` and
 `tests/test_default_experiment_recipe.py`; a local trial merge on 2026-10-04
 conflicted only there, and both sides' additions apply together.
 
-#279, if the owner takes it, has no ordering constraint with this pull request:
-neither touches the other's files, a trial merge of #279 onto this branch (with
-#274 in) merged without conflict, the test registry stayed current, and the
-launcher, staging, EODHD and run-input tests passed together (185). It must be
-in `main` before the run's commit is chosen for its fix to count.
+#279 merged at `24d1d2a`, and `main` with it is merged into this pull request.
 
 ## 2. The six receipt sections of #187 (comment 5862836271)
 
@@ -55,6 +52,11 @@ in `main` before the run's commit is chosen for its fix to count.
 
 No basename fallback for required selected files (#223), and no provider or symbol
 substitution (#187 ruling of 2026-09-21).
+
+**Pending change (2026-10-08):** the owner plans to move the run's stock prices to
+an EODHD pull (#282). The stock package row above, and the notebook's staging,
+change once that package's manifest exists; until then they describe the LSEG
+package.
 
 ### 2.2 Admission findings
 
@@ -109,15 +111,14 @@ recipe gets a new recipe id and is compared against this one (owner decision,
 2. FRED values are today's values standing in for history (answer 3).
 3. The EODHD file is a fixed vintage ending 2026-09-18. The recipe's test window
    ends 2025-12-31, so it is covered.
-4. The two EODHD record gaps in section 1, unless #279 lands first.
-5. Regime inputs have a single preserved copy (2.3).
-6. Colab trains on a GPU build of `torch==2.12.1` (a `+cu…` local version of the
+4. Regime inputs have a single preserved copy (2.3).
+5. Colab trains on a GPU build of `torch==2.12.1` (a `+cu…` local version of the
    pin); the #143 qualification is the Linux CPU reference. GPU training is not
    bit-reproducible run to run. The CUDA packages torch pulls in are not in the
    lock; the run folder's `pip_freeze.txt` records them.
-7. #223's deferred index, sector and exporter rules are not in force; the recipe
+6. #223's deferred index, sector and exporter rules are not in force; the recipe
    uses none of those inputs.
-8. MLflow tracking is off for the run (`tracking.enabled=false`), because the lock
+7. MLflow tracking is off for the run (`tracking.enabled=false`), because the lock
    does not carry the `tracking` extra.
 
 ## 3. Run charter
@@ -130,7 +131,7 @@ recipe gets a new recipe id and is compared against this one (owner decision,
 | Model and training | `gru_attn`, 20 models x 100 epochs, patience 15, pure IC loss on raw 5-day returns, selection on validation IC |
 | Inputs | Section 2.1, captured (`data.auxiliary_snapshot_mode=capture`) |
 | Compute | Google Colab GPU runtime, `notebooks/first_run_colab.ipynb` in `full` mode |
-| Commit | _to fill: the `main` commit after #275 and this pull request merge (and #279, if taken); set as `EXPECTED_COMMIT`_ |
+| Commit | _to fill: the `main` commit after #275 and this pull request merge; set as `EXPECTED_COMMIT`_ |
 | Run tag and Drive folder | _to fill from `colab_run_record.json`_ |
 | Success | Exit code 0; no `run_failure.json`; every role admitted in `admission.json`; input attachment `complete`; 20 member records |
 | Stop rules | Any `run_failure.json` stops the run and is reported as it stands, without editing inputs. A lost runtime leaves an incomplete run: start again from the top under a new tag, never resume into the same folder |
