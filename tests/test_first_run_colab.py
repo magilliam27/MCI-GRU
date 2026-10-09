@@ -55,7 +55,7 @@ def _sha(data: bytes) -> str:
 
 def test_recipe_overrides_are_read_from_the_recipe_document():
     overrides = frc.recipe_overrides(RECIPE.read_text(encoding="utf-8"))
-    assert overrides[0] == "data=gics_top10_110_2016"
+    assert overrides[0] == "data=gics_top10_110_2016_eodhd"
     assert "training.num_models=20" in overrides
     assert "training.num_epochs=100" in overrides
     assert "features.include_global_regime=true" in overrides

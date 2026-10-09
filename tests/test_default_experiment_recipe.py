@@ -146,7 +146,7 @@ def test_the_base_config_alone_still_builds_the_legacy_forms():
 def test_the_override_block_parser_reads_the_block():
     """Control: an empty parse would make every composition test vacuous."""
     overrides = _recipe_overrides()
-    assert "data=gics_top10_110_2016" in overrides
+    assert "data=gics_top10_110_2016_eodhd" in overrides
     assert "model.market_latent_mode=data_dependent" in overrides
     assert all("```" not in line for line in overrides)
 
@@ -163,3 +163,33 @@ def test_recipe_captures_its_provider_inputs():
     assert (
         OmegaConf.load(REPO_ROOT / "configs/config.yaml").data.auxiliary_snapshot_mode == "source"
     )
+
+
+def test_the_recipe_trains_on_the_eodhd_price_panel():
+    """Issue 283: the first run reads the EODHD package, not the LSEG one (owner, 2026-10-08)."""
+    eodhd = OmegaConf.load(REPO_ROOT / "configs/data/gics_top10_110_2016_eodhd.yaml")
+    data = _compose(_recipe_overrides()).data
+    assert data.filename == eodhd.filename
+    assert "_eodhd_" in data.filename
+    assert data.input_package_manifest == eodhd.input_package_manifest
+    assert data.input_package_manifest_sha256 == eodhd.input_package_manifest_sha256
+    # Same universe as the LSEG config: only the price panel and its manifest move.
+    lseg = OmegaConf.load(REPO_ROOT / "configs/data/gics_top10_110_2016.yaml")
+    assert data.pit_universe_csv == lseg.pit_universe_csv
+    assert (data.train_start, data.test_end) == (lseg.train_start, lseg.test_end)
+
+
+def test_without_its_data_line_the_recipe_would_read_the_lseg_panel():
+    """Control: the test above must come from the recipe's selector, not the base default."""
+    without_data = [line for line in _recipe_overrides() if not line.startswith("data=")]
+    data = _compose(without_data).data
+    assert "_lseg_" in data.filename
+    assert "_eodhd_" not in data.filename
+
+
+def test_recipe_records_the_price_panel_change():
+    """The 2026-10-08 EODHD switch is dated, so LSEG- and EODHD-panel evidence stay apart."""
+    text = RECIPE.read_text(encoding="utf-8")
+    assert "The price panel changed on 2026-10-08" in text
+    match = re.search(r"^Last updated:\s*(\d{4}-\d{2}-\d{2})$", text, re.M)
+    assert match and match.group(1) >= "2026-10-08"

@@ -19,6 +19,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 
@@ -138,3 +139,57 @@ def test_tail_check_exit_code_follows_the_finding(tmp_path, capsys):
     assert check_delisted_tails.main(["--market-csv", str(clean_csv)]) == 0
     assert check_delisted_tails.main(["--market-csv", str(stale_csv)]) == 1
     assert "GONE.N^J23" in capsys.readouterr().out
+
+
+def _recipe_text(block: str, before: str = "") -> str:
+    return f"{before}## Hydra Overrides\n\n```text\n{block}```\n"
+
+
+def test_tail_check_reads_the_panel_the_recipe_selects(tmp_path):
+    """The precondition must run on the panel the first run reads (issue 283)."""
+    eodhd = REPO_ROOT / "configs" / "data" / "gics_top10_110_2016_eodhd.yaml"
+    assert check_delisted_tails.recipe_data_config() == eodhd
+    assert check_delisted_tails._default_market_csv() == REPO_ROOT / str(
+        OmegaConf.load(eodhd).filename
+    )
+    # Control: it follows the selector rather than naming a fixed config.
+    other = tmp_path / "recipe.md"
+    other.write_text(_recipe_text("data=gics_top10_110_2016\nseed=1729\n"), encoding="utf-8")
+    assert check_delisted_tails.recipe_data_config(other).name == "gics_top10_110_2016.yaml"
+
+
+def test_tail_check_reads_the_selector_only_inside_the_override_block(tmp_path):
+    other = tmp_path / "recipe.md"
+    # A data= line in prose before the block is not the recipe's selection.
+    other.write_text(
+        _recipe_text("data=gics_top10_110_2016\n", before="```text\ndata=sp500\n```\n\n"),
+        encoding="utf-8",
+    )
+    assert check_delisted_tails.recipe_data_config(other).name == "gics_top10_110_2016.yaml"
+    # Neither a key override nor an indented or prefixed line selects a group.
+    for block in ("seed=1729\ndata.source=csv\n", "  data=sp500\n", "xdata=sp500\n"):
+        other.write_text(_recipe_text(block), encoding="utf-8")
+        with pytest.raises(SystemExit):
+            check_delisted_tails.recipe_data_config(other)
+
+
+def _with_last_row(panel: pd.DataFrame, close_delta: float, volume: float) -> pd.DataFrame:
+    """Append one GONE row on the session after its last, at last close + delta."""
+    gone = panel.loc[panel["kdcode"] == "GONE"].sort_values("dt")
+    next_session = SESSIONS[SESSIONS.index(LAST) + 1]
+    row = {"kdcode": "GONE", "dt": next_session, "close": gone["close"].iloc[-1] + close_delta}
+    return pd.concat([panel, pd.DataFrame([{**row, "volume": volume}])], ignore_index=True)
+
+
+def test_tail_check_flags_one_carried_zero_volume_row():
+    """A vendor row for the delisting day repeats the close at zero volume (EODHD, 2026-10-08)."""
+    panel = _with_last_row(_panel(stale_tail=False), close_delta=0.0, volume=0.0)
+    record = check_delisted_tails.tail_report(panel, ["GONE"])[0]
+    assert (record["trailing_repeat_sessions"], record["trailing_zero_volume_sessions"]) == (1, 1)
+    assert record["stale"]
+    # Controls: a traded repeat of the close, or a zero-volume row at a new
+    # price, is one coincidence and stays clean at the default threshold.
+    traded = _with_last_row(_panel(stale_tail=False), close_delta=0.0, volume=500.0)
+    assert not check_delisted_tails.tail_report(traded, ["GONE"])[0]["stale"]
+    repriced = _with_last_row(_panel(stale_tail=False), close_delta=0.25, volume=0.0)
+    assert not check_delisted_tails.tail_report(repriced, ["GONE"])[0]["stale"]
