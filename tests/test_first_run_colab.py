@@ -55,7 +55,9 @@ def _sha(data: bytes) -> str:
 
 def test_recipe_overrides_are_read_from_the_recipe_document():
     overrides = frc.recipe_overrides(RECIPE.read_text(encoding="utf-8"))
-    assert overrides[0] == "data=gics_top10_110_2016_eodhd"
+    # Whichever data config the recipe names, it must declare a package the notebook stages.
+    assert overrides[0].startswith("data=gics_top10_110_2016")
+    assert frc.selected_package(REPO_ROOT) in frc.PUBLISHED_PACKAGES.values()
     assert "training.num_models=20" in overrides
     assert "training.num_epochs=100" in overrides
     assert "features.include_global_regime=true" in overrides
@@ -198,15 +200,15 @@ def test_every_prerequisite_present_reads_as_ready(tmp_path):
 @pytest.mark.parametrize(
     ("missing", "expected_pr"),
     [
-        ({"pr270": False}, "#270"),
-        ({"pr274_capture": False}, "#274"),
-        ({"pr274_role": False}, "#274"),
-        ({"pr275": False}, "#275"),
+        ({"pr270": False}, ["#270", frc.PACKAGE_PIN_PREREQUISITE]),
+        ({"pr274_capture": False}, ["#274"]),
+        ({"pr274_role": False}, ["#274"]),
+        ({"pr275": False}, ["#275"]),
     ],
 )
 def test_each_missing_prerequisite_is_named_by_its_pull_request(tmp_path, missing, expected_pr):
     names = _missing(_fake_repo(tmp_path, **missing))
-    assert [pr for pr, _ in names] == [expected_pr], names
+    assert [pr for pr, _ in names] == expected_pr, names
 
 
 def test_one_of_three_model_pins_is_not_enough_for_275(tmp_path):
@@ -219,19 +221,99 @@ def test_one_of_three_model_pins_is_not_enough_for_275(tmp_path):
     assert [pr for pr, _ in _missing(repo)] == ["#275"]
 
 
-def test_270_needs_the_manifest_this_notebook_stages_not_just_the_key(tmp_path):
+def test_a_digest_without_a_pin_is_named_as_the_pin_not_as_270(tmp_path):
     repo = _fake_repo(tmp_path)
     data = repo / "configs" / "data" / "gics_top10_110_2016.yaml"
     data.write_text(
-        data.read_text(encoding="utf-8").replace(frc.PACKAGE_MANIFEST_SHA256, "0" * 64),
+        data.read_text(encoding="utf-8").replace(frc.PACKAGE_MANIFEST_SHA256, "ab" * 32),
         encoding="utf-8",
     )
-    assert [pr for pr, _ in _missing(repo)] == ["#270"]
+    assert [pr for pr, _ in _missing(repo)] == [frc.PACKAGE_PIN_PREREQUISITE]
+
+
+def test_270_needs_the_package_declaration_in_the_data_config(tmp_path):
+    repo = _fake_repo(tmp_path)
+    data = repo / "configs" / "data" / "gics_top10_110_2016.yaml"
+    data.write_text("source: csv\n", encoding="utf-8")
+    assert [pr for pr, _ in _missing(repo)] == ["#270", frc.PACKAGE_PIN_PREREQUISITE]
+
+
+def _declare_package(repo, package):
+    data = repo / "configs" / "data" / "gics_top10_110_2016.yaml"
+    data.write_text(
+        "source: csv\n"
+        f"input_package_manifest: {package.manifest}\n"
+        f"input_package_manifest_sha256: {package.manifest_sha256}\n"
+        f"input_package_root: {frc.PACKAGE_ROOT}\n",
+        encoding="utf-8",
+    )
+
+
+_OTHER_PACKAGE = frc.PublishedPackage(
+    "data/manifests/other_package.r1.json", "ab" * 32, "/content/drive/other", "manifest_copy"
+)
+
+
+@pytest.mark.parametrize("package", [frc.LSEG_PACKAGE, _OTHER_PACKAGE])
+def test_the_recipe_data_config_chooses_the_package_to_stage(tmp_path, monkeypatch, package):
+    monkeypatch.setattr(
+        frc,
+        "PUBLISHED_PACKAGES",
+        {**frc.PUBLISHED_PACKAGES, _OTHER_PACKAGE.manifest_sha256: _OTHER_PACKAGE},
+    )
+    repo = _fake_repo(tmp_path)
+    _declare_package(repo, package)
+    assert frc.selected_package(repo) == package
+    assert _missing(repo) == []
+
+
+def test_a_package_the_notebook_does_not_know_is_refused(tmp_path):
+    repo = _fake_repo(tmp_path)
+    unknown = frc.PublishedPackage("data/manifests/x.r1.json", "1" * 64, "/x", "manifest_copy")
+    _declare_package(repo, unknown)
+    with pytest.raises(frc.StagingError, match="does not declare a package this notebook knows"):
+        frc.selected_package(repo)
+    assert [pr for pr, _ in _missing(repo)] == [frc.PACKAGE_PIN_PREREQUISITE]
+
+
+def test_a_known_digest_under_another_manifest_path_is_refused(tmp_path):
+    repo = _fake_repo(tmp_path)
+    _declare_package(
+        repo,
+        frc.PublishedPackage(
+            _OTHER_PACKAGE.manifest, frc.LSEG_PACKAGE.manifest_sha256, "/x", "manifest_copy"
+        ),
+    )
+    with pytest.raises(frc.StagingError):
+        frc.selected_package(repo)
+
+
+@pytest.mark.parametrize("package", list(frc.PUBLISHED_PACKAGES.values()))
+def test_published_package_pins_match_their_committed_manifests(package):
+    """A manifest not yet on this branch is checked once the commit that adds it lands."""
+    assert frc.PUBLISHED_PACKAGES[package.manifest_sha256] is package
+    manifest = REPO_ROOT / package.manifest
+    if not manifest.exists():
+        pytest.skip(f"{package.manifest} is not committed on this branch")
+    assert _sha(manifest.read_bytes()) == package.manifest_sha256
+
+
+def test_every_data_config_naming_a_published_digest_names_its_manifest():
+    for path in sorted((REPO_ROOT / "configs" / "data").glob("*.yaml")):
+        config = OmegaConf.to_container(OmegaConf.load(path))
+        package = frc.PUBLISHED_PACKAGES.get(config.get("input_package_manifest_sha256"))
+        if package is not None:
+            assert frc.declared_package(config) == package, path.name
 
 
 def test_prerequisite_check_runs_on_this_checkout():
     prerequisites = frc.admitted_run_prerequisites(REPO_ROOT)
-    assert {p.pull_request for p in prerequisites} == {"#270", "#274", "#275"}
+    assert {p.pull_request for p in prerequisites} == {
+        "#270",
+        "#274",
+        "#275",
+        frc.PACKAGE_PIN_PREREQUISITE,
+    }
 
 
 def test_full_mode_cli_refuses_when_a_prerequisite_is_missing(tmp_path, monkeypatch, capsys):
@@ -239,6 +321,54 @@ def test_full_mode_cli_refuses_when_a_prerequisite_is_missing(tmp_path, monkeypa
     assert frc.main(["prerequisites", "--mode", "full"]) == 1
     assert "#275" in capsys.readouterr().out
     assert frc.main(["prerequisites", "--mode", "smoke"]) == 0
+
+
+@pytest.mark.parametrize("mode", ["full", "smoke"])
+def test_neither_mode_runs_without_a_pin_for_the_declared_package(
+    tmp_path, monkeypatch, capsys, mode
+):
+    repo = _fake_repo(tmp_path)
+    unknown = frc.PublishedPackage("data/manifests/x.r1.json", "ab" * 32, "/x", "manifest_copy")
+    _declare_package(repo, unknown)
+    monkeypatch.setattr(frc, "REPO_DIR", repo)
+    assert frc.main(["prerequisites", "--mode", mode]) == 1
+    assert "neither mode can stage it" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("drive_override", ["", "/elsewhere"])
+def test_staging_hands_the_selected_package_to_stage_package(tmp_path, monkeypatch, drive_override):
+    monkeypatch.setattr(
+        frc,
+        "PUBLISHED_PACKAGES",
+        {**frc.PUBLISHED_PACKAGES, _OTHER_PACKAGE.manifest_sha256: _OTHER_PACKAGE},
+    )
+    repo = _fake_repo(tmp_path)
+    _declare_package(repo, _OTHER_PACKAGE)
+    monkeypatch.setattr(frc, "REPO_DIR", repo)
+    calls = []
+
+    class _Staged:
+        def summary(self):
+            return {"files": []}
+
+    def fake_stage_package(repo_dir, drive_dir, **pins):
+        calls.append((repo_dir, drive_dir, pins))
+        return _Staged()
+
+    monkeypatch.setattr(frc, "stage_package", fake_stage_package)
+    monkeypatch.setattr(frc, "stage_eodhd_market_file", lambda *_: "present")
+    frc._stage_inputs(drive_override, "/eodhd.csv")
+    assert calls == [
+        (
+            repo,
+            Path(drive_override or _OTHER_PACKAGE.drive_dir),
+            {
+                "manifest": _OTHER_PACKAGE.manifest,
+                "manifest_sha256": _OTHER_PACKAGE.manifest_sha256,
+                "drive_inventory": _OTHER_PACKAGE.drive_inventory,
+            },
+        )
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -395,7 +525,7 @@ def test_stage_package_copies_and_verifies_every_file(tmp_path):
 
 def test_a_drive_inventory_other_than_the_recorded_one_stops(tmp_path):
     repo, drive, _, pins = _package(tmp_path, record_inventory_of=b"some other inventory\n")
-    with pytest.raises(frc.StagingError, match="not the inventory the r1 manifest records"):
+    with pytest.raises(frc.StagingError, match="not the inventory the manifest vouches for"):
         frc.stage_package(repo, drive, **pins)
     assert not (repo / frc.PACKAGE_ROOT).exists()
 
@@ -417,6 +547,39 @@ def test_a_corrupt_drive_package_file_stops_before_it_is_copied(tmp_path):
     with pytest.raises(frc.StagingError, match="Drive copy"):
         frc.stage_package(repo, drive, **pins)
     assert not (repo / frc.PACKAGE_ROOT / "market" / "u_lseg.csv").exists()
+
+
+def _drive_with_manifest_copy(tmp_path):
+    """A package whose Drive folder carries a copy of its manifest, as the EODHD package does."""
+    repo, drive, files, pins = _package(tmp_path)
+    (drive / frc.HISTORICAL_INVENTORY_NAME).unlink()
+    manifest = repo / pins["manifest"]
+    (drive / manifest.name).write_bytes(manifest.read_bytes())
+    return repo, drive, files, {**pins, "drive_inventory": "manifest_copy"}
+
+
+def test_a_drive_copy_proven_by_its_manifest_copy_is_staged(tmp_path):
+    repo, drive, files, pins = _drive_with_manifest_copy(tmp_path)
+    staged = frc.stage_package(repo, drive, **pins)
+    for path, data in files.items():
+        assert (repo / frc.PACKAGE_ROOT / path).read_bytes() == data
+    assert staged.summary()["drive_inventory_sha256"] == pins["manifest_sha256"]
+
+
+def test_a_drive_manifest_copy_with_other_bytes_stops(tmp_path):
+    repo, drive, _, pins = _drive_with_manifest_copy(tmp_path)
+    copy = drive / Path(pins["manifest"]).name
+    copy.write_bytes(copy.read_bytes() + b"\n")
+    with pytest.raises(frc.StagingError, match="not the inventory the manifest vouches for"):
+        frc.stage_package(repo, drive, **pins)
+    assert not (repo / frc.PACKAGE_ROOT).exists()
+
+
+def test_a_drive_folder_without_its_manifest_copy_stops(tmp_path):
+    repo, drive, _, pins = _drive_with_manifest_copy(tmp_path)
+    (drive / Path(pins["manifest"]).name).unlink()
+    with pytest.raises(frc.StagingError, match="Missing on Drive"):
+        frc.stage_package(repo, drive, **pins)
 
 
 def test_a_manifest_with_other_bytes_stops(tmp_path):
@@ -519,7 +682,7 @@ def test_notebook_installs_the_lock_and_names_the_pinned_drive_paths():
     sources = _notebook_sources()
     assert '"-r", str(REPO_DIR / "requirements.lock")' in sources
     assert '"--no-deps", "-e"' in sources
-    assert f'PACKAGE_DRIVE_DIR = "{frc.PACKAGE_DRIVE_DIR}"' in sources
+    assert 'PACKAGE_DRIVE_DIR = ""' in sources
     assert f'EODHD_DRIVE_PATH = "{frc.EODHD_MARKET_DRIVE_PATH}"' in sources
     assert 'RUN_MODE = "full"' in sources
 
