@@ -82,9 +82,17 @@ class PublishedPackage:
 LSEG_PACKAGE = PublishedPackage(
     PACKAGE_MANIFEST, PACKAGE_MANIFEST_SHA256, PACKAGE_DRIVE_DIR, "historical_inventory"
 )
-#: The EODHD-priced package (#281, #282) joins this table once its manifest is
-#: published and committed; until then the recipe can only name the LSEG package.
-PUBLISHED_PACKAGES = {package.manifest_sha256: package for package in (LSEG_PACKAGE,)}
+#: The same 110-name membership priced from EODHD (#281, #282), r2, published
+#: 2026-10-09. Its Drive folder carries a byte copy of the manifest at its top.
+#: The r1 package it replaced must never be staged, so it has no entry.
+EODHD_PACKAGE = PublishedPackage(
+    "data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_eodhd.r2.json",
+    "dcebb8ef9f1f3105c2f925d76c468fba32c220642908bf1a96b6f123f569d1c0",
+    "/content/drive/MyDrive/MCI_GRU_shared/preservation/"
+    "eodhd_sp500_pit_gics_top10_mcap_monthly_20160104_20260731_r2",
+    "manifest_copy",
+)
+PUBLISHED_PACKAGES = {package.manifest_sha256: package for package in (LSEG_PACKAGE, EODHD_PACKAGE)}
 
 #: Same values as ``scripts/nb_lib.py``; ``tests/test_first_run_colab.py`` pins that.
 EODHD_MARKET_RELATIVE = "data/raw/market/eodhd_sp500_2010_20260919/sp500_index.csv"
