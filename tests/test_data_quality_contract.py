@@ -17,7 +17,7 @@ import pandas as pd
 import pytest
 
 from mci_gru import pipeline
-from mci_gru.config import create_config_from_dict
+from mci_gru.config import DataConfig, create_config_from_dict
 from mci_gru.data import path_resolver
 from mci_gru.data.quality_contract import (
     RUN_FAILURE_SCHEMA,
@@ -409,6 +409,90 @@ def test_pit_structure_failures_stop_and_name_the_stock(
     names = evidence.get("kdcodes") or [row["kdcode"] for row in evidence["rows"]]
     assert named in names
     assert "engineer_features" not in feature_calls
+
+
+_CCC_ABSENT = [
+    "AAA,2020-01-01,2020-03-31",
+    "BBB,2020-01-01,2020-03-31",
+    "CCC,2020-02-01,2020-03-31",
+]
+
+
+def test_a_declared_absent_member_is_admitted_and_recorded(tmp_path):
+    config = _pit_config(tmp_path, _CCC_ABSENT, pit_absent_kdcodes=["CCC"])
+
+    data = prepare_data(config, FeatureEngineer(config.features))
+
+    assert data["kdcode_list"] == ["AAA", "BBB"]
+    (item,) = [
+        item
+        for item in data["admission"]["items"]
+        if item["reason_code"] == "pit_names_declared_absent"
+    ]
+    assert item["verdict"] == "valid"
+    assert item["evidence"]["kdcodes"] == ["CCC"]
+    assert item["evidence"]["members_in_period"] == ["CCC"]
+
+
+@pytest.mark.parametrize(
+    ("pit_rows", "declared", "code", "named"),
+    [
+        # A declaration covers only the names it lists.
+        (
+            _CCC_ABSENT + ["DDD,2020-01-01,2020-03-31"],
+            ["CCC"],
+            "pit_names_without_panel_rows",
+            "DDD",
+        ),
+        # A declared name that does have rows is a stale declaration.
+        (
+            ["AAA,2020-01-01,2020-03-31", "BBB,2020-01-01,2020-03-31"],
+            ["BBB"],
+            "pit_declared_absent_not_absent",
+            "BBB",
+        ),
+        # So is one in no PIT interval at all, such as a mistyped code.
+        (_CCC_ABSENT, ["CCC", "CCX"], "pit_declared_absent_not_absent", "CCX"),
+    ],
+)
+def test_a_declared_absence_that_does_not_hold_stops(
+    tmp_path, feature_calls, pit_rows, declared, code, named
+):
+    error = _prepare_fails(_pit_config(tmp_path, pit_rows, pit_absent_kdcodes=declared))
+
+    assert _codes(error) == {code}
+    assert named in error.failures[0].evidence["kdcodes"]
+    assert "engineer_features" not in feature_calls
+
+
+def test_a_declared_absence_holds_for_a_window_the_name_is_not_a_member_in(tmp_path):
+    # The declaration describes the package, so a later window keeps it unchanged.
+    rows = ["AAA,2020-01-01,2020-03-31", "BBB,2020-01-01,2020-03-31", "CCC,2019-01-01,2019-06-30"]
+    config = _pit_config(tmp_path, rows, pit_absent_kdcodes=["CCC"])
+
+    data = prepare_data(config, FeatureEngineer(config.features))
+
+    (item,) = [
+        item
+        for item in data["admission"]["items"]
+        if item["reason_code"] == "pit_names_declared_absent"
+    ]
+    assert item["evidence"]["kdcodes"] == ["CCC"]
+    assert item["evidence"]["members_in_period"] == []
+
+
+@pytest.mark.parametrize(
+    ("settings", "message"),
+    [
+        ({"pit_absent_kdcodes": ["CCC"]}, "requires data.use_pit_universe"),
+        ({"use_pit_universe": True, "pit_absent_kdcodes": "CCC"}, "list of identifiers"),
+        ({"use_pit_universe": True, "pit_absent_kdcodes": [" "]}, "distinct non-blank"),
+        ({"use_pit_universe": True, "pit_absent_kdcodes": ["C", "C"]}, "distinct non-blank"),
+    ],
+)
+def test_pit_absent_kdcodes_must_be_a_clean_pit_declaration(settings, message):
+    with pytest.raises(ValueError, match=message):
+        DataConfig(**settings)
 
 
 def test_adjacent_intervals_for_one_name_are_not_an_overlap(tmp_path):
