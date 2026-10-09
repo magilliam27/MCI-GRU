@@ -52,7 +52,7 @@ runs unless an experiment is explicitly testing one of these factors.
 > |---|---|---|
 > | data config | `configs/data/gics_top10_110_2016.yaml` | `configs/data/gics_top10_110_2016_eodhd.yaml` |
 > | price panel | LSEG export, `..._lseg_20150101_20260731.csv` | EODHD pull of 2026-10-08, `..._eodhd_20150101_20260731.csv` |
-> | input package | LSEG r1 manifest | `data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_eodhd.r1.json` |
+> | input package | LSEG r1 manifest | `data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_eodhd.r2.json` |
 > | names scored in 2016-01..2017-08 | at most 110 | at most 109: the pre-merger DuPont (`DD.N^I17`) has no EODHD history |
 >
 > Before the package was accepted, each name in the panel had its EODHD daily
@@ -180,19 +180,20 @@ features.regime_min_history_months=24
     over to the EODHD panel. #281's acceptance compares returns only on LSEG
     sessions, up to 10 days after each name's last window, so a row after a
     delisting is unchecked there.
-  - **On the EODHD panel the precondition is not yet met.** Run on 2026-10-08
-    against the published r1 panel (sha256 matches the manifest), the check
-    flags three names. Each keeps one row on its delisting day that repeats the
+  - **On the EODHD panel the precondition is met from package r2.** Run on
+    2026-10-08 against the first published package (r1), the check flagged
+    three names. Each kept one row on its delisting day that repeated the
     previous close at zero volume, one session after its last LSEG close:
     ATVI.OQ^J23 (2023-10-13), HES.N^G25 (2025-07-18) and WBA.OQ^H25
-    (2025-08-28). Each row keeps that name tradable for one session. It adds a
-    0-return, zero-volume row to the features and to that date's cross-section,
-    and HES and WBA fall in the 2025 test window. Labels on those rows are
-    unobservable, so the loss is unchanged. The fix belongs to the price
-    package (#281): drop the rows at source, or declare cessations with
-    `known_from` evidence before each delisting day. PSKY.OQ, a live name, also ends in
-    two zero-volume repeats, in its last rows to 2026-07-31. That is after the
-    test window and its labels, so it does not touch this run.
+    (2025-08-28). Each row kept that name tradable for one more session, and
+    HES and WBA fall in the 2025 test window. The price package now drops
+    those rows at source (#281), and r1 is superseded. Run against the r2 panel
+    (sha256 matches its manifest), the check exits 0: all five delisted names
+    end cleanly, with 0 repeated closes and 0 zero-volume sessions (ATVI
+    2023-10-12, DOW 2017-08-31, HES 2025-07-17, PXD 2024-05-02, WBA
+    2025-08-27). With `--all` it exits 1 on one name only. PSKY.OQ, a live
+    name, ends in two zero-volume repeats in its last rows to 2026-07-31. That
+    is after the test window and its labels, so it does not touch this run.
   - A cessation dated on a name's final session and known by 20:00 New York that
     day would also drop that one session from the cross-section. Its own loss is
     unchanged, but other names' scores on that date move slightly. The likely
