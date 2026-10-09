@@ -1,0 +1,54 @@
+# GICS sector top-10 by market cap, monthly rebalance (~110 names), 2016 start,
+# priced from EODHD (#281).
+#
+# Same universe as gics_top10_110_2016.yaml: the PIT membership file is the
+# LSEG-derived one, byte-identical (same name, same sha256 in both manifests).
+# Only the price panel differs. It was pulled from EODHD on 2026-10-09 (r2) by
+# scripts/data/export_eodhd_pit_prices.py and accepted only after every name's
+# daily returns agreed with the preserved LSEG panel over the span the universe
+# needs it. Prices are split-adjusted from EODHD's split records, plus the
+# corporate actions declared in data/mappings/eodhd_symbols_gics_top10_110_2016.json
+# (special dividends, a share conversion, a cash distribution). Regular dividends
+# are not applied, matching the LSEG panel's basis. Delisted names stop at their
+# last trade.
+#
+# One member has no EODHD history and is absent from this panel: the pre-merger
+# E. I. du Pont de Nemours (DD.N^I17, a member from 2016-01-04 to 2017-08-31).
+# Mac chose to leave it out (2026-10-08). The manifest records the gap in
+# provenance.unknowns, and pit_absent_kdcodes below declares it to admission,
+# which otherwise stops a run on a PIT member with no panel rows. The member is
+# then left off the stock axis, so those months score at most 109 names.
+#
+# Apart from pit_absent_kdcodes, everything below the filename matches
+# gics_top10_110_2016.yaml; see its header for the measured breadth, the warmup
+# margin and the embargo-safe split dates.
+universe: sp500
+source: csv
+filename: data/raw/market/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_eodhd_20150101_20260731.csv
+
+use_pit_universe: true
+pit_universe_csv: data/raw/constituents/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_pit_universe.csv
+pit_universe_mode: masked_panel
+pit_export_cutoff: "2026-07-31"
+# Must match the names in the manifest's provenance.unknowns (a test pins this).
+pit_absent_kdcodes: ["DD.N^I17"]
+# The published EODHD package the two files above belong to. It lives on Drive
+# at MCI_GRU_shared/preservation/eodhd_sp500_pit_gics_top10_mcap_monthly_20160104_20260731_r2/.
+# Revision r1 (2026-10-08) kept a carried zero-volume row after the ATVI, HES and
+# WBA delistings; r2 drops them and is the one to stage. r1 stays on Drive, unpinned.
+input_package_manifest: data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_eodhd.r2.json
+# Quoted so YAML can never read a digest as a number.
+input_package_manifest_sha256: "dcebb8ef9f1f3105c2f925d76c468fba32c220642908bf1a96b6f123f569d1c0"
+input_package_root: data/raw
+
+# 104 still clears breadth with DD.N^I17 absent: at most 109 names are scoreable
+# in 2016-01..2017-08, and the LSEG panel's own measured floor was 108.
+pit_min_scoreable_stocks: 104
+pit_breadth_policy: error
+
+train_start: "2016-01-04"
+train_end: "2023-12-31"
+val_start: "2024-01-22"
+val_end: "2024-12-31"
+test_start: "2025-01-22"
+test_end: "2025-12-31"

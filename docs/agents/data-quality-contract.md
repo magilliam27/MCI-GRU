@@ -65,7 +65,14 @@ Owner decision 3:
 - Two intervals for one name that share a date stop the run. Adjacent
   intervals (one ends the day before the next starts) do not.
 - A name with membership in the experiment period and no row in the market
-  panel stops the run. It is no longer dropped from the union.
+  panel stops the run. It is no longer dropped from the union. The one
+  exception is a name the data config declares in `data.pit_absent_kdcodes`
+  because its package has no source for it (`DD.N^I17` in
+  `gics_top10_110_2016_eodhd`, #281). Admission records the declared gap as a
+  valid item and the name stays off the stock axis. The declaration describes
+  the package, so it holds for any window, including one the name is not a
+  member in. A declared name that has panel rows, or is in no PIT interval,
+  stops the run.
 
 Findings name the stock and list up to 20 offending rows; counts are complete.
 

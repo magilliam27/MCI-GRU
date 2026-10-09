@@ -1,0 +1,162 @@
+{
+  "schema": 1,
+  "description": "EODHD symbols for identifiers of the 110-name 2016 PIT universe that the rule in mci_gru/data/eodhd_prices.py default_symbol cannot map: renamed, reused, predecessor and delisted tickers (#281). Each segment lists candidate symbols tried in order, then EODHD's US listings whose company name contains name_hint. When the pull is given the preserved LSEG panel, a candidate is accepted only if its returns agree with that panel over the span the universe needs, so a wrong guess here stops the pull rather than entering the panel. Dates are inclusive and follow the listing changes. An entry may instead declare unavailable, with the reason the vendor holds no history for that identifier; it then has no rows in the panel. An entry may also declare adjustments (a corporate action the split records miss, such as a spin-off: prices before the date are multiplied by factor; by 1 - cash / the last close before the date when cash per share is given; or by the step in EODHD adjusted_close on that date when neither is given; share_conversion also divides earlier volume by the factor) and accepted_differences (dates whose one-day difference from the reference is explained); each needs a reason.",
+  "overrides": {
+    "DD.N^I17": {
+      "note": "E. I. du Pont de Nemours, traded as DD until the Dow merger closed on 2017-08-31. The merged DowDuPont traded as DWDP; the DD ticker was reused on 2019-06-03 when DowDuPont became DuPont de Nemours.",
+      "unavailable": "EODHD holds no history for the pre-merger DuPont common stock. Its DD.US rows before 2017-09-01 are The Dow Chemical Company's (the same closes as DOW_old.US, e.g. 45.59 on 2015-01-02), and its US listings carry only DuPont preferred shares (CTA-PA, CTA-PB, DD-PA, DD-PB). Found in the first EODHD pull of 2026-10-08; the name is absent from the panel. A data config using the package declares it in data.pit_absent_kdcodes, and admission then keeps it off the stock axis."
+    },
+    "DOW.N^I17": {
+      "note": "The Dow Chemical Company, traded as DOW until the DuPont merger closed on 2017-08-31. The DOW ticker was reused by Dow Inc. in 2019.",
+      "segments": [
+        {"candidates": [], "name_hint": "Dow Chemical", "end": "2017-08-31"}
+      ]
+    },
+    "DD.N": {
+      "note": "DowDuPont from 2017-09-01, renamed DuPont de Nemours in 2019. Older DD rows are the previous company (DD.N^I17).",
+      "segments": [
+        {"candidates": ["DD.US", "DWDP.US"], "name_hint": "DuPont de Nemours", "start": "2017-09-01"}
+      ]
+    },
+    "DOW.N": {
+      "note": "Dow Inc., spun off from DowDuPont; the LSEG panel starts 2019-03-20.",
+      "segments": [
+        {"candidates": ["DOW.US"], "start": "2019-03-20"}
+      ]
+    },
+    "LIN.OQ": {
+      "note": "Linde plc from 2018-10-31. LSEG carries Praxair (PX) before it; Praxair holders received one LIN share each. The PX ticker now belongs to P10 Inc.",
+      "segments": [
+        {"candidates": ["LIN.US"], "name_hint": "Praxair", "end": "2018-10-30"},
+        {"candidates": ["LIN.US"], "start": "2018-10-31"}
+      ]
+    },
+    "BKR.OQ": {
+      "note": "Baker Hughes, a GE company (BHGE) from 2017-07-05, renamed BKR in 2019. LSEG carries Baker Hughes Inc (BHI) before it.",
+      "segments": [
+        {"candidates": ["BKR.US", "BHI.US"], "name_hint": "Baker Hughes", "end": "2017-07-03"},
+        {"candidates": ["BKR.US", "BHGE.US"], "start": "2017-07-05"}
+      ],
+      "adjustments": [
+        {"date": "2017-07-05", "cash": 17.5, "reason": "Baker Hughes Inc holders received $17.50 per share in cash plus one BHGE share when the combination with GE Oil & Gas closed, so BHI prices are restated net of the cash. The BHI-to-BHGE splice falls -35.4% against LSEG -7.3% that day in the first EODHD pull of 2026-10-08."}
+      ]
+    },
+    "PSKY.OQ": {
+      "note": "Paramount Skydance from 2025-08-07. Before it LSEG carries Paramount Global (PARA), formerly ViacomCBS (VIAC) and CBS Corp (CBS); the universe needs only the 2015-2017 CBS stretch.",
+      "segments": [
+        {"candidates": ["PARA.US", "VIAC.US", "CBS.US"], "name_hint": "CBS", "end": "2025-08-06"},
+        {"candidates": ["PSKY.US"], "start": "2025-08-07"}
+      ]
+    },
+    "META.OQ": {
+      "note": "Traded as FB until 2022-06-08.",
+      "segments": [
+        {"candidates": ["META.US", "FB.US"], "name_hint": "Facebook", "end": "2022-06-08"},
+        {"candidates": ["META.US"], "start": "2022-06-09"}
+      ]
+    },
+    "BKNG.OQ": {
+      "note": "Traded as PCLN until 2018-02-26.",
+      "segments": [
+        {"candidates": ["BKNG.US", "PCLN.US"], "name_hint": "Priceline", "end": "2018-02-26"},
+        {"candidates": ["BKNG.US"], "start": "2018-02-27"}
+      ]
+    },
+    "RTX.N": {
+      "note": "United Technologies (UTX) until 2020-04-02; renamed Raytheon Technologies on the Raytheon merger, later RTX Corp.",
+      "segments": [
+        {"candidates": ["RTX.US", "UTX.US"], "name_hint": "United Technologies", "end": "2020-04-02"},
+        {"candidates": ["RTX.US"], "start": "2020-04-03"}
+      ]
+    },
+    "CB.N": {
+      "note": "ACE Limited (ACE) until it acquired Chubb on 2016-01-14 and took the CB ticker.",
+      "segments": [
+        {"candidates": ["CB.US", "ACE.US"], "name_hint": "ACE Limited", "end": "2016-01-14"},
+        {"candidates": ["CB.US"], "start": "2016-01-15"}
+      ]
+    },
+    "WELL.N": {
+      "note": "Welltower traded as HCN until 2018-02-27.",
+      "segments": [
+        {"candidates": ["WELL.US", "HCN.US"], "name_hint": "Welltower", "end": "2018-02-27"},
+        {"candidates": ["WELL.US"], "start": "2018-02-28"}
+      ]
+    },
+    "BALL.N": {
+      "note": "Ball Corporation traded as BLL until 2022-05-09; BALL from the open on 2022-05-10 (Ball press release of 2022-04-27).",
+      "segments": [
+        {"candidates": ["BALL.US", "BLL.US"], "name_hint": "Ball Corp", "end": "2022-05-09"},
+        {"candidates": ["BALL.US"], "start": "2022-05-10"}
+      ]
+    },
+    "ATVI.OQ^J23": {
+      "note": "Delisted 2023-10-13 on its acquisition by Microsoft.",
+      "segments": [
+        {"candidates": ["ATVI.US"], "name_hint": "Activision Blizzard"}
+      ]
+    },
+    "HES.N^G25": {
+      "note": "Delisted 2025-07-18 on its acquisition by Chevron.",
+      "segments": [
+        {"candidates": ["HES.US"], "name_hint": "Hess Corp"}
+      ]
+    },
+    "PXD.N^E24": {
+      "note": "Delisted 2024-05-03 on its acquisition by Exxon Mobil.",
+      "segments": [
+        {"candidates": ["PXD.US"], "name_hint": "Pioneer Natural Resources"}
+      ]
+    },
+    "WBA.OQ^H25": {
+      "note": "Delisted 2025-08-28 when taken private.",
+      "segments": [
+        {"candidates": ["WBA.US"], "name_hint": "Walgreens Boots Alliance"}
+      ]
+    },
+    "CHTR.OQ": {
+      "note": "Charter Communications. When the Time Warner Cable merger closed on 2016-05-18, each legacy Charter share became 0.9 shares of the new Charter; EODHD's split records do not carry the conversion.",
+      "adjustments": [
+        {"date": "2016-05-18", "factor": 1.1111111111111112, "share_conversion": true, "reason": "Legacy Charter shares converted 0.9 for 1 in the Time Warner Cable merger, so earlier prices are restated per new share. EODHD +11.85% against LSEG +1.11% that day in the first EODHD pull of 2026-10-08."}
+      ]
+    },
+    "COST.OQ": {
+      "note": "Costco special dividends larger than the 3% daily limit.",
+      "adjustments": [
+        {"date": "2015-02-05", "reason": "$5 special dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -4.38% against -1.21% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.968."},
+        {"date": "2017-05-08", "reason": "$7 special dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -4.20% against -0.32% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.961."}
+      ]
+    },
+    "EQIX.OQ": {
+      "note": "Equinix special distribution.",
+      "adjustments": [
+        {"date": "2015-10-06", "reason": "Special distribution, several times the regular dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -4.19% against -0.60% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.961."}
+      ]
+    },
+    "EQR.N": {
+      "note": "Equity Residential special dividends in 2016.",
+      "adjustments": [
+        {"date": "2016-03-01", "reason": "Special dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -7.88% against +3.20% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.893."},
+        {"date": "2016-09-22", "reason": "Special dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -2.50% against +2.14% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.947."}
+      ]
+    },
+    "F.N": {
+      "note": "Ford supplemental dividend.",
+      "adjustments": [
+        {"date": "2023-02-10", "cash": 0.65, "reason": "$0.65 supplemental dividend paid with the regular $0.15. EODHD's split-only prices drop with it and the LSEG panel does not: -5.63% against -0.86% that day in the first EODHD pull of 2026-10-08. Only the supplemental is restated, because the LSEG panel carries regular dividends unadjusted; EODHD's adjusted_close step (0.941) would take out both. No Ford split since, so the cash is on the pull's price basis."}
+      ]
+    },
+    "LYB.N": {
+      "note": "LyondellBasell special dividend.",
+      "adjustments": [
+        {"date": "2022-06-03", "reason": "$5.20 special dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -6.81% against -2.41% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.945."}
+      ]
+    },
+    "PSA.N": {
+      "note": "Public Storage special dividend.",
+      "adjustments": [
+        {"date": "2022-07-29", "reason": "$13.15 special dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -3.17% against +0.76% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.961."}
+      ]
+    }
+  }
+}

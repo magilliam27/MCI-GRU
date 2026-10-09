@@ -13,6 +13,7 @@ configs/
 ├── config.yaml                   # Base configuration; composes data=gics_top10_110_2016 and features=with_momentum
 ├── data/                         # Source, universe, PIT settings, date windows (select with data=<name>)
 │   ├── gics_top10_110_2016.yaml  #   110-name GICS top-10 point-in-time universe, 2016 start (default; CSV)
+│   ├── gics_top10_110_2016_eodhd.yaml # the same universe priced from EODHD; the frozen recipe uses it
 │   ├── gics_top10_110.yaml       #   the same universe, 2021 start (CSV)
 │   ├── csv_sp500.yaml            #   S&P 500 from a CSV, PIT off
 │   ├── sp500.yaml                #   S&P 500 through the LSEG loader
@@ -85,6 +86,7 @@ panel, for experiments free of stock-level survivorship bias.
 | Universe | Names | Preset |
 | --- | ---: | --- |
 | GICS top-10 by market cap, point-in-time, 2016 start | ~110 | `data=gics_top10_110_2016` (default) |
+| The same universe, priced from EODHD (#281); the frozen recipe uses it | ~110 (at most 109 in 2016-01..2017-08) | `data=gics_top10_110_2016_eodhd` |
 | GICS top-10 by market cap, point-in-time, 2021 start | ~110 | `data=gics_top10_110` |
 | S&P 500, LSEG | ~500 | `data=sp500`, `data=lseg_sp500` |
 | S&P 500, CSV | ~500 | `data=csv_sp500` |
@@ -215,6 +217,7 @@ Core overrides:
 
 | Category | Setting | Frozen recipe value |
 |----------|---------|---------------------|
+| Data | data config | `gics_top10_110_2016_eodhd` (since 2026-10-08; base default is `gics_top10_110_2016`) |
 | Experiment | seed | `1729` |
 | Training | num_models | `20` |
 | Training | num_epochs | `100` |

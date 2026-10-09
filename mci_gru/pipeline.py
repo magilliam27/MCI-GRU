@@ -923,6 +923,7 @@ def prepare_data(
                 config.data.train_start,
                 config.data.test_end,
                 configured_path=pit.csv_path,
+                declared_absent=config.data.pit_absent_kdcodes,
             )
         )
     admission.require_admitted(observations)
