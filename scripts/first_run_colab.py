@@ -681,6 +681,22 @@ def _git(*args: str) -> str:
     ).stdout.strip()
 
 
+def installed_distributions() -> str:
+    """``name==version`` for every distribution this interpreter sees, one per line, sorted.
+
+    Read through ``importlib.metadata`` rather than ``pip freeze``: the notebook's uv-built
+    environment has no pip.
+    """
+    from importlib import metadata
+
+    lines = {
+        f"{dist.metadata['Name']}=={dist.version}"
+        for dist in metadata.distributions()
+        if dist.metadata["Name"]
+    }
+    return "".join(f"{line}\n" for line in sorted(lines, key=str.lower))
+
+
 def _installed_version(name: str) -> str | None:
     from importlib import metadata
 
@@ -843,10 +859,7 @@ def _command_run(args: Any) -> int:
     }
     local_dir.mkdir(parents=True)
     write_json(local_dir / "colab_run_record.json", record)
-    freeze = subprocess.run(
-        [sys.executable, "-m", "pip", "freeze"], capture_output=True, text=True, check=False
-    )
-    (local_dir / "pip_freeze.txt").write_text(freeze.stdout, encoding="utf-8")
+    (local_dir / "pip_freeze.txt").write_text(installed_distributions(), encoding="utf-8")
     if args.tag_file:
         Path(args.tag_file).write_text(run_tag + "\n", encoding="utf-8")
     print(f"Run {run_tag}: {record['evidence']}")
