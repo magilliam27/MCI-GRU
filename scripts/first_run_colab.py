@@ -684,8 +684,9 @@ def _git(*args: str) -> str:
 def installed_distributions() -> str:
     """``name==version`` for every distribution this interpreter sees, one per line, sorted.
 
-    Read through ``importlib.metadata`` rather than ``pip freeze``: the notebook's uv-built
-    environment has no pip.
+    Read through ``importlib.metadata`` rather than ``pip freeze``, so the record does not
+    depend on pip: the notebook's uv-built environment carries pip only because the lock
+    pins pip-tools.
     """
     from importlib import metadata
 

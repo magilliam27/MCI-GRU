@@ -700,6 +700,9 @@ def test_notebook_runs_the_repository_in_the_lock_qualified_python():
     assert f'PYTHON_VERSION = "{qualified[0]}"' in sources
     assert 'UV + ["venv", "--python", PYTHON_VERSION, str(VENV_DIR)]' in sources
     assert 'PIP = UV + ["pip", "install", "--python", PY]' in sources
+    assert sources.index('os.environ.pop("PYTHONPATH", None)') < sources.index(
+        'UV + ["venv", "--python", PYTHON_VERSION'
+    )
     invocations = re.findall(r'([\w.]+), "scripts/first_run_colab.py"', sources)
     assert invocations == ["PY"] * 4
 
@@ -945,9 +948,16 @@ def test_a_run_refuses_to_reuse_a_folder(tmp_path, run_repo):
     assert not (tmp_path / "local").exists()
 
 
-def test_a_run_records_itself_without_the_key(tmp_path, run_repo):
+def test_a_run_records_itself_without_the_key(tmp_path, run_repo, monkeypatch):
     # The fake checkout has no run_experiment.py, so training exits non-zero at once;
     # everything before and after it is real.
+    real_run = frc.subprocess.run
+
+    def run_without_pip(command, *args, **kwargs):
+        assert "pip" not in command, command
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(frc.subprocess, "run", run_without_pip)
     returncode = _run(tmp_path)
     assert returncode != 0
     record_path = tmp_path / "drive" / "t1" / "colab_run_record.json"

@@ -79,10 +79,11 @@ draft is [`ADMISSION_RECEIPT_AND_CHARTER_DRAFT.md`](ADMISSION_RECEIPT_AND_CHARTE
 - The repository runs in its own Python 3.12.11 environment, which uv builds at
   `/content/mci_gru_venv`, whatever Python the Colab image ships: `requirements.lock`
   is qualified for 3.12, and Colab's image moved to 3.13. The kernel only mounts
-  Drive and reads the secret.
+  Drive and reads the secret, and the environment runs without Colab's
+  `PYTHONPATH`.
 - Every installed package is saved as `name==version` in `pip_freeze.txt` in the
   run folder, because the lock does not list the Linux-only CUDA packages torch
-  pulls in. It is read with `importlib.metadata`, since that environment has no pip.
+  pulls in. It is read with `importlib.metadata`, so it does not depend on pip.
 
 ## Why the run writes to local disk first
 

@@ -149,6 +149,9 @@ def build_cells() -> list[dict]:
             VENV_DIR = Path("/content/mci_gru_venv")
             stream([sys.executable, "-m", "pip", "install", "-q", "uv"])
             UV = [sys.executable, "-m", "uv"]
+            # Colab points PYTHONPATH at its own directories for the kernel's Python; the
+            # 3.12 environment must see only what the lock installed into it.
+            os.environ.pop("PYTHONPATH", None)
             stream(UV + ["venv", "--python", PYTHON_VERSION, str(VENV_DIR)])
             PY = str(VENV_DIR / "bin" / "python")
             PIP = UV + ["pip", "install", "--python", PY]
