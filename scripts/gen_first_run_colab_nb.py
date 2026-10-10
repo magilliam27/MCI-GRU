@@ -135,14 +135,26 @@ def build_cells() -> list[dict]:
             if EXPECTED_COMMIT and COMMIT != EXPECTED_COMMIT:
                 raise RuntimeError(f"Checked out {COMMIT}, expected {EXPECTED_COMMIT}")
             print("Commit:", COMMIT)
-            print("Python:", sys.version.split()[0])
+            print("Kernel Python:", sys.version.split()[0])
             """
         ),
         code(
             """
-            # Install exactly what requirements.lock pins, then the repository without dependencies.
-            # Everything runs in subprocesses, so this kernel never imports the replaced packages.
-            PIP = [sys.executable, "-m", "pip", "install", "-q"]
+            # Build a Python 3.12.11 virtual environment with uv, whatever Python this Colab
+            # kernel runs: requirements.lock is qualified for 3.12 (#143). Install exactly what
+            # the lock pins into it, then the repository without dependencies. Every repository
+            # step below runs with that environment's python; this kernel only mounts Drive
+            # and reads the secret.
+            PYTHON_VERSION = "3.12.11"
+            VENV_DIR = Path("/content/mci_gru_venv")
+            stream([sys.executable, "-m", "pip", "install", "-q", "uv"])
+            UV = [sys.executable, "-m", "uv"]
+            # Colab points PYTHONPATH at its own directories for the kernel's Python; the
+            # 3.12 environment must see only what the lock installed into it.
+            os.environ.pop("PYTHONPATH", None)
+            stream(UV + ["venv", "--python", PYTHON_VERSION, str(VENV_DIR)])
+            PY = str(VENV_DIR / "bin" / "python")
+            PIP = UV + ["pip", "install", "--python", PY]
             if TORCH_INDEX_URL:
                 torch_pin = next(
                     line.split()[0]
@@ -152,13 +164,13 @@ def build_cells() -> list[dict]:
                 stream(PIP + [torch_pin, "--index-url", TORCH_INDEX_URL])
             stream(PIP + ["-r", str(REPO_DIR / "requirements.lock")])
             stream(PIP + ["--no-deps", "-e", str(REPO_DIR)])
-            stream([sys.executable, "scripts/first_run_colab.py", "check-env", "--require-gpu"], cwd=REPO_DIR)
+            stream([PY, "scripts/first_run_colab.py", "check-env", "--require-gpu"], cwd=REPO_DIR)
             """
         ),
         code(
             """
             # What this commit needs from open pull requests. Full mode stops here if any is missing.
-            stream([sys.executable, "scripts/first_run_colab.py", "prerequisites", "--mode", RUN_MODE], cwd=REPO_DIR)
+            stream([PY, "scripts/first_run_colab.py", "prerequisites", "--mode", RUN_MODE], cwd=REPO_DIR)
             """
         ),
         code(
@@ -170,7 +182,7 @@ def build_cells() -> list[dict]:
             # The run cell stages again before it starts.
             stream(
                 [
-                    sys.executable, "scripts/first_run_colab.py", "stage",
+                    PY, "scripts/first_run_colab.py", "stage",
                     "--package-drive-dir", PACKAGE_DRIVE_DIR,
                     "--eodhd-drive-path", EODHD_DRIVE_PATH,
                 ],
@@ -186,7 +198,7 @@ def build_cells() -> list[dict]:
             TAG_FILE = "/content/first_run_tag.txt"
             stream(
                 [
-                    sys.executable, "scripts/first_run_colab.py", "run",
+                    PY, "scripts/first_run_colab.py", "run",
                     "--mode", RUN_MODE,
                     "--local-root", LOCAL_RUN_ROOT,
                     "--drive-root", DRIVE_OUTPUT_ROOT,

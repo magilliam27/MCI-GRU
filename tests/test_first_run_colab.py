@@ -10,11 +10,13 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+import yaml
 from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 
@@ -687,6 +689,30 @@ def test_notebook_installs_the_lock_and_names_the_pinned_drive_paths():
     assert 'RUN_MODE = "full"' in sources
 
 
+def test_notebook_runs_the_repository_in_the_lock_qualified_python():
+    """Colab's kernel Python moves (3.13 on 2026-10-10); the lock is qualified for one 3.12."""
+    sources = _notebook_sources()
+    qualified = re.findall(
+        r'python-version: "([0-9.]+)"',
+        (REPO_ROOT / ".github" / "workflows" / "lock-stack-linux.yml").read_text(encoding="utf-8"),
+    )
+    assert set(qualified) == {"3.12.11"}
+    assert f'PYTHON_VERSION = "{qualified[0]}"' in sources
+    assert 'UV + ["venv", "--python", PYTHON_VERSION, str(VENV_DIR)]' in sources
+    assert 'PIP = UV + ["pip", "install", "--python", PY]' in sources
+    assert sources.index('os.environ.pop("PYTHONPATH", None)') < sources.index(
+        'UV + ["venv", "--python", PYTHON_VERSION'
+    )
+    invocations = re.findall(r'([\w.]+), "scripts/first_run_colab.py"', sources)
+    assert invocations == ["PY"] * 4
+
+
+def test_the_run_folder_lists_installed_packages_without_pip():
+    lines = frc.installed_distributions().splitlines()
+    assert lines == sorted(lines, key=str.lower)
+    assert f"PyYAML=={yaml.__version__}" in lines
+
+
 def test_notebook_holds_no_recipe_values_of_its_own():
     """The recipe is read at the cloned commit; a copy in the notebook would drift."""
     sources = _notebook_sources()
@@ -922,9 +948,16 @@ def test_a_run_refuses_to_reuse_a_folder(tmp_path, run_repo):
     assert not (tmp_path / "local").exists()
 
 
-def test_a_run_records_itself_without_the_key(tmp_path, run_repo):
+def test_a_run_records_itself_without_the_key(tmp_path, run_repo, monkeypatch):
     # The fake checkout has no run_experiment.py, so training exits non-zero at once;
     # everything before and after it is real.
+    real_run = frc.subprocess.run
+
+    def run_without_pip(command, *args, **kwargs):
+        assert "pip" not in command, command
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(frc.subprocess, "run", run_without_pip)
     returncode = _run(tmp_path)
     assert returncode != 0
     record_path = tmp_path / "drive" / "t1" / "colab_run_record.json"
@@ -935,7 +968,8 @@ def test_a_run_records_itself_without_the_key(tmp_path, run_repo):
     assert record["fred_api_key_set"] is True
     assert "tracking.enabled=false" in record["overrides"]
     assert (tmp_path / "tag.txt").read_text().strip() == "t1"
-    assert (tmp_path / "drive" / "t1" / "pip_freeze.txt").exists()
+    freeze = (tmp_path / "drive" / "t1" / "pip_freeze.txt").read_text().splitlines()
+    assert f"PyYAML=={yaml.__version__}" in freeze
     for path in (tmp_path / "drive").rglob("*"):
         if path.is_file():
             assert SECRET not in path.read_text(errors="ignore"), path
