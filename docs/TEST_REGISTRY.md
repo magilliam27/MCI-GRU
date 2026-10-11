@@ -601,6 +601,99 @@ Every feature group must accept the regime overrides that launchers pass, withou
 | `test_feature_drift_flags_shifted_distribution` |  |  |
 | `test_missing_feature_reference_returns_not_available` |  |  |
 
+## `tests/test_filings_edgar.py`
+
+The EDGAR filing index and when each filing was knowable (#289).
+
+**Exercises:** `mci_gru.data.pit`, `mci_gru.filings.edgar`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_acceptance_is_true_utc_as_checked_against_filing_headers` | The header says 16:01:36 New York; the submissions file says 20:01:36Z (summer). |  |
+| `test_naive_acceptance_is_refused` |  |  |
+| `test_filing_accepted_before_the_clock_counts_that_session` |  |  |
+| `test_filing_accepted_after_the_clock_counts_the_next_session` |  |  |
+| `test_filing_accepted_exactly_at_the_clock_counts_that_session` | #225: equality counts. |  |
+| `test_filing_after_the_last_session_has_no_forecast` |  |  |
+| `test_report_filed_under_both_ciks_is_kept_once_at_its_earliest_acceptance` |  |  |
+| `test_tie_on_acceptance_goes_to_the_preferred_filer` |  |  |
+| `test_index_keeps_only_requested_forms_from_the_start_date` |  |  |
+| `test_older_submission_files_are_listed_for_reading` |  |  |
+| `test_ragged_submissions_block_is_refused` |  |  |
+| `test_document_url_uses_unpadded_cik_and_bare_accession` |  |  |
+
+## `tests/test_filings_jev.py`
+
+The frozen question set, the answer cache and the blind label sheet (#289).
+
+**Exercises:** `mci_gru.filings.jev`, `mci_gru.filings.pairing`, `mci_gru.filings.risk_factors`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_repository_question_set_pins_a_versioned_model` |  |  |
+| `test_moving_model_aliases_are_refused` |  | parametrize |
+| `test_cached_pairs_are_never_sent_again` |  |  |
+| `test_a_different_model_is_a_different_cache_entry` |  |  |
+| `test_a_different_question_wording_is_a_different_cache_entry` |  |  |
+| `test_an_answer_from_another_model_version_is_refused_and_not_cached` |  |  |
+| `test_each_answer_records_model_request_and_tokens` |  |  |
+| `test_state_holds_both_risks_and_none_of_the_shortlist_score` |  |  |
+| `test_label_sheet_shows_no_scores_ranks_or_ids` |  |  |
+| `test_label_sheet_columns_are_fixed_whatever_the_pair_carries` |  |  |
+| `test_label_rows_are_shuffled_across_strata` |  |  |
+| `test_label_sample_covers_every_year_and_both_rank_strata_with_weights` |  |  |
+| `test_label_sample_is_reproducible_for_a_seed` |  |  |
+
+## `tests/test_filings_pairing.py`
+
+Each risk factor paired with its most similar prior-year risks (#289).
+
+**Exercises:** `mci_gru.filings.pairing`, `mci_gru.filings.risk_factors`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_most_similar_prior_risk_ranks_first` |  |  |
+| `test_every_current_risk_gets_k_pairs_even_with_no_word_overlap` |  |  |
+| `test_k_larger_than_the_prior_year_takes_every_prior_risk` |  |  |
+| `test_pair_ids_are_stable` |  |  |
+| `test_consecutive_years_pair_each_year_with_the_one_before_only` |  |  |
+| `test_a_missing_prior_year_is_refused_rather_than_skipped` |  |  |
+
+## `tests/test_filings_risk_factors.py`
+
+Item 1A of a 10-K, cut into individual risk factors (#289).
+
+**Exercises:** `mci_gru.filings.risk_factors`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_hidden_xbrl_header_and_styles_are_not_text` |  |  |
+| `test_item_1a_is_the_section_not_the_table_of_contents` |  |  |
+| `test_risks_are_split_at_emphasised_headings_with_their_bodies` |  |  |
+| `test_a_heading_followed_by_a_heading_is_a_category` |  |  |
+| `test_page_numbers_and_running_headers_are_not_body_text` |  |  |
+| `test_intro_paragraph_before_the_first_heading_is_not_a_risk` |  |  |
+| `test_risk_ids_are_stable_and_ordered` |  |  |
+| `test_filing_without_item_1a_is_refused` |  |  |
+| `test_a_long_emphasised_paragraph_is_body_text_not_a_heading` |  |  |
+
+## `tests/test_filings_scripts.py`
+
+The filings pull and the pair scoring, end to end with canned EDGAR and Jev (#289).
+
+**Exercises:** `mci_gru.data.input_manifest`, `mci_gru.filings.edgar`, `scripts.data.export_sec_risk_factors`, `scripts.data.score_risk_factor_pairs`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_export_reads_both_filers_and_older_files_and_publishes_a_manifest` |  |  |
+| `test_every_request_names_the_client_as_sec_asks` |  |  |
+| `test_user_agent_without_contact_email_is_refused` |  |  |
+| `test_a_second_pull_reads_everything_from_the_cache` |  |  |
+| `test_an_unreadable_item_1a_blocks_the_manifest` |  |  |
+| `test_pairs_and_blind_sheet_are_written_without_calling_jev` |  |  |
+| `test_scoring_twice_calls_jev_once_per_distinct_pair` |  |  |
+| `test_an_existing_label_sheet_is_never_overwritten` |  |  |
+
 ## `tests/test_first_run_cessation.py`
 
 The first run declares no cessation file; this pins why that is safe, and when not.

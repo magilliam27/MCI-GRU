@@ -1,0 +1,106 @@
+"""Item 1A of a 10-K, cut into individual risk factors (#289).
+
+The fixture is shaped like an inline-XBRL 10-K: a hidden XBRL header, a table of
+contents that also names Item 1A, bold category headings, bold-italic risk
+headings, and page furniture inside the section.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from mci_gru.filings.risk_factors import (
+    RiskFactorExtractionError,
+    extract_risk_factors,
+    html_blocks,
+    item_1a_blocks,
+)
+
+FIXTURE = Path(__file__).parent / "fixtures" / "filings" / "tenk_item1a_sample.htm"
+
+
+@pytest.fixture
+def html() -> str:
+    return FIXTURE.read_text(encoding="utf-8")
+
+
+def test_hidden_xbrl_header_and_styles_are_not_text(html):
+    texts = [block.text for block in html_blocks(html)]
+    assert not any("Hidden facts" in text for text in texts)
+    assert not any("color: red" in text for text in texts)
+
+
+def test_item_1a_is_the_section_not_the_table_of_contents(html):
+    section = [block.text for block in item_1a_blocks(html_blocks(html))]
+    assert section[0].startswith("ITEM 1A.")
+    assert any("advertising" in text for text in section)
+    assert not any("UNRESOLVED STAFF COMMENTS" in text for text in section)
+    assert not any("holding company" in text for text in section)
+
+
+def test_risks_are_split_at_emphasised_headings_with_their_bodies(html):
+    risks = extract_risk_factors(html, accession_number="0001652044-26-000018", fiscal_year=2025)
+    assert [risk.heading for risk in risks] == [
+        "We generate a significant portion of our revenues from advertising. "
+        "Reduced spending by advertisers could harm our business.",
+        "We face intense competition.",
+        "We are subject to increasing regulatory scrutiny, including antitrust investigations.",
+    ]
+    assert risks[0].body == (
+        "We generated over 75% of total revenues from online advertising in 2025. "
+        "Many advertisers can reduce or cancel their spending at any time."
+    )
+
+
+def test_a_heading_followed_by_a_heading_is_a_category(html):
+    risks = extract_risk_factors(html, accession_number="a", fiscal_year=2025)
+    assert [risk.category for risk in risks] == [
+        "Risks Related to Our Business and Industry",
+        "Risks Related to Our Business and Industry",
+        "Risks Related to Laws and Regulations",
+    ]
+
+
+def test_page_numbers_and_running_headers_are_not_body_text(html):
+    risks = extract_risk_factors(html, accession_number="a", fiscal_year=2025)
+    assert (
+        risks[1].body == "Our business environment is rapidly evolving and intensely competitive."
+    )
+
+
+def test_intro_paragraph_before_the_first_heading_is_not_a_risk(html):
+    risks = extract_risk_factors(html, accession_number="a", fiscal_year=2025)
+    assert not any("subject to various risks" in risk.body for risk in risks)
+
+
+def test_risk_ids_are_stable_and_ordered(html):
+    risks = extract_risk_factors(html, accession_number="0001652044-26-000018", fiscal_year=2025)
+    assert [risk.risk_id for risk in risks] == [
+        "0001652044-26-000018#001",
+        "0001652044-26-000018#002",
+        "0001652044-26-000018#003",
+    ]
+    assert {risk.fiscal_year for risk in risks} == {2025}
+
+
+def test_filing_without_item_1a_is_refused():
+    with pytest.raises(RiskFactorExtractionError):
+        extract_risk_factors(
+            "<html><body><div>ITEM 1. BUSINESS</div><div>Text.</div></body></html>",
+            accession_number="a",
+            fiscal_year=2025,
+        )
+
+
+def test_a_long_emphasised_paragraph_is_body_text_not_a_heading(html):
+    emphasised = "Investors should read this whole section with care. " * 15
+    html = html.replace(
+        '<div><span style="font-style:italic;font-weight:700">We face intense competition.',
+        f'<div><span style="font-weight:700">{emphasised.strip()}</span></div>'
+        '<div><span style="font-style:italic;font-weight:700">We face intense competition.',
+    )
+    risks = extract_risk_factors(html, accession_number="a", fiscal_year=2025)
+    assert len(risks) == 3
+    assert risks[0].body.endswith(emphasised.strip())

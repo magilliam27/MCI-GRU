@@ -26,6 +26,9 @@ dependencies = [
 tracking = ["mlflow>=2.0"]
 lseg = ["refinitiv-data>=1.5"]
 fred = ["fredapi>=0.5"]
+# Jev scoring of SEC risk factors (#289); only scripts/data/score_risk_factor_pairs.py
+# --score needs it, so it stays out of `all` and the pinned lock.
+filings = ["typesafe-sdk"]
 dev = [
     "pytest>=7.4",
     "pytest-timeout>=2.2",
