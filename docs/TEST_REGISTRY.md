@@ -669,6 +669,8 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_committed_notebook_matches_its_generator` |  |  |
 | `test_notebook_reads_the_fred_key_from_colab_secrets_only` |  |  |
 | `test_notebook_installs_the_lock_and_names_the_pinned_drive_paths` |  |  |
+| `test_notebook_runs_the_repository_in_the_lock_qualified_python` | Colab's kernel Python moves (3.13 on 2026-10-10); the lock is qualified for one 3.12. |  |
+| `test_the_run_folder_lists_installed_packages_without_pip` |  |  |
 | `test_notebook_holds_no_recipe_values_of_its_own` | The recipe is read at the cloned commit; a copy in the notebook would drift. |  |
 | `test_cli_help_runs_as_a_script` |  |  |
 | `test_the_tracked_package_sidecars_are_the_pinned_bytes_with_crlf_endings` | On a Linux clone the two tracked sidecars hold LF bytes; their CRLF form is the pin. |  |

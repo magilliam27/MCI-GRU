@@ -40,7 +40,8 @@ draft is [`ADMISSION_RECEIPT_AND_CHARTER_DRAFT.md`](ADMISSION_RECEIPT_AND_CHARTE
    - mount Drive and load the FRED key from Colab secrets;
    - clone the repository (a second clone in the same runtime is refused:
      disconnect and delete the runtime to start again);
-   - install `requirements.lock`, then the repository with `--no-deps`, and check
+   - build a Python 3.12.11 environment with uv, install `requirements.lock` into
+     it, then the repository with `--no-deps`, and check
      that every pin is installed and a CUDA GPU is visible;
    - check the commit for #270, #274 and #275;
    - stage and verify the stock package the recipe's data config declares, and
@@ -57,7 +58,7 @@ draft is [`ADMISSION_RECEIPT_AND_CHARTER_DRAFT.md`](ADMISSION_RECEIPT_AND_CHARTE
 | Message | Meaning | What to do |
 | --- | --- | --- |
 | `Environment check FAILED` with `No CUDA GPU visible` on a GPU runtime | The PyPI `torch==2.12.1` wheel targets a newer CUDA driver than the runtime has | Set `TORCH_INDEX_URL` to a PyTorch wheel index for an older CUDA build of the same version (for example `https://download.pytorch.org/whl/cu128`), disconnect and delete the runtime, and run all again |
-| `Environment check FAILED` listing packages | A pin did not install, or Colab's Python is not 3.12 | Read the list; do not run with a mismatched lock |
+| `Environment check FAILED` listing packages | A pin did not install into the notebook's Python 3.12.11 environment | Read the list; do not run with a mismatched lock |
 | `MISSING #270` / `#274` / `#275` | The commit lacks that pull request | Merge it, or run `smoke` for a mechanics check only |
 | `MISSING #285` or `does not declare a package this notebook knows` | The recipe's data config names a stock package the notebook has no pin for. Smoke mode cannot stage it either | Run a commit whose notebook pins that package; never add a pin that was not checked against the published manifest |
 | `Missing on Drive` or `does not match its pin` | A staged file is absent or has other bytes | Fix the Drive copy; never edit the pin to match |
@@ -75,8 +76,14 @@ draft is [`ADMISSION_RECEIPT_AND_CHARTER_DRAFT.md`](ADMISSION_RECEIPT_AND_CHARTE
   another package that git tracks, such as the shared membership sidecar.
 - MLflow tracking is switched off (`tracking.enabled=false`): `requirements.lock`
   does not include the `tracking` extra, and the run's own records do not use it.
-- `pip freeze` is saved as `pip_freeze.txt` in the run folder, because the lock
-  does not list the Linux-only CUDA packages torch pulls in.
+- The repository runs in its own Python 3.12.11 environment, which uv builds at
+  `/content/mci_gru_venv`, whatever Python the Colab image ships: `requirements.lock`
+  is qualified for 3.12, and Colab's image moved to 3.13. The kernel only mounts
+  Drive and reads the secret, and the environment runs without Colab's
+  `PYTHONPATH`.
+- Every installed package is saved as `name==version` in `pip_freeze.txt` in the
+  run folder, because the lock does not list the Linux-only CUDA packages torch
+  pulls in. It is read with `importlib.metadata`, so it does not depend on pip.
 
 ## Why the run writes to local disk first
 
