@@ -118,6 +118,39 @@ def test_cached_pairs_are_never_sent_again(tmp_path, question_set):
     assert all(s.cached for s in second) and not any(s.cached for s in first)
 
 
+def test_a_torn_last_line_is_set_aside_and_its_pair_asked_again(tmp_path, question_set):
+    question = question_set.questions["same_risk"]
+    pairs = _pairs(years=(2025,), per_year=2, k=1)
+    path = tmp_path / "c.jsonl"
+    score_pairs(
+        pairs, question, sdk_question="Q", client=FakeClient(), cache=AnswerCache(path), model=MODEL
+    )
+    whole = path.read_text(encoding="utf-8")
+    last = whole.splitlines()[-1]
+    path.write_text(whole[: len(whole) - len(last) // 2 - 1], encoding="utf-8")
+
+    cache = AnswerCache(path)
+    assert len(cache) == 1
+    assert (tmp_path / "c.jsonl.torn").exists()
+    again = FakeClient()
+    score_pairs(pairs, question, sdk_question="Q", client=again, cache=cache, model=MODEL)
+    assert len(again.calls) == 1
+    assert len(AnswerCache(path)) == 2
+
+
+def test_a_damaged_line_before_the_last_is_refused(tmp_path, question_set):
+    question = question_set.questions["same_risk"]
+    path = tmp_path / "c.jsonl"
+    pairs = _pairs(years=(2025,), per_year=2, k=1)
+    score_pairs(
+        pairs, question, sdk_question="Q", client=FakeClient(), cache=AnswerCache(path), model=MODEL
+    )
+    lines = path.read_text(encoding="utf-8").splitlines()
+    path.write_text(lines[0][:20] + "\n" + lines[1] + "\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        AnswerCache(path)
+
+
 def test_a_different_model_is_a_different_cache_entry(question_set):
     question = question_set.questions["same_risk"]
     state = pair_state(_pairs(years=(2025,), per_year=1, k=1)[0])
@@ -180,7 +213,8 @@ def test_label_sheet_shows_no_scores_ranks_or_ids():
         "same_risk",
     ]
     assert sheet["same_risk"].eq("").all()
-    assert not sheet["label_id"].str.contains("acc-").any()
+    cells = sheet.astype(str).to_numpy().ravel()
+    assert not any("acc-" in cell or "|" in cell for cell in cells)
 
 
 def test_label_sheet_columns_are_fixed_whatever_the_pair_carries():

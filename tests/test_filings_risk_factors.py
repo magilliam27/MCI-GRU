@@ -104,3 +104,26 @@ def test_a_long_emphasised_paragraph_is_body_text_not_a_heading(html):
     risks = extract_risk_factors(html, accession_number="a", fiscal_year=2025)
     assert len(risks) == 3
     assert risks[0].body.endswith(emphasised.strip())
+
+
+def test_a_line_break_inside_a_heading_is_a_wrap_not_a_category(html):
+    html = html.replace(
+        '<span style="font-style:italic;font-weight:700">We face intense competition.</span>',
+        "<b><i>We face intense<br>competition.</i></b>",
+    )
+    risks = extract_risk_factors(html, accession_number="a", fiscal_year=2025)
+    assert risks[1].heading == "We face intense competition."
+    assert risks[1].category == "Risks Related to Our Business and Industry"
+
+
+@pytest.mark.parametrize("header", ["<b>Alphabet Inc.</b>", "Alphabet Inc."])
+def test_a_running_page_header_is_dropped_whether_bold_or_not(html, header):
+    running = f"<div>{header}</div>"
+    html = (
+        html.replace("<div><span>11</span></div>", f"<div><span>11</span></div>{running}")
+        .replace("<div><span>Many advertisers", f"{running}<div><span>Many advertisers")
+        .replace("<div><span>Governments", f"{running}<div><span>Governments")
+    )
+    risks = extract_risk_factors(html, accession_number="a", fiscal_year=2025)
+    assert len(risks) == 3
+    assert not any("Alphabet Inc." in risk.text for risk in risks)

@@ -13,8 +13,11 @@ What this module decides:
 - **Where one risk ends and the next begins.** Each risk factor opens with an
   emphasised heading followed by plain paragraphs. A heading followed directly by
   another heading is a category ("Risks Related to ..."), carried by the risks
-  under it. Text before the first heading is the section's introduction, and
-  page numbers and running "Table of Contents" lines are page furniture.
+  under it. Text before the first heading is the section's introduction. A
+  ``<br>`` inside a paragraph is a line wrap, not a new block.
+- **What is page furniture.** Page numbers, "Table of Contents" lines, and any
+  short line repeated on several pages of the section (a running header such as
+  "Alphabet Inc.", bold or not) are dropped wherever they fall.
 
 None of this is verified against every year's layout here: milestone 1 of #289
 checks the extraction by hand on three fiscal years before any answer is used.
@@ -23,6 +26,7 @@ checks the extraction by hand on three fiscal years before any answer is used.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from typing import Any
@@ -33,7 +37,6 @@ BLOCK_TAGS = frozenset(
         "article",
         "blockquote",
         "body",
-        "br",
         "dd",
         "div",
         "dl",
@@ -65,6 +68,9 @@ ITALIC_TAGS = frozenset({"em", "i"})
 MAX_HEADING_CHARS = 600
 #: Item headings are short; a long paragraph that mentions Item 1A is not one.
 MAX_ITEM_HEADING_CHARS = 100
+#: A short line seen this many times in one Item 1A is a running page header.
+RUNNING_HEADER_REPEATS = 3
+RUNNING_HEADER_MAX_CHARS = 100
 
 _SPACE = re.compile(r"\s+")
 _BOLD_STYLE = re.compile(r"font-weight\s*:\s*(bold|bolder|[6-9]00)", re.I)
@@ -152,6 +158,8 @@ class _BlockParser(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in BLOCK_TAGS:
             self._flush()
+        if tag == "br":
+            self._runs.append((" ", False))
         if tag in VOID_TAGS:
             return
         style = " ".join(value or "" for name, value in attrs if name == "style")
@@ -167,6 +175,8 @@ class _BlockParser(HTMLParser):
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in BLOCK_TAGS:
             self._flush()
+        if tag == "br":
+            self._runs.append((" ", False))
 
     def handle_endtag(self, tag: str) -> None:
         if tag in BLOCK_TAGS:
@@ -211,6 +221,15 @@ def item_1a_blocks(blocks: list[Block]) -> list[Block]:
     return blocks[best[0] : best[1]]
 
 
+def _running_headers(section: list[Block]) -> set[str]:
+    counts = Counter(block.text for block in section)
+    return {
+        text
+        for text, seen in counts.items()
+        if seen >= RUNNING_HEADER_REPEATS and len(text) <= RUNNING_HEADER_MAX_CHARS
+    }
+
+
 def _is_heading(block: Block) -> bool:
     return block.emphasised and len(block.text) <= MAX_HEADING_CHARS
 
@@ -235,8 +254,9 @@ def extract_risk_factors(html: str, *, accession_number: str, fiscal_year: int) 
             )
         )
 
+    furniture = _running_headers(section)
     for block in section[1:]:
-        if _FURNITURE.match(block.text):
+        if _FURNITURE.match(block.text) or block.text in furniture:
             continue
         if _is_heading(block):
             if heading is not None and not body:

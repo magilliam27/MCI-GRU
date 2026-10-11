@@ -13,15 +13,24 @@ Two steps, run in this order so the hand labels stay blind::
         --risk-factors /content/sec_risk_factors/filings/alphabet_risk_factors.jsonl \\
         --output-dir /content/risk_pairs --score [--limit 20]
 
+    # Make the first paid run --limit 1: it shows the model ID the API reports,
+    # and an ID other than the pinned one stops the run after that one call.
+
 What it writes under ``--output-dir``:
 
-- ``pairs.csv``: every current risk with its ``--top-k`` most similar prior-year
-  risks (TF-IDF), with rank and similarity.
 - ``label_sheet.csv``: a stratified sample of pairs with an empty ``same_risk``
-  column and nothing that hints at an answer. Label this before opening scores.
-- ``label_design.csv``: which pair each label row is, its stratum and weight.
-- With ``--score``: ``answers.jsonl`` (the cache: every request and answer,
-  never rewritten) and ``scores.csv``.
+  column and nothing that hints at an answer. This is the only file to open
+  until the labels are done.
+- ``sealed/``: everything that could give an answer away, so it stays shut while
+  labelling.
+  - ``pairs.csv``: every current risk with its ``--top-k`` most similar
+    prior-year risks (TF-IDF), with rank and similarity.
+  - ``label_design.csv``: which pair each label row is, its stratum and weight.
+  - With ``--score``: ``answers.jsonl`` (the cache: every request and answer,
+    never rewritten) and ``scores.csv``.
+
+Once a label sheet exists it is kept, and a rerun that would no longer produce
+the pairs it was drawn from (a different ``--top-k`` or risk file) stops.
 
 The question set is ``configs/filings/questions_v1.yaml``. It pins the model
 version; an answer from any other version stops the run.
@@ -85,15 +94,26 @@ def main(argv: list[str] | None = None, *, client: Any = None, sdk_question: Any
     pairs = pair_consecutive_years(load_risks(args.risk_factors), k=args.top_k)
 
     out = args.output_dir
-    out.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame([pair.to_dict() for pair in pairs]).to_csv(out / "pairs.csv", index=False)
+    sealed = out / "sealed"
+    sealed.mkdir(parents=True, exist_ok=True)
     sheet_path = out / "label_sheet.csv"
+    design_path = sealed / "label_design.csv"
     if sheet_path.exists():
+        drawn = set(pd.read_csv(design_path)["pair_id"]) if design_path.exists() else None
+        missing = None if drawn is None else drawn - {pair.pair_id for pair in pairs}
+        if missing is None or missing:
+            print(
+                f"{sheet_path.name} was drawn from pairs this run does not produce "
+                f"({'no design file' if missing is None else f'{len(missing)} missing'}). "
+                "Re-run with the original --top-k and risk file, or label a new output dir."
+            )
+            return 1
         print(f"Keeping the existing {sheet_path.name}; it may already hold labels.")
     else:
         sheet, design = blind_label_sheet(pairs, n=args.label_sample, seed=args.seed)
         sheet.to_csv(sheet_path, index=False)
-        design.to_csv(out / "label_design.csv", index=False)
+        design.to_csv(design_path, index=False)
+    pd.DataFrame([pair.to_dict() for pair in pairs]).to_csv(sealed / "pairs.csv", index=False)
 
     chars = sum(
         len(json.dumps(pair_state(pair), ensure_ascii=False)) + len(question.instructions)
@@ -131,10 +151,10 @@ def main(argv: list[str] | None = None, *, client: Any = None, sdk_question: Any
         question,
         sdk_question=sdk_question,
         client=client,
-        cache=AnswerCache(out / "answers.jsonl"),
+        cache=AnswerCache(sealed / "answers.jsonl"),
         model=question_set.model,
     )
-    pd.DataFrame([vars(item) for item in scored]).to_csv(out / "scores.csv", index=False)
+    pd.DataFrame([vars(item) for item in scored]).to_csv(sealed / "scores.csv", index=False)
     print(
         json.dumps(
             {

@@ -111,6 +111,18 @@ def test_tie_on_acceptance_goes_to_the_preferred_filer():
     assert [record.cik for record in index.filings] == [ALPHABET_CIK]
 
 
+def test_one_accession_listed_under_both_filers_is_kept_once_under_the_preferred_filer():
+    same = "2015-10-29T20:10:00.000Z"
+    records = filings_from_block(
+        GOOGLE_INC_CIK, _block([("0001652044-15-000001", "10-Q", "2015-09-30", same, "g.htm")])
+    ) + filings_from_block(
+        ALPHABET_CIK, _block([("0001652044-15-000001", "10-Q", "2015-09-30", same, "a.htm")])
+    )
+    index = build_filing_index(records, forms=("10-Q",), accepted_from="2014-01-01")
+    assert [record.cik for record in index.filings] == [ALPHABET_CIK]
+    assert index.duplicates == ()
+
+
 def test_index_keeps_only_requested_forms_from_the_start_date():
     records = filings_from_block(
         ALPHABET_CIK,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import urllib.error
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -173,11 +174,77 @@ def test_user_agent_without_contact_email_is_refused(tmp_path):
         )
 
 
-def test_a_second_pull_reads_everything_from_the_cache(tmp_path):
+def test_a_second_pull_rereads_only_the_filers_main_submissions_files(tmp_path):
     _export(tmp_path, Transport(_edgar()), manifest=False)
     again = Transport(_edgar())
     _export(tmp_path, again, manifest=False)
-    assert again.seen == []
+    assert sorted(url for url, _ in again.seen) == sorted(
+        f"https://data.sec.gov/submissions/CIK{cik}.json" for cik in (GOOGLE_INC_CIK, ALPHABET_CIK)
+    )
+
+
+class Flaky(Transport):
+    """Fails the first request for each URL with the given error, then answers."""
+
+    def __init__(self, responses, error) -> None:
+        super().__init__(responses)
+        self.error = error
+        self.failed: set[str] = set()
+
+    def __call__(self, url, headers):
+        if url not in self.failed:
+            self.failed.add(url)
+            self.seen.append((url, headers))
+            raise self.error(url)
+        return super().__call__(url, headers)
+
+
+def _http(code):
+    return lambda url: urllib.error.HTTPError(url, code, "error", None, None)
+
+
+@pytest.mark.parametrize(
+    ("error", "wait"),
+    [
+        (_http(429), export.RATE_LIMITED_WAIT_SECONDS),
+        (_http(503), export.RETRY_WAIT_SECONDS),
+        (lambda url: urllib.error.URLError("connection reset"), export.RETRY_WAIT_SECONDS),
+        (lambda url: TimeoutError("read timed out"), export.RETRY_WAIT_SECONDS),
+    ],
+)
+def test_rate_limits_server_errors_and_dropped_connections_are_retried_after_a_wait(
+    tmp_path, monkeypatch, error, wait
+):
+    sleeps: list[float] = []
+    monkeypatch.setattr(export.time, "sleep", sleeps.append)
+    transport = Flaky(_edgar(), error)
+    assert _export(tmp_path, transport, manifest=False) == 0
+    assert len(transport.seen) == 2 * len(transport.failed)
+    assert sleeps and all(seconds == wait for seconds in sleeps)
+
+
+def test_a_request_refused_outright_is_not_retried(tmp_path, monkeypatch):
+    monkeypatch.setattr(export.time, "sleep", lambda seconds: None)
+    transport = Flaky(_edgar(), _http(403))
+    with pytest.raises(urllib.error.HTTPError):
+        _export(tmp_path, transport, manifest=False)
+    assert len(transport.seen) == 1
+
+
+def test_a_document_that_is_not_utf8_is_read_as_cp1252_and_reported(tmp_path):
+    responses = _edgar()
+    url = "https://www.sec.gov/Archives/edgar/data/1288776/000128877615000008/g14.htm"
+    responses[url] = responses[url].replace(b"in 2014", b"in 2014 \x96 worldwide")
+    assert _export(tmp_path, Transport(responses), manifest=False) == 0
+    out = tmp_path / "package" / "filings"
+    report = pd.read_csv(out / "alphabet_extraction_report.csv")
+    assert report.set_index("fiscal_year")["encoding"].to_dict() == {
+        2013: "utf-8",
+        2014: "cp1252",
+        2015: "utf-8",
+    }
+    risks = (out / "alphabet_risk_factors.jsonl").read_text(encoding="utf-8")
+    assert "in 2014 \u2013 worldwide" in risks
 
 
 def test_an_unreadable_item_1a_blocks_the_manifest(tmp_path):
@@ -222,18 +289,18 @@ def test_pairs_and_blind_sheet_are_written_without_calling_jev(tmp_path):
     client = FakeJev()
     assert _score(tmp_path, client=client) == 0
     assert client.calls == 0
-    pairs = pd.read_csv(tmp_path / "pairs" / "pairs.csv")
+    pairs = pd.read_csv(tmp_path / "pairs" / "sealed" / "pairs.csv")
     assert sorted(pairs["fiscal_year"].unique()) == [2014, 2015]
     sheet = pd.read_csv(tmp_path / "pairs" / "label_sheet.csv", keep_default_na=False)
     assert "similarity" not in sheet.columns and sheet["same_risk"].eq("").all()
-    assert not (tmp_path / "pairs" / "scores.csv").exists()
+    assert not (tmp_path / "pairs" / "sealed" / "scores.csv").exists()
 
 
 def test_scoring_twice_calls_jev_once_per_distinct_pair(tmp_path):
     _export(tmp_path, Transport(_edgar()), manifest=False)
     first = FakeJev()
     assert _score(tmp_path, "--score", client=first) == 0
-    pairs = pd.read_csv(tmp_path / "pairs" / "pairs.csv")
+    pairs = pd.read_csv(tmp_path / "pairs" / "sealed" / "pairs.csv")
     # Risks reworded nowhere between years make identical pairs; Jev sees each once.
     texts = ["current_heading", "current_body", "prior_heading", "prior_body"]
     distinct = len(pairs.drop_duplicates(subset=texts))
@@ -242,7 +309,7 @@ def test_scoring_twice_calls_jev_once_per_distinct_pair(tmp_path):
     second = FakeJev()
     assert _score(tmp_path, "--score", client=second) == 0
     assert second.calls == 0
-    scores = pd.read_csv(tmp_path / "pairs" / "scores.csv")
+    scores = pd.read_csv(tmp_path / "pairs" / "sealed" / "scores.csv")
     assert scores["cached"].all() and scores["probability"].eq(0.9).all()
 
 
@@ -255,3 +322,24 @@ def test_an_existing_label_sheet_is_never_overwritten(tmp_path):
     labelled.to_csv(sheet_path, index=False)
     _score(tmp_path, "--seed", "1", client=FakeJev())
     assert pd.read_csv(sheet_path, keep_default_na=False)["same_risk"].eq("yes").all()
+
+
+def test_only_the_label_sheet_sits_outside_the_sealed_folder(tmp_path):
+    _export(tmp_path, Transport(_edgar()), manifest=False)
+    _score(tmp_path, "--score", client=FakeJev())
+    out = tmp_path / "pairs"
+    assert sorted(path.name for path in out.iterdir()) == ["label_sheet.csv", "sealed"]
+    assert {path.name for path in (out / "sealed").iterdir()} == {
+        "pairs.csv",
+        "label_design.csv",
+        "answers.jsonl",
+        "scores.csv",
+    }
+
+
+def test_a_rerun_that_changes_the_pairs_under_a_label_sheet_stops(tmp_path):
+    _export(tmp_path, Transport(_edgar()), manifest=False)
+    assert _score(tmp_path, client=FakeJev()) == 0
+    risks = tmp_path / "package" / "filings" / "alphabet_risk_factors.jsonl"
+    argv = ["--risk-factors", str(risks), "--output-dir", str(tmp_path / "pairs"), "--top-k", "1"]
+    assert score.main(argv, client=FakeJev(), sdk_question="same_risk") == 1

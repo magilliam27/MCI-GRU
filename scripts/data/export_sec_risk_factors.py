@@ -23,8 +23,9 @@ What it writes under ``--package-root/filings``:
   the SHA-256 of the document read.
 - ``alphabet_10k_duplicates.csv``: copies of the same report under the other CIK.
 - ``alphabet_risk_factors.jsonl``: one risk factor per line.
-- ``alphabet_extraction_report.csv``: per filing, how many risks and categories
-  were found. Check three years against the filings by hand before scoring.
+- ``alphabet_extraction_report.csv``: per filing, the encoding read and how many
+  risks and categories were found. Check three years against the filings by
+  hand before scoring.
 - ``alphabet_risk_factors.meta.json``: provenance.
 
 A filing whose Item 1A cannot be read is reported and stops the manifest.
@@ -62,6 +63,11 @@ from mci_gru.filings.risk_factors import RiskFactorExtractionError, extract_risk
 #: Seconds between requests: SEC's stated ceiling is 10 a second.
 MIN_INTERVAL_SECONDS = 0.11
 RETRY_STATUSES = (429, 500, 502, 503, 504)
+ATTEMPTS = 4
+#: Back-off after a server error or a dropped connection, doubled per attempt.
+RETRY_WAIT_SECONDS = 10.0
+#: SEC limits an over-eager client for about ten minutes; wait that out on a 429.
+RATE_LIMITED_WAIT_SECONDS = 600.0
 FILERS = (GOOGLE_INC_CIK, ALPHABET_CIK)
 PREFIX = "alphabet"
 
@@ -89,7 +95,12 @@ def _urllib_transport(url: str, headers: dict[str, str]) -> bytes:
 
 
 class EdgarClient:
-    """Throttled, cached GETs against EDGAR; each URL is read from the network once."""
+    """Throttled, cached GETs against EDGAR.
+
+    Documents and older submissions files never change, so each is read from the
+    network once. A filer's main submissions file does change (new filings), so
+    it is read fresh on every run.
+    """
 
     def __init__(self, user_agent: str, cache_dir: Path, transport: Transport) -> None:
         self.headers = {"User-Agent": user_agent}
@@ -99,13 +110,13 @@ class EdgarClient:
         self.cache_hits = 0
         self._last = 0.0
 
-    def get(self, url: str) -> bytes:
+    def get(self, url: str, *, fresh: bool = False) -> bytes:
         name = hashlib.sha256(url.encode("utf-8")).hexdigest()[:24] + Path(url).suffix
         path = self.cache_dir / name
-        if path.exists():
+        if path.exists() and not fresh:
             self.cache_hits += 1
             return path.read_bytes()
-        for attempt in range(4):
+        for attempt in range(ATTEMPTS):
             wait = MIN_INTERVAL_SECONDS - (time.monotonic() - self._last)
             if wait > 0:
                 time.sleep(wait)
@@ -115,9 +126,16 @@ class EdgarClient:
                 body = self.transport(url, self.headers)
                 break
             except urllib.error.HTTPError as error:
-                if error.code not in RETRY_STATUSES or attempt == 3:
+                if error.code not in RETRY_STATUSES or attempt == ATTEMPTS - 1:
                     raise
-                time.sleep(2**attempt)
+                if error.code == 429:
+                    time.sleep(RATE_LIMITED_WAIT_SECONDS)
+                else:
+                    time.sleep(RETRY_WAIT_SECONDS * 2**attempt)
+            except (urllib.error.URLError, TimeoutError, ConnectionError):
+                if attempt == ATTEMPTS - 1:
+                    raise
+                time.sleep(RETRY_WAIT_SECONDS * 2**attempt)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         path.write_bytes(body)
         return body
@@ -128,8 +146,16 @@ class EdgarClient:
             return "cache"
         return "live and cache" if self.cache_hits else "live"
 
-    def get_json(self, url: str) -> dict[str, Any]:
-        return json.loads(self.get(url).decode("utf-8"))
+    def get_json(self, url: str, *, fresh: bool = False) -> dict[str, Any]:
+        return json.loads(self.get(url, fresh=fresh).decode("utf-8"))
+
+
+def decode_document(document: bytes) -> tuple[str, str]:
+    """The document's text and the encoding read; older filings are not always UTF-8."""
+    try:
+        return document.decode("utf-8"), "utf-8"
+    except UnicodeDecodeError:
+        return document.decode("cp1252", errors="replace"), "cp1252"
 
 
 def _git_commit() -> str | None:
@@ -143,7 +169,7 @@ def _git_commit() -> str | None:
 
 def read_filer(client: EdgarClient, cik: str) -> list:
     """Every filing a filer lists, from the recent block and each older file."""
-    recent, older = submissions_blocks(client.get_json(SUBMISSIONS_URL.format(cik=cik)))
+    recent, older = submissions_blocks(client.get_json(SUBMISSIONS_URL.format(cik=cik), fresh=True))
     records = filings_from_block(cik, recent)
     for name in older:
         records.extend(
@@ -170,9 +196,10 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
             index_rows.append(
                 {**record.to_dict(), "document_sha256": hashlib.sha256(document).hexdigest()}
             )
+            text, encoding = decode_document(document)
             try:
                 risks = extract_risk_factors(
-                    document.decode("utf-8", errors="replace"),
+                    text,
                     accession_number=record.accession_number,
                     fiscal_year=record.fiscal_year,
                 )
@@ -182,6 +209,7 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
                     {
                         "accession_number": record.accession_number,
                         "fiscal_year": record.fiscal_year,
+                        "encoding": encoding,
                         "risks": 0,
                         "categories": 0,
                         "error": str(error),
@@ -194,6 +222,7 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
                 {
                     "accession_number": record.accession_number,
                     "fiscal_year": record.fiscal_year,
+                    "encoding": encoding,
                     "risks": len(risks),
                     "categories": len({risk.category for risk in risks if risk.category}),
                     "error": "",

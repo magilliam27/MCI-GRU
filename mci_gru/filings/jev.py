@@ -36,7 +36,8 @@ if TYPE_CHECKING:
 
     from mci_gru.filings.pairing import RiskPair
 
-QUESTION_KINDS = frozenset({"noul", "choice", "score"})
+#: Milestone 1 of #289 asks one Noul; other kinds wait until it grades well.
+QUESTION_KINDS = frozenset({"noul"})
 _VERSIONED_MODEL = re.compile(r"^jev-\d+\.\d+\.\d+$")
 LABEL_COLUMNS = (
     "label_id",
@@ -63,7 +64,6 @@ class Question:
     question_id: str
     kind: str
     instructions: str
-    criteria: Any = None
 
     def spec(self) -> dict[str, Any]:
         """The wording that defines the question, as hashed into the cache key."""
@@ -71,7 +71,6 @@ class Question:
             "question_id": self.question_id,
             "kind": self.kind,
             "instructions": self.instructions,
-            "criteria": self.criteria,
         }
 
 
@@ -97,14 +96,13 @@ def load_question_set(path: Path) -> QuestionSet:
     for question_id, entry in (raw.get("questions") or {}).items():
         kind = str(entry.get("kind", ""))
         if kind not in QUESTION_KINDS:
-            raise QuestionSetError(f"{path}: {question_id} has unknown kind {kind!r}")
-        if kind in {"choice", "score"} and not entry.get("criteria"):
-            raise QuestionSetError(f"{path}: {question_id} is a {kind} without criteria")
+            raise QuestionSetError(f"{path}: {question_id} has unsupported kind {kind!r}")
+        if not str(entry.get("instructions", "")).strip():
+            raise QuestionSetError(f"{path}: {question_id} has no instructions")
         questions[str(question_id)] = Question(
             question_id=str(question_id),
             kind=kind,
             instructions=str(entry.get("instructions", "")).strip(),
-            criteria=entry.get("criteria"),
         )
     if not questions:
         raise QuestionSetError(f"{path}: no questions")
@@ -129,16 +127,35 @@ def cache_key(state: Any, question_spec: dict[str, Any], model: str) -> str:
 
 
 class AnswerCache:
-    """Answers on disk as JSON lines, one per call, appended and never rewritten."""
+    """Answers on disk as JSON lines, one per call, appended and never rewritten.
+
+    A run cut off mid-write (a Colab disconnect) can leave the last line
+    unfinished. That line is set aside in ``<name>.torn`` and dropped, so its pair
+    is simply asked again; a damaged line anywhere else is refused.
+    """
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self._records: dict[str, dict[str, Any]] = {}
-        if self.path.exists():
-            for line in self.path.read_text(encoding="utf-8").splitlines():
-                if line.strip():
-                    record = json.loads(line)
-                    self._records[record["key"]] = record
+        if not self.path.exists():
+            return
+        text = self.path.read_text(encoding="utf-8")
+        lines = [line for line in text.splitlines() if line.strip()]
+        for position, line in enumerate(lines):
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                if position != len(lines) - 1 or text.endswith("\n"):
+                    raise
+                self._set_aside_torn_tail(text, line)
+                break
+            self._records[record["key"]] = record
+
+    def _set_aside_torn_tail(self, text: str, line: str) -> None:
+        torn = self.path.with_name(self.path.name + ".torn")
+        with torn.open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+        self.path.write_text(text[: len(text) - len(line)], encoding="utf-8")
 
     def __contains__(self, key: str) -> bool:
         return key in self._records
@@ -152,7 +169,8 @@ class AnswerCache:
     def put(self, record: dict[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as handle:
-            handle.write(_canonical(record) + "\n")
+            # ASCII on disk, so a torn write cannot split a character.
+            handle.write(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n")
         self._records[record["key"]] = record
 
 

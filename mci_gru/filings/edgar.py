@@ -155,9 +155,11 @@ def build_filing_index(
         if record.form in wanted and record.accepted_utc >= start and record.report_date
     ]
     for record in candidates:
-        if record.accession_number in seen:
-            continue
-        seen[record.accession_number] = record
+        # One accession listed under both filers (a co-registrant filing) is one
+        # document; keep the preferred filer's listing of it.
+        held = seen.get(record.accession_number)
+        if held is None or (held.cik != preferred_cik and record.cik == preferred_cik):
+            seen[record.accession_number] = record
 
     def _priority(record: FilingRecord) -> tuple[pd.Timestamp, int]:
         return record.accepted_utc, 0 if record.cik == preferred_cik else 1

@@ -617,6 +617,7 @@ The EDGAR filing index and when each filing was knowable (#289).
 | `test_filing_after_the_last_session_has_no_forecast` |  |  |
 | `test_report_filed_under_both_ciks_is_kept_once_at_its_earliest_acceptance` |  |  |
 | `test_tie_on_acceptance_goes_to_the_preferred_filer` |  |  |
+| `test_one_accession_listed_under_both_filers_is_kept_once_under_the_preferred_filer` |  |  |
 | `test_index_keeps_only_requested_forms_from_the_start_date` |  |  |
 | `test_older_submission_files_are_listed_for_reading` |  |  |
 | `test_ragged_submissions_block_is_refused` |  |  |
@@ -633,6 +634,8 @@ The frozen question set, the answer cache and the blind label sheet (#289).
 | `test_repository_question_set_pins_a_versioned_model` |  |  |
 | `test_moving_model_aliases_are_refused` |  | parametrize |
 | `test_cached_pairs_are_never_sent_again` |  |  |
+| `test_a_torn_last_line_is_set_aside_and_its_pair_asked_again` |  |  |
+| `test_a_damaged_line_before_the_last_is_refused` |  |  |
 | `test_a_different_model_is_a_different_cache_entry` |  |  |
 | `test_a_different_question_wording_is_a_different_cache_entry` |  |  |
 | `test_an_answer_from_another_model_version_is_refused_and_not_cached` |  |  |
@@ -676,6 +679,8 @@ Item 1A of a 10-K, cut into individual risk factors (#289).
 | `test_risk_ids_are_stable_and_ordered` |  |  |
 | `test_filing_without_item_1a_is_refused` |  |  |
 | `test_a_long_emphasised_paragraph_is_body_text_not_a_heading` |  |  |
+| `test_a_line_break_inside_a_heading_is_a_wrap_not_a_category` |  |  |
+| `test_a_running_page_header_is_dropped_whether_bold_or_not` |  | parametrize |
 
 ## `tests/test_filings_scripts.py`
 
@@ -688,11 +693,16 @@ The filings pull and the pair scoring, end to end with canned EDGAR and Jev (#28
 | `test_export_reads_both_filers_and_older_files_and_publishes_a_manifest` |  |  |
 | `test_every_request_names_the_client_as_sec_asks` |  |  |
 | `test_user_agent_without_contact_email_is_refused` |  |  |
-| `test_a_second_pull_reads_everything_from_the_cache` |  |  |
+| `test_a_second_pull_rereads_only_the_filers_main_submissions_files` |  |  |
+| `test_rate_limits_server_errors_and_dropped_connections_are_retried_after_a_wait` |  | parametrize |
+| `test_a_request_refused_outright_is_not_retried` |  |  |
+| `test_a_document_that_is_not_utf8_is_read_as_cp1252_and_reported` |  |  |
 | `test_an_unreadable_item_1a_blocks_the_manifest` |  |  |
 | `test_pairs_and_blind_sheet_are_written_without_calling_jev` |  |  |
 | `test_scoring_twice_calls_jev_once_per_distinct_pair` |  |  |
 | `test_an_existing_label_sheet_is_never_overwritten` |  |  |
+| `test_only_the_label_sheet_sits_outside_the_sealed_folder` |  |  |
+| `test_a_rerun_that_changes_the_pairs_under_a_label_sheet_stops` |  |  |
 
 ## `tests/test_first_run_cessation.py`
 
