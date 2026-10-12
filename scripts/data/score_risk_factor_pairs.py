@@ -23,11 +23,16 @@ What it writes under ``--output-dir``:
   until the labels are done.
 - ``sealed/``: everything that could give an answer away, so it stays shut while
   labelling.
-  - ``pairs.csv``: every current risk with its ``--top-k`` most similar
-    prior-year risks (TF-IDF), with rank and similarity.
+  - ``pairs.csv``: the pairs Jev is asked about, each with its TF-IDF rank and
+    similarity. With ``--jev-scope all`` (the default) that is every current
+    risk against every prior-year risk; with ``shortlist``, only the ``--top-k``
+    most similar. The label sheet is always drawn from the ``--top-k``
+    shortlist, which is also the text baseline Jev has to beat.
   - ``label_design.csv``: which pair each label row is, its stratum and weight.
   - With ``--score``: ``answers.jsonl`` (the cache: every request and answer,
-    never rewritten) and ``scores.csv``.
+    never rewritten), ``scores.csv``, and ``risk_verdicts.csv``: for each
+    current risk, Jev's most likely prior-year match and probability beside
+    the shortlist's top match.
 
 Once a label sheet exists it is kept, and a rerun that would no longer produce
 the pairs it was drawn from (a different ``--top-k`` or risk file) stops.
@@ -74,7 +79,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--risk-factors", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--questions", type=Path, default=DEFAULT_QUESTIONS)
-    parser.add_argument("--top-k", type=int, default=DEFAULT_SHORTLIST)
+    parser.add_argument(
+        "--top-k", type=int, default=DEFAULT_SHORTLIST, help="Shortlist size for the label sheet"
+    )
+    parser.add_argument(
+        "--jev-scope",
+        choices=("all", "shortlist"),
+        default="all",
+        help="Ask Jev about every prior-year risk (all) or only the --top-k shortlist",
+    )
     parser.add_argument("--label-sample", type=int, default=200)
     parser.add_argument("--seed", type=int, default=289)
     parser.add_argument("--score", action="store_true", help="Call Jev (costs money)")
@@ -87,11 +100,44 @@ def load_risks(path: Path) -> list[RiskFactor]:
     return [RiskFactor.from_dict(json.loads(line)) for line in lines if line.strip()]
 
 
+def risk_verdicts(pairs: pd.DataFrame, scores: pd.DataFrame) -> pd.DataFrame:
+    """Per current risk: Jev's most likely prior-year match beside the shortlist's top one.
+
+    ``jev_probability`` is Jev's highest same-risk probability over the prior
+    risks it was asked about; a low value means Jev found no prior-year match.
+    ``complete`` is false when ``--limit`` left some of the risk's pairs unasked.
+    """
+    asked = pairs.merge(scores[["pair_id", "probability"]], on="pair_id")
+    top_text = pairs.loc[pairs["rank"] == 1].set_index("current_risk_id")["prior_risk_id"]
+    rows = []
+    for risk_id, group in asked.groupby("current_risk_id", sort=False):
+        best = group.loc[group["probability"].idxmax()]
+        expected = int((pairs["current_risk_id"] == risk_id).sum())
+        rows.append(
+            {
+                "current_risk_id": risk_id,
+                "fiscal_year": int(best["fiscal_year"]),
+                "current_heading": best["current_heading"],
+                "jev_best_prior_risk_id": best["prior_risk_id"],
+                "jev_best_prior_heading": best["prior_heading"],
+                "jev_probability": float(best["probability"]),
+                "jev_best_text_rank": int(best["rank"]),
+                "text_top_prior_risk_id": top_text.get(risk_id),
+                "agrees_with_text_top": best["prior_risk_id"] == top_text.get(risk_id),
+                "pairs_asked": len(group),
+                "complete": len(group) == expected,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def main(argv: list[str] | None = None, *, client: Any = None, sdk_question: Any = None) -> int:
     args = parse_args(argv)
     question_set = load_question_set(args.questions)
     question = question_set.questions[QUESTION_ID]
-    pairs = pair_consecutive_years(load_risks(args.risk_factors), k=args.top_k)
+    risks = load_risks(args.risk_factors)
+    pairs = pair_consecutive_years(risks, k=args.top_k)
+    jev_pairs = pairs if args.jev_scope == "shortlist" else pair_consecutive_years(risks, k=None)
 
     out = args.output_dir
     sealed = out / "sealed"
@@ -113,16 +159,18 @@ def main(argv: list[str] | None = None, *, client: Any = None, sdk_question: Any
         sheet, design = blind_label_sheet(pairs, n=args.label_sample, seed=args.seed)
         sheet.to_csv(sheet_path, index=False)
         design.to_csv(design_path, index=False)
-    pd.DataFrame([pair.to_dict() for pair in pairs]).to_csv(sealed / "pairs.csv", index=False)
+    pair_table = pd.DataFrame([pair.to_dict() for pair in jev_pairs])
+    pair_table.to_csv(sealed / "pairs.csv", index=False)
 
     chars = sum(
         len(json.dumps(pair_state(pair), ensure_ascii=False)) + len(question.instructions)
-        for pair in pairs
+        for pair in jev_pairs
     )
     print(
         json.dumps(
             {
-                "pairs": len(pairs),
+                "jev_scope": args.jev_scope,
+                "pairs": len(jev_pairs),
                 "fiscal_years": sorted({pair.current.fiscal_year for pair in pairs}),
                 "model": question_set.model,
                 "estimated_input_tokens": chars // CHARS_PER_TOKEN,
@@ -145,7 +193,7 @@ def main(argv: list[str] | None = None, *, client: Any = None, sdk_question: Any
     if sdk_question is None:
         sdk_question = Noul(instructions=question.instructions)
 
-    chosen = pairs if args.limit is None else pairs[: args.limit]
+    chosen = jev_pairs if args.limit is None else jev_pairs[: args.limit]
     scored = score_pairs(
         chosen,
         question,
@@ -154,7 +202,9 @@ def main(argv: list[str] | None = None, *, client: Any = None, sdk_question: Any
         cache=AnswerCache(sealed / "answers.jsonl"),
         model=question_set.model,
     )
-    pd.DataFrame([vars(item) for item in scored]).to_csv(sealed / "scores.csv", index=False)
+    scores = pd.DataFrame([vars(item) for item in scored])
+    scores.to_csv(sealed / "scores.csv", index=False)
+    risk_verdicts(pair_table, scores).to_csv(sealed / "risk_verdicts.csv", index=False)
     print(
         json.dumps(
             {

@@ -59,6 +59,14 @@ def test_k_larger_than_the_prior_year_takes_every_prior_risk():
     assert len(pairs) == len(PRIOR)
 
 
+def test_k_none_pairs_every_current_risk_with_every_prior_risk_in_rank_order():
+    pairs = shortlist_prior_risks(CURRENT, PRIOR, k=None)
+    assert len(pairs) == len(CURRENT) * len(PRIOR)
+    privacy = [pair for pair in pairs if pair.current.risk_id == "acc-2025#001"]
+    assert [pair.rank for pair in privacy] == [1, 2, 3, 4]
+    assert privacy[0].prior.risk_id == "acc-2024#003"
+
+
 def test_pair_ids_are_stable():
     pair = shortlist_prior_risks(CURRENT[:1], PRIOR, k=1)[0]
     assert pair.pair_id == "acc-2025#001|acc-2024#003"

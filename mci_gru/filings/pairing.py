@@ -63,9 +63,12 @@ def shortlist_prior_risks(
     current: Sequence[RiskFactor],
     prior: Sequence[RiskFactor],
     *,
-    k: int = DEFAULT_SHORTLIST,
+    k: int | None = DEFAULT_SHORTLIST,
 ) -> list[RiskPair]:
-    """The ``k`` most similar prior risks for every current risk, most similar first."""
+    """The ``k`` most similar prior risks for every current risk, most similar first.
+
+    ``k=None`` pairs every current risk with every prior risk, still ranked.
+    """
     if not current or not prior:
         raise PairingError("both years need at least one risk factor")
     vectorizer = TfidfVectorizer(stop_words="english", sublinear_tf=True)
@@ -73,7 +76,7 @@ def shortlist_prior_risks(
     scores = cosine_similarity(matrix[: len(current)], matrix[len(current) :])
     pairs: list[RiskPair] = []
     for row, risk in enumerate(current):
-        order = np.argsort(-scores[row], kind="stable")[:k]
+        order = np.argsort(-scores[row], kind="stable")[: len(prior) if k is None else k]
         pairs.extend(
             RiskPair(risk, prior[column], rank, float(scores[row, column]))
             for rank, column in enumerate(order, start=1)
@@ -82,7 +85,7 @@ def shortlist_prior_risks(
 
 
 def pair_consecutive_years(
-    risks: Sequence[RiskFactor], *, k: int = DEFAULT_SHORTLIST
+    risks: Sequence[RiskFactor], *, k: int | None = DEFAULT_SHORTLIST
 ) -> list[RiskPair]:
     """Pairs for every year against the year before; the earliest year is reference only."""
     by_year: dict[int, list[RiskFactor]] = {}

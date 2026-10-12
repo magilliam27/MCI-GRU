@@ -658,6 +658,7 @@ Each risk factor paired with its most similar prior-year risks (#289).
 | `test_most_similar_prior_risk_ranks_first` |  |  |
 | `test_every_current_risk_gets_k_pairs_even_with_no_word_overlap` |  |  |
 | `test_k_larger_than_the_prior_year_takes_every_prior_risk` |  |  |
+| `test_k_none_pairs_every_current_risk_with_every_prior_risk_in_rank_order` |  |  |
 | `test_pair_ids_are_stable` |  |  |
 | `test_consecutive_years_pair_each_year_with_the_one_before_only` |  |  |
 | `test_a_missing_prior_year_is_refused_rather_than_skipped` |  |  |
@@ -703,6 +704,10 @@ The filings pull and the pair scoring, end to end with canned EDGAR and Jev (#28
 | `test_an_existing_label_sheet_is_never_overwritten` |  |  |
 | `test_only_the_label_sheet_sits_outside_the_sealed_folder` |  |  |
 | `test_a_rerun_that_changes_the_pairs_under_a_label_sheet_stops` |  |  |
+| `test_jev_is_asked_about_every_prior_year_risk_by_default` |  |  |
+| `test_shortlist_scope_asks_jev_only_about_the_top_k` |  |  |
+| `test_risk_verdicts_name_jevs_best_match_and_flag_a_new_risk` |  |  |
+| `test_a_limited_run_marks_risks_it_did_not_finish` |  |  |
 
 ## `tests/test_first_run_cessation.py`
 

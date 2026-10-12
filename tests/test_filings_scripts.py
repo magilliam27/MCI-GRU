@@ -334,6 +334,7 @@ def test_only_the_label_sheet_sits_outside_the_sealed_folder(tmp_path):
         "label_design.csv",
         "answers.jsonl",
         "scores.csv",
+        "risk_verdicts.csv",
     }
 
 
@@ -343,3 +344,66 @@ def test_a_rerun_that_changes_the_pairs_under_a_label_sheet_stops(tmp_path):
     risks = tmp_path / "package" / "filings" / "alphabet_risk_factors.jsonl"
     argv = ["--risk-factors", str(risks), "--output-dir", str(tmp_path / "pairs"), "--top-k", "1"]
     assert score.main(argv, client=FakeJev(), sdk_question="same_risk") == 1
+
+
+class HeadingJev(FakeJev):
+    """Says 'same risk' only when the two headings match, as a careful reader would here."""
+
+    def system_one(self, *, state, questions):
+        self.calls += 1
+        same = state["current_risk_factor"]["heading"] == state["prior_year_risk_factor"]["heading"]
+        return SimpleNamespace(
+            model="jev-1.13.0",
+            request_id=f"r{self.calls}",
+            usage=SimpleNamespace(input_tokens=50),
+            nouls={name: SimpleNamespace(noul=0.95 if same else 0.05) for name in questions},
+        )
+
+
+def _risk_counts(tmp_path: Path) -> dict[int, int]:
+    risks = tmp_path / "package" / "filings" / "alphabet_risk_factors.jsonl"
+    years = [json.loads(line)["fiscal_year"] for line in risks.read_text().splitlines()]
+    return {year: years.count(year) for year in set(years)}
+
+
+def test_jev_is_asked_about_every_prior_year_risk_by_default(tmp_path):
+    _export(tmp_path, Transport(_edgar()), manifest=False)
+    assert _score(tmp_path, "--score", client=HeadingJev()) == 0
+    counts = _risk_counts(tmp_path)
+    pairs = pd.read_csv(tmp_path / "pairs" / "sealed" / "pairs.csv")
+    assert len(pairs) == sum(counts[year] * counts[year - 1] for year in (2014, 2015))
+    # The label sheet still comes from the --top-k 2 shortlist.
+    design = pd.read_csv(tmp_path / "pairs" / "sealed" / "label_design.csv")
+    shortlisted = set(pairs.loc[pairs["rank"] <= 2, "pair_id"])
+    assert set(design["pair_id"]) <= shortlisted
+
+
+def test_shortlist_scope_asks_jev_only_about_the_top_k(tmp_path):
+    _export(tmp_path, Transport(_edgar()), manifest=False)
+    client = HeadingJev()
+    assert _score(tmp_path, "--score", "--jev-scope", "shortlist", client=client) == 0
+    pairs = pd.read_csv(tmp_path / "pairs" / "sealed" / "pairs.csv")
+    assert pairs["rank"].max() == 2
+    assert len(pd.read_csv(tmp_path / "pairs" / "sealed" / "scores.csv")) == len(pairs)
+
+
+def test_risk_verdicts_name_jevs_best_match_and_flag_a_new_risk(tmp_path):
+    _export(tmp_path, Transport(_edgar()), manifest=False)
+    assert _score(tmp_path, "--score", client=HeadingJev()) == 0
+    verdicts = pd.read_csv(tmp_path / "pairs" / "sealed" / "risk_verdicts.csv")
+    counts = _risk_counts(tmp_path)
+    assert len(verdicts) == counts[2014] + counts[2015]
+    assert verdicts["complete"].all()
+    new = verdicts["current_heading"].str.startswith("Generative AI")
+    assert new.sum() == 1
+    assert verdicts.loc[new, "jev_probability"].item() == pytest.approx(0.05)
+    carried = verdicts.loc[~new]
+    assert (carried["jev_best_prior_heading"] == carried["current_heading"]).all()
+    assert carried["jev_probability"].eq(0.95).all()
+
+
+def test_a_limited_run_marks_risks_it_did_not_finish(tmp_path):
+    _export(tmp_path, Transport(_edgar()), manifest=False)
+    assert _score(tmp_path, "--score", "--limit", "2", client=HeadingJev()) == 0
+    verdicts = pd.read_csv(tmp_path / "pairs" / "sealed" / "risk_verdicts.csv")
+    assert len(verdicts) == 1 and not verdicts["complete"].any()
