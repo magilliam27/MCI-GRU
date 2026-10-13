@@ -79,7 +79,9 @@ def test_accuracy_and_the_gap_over_each_baseline():
     assert summary["accuracy"]["jev"]["accuracy"] == 1.0
     assert summary["accuracy"]["text_top_match"]["accuracy"] == 0.5
     assert summary["accuracy"]["heading_match"]["accuracy"] == 0.75
-    assert summary["jev_minus_baseline"]["text_top_match"]["difference"] == 0.5
+    gaps = summary["jev_minus_baseline"]
+    assert gaps["labelled_pairs"]["text_top_match"]["difference"] == 0.5
+    assert gaps["shortlist_weighted"]["text_top_match"]["difference"] == 0.5
     assert summary["labelled_yes"] == 2
 
 
@@ -109,6 +111,28 @@ def test_a_gap_whose_interval_includes_zero_is_not_a_win():
     )
     straddle = accuracy_gap(graded_table(sheet, design, pairs, scores), "text_top_match", seed=7)
     assert straddle.low < 0 < straddle.high and not straddle.jev_wins
+
+
+def test_the_weighted_gap_describes_the_shortlist_not_the_labelled_pairs():
+    # Ten pairs from a big stratum where Jev is right and the text top match is
+    # wrong, ten from a small stratum the other way round. Unweighted it is a
+    # tie; weighted by stratum size Jev wins, and resampling within strata
+    # leaves no spread because each stratum is uniform.
+    sheet, design, pairs, scores = _inputs(
+        ["yes"] * 20, [0.9] * 10 + [0.1] * 10, [2] * 10 + [1] * 10, [False] * 20
+    )
+    design["stratum"] = ["2020|rest"] * 10 + ["2020|top"] * 10
+    design["weight"] = [9.0] * 10 + [1.0] * 10
+    table = graded_table(sheet, design, pairs, scores)
+    plain = accuracy_gap(table, "text_top_match", seed=7)
+    assert plain.difference == 0.0 and not plain.jev_wins
+    weighted = accuracy_gap(table, "text_top_match", seed=7, weighted=True)
+    assert weighted.difference == pytest.approx(0.8)
+    assert weighted.low == pytest.approx(0.8) and weighted.high == pytest.approx(0.8)
+    assert weighted.jev_wins
+    summary = grade(table, seed=7)["jev_minus_baseline"]
+    assert not summary["labelled_pairs"]["text_top_match"]["jev_wins"]
+    assert summary["shortlist_weighted"]["text_top_match"]["jev_wins"]
 
 
 def test_calibration_sets_mean_probability_beside_share_labelled_yes():

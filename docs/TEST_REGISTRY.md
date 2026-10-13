@@ -638,6 +638,7 @@ Jev's answers graded against the hand labels (#289).
 | `test_accuracy_and_the_gap_over_each_baseline` |  |  |
 | `test_weighted_accuracy_uses_the_design_weights` |  |  |
 | `test_a_gap_whose_interval_includes_zero_is_not_a_win` |  |  |
+| `test_the_weighted_gap_describes_the_shortlist_not_the_labelled_pairs` |  |  |
 | `test_calibration_sets_mean_probability_beside_share_labelled_yes` |  |  |
 | `test_grading_script_writes_summary_calibration_and_disagreements_first` |  |  |
 | `test_grading_script_refuses_a_half_labelled_sheet` |  |  |

@@ -15,8 +15,12 @@ What this module decides:
 
   Jev answers yes when its probability is at least one half.
 - **How sure the comparison is.** The accuracy gap between Jev and each
-  baseline comes with a paired bootstrap interval over the labelled pairs; a gap
-  whose interval includes zero is not a win.
+  baseline comes with a paired bootstrap interval; a gap whose interval includes
+  zero is not a win. It is reported twice, and the two can disagree:
+  ``labelled_pairs`` describes the 200 labelled pairs as drawn, and
+  ``shortlist_weighted`` the whole TF-IDF shortlist they were sampled from
+  (design weights, resampling within strata). The milestone's stop rule reads
+  the shortlist one, since that is the population the pilot is about.
 - **Whether Jev's confidence means anything.** Calibration bins its
   probabilities in tenths and sets each bin's mean probability beside the share
   of its pairs labelled yes; the Brier score sums that up in one number, lower
@@ -24,9 +28,9 @@ What this module decides:
   for Jev's probability and for the TF-IDF similarity.
 
 Weights: the label sheet is a stratified sample of the TF-IDF top-5 shortlist,
-so a plain average over-represents small strata. Weighted accuracy uses each
-row's design weight and describes the whole shortlist, not every pair Jev was
-asked about.
+so a plain average over-represents small strata. Weighted accuracy and the
+weighted gap use each row's design weight and describe the whole shortlist, not
+every pair Jev was asked about.
 
 Not graded here: answer stability. The answer cache never asks the same
 question twice, so stability needs a deliberate second pass under its own key.
@@ -113,16 +117,36 @@ def _accuracy(truth: np.ndarray, guess: np.ndarray, weight: np.ndarray | None = 
     return float(np.average(truth == guess, weights=weight))
 
 
-def accuracy_gap(table: pd.DataFrame, baseline: str, *, seed: int) -> Gap:
-    """Jev's accuracy minus ``baseline``'s, with a 95% paired bootstrap interval."""
+def accuracy_gap(table: pd.DataFrame, baseline: str, *, seed: int, weighted: bool = False) -> Gap:
+    """Jev's accuracy minus ``baseline``'s, with a 95% paired bootstrap interval.
+
+    Unweighted, the gap describes the labelled pairs and resamples them freely.
+    Weighted, it describes the whole shortlist: each draw resamples within each
+    stratum, keeping its size, and averages with the design weights.
+    """
     truth = table["label"].to_numpy()
     jev_right = (table["jev"].to_numpy() == truth).astype(float)
     base_right = (table[baseline].to_numpy() == truth).astype(float)
+    weight = table["weight"].to_numpy(dtype=float) if weighted else np.ones(len(table))
     rng = np.random.default_rng(seed)
-    draws = rng.integers(0, len(table), size=(BOOTSTRAP_DRAWS, len(table)))
-    gaps = jev_right[draws].mean(axis=1) - base_right[draws].mean(axis=1)
+    if weighted:
+        strata = table.groupby("stratum", sort=True).indices.values()
+        draws = np.concatenate(
+            [
+                rows[rng.integers(0, len(rows), size=(BOOTSTRAP_DRAWS, len(rows)))]
+                for rows in strata
+            ],
+            axis=1,
+        )
+    else:
+        draws = rng.integers(0, len(table), size=(BOOTSTRAP_DRAWS, len(table)))
+    drawn_weight = weight[draws]
+    gaps = ((jev_right[draws] - base_right[draws]) * drawn_weight).sum(axis=1) / drawn_weight.sum(
+        axis=1
+    )
     low, high = np.percentile(gaps, [2.5, 97.5])
-    return Gap(baseline, float(jev_right.mean() - base_right.mean()), float(low), float(high))
+    difference = np.average(jev_right - base_right, weights=weight)
+    return Gap(baseline, float(difference), float(low), float(high))
 
 
 def calibration(table: pd.DataFrame) -> pd.DataFrame:
@@ -153,19 +177,25 @@ def grade(table: pd.DataFrame, *, seed: int) -> dict[str, Any]:
         }
         for name in ("jev", *BASELINES)
     }
-    gaps = [accuracy_gap(table, baseline, seed=seed) for baseline in BASELINES]
+    populations = {"labelled_pairs": False, "shortlist_weighted": True}
     return {
         "labelled_pairs": len(table),
         "labelled_yes": int(truth.sum()),
         "jev_threshold": JEV_THRESHOLD,
         "accuracy": accuracy,
         "jev_minus_baseline": {
-            gap.baseline: {
-                "difference": gap.difference,
-                "interval_95": [gap.low, gap.high],
-                "jev_wins": gap.jev_wins,
+            population: {
+                gap.baseline: {
+                    "difference": gap.difference,
+                    "interval_95": [gap.low, gap.high],
+                    "jev_wins": gap.jev_wins,
+                }
+                for gap in (
+                    accuracy_gap(table, baseline, seed=seed, weighted=weighted)
+                    for baseline in BASELINES
+                )
             }
-            for gap in gaps
+            for population, weighted in populations.items()
         },
         "jev_brier": float(brier_score_loss(truth, table["probability"])),
         "auc": {

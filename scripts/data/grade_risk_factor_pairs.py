@@ -9,8 +9,10 @@ It reads ``label_sheet.csv`` (the labelled sheet) and, from ``sealed/``,
 ``grading/``:
 
 - ``summary.json``: accuracy of Jev and the two code baselines (heading match,
-  TF-IDF top match), Jev's gap over each with a bootstrap interval, Jev's Brier
-  score, and the ROC AUC of Jev's probability and of the TF-IDF similarity.
+  TF-IDF top match), Jev's gap over each with a bootstrap interval (once for the
+  labelled pairs, once design-weighted for the whole shortlist, which is the
+  one the stop rule reads), Jev's Brier score, and the ROC AUC of Jev's
+  probability and of the TF-IDF similarity.
 - ``calibration.csv``: Jev's probabilities in tenths beside the share of those
   pairs labelled yes.
 - ``graded_pairs.csv``: every labelled pair with its label, Jev's probability
