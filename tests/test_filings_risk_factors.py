@@ -165,3 +165,22 @@ def test_a_heading_broken_across_a_page_is_one_heading_not_a_category(html):
     assert len(risks) == 3
     assert risks[1].heading == "We face intense competition."
     assert risks[1].category == "Risks Related to Our Business and Industry"
+
+
+def test_a_lower_case_heading_after_body_text_starts_a_new_risk(html):
+    # Only a heading with no body yet can be continued across a page; a heading
+    # that merely starts in lower case ("iPhone ...") after a risk's body is a
+    # new risk, not more of the previous heading.
+    html = html.replace(
+        "<div><span>Our business environment is rapidly evolving and intensely competitive."
+        "</span></div>",
+        "<div><span>Our business environment is rapidly evolving and intensely competitive."
+        "</span></div>"
+        '<div><span style="font-style:italic;font-weight:700">iPhone sales could fall.</span></div>'
+        "<div><span>Demand for devices that run our apps can change quickly.</span></div>",
+    )
+    risks = extract_risk_factors(html, accession_number="a", fiscal_year=2025)
+    assert [risk.heading for risk in risks][1:3] == [
+        "We face intense competition.",
+        "iPhone sales could fall.",
+    ]
