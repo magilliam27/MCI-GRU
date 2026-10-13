@@ -95,7 +95,7 @@ def test_filing_without_item_1a_is_refused():
 
 
 def test_a_long_emphasised_paragraph_is_body_text_not_a_heading(html):
-    emphasised = "Investors should read this whole section with care. " * 15
+    emphasised = "Investors should read this whole section with care. " * 25
     html = html.replace(
         '<div><span style="font-style:italic;font-weight:700">We face intense competition.',
         f'<div><span style="font-weight:700">{emphasised.strip()}</span></div>'
@@ -104,6 +104,26 @@ def test_a_long_emphasised_paragraph_is_body_text_not_a_heading(html):
     risks = extract_risk_factors(html, accession_number="a", fiscal_year=2025)
     assert len(risks) == 3
     assert risks[0].body.endswith(emphasised.strip())
+
+
+def test_a_heading_of_two_long_sentences_is_still_a_heading(html):
+    # Shaped like Alphabet's fiscal 2018 data-privacy heading, 808 characters,
+    # which an earlier 600-character limit merged into the risk before it.
+    heading = (
+        "Data privacy and security concerns relating to our technology and our "
+        "practices could damage our reputation and deter current and potential users. "
+    ) * 6
+    html = html.replace(
+        '<div><span style="font-style:italic;font-weight:700">We face intense competition.',
+        f'<div><span style="font-style:italic;font-weight:700">{heading.strip()}</span></div>'
+        "<div><span>Concerns are expressed about privacy.</span></div>"
+        '<div><span style="font-style:italic;font-weight:700">We face intense competition.',
+    )
+    assert 800 < len(heading.strip()) < 1000
+    risks = extract_risk_factors(html, accession_number="a", fiscal_year=2025)
+    assert len(risks) == 4
+    assert risks[1].heading == heading.strip()
+    assert risks[1].body == "Concerns are expressed about privacy."
 
 
 def test_a_line_break_inside_a_heading_is_a_wrap_not_a_category(html):

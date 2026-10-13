@@ -70,7 +70,9 @@ BOLD_TAGS = frozenset({"b", "strong"})
 ITALIC_TAGS = frozenset({"em", "i"})
 
 #: A heading is at most this many characters; longer emphasised text is body.
-MAX_HEADING_CHARS = 600
+#: Alphabet's longest heading is 808 characters (fiscal 2018); no emphasised
+#: block in its fiscal 2013-2025 risk sections falls between that and 1,000.
+MAX_HEADING_CHARS = 1000
 #: Item headings are short; a long paragraph that mentions Item 1A is not one.
 MAX_ITEM_HEADING_CHARS = 100
 #: A short line seen this many times in one Item 1A is a running page header.
