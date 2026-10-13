@@ -140,3 +140,28 @@ def test_a_section_title_on_its_own_line_is_not_a_risk(html):
     assert len(risks) == 3
     assert risks[0].heading.startswith("We generate a significant portion")
     assert not any("subject to various risks" in risk.text for risk in risks)
+
+
+def test_a_page_number_with_a_full_stop_is_not_body_text(html):
+    # Alphabet's 10-Ks from fiscal 2023 number their pages "11." and break
+    # paragraphs across them.
+    html = html.replace("<div><span>11</span></div>", "<div><span>11.</span></div>")
+    risks = extract_risk_factors(html, accession_number="a", fiscal_year=2024)
+    assert (
+        risks[1].body == "Our business environment is rapidly evolving and intensely competitive."
+    )
+
+
+def test_a_heading_broken_across_a_page_is_one_heading_not_a_category(html):
+    # Alphabet's fiscal 2017 10-K breaks one risk heading across a page; the
+    # second part starts mid-sentence, in lower case.
+    html = html.replace(
+        '<span style="font-style:italic;font-weight:700">We face intense competition.</span></div>',
+        '<span style="font-style:italic;font-weight:700">We face intense</span></div>'
+        "<div><span>11</span></div><div><span>Table of Contents</span></div>"
+        '<div><span style="font-style:italic;font-weight:700">competition.</span></div>',
+    )
+    risks = extract_risk_factors(html, accession_number="a", fiscal_year=2017)
+    assert len(risks) == 3
+    assert risks[1].heading == "We face intense competition."
+    assert risks[1].category == "Risks Related to Our Business and Industry"

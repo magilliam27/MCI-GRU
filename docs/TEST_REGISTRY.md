@@ -703,6 +703,8 @@ Item 1A of a 10-K, cut into individual risk factors (#289).
 | `test_a_line_break_inside_a_heading_is_a_wrap_not_a_category` |  |  |
 | `test_a_running_page_header_is_dropped_whether_bold_or_not` |  | parametrize |
 | `test_a_section_title_on_its_own_line_is_not_a_risk` |  |  |
+| `test_a_page_number_with_a_full_stop_is_not_body_text` |  |  |
+| `test_a_heading_broken_across_a_page_is_one_heading_not_a_category` |  |  |
 
 ## `tests/test_filings_scripts.py`
 

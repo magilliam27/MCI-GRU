@@ -16,8 +16,11 @@ What this module decides:
   under it. Text before the first heading is the section's introduction; a
   "Risk Factors" title set apart from "Item 1A." is part of the section's own
   heading, not a risk (Alphabet's fiscal 2014 to 2019 filings). A
-  ``<br>`` inside a paragraph is a line wrap, not a new block.
-- **What is page furniture.** Page numbers, "Table of Contents" lines, and any
+  ``<br>`` inside a paragraph is a line wrap, not a new block, and a heading
+  that a page break cuts in two (its second part starting in lower case,
+  Alphabet's fiscal 2017 filing) is one heading, not a category and a heading.
+- **What is page furniture.** Page numbers (with or without a full stop, as
+  in Alphabet's filings from fiscal 2023), "Table of Contents" lines, and any
   short line repeated on several pages of the section (a running header such as
   "Alphabet Inc.", bold or not) are dropped wherever they fall.
 
@@ -80,7 +83,7 @@ _ITALIC_STYLE = re.compile(r"font-style\s*:\s*(italic|oblique)", re.I)
 _HIDDEN_STYLE = re.compile(r"display\s*:\s*none", re.I)
 _ITEM_1A = re.compile(r"^item\s*1a\b", re.I)
 _ITEM_END = re.compile(r"^item\s*(1b|1c|2)\b", re.I)
-_FURNITURE = re.compile(r"^(\d{1,3}|table of contents)$", re.I)
+_FURNITURE = re.compile(r"^(\d{1,3}\.?|table of contents)$", re.I)
 #: The section's own title, when a filing sets it apart from "Item 1A.".
 _SECTION_TITLE = re.compile(r"^risk\s+factors\.?$", re.I)
 
@@ -265,6 +268,9 @@ def extract_risk_factors(html: str, *, accession_number: str, fiscal_year: int) 
         if heading is None and _SECTION_TITLE.match(block.text):
             continue
         if _is_heading(block):
+            if heading is not None and not body and block.text[:1].islower():
+                heading = f"{heading} {block.text}"
+                continue
             if heading is not None and not body:
                 category = heading
             elif heading is not None:
