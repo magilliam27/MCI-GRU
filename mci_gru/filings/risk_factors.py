@@ -13,7 +13,9 @@ What this module decides:
 - **Where one risk ends and the next begins.** Each risk factor opens with an
   emphasised heading followed by plain paragraphs. A heading followed directly by
   another heading is a category ("Risks Related to ..."), carried by the risks
-  under it. Text before the first heading is the section's introduction. A
+  under it. Text before the first heading is the section's introduction; a
+  "Risk Factors" title set apart from "Item 1A." is part of the section's own
+  heading, not a risk (Alphabet's fiscal 2014 to 2019 filings). A
   ``<br>`` inside a paragraph is a line wrap, not a new block.
 - **What is page furniture.** Page numbers, "Table of Contents" lines, and any
   short line repeated on several pages of the section (a running header such as
@@ -79,6 +81,8 @@ _HIDDEN_STYLE = re.compile(r"display\s*:\s*none", re.I)
 _ITEM_1A = re.compile(r"^item\s*1a\b", re.I)
 _ITEM_END = re.compile(r"^item\s*(1b|1c|2)\b", re.I)
 _FURNITURE = re.compile(r"^(\d{1,3}|table of contents)$", re.I)
+#: The section's own title, when a filing sets it apart from "Item 1A.".
+_SECTION_TITLE = re.compile(r"^risk\s+factors\.?$", re.I)
 
 
 class RiskFactorExtractionError(ValueError):
@@ -257,6 +261,8 @@ def extract_risk_factors(html: str, *, accession_number: str, fiscal_year: int) 
     furniture = _running_headers(section)
     for block in section[1:]:
         if _FURNITURE.match(block.text) or block.text in furniture:
+            continue
+        if heading is None and _SECTION_TITLE.match(block.text):
             continue
         if _is_heading(block):
             if heading is not None and not body:

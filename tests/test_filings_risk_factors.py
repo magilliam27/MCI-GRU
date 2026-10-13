@@ -127,3 +127,16 @@ def test_a_running_page_header_is_dropped_whether_bold_or_not(html, header):
     risks = extract_risk_factors(html, accession_number="a", fiscal_year=2025)
     assert len(risks) == 3
     assert not any("Alphabet Inc." in risk.text for risk in risks)
+
+
+def test_a_section_title_on_its_own_line_is_not_a_risk(html):
+    # Alphabet's 10-Ks for fiscal 2014 to 2019 put "ITEM 1A." and "RISK FACTORS"
+    # in separate bold blocks; the title must not open a risk over the intro.
+    html = html.replace(
+        "ITEM 1A.&#160;&#160;&#160;&#160;RISK FACTORS</span></div>",
+        'ITEM 1A.</span></div><div><span style="font-weight:700">RISK FACTORS</span></div>',
+    )
+    risks = extract_risk_factors(html, accession_number="a", fiscal_year=2019)
+    assert len(risks) == 3
+    assert risks[0].heading.startswith("We generate a significant portion")
+    assert not any("subject to various risks" in risk.text for risk in risks)
