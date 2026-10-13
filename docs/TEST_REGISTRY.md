@@ -601,6 +601,37 @@ Every feature group must accept the regime overrides that launchers pass, withou
 | `test_feature_drift_flags_shifted_distribution` |  |  |
 | `test_missing_feature_reference_returns_not_available` |  |  |
 
+## `tests/test_filings_change.py`
+
+Milestone 2 of #289: how each risk factor changed, the word baseline and the grade.
+
+**Exercises:** `mci_gru.filings.change`, `mci_gru.filings.jev`, `mci_gru.filings.pairing`, `mci_gru.filings.risk_factors`, `scripts.data.score_risk_changes`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_v2_question_offers_exactly_the_five_change_kinds_each_described` |  |  |
+| `test_a_noul_spec_is_unchanged_so_milestone_one_cache_keys_hold` |  |  |
+| `test_a_choice_needs_two_or_more_described_options` |  | parametrize |
+| `test_word_change_counts_distinct_words_added_and_removed` |  |  |
+| `test_baseline_rule_and_its_frozen_thresholds` |  | parametrize |
+| `test_pair_table_carries_both_years_and_the_baseline` |  |  |
+| `test_option_order_is_a_fixed_shuffle_per_pair` |  |  |
+| `test_jev_sees_the_options_in_the_pairs_shuffled_order` |  |  |
+| `test_cached_choices_are_never_asked_again` |  |  |
+| `test_an_answer_from_another_model_stops_the_choice_run` |  |  |
+| `test_a_choice_without_the_five_change_kinds_is_refused` |  |  |
+| `test_label_sample_oversamples_rare_kinds_and_weights_undo_it` |  |  |
+| `test_label_sheet_shows_years_and_texts_but_no_answer_hints` |  |  |
+| `test_labels_outside_the_five_kinds_stop_the_grade` |  |  |
+| `test_calling_everything_same_earns_one_over_the_kinds_present` |  |  |
+| `test_balanced_accuracy_uses_the_design_weights` |  |  |
+| `test_jev_wins_only_when_its_whole_interval_is_above_zero` |  |  |
+| `test_a_gap_whose_interval_spans_zero_is_not_a_win` |  |  |
+| `test_per_kind_recall_and_precision` |  |  |
+| `test_step_one_writes_the_sheet_and_guide_and_seals_the_rest` |  |  |
+| `test_score_then_grade_end_to_end` |  |  |
+| `test_an_existing_change_sheet_is_kept` |  |  |
+
 ## `tests/test_filings_edgar.py`
 
 The EDGAR filing index and when each filing was knowable (#289).

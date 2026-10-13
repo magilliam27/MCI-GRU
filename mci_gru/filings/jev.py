@@ -36,8 +36,8 @@ if TYPE_CHECKING:
 
     from mci_gru.filings.pairing import RiskPair
 
-#: Milestone 1 of #289 asks one Noul; other kinds wait until it grades well.
-QUESTION_KINDS = frozenset({"noul"})
+#: Milestone 1 of #289 asks one Noul; milestone 2 asks one Choice.
+QUESTION_KINDS = frozenset({"noul", "choice"})
 _VERSIONED_MODEL = re.compile(r"^jev-\d+\.\d+\.\d+$")
 LABEL_COLUMNS = (
     "label_id",
@@ -64,14 +64,22 @@ class Question:
     question_id: str
     kind: str
     instructions: str
+    #: A Choice's options as (name, description), in the order the file gives.
+    options: tuple[tuple[str, str], ...] = ()
 
     def spec(self) -> dict[str, Any]:
-        """The wording that defines the question, as hashed into the cache key."""
-        return {
+        """The wording that defines the question, as hashed into the cache key.
+
+        A Noul's spec has no options key, so milestone 1's cache keys are unchanged.
+        """
+        spec: dict[str, Any] = {
             "question_id": self.question_id,
             "kind": self.kind,
             "instructions": self.instructions,
         }
+        if self.kind == "choice":
+            spec["options"] = dict(self.options)
+        return spec
 
 
 @dataclass(frozen=True)
@@ -99,10 +107,19 @@ def load_question_set(path: Path) -> QuestionSet:
             raise QuestionSetError(f"{path}: {question_id} has unsupported kind {kind!r}")
         if not str(entry.get("instructions", "")).strip():
             raise QuestionSetError(f"{path}: {question_id} has no instructions")
+        options: tuple[tuple[str, str], ...] = ()
+        if kind == "choice":
+            raw_options = entry.get("options") or {}
+            options = tuple((str(k), str(v or "").strip()) for k, v in raw_options.items())
+            if len(options) < 2 or not all(description for _, description in options):
+                raise QuestionSetError(
+                    f"{path}: {question_id} needs at least two options, each described"
+                )
         questions[str(question_id)] = Question(
             question_id=str(question_id),
             kind=kind,
             instructions=str(entry.get("instructions", "")).strip(),
+            options=options,
         )
     if not questions:
         raise QuestionSetError(f"{path}: no questions")
