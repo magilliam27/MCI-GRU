@@ -102,6 +102,14 @@ def test_a_gap_whose_interval_includes_zero_is_not_a_win():
     win = accuracy_gap(table, "heading_match", seed=7)
     assert win.difference == 0.5 and win.low > 0 and win.jev_wins
 
+    # Jev right on the first ten pairs, the text top match on the last ten: the
+    # interval straddles zero, so neither side wins.
+    sheet, design, pairs, scores = _inputs(
+        ["yes"] * 20, [0.9] * 10 + [0.1] * 10, [2] * 10 + [1] * 10, [False] * 20
+    )
+    straddle = accuracy_gap(graded_table(sheet, design, pairs, scores), "text_top_match", seed=7)
+    assert straddle.low < 0 < straddle.high and not straddle.jev_wins
+
 
 def test_calibration_sets_mean_probability_beside_share_labelled_yes():
     sheet, design, pairs, scores = _inputs(
