@@ -623,6 +623,25 @@ The EDGAR filing index and when each filing was knowable (#289).
 | `test_ragged_submissions_block_is_refused` |  |  |
 | `test_document_url_uses_unpadded_cik_and_bare_accession` |  |  |
 
+## `tests/test_filings_grading.py`
+
+Jev's answers graded against the hand labels (#289).
+
+**Exercises:** `mci_gru.filings.grading`, `scripts.data.grade_risk_factor_pairs`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_labels_are_read_in_any_letter_case` |  |  |
+| `test_a_blank_or_unknown_label_stops_grading` |  | parametrize |
+| `test_a_labelled_pair_without_a_jev_score_stops_grading` |  |  |
+| `test_jev_and_both_baselines_answer_each_pair` |  |  |
+| `test_accuracy_and_the_gap_over_each_baseline` |  |  |
+| `test_weighted_accuracy_uses_the_design_weights` |  |  |
+| `test_a_gap_whose_interval_includes_zero_is_not_a_win` |  |  |
+| `test_calibration_sets_mean_probability_beside_share_labelled_yes` |  |  |
+| `test_grading_script_writes_summary_calibration_and_disagreements_first` |  |  |
+| `test_grading_script_refuses_a_half_labelled_sheet` |  |  |
+
 ## `tests/test_filings_jev.py`
 
 The frozen question set, the answer cache and the blind label sheet (#289).

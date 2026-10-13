@@ -9,4 +9,5 @@ Pure functions only: no network access and no credentials. Acquisition lives in
 - ``risk_factors``: Item 1A of a 10-K, cut into individual risk factors.
 - ``pairing``: each risk factor paired with its most similar prior-year risks.
 - ``jev``: the frozen question set, the answer cache, and the blind label sheet.
+- ``grading``: Jev's answers graded against the hand labels and two code baselines.
 """
