@@ -605,7 +605,7 @@ Every feature group must accept the regime overrides that launchers pass, withou
 
 Milestone 2 of #289: how each risk factor changed, the word baseline and the grade.
 
-**Exercises:** `mci_gru.filings.change`, `mci_gru.filings.jev`, `mci_gru.filings.pairing`, `mci_gru.filings.risk_factors`, `scripts.data.score_company_risk_changes`, `scripts.data.score_risk_change_flags`, `scripts.data.score_risk_change_noul`, `scripts.data.score_risk_changes`
+**Exercises:** `mci_gru.filings.change`, `mci_gru.filings.jev`, `mci_gru.filings.pairing`, `mci_gru.filings.risk_factors`, `scripts.data.score_change_direction`, `scripts.data.score_company_risk_changes`, `scripts.data.score_risk_change_flags`, `scripts.data.score_risk_change_noul`, `scripts.data.score_risk_changes`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -653,6 +653,13 @@ Milestone 2 of #289: how each risk factor changed, the word baseline and the gra
 | `test_e5_stops_when_the_pairs_do_not_reproduce_the_leads_list` |  |  |
 | `test_e5_test_call_then_side_by_side_companies_then_collect` |  |  |
 | `test_e5_collect_never_calls_jev` |  |  |
+| `test_e8_questions_offer_the_cards_option_sets_each_described` |  |  |
+| `test_lm_negative_list_keeps_only_words_currently_on_it` |  |  |
+| `test_negative_share_counts_every_occurrence` |  |  |
+| `test_e8_baselines_follow_the_list_with_both_signs_right` |  |  |
+| `test_e8_refuses_any_dictionary_but_the_frozen_one` |  |  |
+| `test_e8_a_repeated_or_unknown_listed_pair_stops_it` |  | parametrize |
+| `test_e8_test_call_then_each_question_on_its_own_then_collect` |  |  |
 
 ## `tests/test_filings_checks.py`
 
