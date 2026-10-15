@@ -23,9 +23,16 @@ What this module decides:
   in Alphabet's filings from fiscal 2023), "Table of Contents" lines, and any
   short line repeated on several pages of the section (a running header such as
   "Alphabet Inc.", bold or not) are dropped wherever they fall.
+- **How a list item reads.** A bullet is kept and followed by one space, whether
+  the filing sets it in its own table cell (Alphabet's fiscal 2013 to 2019
+  filings) or in a span run into the item's text (fiscal 2020 on), so the same
+  list reads the same in every year. A block of bullets or other marks with no
+  words is never a heading.
 
-None of this is verified against every year's layout here: milestone 1 of #289
-checks the extraction by hand on three fiscal years before any answer is used.
+``read_item_1a`` also records what a reader would otherwise lose silently: an
+emphasised paragraph too long to be a heading, read as body text, and a heading
+at the end of the section with no text under it. ``mci_gru.filings.checks``
+turns those, and the output itself, into per-filing checks (#292).
 """
 
 from __future__ import annotations
@@ -88,6 +95,8 @@ _ITEM_END = re.compile(r"^item\s*(1b|1c|2)\b", re.I)
 _FURNITURE = re.compile(r"^(\d{1,3}\.?|table of contents)$", re.I)
 #: The section's own title, when a filing sets it apart from "Item 1A.".
 _SECTION_TITLE = re.compile(r"^risk\s+factors\.?$", re.I)
+#: A bullet opening a block, and whatever space follows it.
+_LEADING_BULLET = re.compile(r"^([\u2022\u25cf\u25aa\u25e6\u2023])\s*")
 
 
 class RiskFactorExtractionError(ValueError):
@@ -159,6 +168,7 @@ class _BlockParser(HTMLParser):
 
     def _flush(self) -> None:
         text = _SPACE.sub(" ", "".join(run for run, _ in self._runs)).strip()
+        text = _LEADING_BULLET.sub(r"\1 ", text).strip()
         if text:
             emphasised = all(flag for run, flag in self._runs if run.strip())
             self.blocks.append(Block(text, emphasised))
@@ -230,38 +240,66 @@ def item_1a_blocks(blocks: list[Block]) -> list[Block]:
     return blocks[best[0] : best[1]]
 
 
+def _has_words(text: str) -> bool:
+    return any(character.isalnum() for character in text)
+
+
 def _running_headers(section: list[Block]) -> set[str]:
     counts = Counter(block.text for block in section)
     return {
         text
         for text, seen in counts.items()
-        if seen >= RUNNING_HEADER_REPEATS and len(text) <= RUNNING_HEADER_MAX_CHARS
+        if seen >= RUNNING_HEADER_REPEATS
+        and len(text) <= RUNNING_HEADER_MAX_CHARS
+        and _has_words(text)
     }
 
 
 def _is_heading(block: Block) -> bool:
-    return block.emphasised and len(block.text) <= MAX_HEADING_CHARS
+    return block.emphasised and _has_words(block.text) and len(block.text) <= MAX_HEADING_CHARS
 
 
-def extract_risk_factors(html: str, *, accession_number: str, fiscal_year: int) -> list[RiskFactor]:
-    """Item 1A's risk factors, in filing order."""
-    section = item_1a_blocks(html_blocks(html))
-    risks: list[RiskFactor] = []
-    category: str | None = None
-    heading: str | None = None
-    body: list[str] = []
+@dataclass(frozen=True)
+class _Draft:
+    category: str | None
+    heading: str
+    body: tuple[str, ...]
 
-    def _emit() -> None:
-        risks.append(
+
+@dataclass(frozen=True)
+class SectionReading:
+    """How one Item 1A was read: its risks, and what would otherwise be lost silently."""
+
+    drafts: tuple[_Draft, ...]
+    #: Emphasised paragraphs with words, too long for a heading, read as body text.
+    emphasised_body: tuple[str, ...]
+    #: A heading (or category) at the end of the section with no text under it.
+    unclosed_heading: str | None
+
+    def risk_factors(self, *, accession_number: str, fiscal_year: int) -> list[RiskFactor]:
+        if not self.drafts:
+            raise RiskFactorExtractionError("Item 1A holds no heading followed by text")
+        return [
             RiskFactor(
                 accession_number=accession_number,
                 fiscal_year=fiscal_year,
-                index=len(risks) + 1,
-                category=category,
-                heading=heading or "",
-                body=" ".join(body),
+                index=position,
+                category=draft.category,
+                heading=draft.heading,
+                body=" ".join(draft.body),
             )
-        )
+            for position, draft in enumerate(self.drafts, start=1)
+        ]
+
+
+def read_item_1a(html: str) -> SectionReading:
+    """Item 1A cut into risks, with the blocks that fit no risk cleanly."""
+    section = item_1a_blocks(html_blocks(html))
+    drafts: list[_Draft] = []
+    emphasised_body: list[str] = []
+    category: str | None = None
+    heading: str | None = None
+    body: list[str] = []
 
     furniture = _running_headers(section)
     for block in section[1:]:
@@ -276,12 +314,23 @@ def extract_risk_factors(html: str, *, accession_number: str, fiscal_year: int) 
             if heading is not None and not body:
                 category = heading
             elif heading is not None:
-                _emit()
+                drafts.append(_Draft(category, heading, tuple(body)))
             heading, body = block.text, []
         elif heading is not None:
             body.append(block.text)
+            if block.emphasised and _has_words(block.text):
+                emphasised_body.append(block.text)
     if heading is not None and body:
-        _emit()
-    if not risks:
-        raise RiskFactorExtractionError("Item 1A holds no heading followed by text")
-    return risks
+        drafts.append(_Draft(category, heading, tuple(body)))
+    return SectionReading(
+        drafts=tuple(drafts),
+        emphasised_body=tuple(emphasised_body),
+        unclosed_heading=heading if heading is not None and not body else None,
+    )
+
+
+def extract_risk_factors(html: str, *, accession_number: str, fiscal_year: int) -> list[RiskFactor]:
+    """Item 1A's risk factors, in filing order."""
+    return read_item_1a(html).risk_factors(
+        accession_number=accession_number, fiscal_year=fiscal_year
+    )

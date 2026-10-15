@@ -632,6 +632,26 @@ Milestone 2 of #289: how each risk factor changed, the word baseline and the gra
 | `test_score_then_grade_end_to_end` |  |  |
 | `test_an_existing_change_sheet_is_kept` |  |  |
 
+## `tests/test_filings_checks.py`
+
+Automatic checks on one filing's Item 1A extraction (#292).
+
+**Exercises:** `mci_gru.filings.checks`, `mci_gru.filings.risk_factors`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_a_clean_filing_raises_no_finding` |  |  |
+| `test_findings_are_named_by_the_published_check_list` |  |  |
+| `test_a_title_read_as_a_risk_heading_is_flagged` |  | parametrize |
+| `test_a_heading_of_fewer_than_four_words_is_flagged` |  |  |
+| `test_a_heading_starting_mid_sentence_is_flagged` |  |  |
+| `test_a_brand_name_in_lower_case_is_not_a_split_heading` |  |  |
+| `test_a_category_as_long_as_a_sentence_is_flagged` |  |  |
+| `test_page_furniture_left_in_a_body_is_flagged` |  | parametrize |
+| `test_numbers_that_are_text_are_not_page_furniture` |  | parametrize |
+| `test_an_emphasised_paragraph_read_as_body_is_flagged` |  |  |
+| `test_a_heading_with_nothing_under_it_is_flagged` |  |  |
+
 ## `tests/test_filings_edgar.py`
 
 The EDGAR filing index and when each filing was knowable (#289).
@@ -738,6 +758,9 @@ Item 1A of a 10-K, cut into individual risk factors (#289).
 | `test_a_page_number_with_a_full_stop_is_not_body_text` |  |  |
 | `test_a_heading_broken_across_a_page_is_one_heading_not_a_category` |  |  |
 | `test_a_lower_case_heading_after_body_text_starts_a_new_risk` |  |  |
+| `test_a_bullet_in_its_own_table_cell_is_kept_before_its_item` |  |  |
+| `test_a_bullet_run_into_its_item_is_followed_by_one_space` |  |  |
+| `test_an_emphasised_bullet_is_not_a_heading` |  |  |
 
 ## `tests/test_filings_scripts.py`
 
@@ -755,6 +778,8 @@ The filings pull and the pair scoring, end to end with canned EDGAR and Jev (#28
 | `test_a_request_refused_outright_is_not_retried` |  |  |
 | `test_a_document_that_is_not_utf8_is_read_as_cp1252_and_reported` |  |  |
 | `test_an_unreadable_item_1a_blocks_the_manifest` |  |  |
+| `test_every_filing_is_checked_and_a_clean_pull_lists_no_finding` |  |  |
+| `test_a_failed_check_is_reported_and_blocks_the_manifest` |  |  |
 | `test_pairs_and_blind_sheet_are_written_without_calling_jev` |  |  |
 | `test_scoring_twice_calls_jev_once_per_distinct_pair` |  |  |
 | `test_an_existing_label_sheet_is_never_overwritten` |  |  |

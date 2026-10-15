@@ -149,6 +149,7 @@ def test_export_reads_both_filers_and_older_files_and_publishes_a_manifest(tmp_p
         "filings/alphabet_10k_duplicates.csv",
         "filings/alphabet_risk_factors.jsonl",
         "filings/alphabet_extraction_report.csv",
+        "filings/alphabet_extraction_checks.csv",
         "filings/alphabet_risk_factors.meta.json",
     }
 
@@ -252,6 +253,35 @@ def test_an_unreadable_item_1a_blocks_the_manifest(tmp_path):
     assert not (tmp_path / "manifest.json").exists()
     report = pd.read_csv(tmp_path / "package" / "filings" / "alphabet_extraction_report.csv")
     assert report.loc[report["fiscal_year"] == 2015, "error"].str.contains("Item 1A").all()
+
+
+def test_every_filing_is_checked_and_a_clean_pull_lists_no_finding(tmp_path):
+    assert _export(tmp_path, Transport(_edgar())) == 0
+    out = tmp_path / "package" / "filings"
+    checks = pd.read_csv(out / "alphabet_extraction_checks.csv")
+    assert list(checks.columns) == ["accession_number", "fiscal_year", "check", "risk_id", "detail"]
+    assert checks.empty
+    report = pd.read_csv(out / "alphabet_extraction_report.csv")
+    assert report["check_findings"].tolist() == [0, 0, 0]
+
+
+def test_a_failed_check_is_reported_and_blocks_the_manifest(tmp_path, capsys):
+    # A page number left in a body, as Alphabet's "11." ones were before #289's fix.
+    responses = _edgar()
+    url = "https://www.sec.gov/Archives/edgar/data/1288776/000128877615000008/g14.htm"
+    responses[url] = responses[url].replace(
+        b"intensely competitive.</span>", b"intensely competitive. 12. Table of Contents</span>"
+    )
+    assert _export(tmp_path, Transport(responses)) == 1
+    assert not (tmp_path / "manifest.json").exists()
+    out = tmp_path / "package" / "filings"
+    checks = pd.read_csv(out / "alphabet_extraction_checks.csv")
+    assert checks[["fiscal_year", "check", "risk_id"]].values.tolist() == [
+        [2014, "page_furniture_in_text", "0001288776-15-000008#002"]
+    ]
+    report = pd.read_csv(out / "alphabet_extraction_report.csv").set_index("fiscal_year")
+    assert report["check_findings"].to_dict() == {2013: 0, 2014: 1, 2015: 0}
+    assert "BLOCKING 0001288776-15-000008: page_furniture_in_text" in capsys.readouterr().out
 
 
 class FakeJev:

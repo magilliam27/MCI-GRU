@@ -204,3 +204,41 @@ def test_a_lower_case_heading_after_body_text_starts_a_new_risk(html):
         "We face intense competition.",
         "iPhone sales could fall.",
     ]
+
+
+def test_a_bullet_in_its_own_table_cell_is_kept_before_its_item(html):
+    # Alphabet's fiscal 2013-2019 filings set each bullet in its own cell. Three
+    # or more of them once read as a running header and were dropped.
+    items = ("Restrictions on foreign ownership.", "Longer payment cycles.", "Currency risk.")
+    rows = "".join(
+        f"<tr><td><div>&#8226;</div></td><td><div>{item}</div></td></tr>" for item in items
+    )
+    html = html.replace(
+        "intensely competitive.</span></div>",
+        f"intensely competitive.</span></div><table>{rows}</table>",
+    )
+    risks = extract_risk_factors(html, accession_number="a", fiscal_year=2019)
+    assert risks[1].body == (
+        "Our business environment is rapidly evolving and intensely competitive. "
+        "• Restrictions on foreign ownership. • Longer payment cycles. • Currency risk."
+    )
+
+
+def test_a_bullet_run_into_its_item_is_followed_by_one_space(html):
+    # From fiscal 2020 the bullet is a span with padding and no space after it.
+    item = '<div><span>&#8226;</span><span style="padding-left:14.5pt">restrictions apply.</span></div>'
+    html = html.replace(
+        "intensely competitive.</span></div>", f"intensely competitive.</span></div>{item}"
+    )
+    risks = extract_risk_factors(html, accession_number="a", fiscal_year=2020)
+    assert risks[1].body.endswith("competitive. • restrictions apply.")
+
+
+def test_an_emphasised_bullet_is_not_a_heading(html):
+    bullets = "<div><b>&#8226;</b></div><div><span>Restrictions on foreign ownership.</span></div>"
+    html = html.replace(
+        "intensely competitive.</span></div>", f"intensely competitive.</span></div>{bullets}"
+    )
+    risks = extract_risk_factors(html, accession_number="a", fiscal_year=2019)
+    assert [risk.heading for risk in risks][1] == "We face intense competition."
+    assert len(risks) == 3
