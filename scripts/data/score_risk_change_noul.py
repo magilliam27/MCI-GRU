@@ -58,6 +58,13 @@ except ImportError:  # the [filings] extra is needed only for --score
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_QUESTIONS = REPO_ROOT / "configs" / "filings" / "questions_v3.yaml"
 QUESTION_ID = "materially_changed"
+#: The tuning thread's frozen rule this question copies (jev_tuning/frozen/
+#: changed_noul_v1.yaml in the project folder): same instructions, criteria,
+#: three draws, mean, cut 0.5 and word baseline.
+TUNING_RULE = {
+    "file": "jev_tuning/frozen/changed_noul_v1.yaml",
+    "sha256": "a6ef0cd9470bf062640e10815ca8f4ead8e0e105a6cac16fba044f2c332e8637",
+}
 DEFAULT_DRAWS = 3
 
 
@@ -181,6 +188,7 @@ def main(argv: list[str] | None = None, *, client: Any = None, sdk_question: Any
         "model": question_set.model,
         "question_file": args.questions.name,
         "question_id": QUESTION_ID,
+        "tuning_rule": TUNING_RULE,
         "draws": args.draws,
         "jev_changed": f"p_changed_mean >= {JEV_CHANGED_CUT}",
         "word_changed": f"word_score >= {WORD_SCORE_CUT}",
