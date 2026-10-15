@@ -1,0 +1,55 @@
+# Two choice questions, both answered on every item: did a risk's change make
+# things worse, better or neutral for the company, and which finer kind of
+# change was it? The answer key of experiment E8 (filings/experiments/
+# E8-change-direction). Every option's definition is the E8 card's, word for
+# word (CARD.md, Design table, as carded 15 Oct 05:05Z). The key reads each
+# question's own majority; the category below only repeats the direction. Do
+# not edit a version once labels exist against it.
+id: change_direction_v1
+title: Did this risk's change make things worse, better or neutral for the company?
+intro: >-
+  Each item is one risk factor from a company's 10-K this year, beside the most
+  similar risk factor in last year's 10-K. Read both and answer two questions
+  about what the change from last year means for the company. Nothing is
+  highlighted and no one else's answer is shown.
+questions:
+  - id: direction
+    text: Did the change make this risk worse, better or neutral for the company?
+    options:
+      - id: worse
+        text: >-
+          the risk became more serious or more likely for the company (a new
+          exposure, a wider scope, an event that actually happened, or a
+          stronger warning).
+      - id: better
+        text: >-
+          the risk eased (an exposure removed or shrunk, a matter resolved, or
+          a softer warning).
+      - id: neutral
+        text: >-
+          no change in how serious the risk is (rewording, updated figures or
+          dates, reorganised text).
+  - id: finer
+    text: Which kind of change was it?
+    help: >-
+      The first three map to "worse" in Question 1, eased to "better", neutral
+      to "neutral".
+    options:
+      - id: materialized
+        text: >-
+          it now reports that the risk actually happened (an incident, ruling,
+          fine, loss or disruption).
+      - id: new_exposure
+        text: it adds a new driver, product, market, rule or counterparty.
+      - id: escalated
+        text: same exposure, but it warns of larger or likelier harm.
+      - id: eased
+        text: >-
+          an exposure shrank or was removed, a matter was resolved, or the
+          warning softened.
+      - id: neutral
+        text: wording, figures, dates or layout only.
+categories:
+  - {label: worse, when: {direction: worse}}
+  - {label: better, when: {direction: better}}
+  - {label: neutral, when: {}}

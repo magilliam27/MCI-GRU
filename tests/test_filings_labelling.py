@@ -1,4 +1,4 @@
-"""The Labelling desk (#291): yes/no label sets, blind sheets, AI reviewers, agreement.
+"""The Labelling desk (#291): label sets, blind sheets, AI reviewers, agreement.
 
 No subagent and no labelling page runs here: reviewer answers and page label
 documents are written by hand in the shapes those produce.
@@ -20,6 +20,7 @@ from mci_gru.filings.labelling import (
     agreement,
     blind_sheet,
     cohen_kappa,
+    combine_answers,
     combine_reviewers,
     complete_answer_sets,
     load_label_set,
@@ -36,6 +37,24 @@ LABELS = REPO_ROOT / "configs" / "filings" / "labels"
 CHANGE = LABELS / "change_v1.yaml"
 SAME_RISK = LABELS / "same_risk_v1.yaml"
 PROMPT = LABELS / "reviewer_v1.md"
+PROMPT_V2 = LABELS / "reviewer_v2.md"
+DIRECTION = LABELS / "change_direction_v1.yaml"
+CHOICE_SET = """id: choice_test
+questions:
+  - id: kind
+    text: Which kind?
+    options:
+      - {id: worse, text: it got worse}
+      - {id: better, text: it got better}
+      - {id: neutral, text: no change}
+  - id: sure
+    text: Are you sure?
+    ask_if: {kind: worse}
+categories:
+  - {label: bad, when: {kind: worse}}
+  - {label: good, when: {kind: better}}
+  - {label: flat, when: {}}
+"""
 PRACTICE = Path(__file__).parent / "fixtures" / "filings" / "label_practice.csv"
 
 
@@ -114,6 +133,44 @@ def test_the_last_rule_must_match_everything(tmp_path):
     )
     with pytest.raises(LabelSetError, match="last category rule"):
         load_label_set(_write(tmp_path, "bad.yaml", text))
+
+
+def test_a_choice_question_takes_exactly_one_of_its_own_options(tmp_path):
+    label_set = load_label_set(_write(tmp_path, "choice.yaml", CHOICE_SET))
+    assert label_set.category({"kind": "better"}) == "good"
+    assert label_set.category({"kind": "Worse", "sure": "yes"}) == "bad"
+    with pytest.raises(LabelError, match="one of each question's options"):
+        label_set.check({"kind": "yes"})
+    with pytest.raises(LabelError, match="one of each question's options"):
+        label_set.check({"kind": "worse", "sure": "maybe"})
+    with pytest.raises(LabelError, match="answered but not asked"):
+        label_set.check({"kind": "neutral", "sure": "yes"})
+    assert len(complete_answer_sets(label_set)) == 4
+
+
+def test_a_category_reached_only_through_a_choice_option_loads(tmp_path):
+    # "good" needs kind=better; enumerating yes/no alone would call it unreachable.
+    label_set = load_label_set(_write(tmp_path, "choice.yaml", CHOICE_SET))
+    assert label_set.categories == ("bad", "good", "flat")
+
+
+def test_a_condition_naming_an_option_a_question_lacks_is_refused(tmp_path):
+    # A follow-up asked after an option its question lacks would never be asked.
+    never = CHOICE_SET.replace("ask_if: {kind: worse}", "ask_if: {kind: 'yes'}")
+    with pytest.raises(LabelSetError, match="must be the string of one of"):
+        load_label_set(_write(tmp_path, "x.yaml", never))
+    later = CHOICE_SET.replace("ask_if: {kind: worse}", "ask_if: {sure: 'yes'}")
+    with pytest.raises(LabelSetError, match="earlier question"):
+        load_label_set(_write(tmp_path, "y.yaml", later))
+
+
+def test_the_change_direction_set_keeps_the_e8_card_options():
+    label_set = load_label_set(DIRECTION)
+    direction, finer = label_set.questions
+    assert direction.answers == ("worse", "better", "neutral")
+    assert finer.answers == ("materialized", "new_exposure", "escalated", "eased", "neutral")
+    assert all(text for _, text in direction.options + finer.options)
+    assert label_set.category({"direction": "better", "finer": "eased"}) == "better"
 
 
 # --- Blind sheets -------------------------------------------------------------
@@ -201,6 +258,37 @@ def test_the_reviewer_prompt_states_every_question_and_the_header(change, tmp_pa
     assert "Answer only when `same_risk` is yes" in prompt
 
 
+def test_the_reviewer_prompt_lists_a_choice_question_and_its_options(tmp_path):
+    label_set = load_label_set(_write(tmp_path, "choice.yaml", CHOICE_SET))
+    prompt = render_reviewer_prompt(
+        PROMPT_V2.read_text(encoding="utf-8"),
+        label_set,
+        items_path=tmp_path / "items.md",
+        answers_path=tmp_path / "answers.csv",
+        item_count=3,
+        example_id="R001",
+    )
+    assert "1. `kind`: Which kind?\n   Pick exactly one of these" in prompt
+    for option, text in label_set.questions[0].options:
+        assert f"   - `{option}`: {text}" in prompt
+    assert "2. `sure`: Are you sure? Answer only when `kind` is worse" in prompt
+    assert "unless the question lists its own options" in prompt
+    assert "Pick exactly one" not in prompt.split("2. `sure`")[1]
+
+
+def test_reviewer_packets_name_their_files_by_the_path_given(tmp_path):
+    real = tmp_path / "real"
+    real.mkdir()
+    (tmp_path / "link").symlink_to(real)
+    out = tmp_path / "link" / "labels"
+    args = ["sheet", "--table", str(PRACTICE), "--id-column", "pair_id", "--label-set", str(CHANGE)]
+    assert desk.main([*args, "--sheet-id", "practice", "--out-dir", str(out)]) == 0
+    assert desk.main(["reviewers", "--labels-dir", str(out)]) == 0
+    prompt = (out / "reviewers" / "reviewer_1" / "batch_1" / "prompt.md").read_text()
+    assert f"`{(out / 'reviewers' / 'reviewer_1' / 'batch_1' / 'items.md').as_posix()}`" in prompt
+    assert str(real) not in prompt
+
+
 def test_a_reviewer_answering_a_skipped_question_is_rejected(change, tmp_path):
     path = _write(
         tmp_path,
@@ -233,6 +321,28 @@ def test_combining_takes_the_majority_and_leaves_a_split_empty():
     assert table["ai_label"].tolist() == ["same", "new", ""]
     assert table["votes"].tolist() == [3, 2, 1]
     assert table["unanimous"].tolist() == [True, False, False]
+
+
+def test_each_question_takes_its_own_majority(tmp_path):
+    label_set = load_label_set(_write(tmp_path, "choice.yaml", CHOICE_SET))
+
+    def review(kinds, sures):
+        return pd.DataFrame({"item_id": ["R1", "R2"], "kind": kinds, "sure": sures})
+
+    table = combine_answers(
+        label_set,
+        ["R1", "R2"],
+        {
+            "reviewer_1": review(["worse", "better"], ["yes", ""]),
+            "reviewer_2": review(["worse", "neutral"], ["no", ""]),
+            "reviewer_3": review(["worse", "better"], ["no", ""]),
+        },
+    )
+    assert table["kind"].tolist() == ["worse", "better"]
+    assert table["kind_votes"].tolist() == [3, 2]
+    assert table["kind_unanimous"].tolist() == [True, False]
+    assert table["sure"].tolist() == ["no", ""]
+    assert table["reviewer_2_kind"].tolist() == ["worse", "neutral"]
 
 
 def test_combining_refuses_a_reviewer_who_skipped_an_item():
@@ -304,6 +414,9 @@ def test_the_desk_runs_end_to_end_on_the_practice_sheet(tmp_path, capsys):
     ai = pd.read_csv(out / "ai_labels.csv", keep_default_na=False)
     assert ai["ai_label"].tolist() == ["new", "broadened", "same"]
     assert ai["unanimous"].tolist() == [True, False, False]
+    by_question = pd.read_csv(out / "ai_answers.csv", keep_default_na=False)
+    assert by_question["same_risk"].tolist() == ["no", "yes", "yes"]
+    assert by_question["added"].tolist() == ["", "yes", "no"]
 
     dump = tmp_path / "dump" / "sheets" / "practice" / "labels"
     dump.mkdir(parents=True)

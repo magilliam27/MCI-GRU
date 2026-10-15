@@ -33,6 +33,8 @@ What a labels folder holds:
   subagent, and the ``answers.csv`` it writes.
 - ``ai_labels.csv`` and ``ai_summary.json``: each reviewer's category, the
   majority and whether all three agreed.
+- ``ai_answers.csv``: the same for each question on its own, for a key that
+  reads each question's majority rather than one derived category.
 - ``owner_labels.csv`` and ``agreement.json``: the owner's labels and how often
   they match the AI majority.
 
@@ -56,6 +58,7 @@ from mci_gru.filings.labelling import (
     agreement,
     answer_header,
     blind_sheet,
+    combine_answers,
     combine_reviewers,
     items_markdown,
     load_label_set,
@@ -152,8 +155,8 @@ def cmd_reviewers(args: argparse.Namespace) -> None:
             prompt = render_reviewer_prompt(
                 template,
                 label_set,
-                items_path=(folder / "items.md").resolve(),
-                answers_path=(folder / "answers.csv").resolve(),
+                items_path=(folder / "items.md").absolute(),
+                answers_path=(folder / "answers.csv").absolute(),
                 item_count=len(part),
                 example_id=str(part["item_id"].iloc[0]),
             )
@@ -188,6 +191,8 @@ def cmd_combine(args: argparse.Namespace) -> None:
         reviews[name] = pd.concat([read_answer_file(label_set, f) for f in files])
     table = combine_reviewers(items["item_id"], reviews)
     table.to_csv(labels_dir / "ai_labels.csv", index=False)
+    answers = combine_answers(label_set, items["item_id"], reviews)
+    answers.to_csv(labels_dir / "ai_answers.csv", index=False)
     summary = {
         "label_set": label_set.set_id,
         "items": len(table),
@@ -195,6 +200,13 @@ def cmd_combine(args: argparse.Namespace) -> None:
         "majority_only": int(((table["ai_label"] != "") & ~table["unanimous"]).sum()),
         "no_majority": table.loc[table["ai_label"] == "", "item_id"].tolist(),
         "ai_label_counts": table["ai_label"].value_counts().to_dict(),
+        "answers": {
+            qid: {
+                "counts": answers[qid].value_counts().to_dict(),
+                "unanimous": int(answers[f"{qid}_unanimous"].sum()),
+            }
+            for qid in label_set.question_ids
+        },
         "prompt_sha256": run["prompt_sha256"],
     }
     (labels_dir / "ai_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
