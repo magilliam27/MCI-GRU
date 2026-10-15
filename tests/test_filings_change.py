@@ -1,5 +1,8 @@
 """Milestone 2 of #289: how each risk factor changed, the word baseline and the grade.
 
+Also E4 (#295): changed or not, from the same answers and word shares; and E6
+(#298): the yes/no "did it materially change?" question, three draws per risk.
+
 Jev itself is never called: a fake client answers each Choice in the SDK's
 response shape (``choices[name].choice``, ``.confidence``, ``.probabilities``).
 """
@@ -14,12 +17,18 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import scripts.data.score_risk_change_flags as flags_script
+import scripts.data.score_risk_change_noul as noul_script
 import scripts.data.score_risk_changes as script
 from mci_gru.filings.change import (
     CHANGE_LABELS,
+    JEV_CHANGED_CUT,
+    JEV_SAME_CUT,
+    WORD_SCORE_CUT,
     ChangeGradingError,
     balanced_accuracy,
     baseline_change,
+    change_flags,
     change_label_sheet,
     grade_changes,
     option_order,
@@ -399,3 +408,226 @@ def test_an_existing_change_sheet_is_kept(tmp_path):
     labelled.to_csv(sheet, index=False)
     assert _run(tmp_path) == 0
     assert (pd.read_csv(sheet, dtype=str)["change"] == "new").all()
+
+
+# --- E4: changed or not (#295) -------------------------------------------
+
+
+def test_e4_cuts_are_the_values_frozen_before_its_labels():
+    assert (JEV_SAME_CUT, WORD_SCORE_CUT) == (0.05, 0.04)
+
+
+def _flag_inputs(rows: list[tuple[float, float, float]]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    ids = [f"p{i}" for i in range(len(rows))]
+    table = pd.DataFrame(
+        {
+            "pair_id": ids,
+            "words_added": [added for added, _, _ in rows],
+            "words_removed": [removed for _, removed, _ in rows],
+        }
+    )
+    return table, pd.DataFrame({"pair_id": ids, "p_same": [p for _, _, p in rows]})
+
+
+def test_jev_calls_changed_only_below_its_cut():
+    table, choices = _flag_inputs([(0, 0, 0.049), (0, 0, 0.05), (0, 0, 0.5)])
+    assert change_flags(table, choices)["jev_changed"].tolist() == [True, False, False]
+
+
+def test_word_score_is_the_larger_share_and_changed_from_its_cut_up():
+    table, choices = _flag_inputs(
+        [(0.04, 0.0, 1), (0.0, 0.04, 1), (0.039, 0.039, 1), (0.1, 0.3, 1)]
+    )
+    flags = change_flags(table, choices)
+    assert flags["word_score"].tolist() == [0.04, 0.04, 0.039, 0.3]
+    assert flags["word_changed"].tolist() == [True, True, False, True]
+
+
+def test_flags_keep_every_pair_in_order_with_the_agreed_columns():
+    table, choices = _flag_inputs([(0, 0, 0.9), (0.5, 0, 0.0)])
+    flags = change_flags(table, choices.iloc[::-1])
+    assert list(flags.columns) == ["pair_id", "p_same", "word_score", "jev_changed", "word_changed"]
+    assert flags["pair_id"].tolist() == ["p0", "p1"]
+    assert flags["p_same"].tolist() == [0.9, 0.0]
+
+
+def test_a_pair_without_a_jev_answer_stops_the_flags():
+    table, choices = _flag_inputs([(0, 0, 0.9), (0, 0, 0.1)])
+    with pytest.raises(ChangeGradingError, match="1 pairs have no Jev answer"):
+        change_flags(table, choices.iloc[:1])
+
+
+def _flag_run(tmp_path: Path, answers: Path) -> int:
+    return flags_script.main(
+        [
+            "--risk-factors",
+            str(tmp_path / "risks.jsonl"),
+            "--answers",
+            str(answers),
+            "--output-dir",
+            str(tmp_path / "e4"),
+        ]
+    )
+
+
+def test_e4_scores_come_from_the_e2_answers_without_calling_jev(tmp_path):
+    assert _run(tmp_path, "--score", client=FakeChoiceClient(pick="broadened")) == 0
+    answers = tmp_path / "out" / "sealed" / "answers.jsonl"
+    before = answers.read_bytes()
+    assert _flag_run(tmp_path, answers) == 0
+    assert answers.read_bytes() == before
+    scores = pd.read_csv(tmp_path / "e4" / "scores.csv")
+    pairs = pd.read_csv(tmp_path / "out" / "sealed" / "pairs.csv")
+    assert scores["pair_id"].tolist() == pairs["pair_id"].tolist()
+    assert scores["p_same"].eq(0.075).all() and not scores["jev_changed"].any()
+    word = pairs[["words_added", "words_removed"]].max(axis=1)
+    assert scores["word_score"].tolist() == pytest.approx(word.tolist())
+    assert scores["word_changed"].tolist() == (word >= WORD_SCORE_CUT).tolist()
+    meta = json.loads((tmp_path / "e4" / "scores.meta.json").read_text(encoding="utf-8"))
+    assert meta["pairs"] == 12 and meta["model"] == MODEL
+
+
+def test_a_pair_missing_from_the_answers_stops_e4_with_no_output(tmp_path):
+    assert _run(tmp_path, "--score", "--limit", "11", client=FakeChoiceClient()) == 0
+    assert _flag_run(tmp_path, tmp_path / "out" / "sealed" / "answers.jsonl") == 1
+    assert not (tmp_path / "e4" / "scores.csv").exists()
+
+
+def test_an_unfinished_answers_file_is_refused_and_left_alone(tmp_path):
+    assert _run(tmp_path, "--score", client=FakeChoiceClient()) == 0
+    answers = tmp_path / "out" / "sealed" / "answers.jsonl"
+    torn = answers.read_bytes() + b'{"key": "unfinished'
+    answers.write_bytes(torn)
+    assert _flag_run(tmp_path, answers) == 1
+    assert answers.read_bytes() == torn
+
+
+# --- E6: did it materially change? three draws (#298) ----------------------
+
+
+class FakeNoulClient:
+    """Answers each Noul with the next probability in a cycle, recording each call."""
+
+    def __init__(self, probabilities=(0.2, 0.6, 0.7), model: str = MODEL) -> None:
+        self.calls: list[dict] = []
+        self.probabilities = probabilities
+        self.model = model
+
+    def system_one(self, *, state, questions):
+        p = self.probabilities[len(self.calls) % len(self.probabilities)]
+        self.calls.append({"state": state, "questions": questions})
+        return SimpleNamespace(
+            model=self.model,
+            request_id=f"req-{len(self.calls)}",
+            usage=SimpleNamespace(input_tokens=40, output_tokens=0),
+            nouls={name: SimpleNamespace(noul=p) for name in questions},
+        )
+
+
+def test_e6_cut_is_the_value_on_its_card():
+    assert JEV_CHANGED_CUT == 0.5
+
+
+def _noul_run(tmp_path: Path, *extra: str, client=None, ids=None) -> int:
+    risks = _risk_file(tmp_path)
+    if not (tmp_path / "out" / "sealed" / "pairs.csv").exists():
+        assert _run(tmp_path) == 0
+    pairs = pd.read_csv(tmp_path / "out" / "sealed" / "pairs.csv")
+    chosen = pairs["pair_id"].iloc[[7, 2, 9]] if ids is None else pd.Series(ids)
+    design = tmp_path / "design.csv"
+    pd.DataFrame({"label_id": ["X1", "X2", "X3"][: len(chosen)], "pair_id": chosen}).to_csv(
+        design, index=False
+    )
+    argv = ["--risk-factors", str(risks), "--pair-ids", str(design)]
+    return noul_script.main(
+        [*argv, "--output-dir", str(tmp_path / "e6"), *extra],
+        client=client,
+        sdk_question=object(),
+    )
+
+
+def test_e6_without_score_checks_pairs_and_calls_nothing(tmp_path):
+    client = FakeNoulClient()
+    assert _noul_run(tmp_path, client=client) == 0
+    assert client.calls == [] and not (tmp_path / "e6").exists()
+
+
+def test_e6_scores_three_draws_in_design_order_with_both_cuts(tmp_path):
+    client = FakeNoulClient(probabilities=(0.2, 0.6, 0.7))
+    assert _noul_run(tmp_path, "--score", client=client) == 0
+    assert len(client.calls) == 9
+    scores = pd.read_csv(tmp_path / "e6" / "scores.csv")
+    pairs = pd.read_csv(tmp_path / "out" / "sealed" / "pairs.csv").set_index("pair_id")
+    assert scores["pair_id"].tolist() == pairs.index[[7, 2, 9]].tolist()
+    draws = scores[["p_changed_draw1", "p_changed_draw2", "p_changed_draw3"]]
+    assert scores["p_changed_mean"].tolist() == pytest.approx(draws.mean(axis=1).tolist())
+    assert scores["jev_changed"].tolist() == (scores["p_changed_mean"] >= 0.5).tolist()
+    word = pairs.loc[scores["pair_id"], ["words_added", "words_removed"]].max(axis=1)
+    assert scores["word_score"].tolist() == pytest.approx(word.tolist())
+    assert scores["word_changed"].tolist() == (word >= WORD_SCORE_CUT).tolist()
+
+
+def test_e6_draws_are_distinct_calls_and_the_mean_decides(tmp_path):
+    # Draw 1 asks all three pairs, then draw 2, then draw 3, so a cycle of four
+    # answers gives each pair different values per draw. Draw 1 alone would call
+    # the second pair changed and draw 3 alone the first; the mean calls the third.
+    client = FakeNoulClient(probabilities=(0.1, 0.9, 0.9, 0.3))
+    assert _noul_run(tmp_path, "--score", client=client) == 0
+    scores = pd.read_csv(tmp_path / "e6" / "scores.csv")
+    assert scores["p_changed_draw1"].tolist() == [0.1, 0.9, 0.9]
+    assert scores["p_changed_draw2"].tolist() == [0.3, 0.1, 0.9]
+    assert scores["p_changed_draw3"].tolist() == [0.9, 0.3, 0.1]
+    assert scores["p_changed_mean"].tolist() == pytest.approx([1.3 / 3, 1.3 / 3, 1.9 / 3])
+    assert scores["jev_changed"].tolist() == [False, False, True]
+
+
+def test_e6_test_call_is_one_call_writes_no_scores_and_is_reused(tmp_path):
+    client = FakeNoulClient()
+    assert _noul_run(tmp_path, "--score", "--limit", "1", "--draws", "1", client=client) == 0
+    assert len(client.calls) == 1 and not (tmp_path / "e6" / "scores.csv").exists()
+    assert _noul_run(tmp_path, "--score", client=client) == 0
+    assert len(client.calls) == 9
+
+
+def test_e6_reads_only_the_pair_id_column_of_the_design(tmp_path, monkeypatch):
+    read = []
+    real = pd.read_csv
+
+    def spy(path, *args, **kwargs):
+        if Path(path).name == "design.csv":
+            read.append(kwargs.get("usecols"))
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(noul_script.pd, "read_csv", spy)
+    assert _noul_run(tmp_path, client=FakeNoulClient()) == 0
+    assert read == [["pair_id"]]
+
+
+def test_e6_a_pair_id_the_risk_file_does_not_produce_stops_it(tmp_path):
+    client = FakeNoulClient()
+    assert _noul_run(tmp_path, "--score", client=client, ids=["nope|nope"]) == 1
+    assert client.calls == []
+
+
+def test_e6_a_mean_of_exactly_the_cut_counts_as_changed(tmp_path):
+    assert _noul_run(tmp_path, "--score", client=FakeNoulClient(probabilities=(0.5,))) == 0
+    assert pd.read_csv(tmp_path / "e6" / "scores.csv")["jev_changed"].all()
+
+
+def test_e6_sends_jev_the_frozen_wording_and_both_criteria(tmp_path, monkeypatch):
+    built = []
+    monkeypatch.setattr(noul_script, "Noul", lambda **kwargs: built.append(kwargs) or kwargs)
+    risks = _risk_file(tmp_path)
+    assert _run(tmp_path) == 0
+    pair_id = pd.read_csv(tmp_path / "out" / "sealed" / "pairs.csv")["pair_id"].iloc[0]
+    design = tmp_path / "design.csv"
+    pd.DataFrame({"pair_id": [pair_id]}).to_csv(design, index=False)
+    client = FakeNoulClient()
+    argv = ["--risk-factors", str(risks), "--pair-ids", str(design)]
+    assert (
+        noul_script.main([*argv, "--output-dir", str(tmp_path / "e6"), "--score"], client=client)
+        == 0
+    )
+    question = load_question_set(CONFIGS / "questions_v3.yaml").questions["materially_changed"]
+    assert built == [{"instructions": question.instructions, "criteria": dict(question.criteria)}]
+    assert client.calls[0]["questions"] == {"materially_changed": built[0]}
