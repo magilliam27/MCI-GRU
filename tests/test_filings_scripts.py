@@ -343,6 +343,37 @@ def test_a_named_filer_is_read_with_its_own_layout_under_its_own_key(tmp_path, a
     assert not (out / "alphabet_risk_factors.jsonl").exists()
 
 
+def test_the_fiscal_year_rule_and_each_years_period_are_recorded(tmp_path, acme):
+    argv = ["--filer", "acme"]
+    assert _export(tmp_path, Transport(_acme()), extra=argv) == 0
+    meta = json.loads(
+        (tmp_path / "package" / "filings" / "acme_risk_factors.meta.json").read_text()
+    )
+    assert meta["period_of_report_by_fiscal_year"] == {"2024": "2024-12-31"}
+    manifest = json.loads((tmp_path / "manifest.json").read_text())
+    assert manifest["metadata"]["fiscal_year_rule"] == export.FISCAL_YEAR_RULE
+
+
+def test_two_reports_in_one_fiscal_year_block_the_manifest(tmp_path, acme, capsys):
+    # A changed year end would give one fiscal year two reports, and pairing
+    # takes the previous fiscal year as the prior filing.
+    responses = _acme()
+    main = json.loads(responses[f"https://data.sec.gov/submissions/CIK{ACME_CIK}.json"])
+    main["filings"]["recent"] = _block(
+        [
+            ("0000000042-25-000001", "10-K", "2024-12-31", "2025-02-20T21:10:00.000Z", "x.htm"),
+            ("0000000042-24-000001", "10-K", "2024-06-30", "2024-08-20T21:10:00.000Z", "y.htm"),
+        ]
+    )
+    responses[f"https://data.sec.gov/submissions/CIK{ACME_CIK}.json"] = json.dumps(main).encode()
+    responses["https://www.sec.gov/Archives/edgar/data/42/000000004224000001/y.htm"] = (
+        ACME_DOCUMENT.encode()
+    )
+    assert _export(tmp_path, Transport(responses), extra=["--filer", "acme"]) == 1
+    assert not (tmp_path / "manifest.json").exists()
+    assert "BLOCKING acme: fiscal 2024 has 2 reports" in capsys.readouterr().out
+
+
 def test_several_filers_share_one_manifest_named_by_package_id(tmp_path, acme):
     responses = {**_edgar(), **_acme()}
     argv = ["--filer", "alphabet", "--filer", "acme", "--package-id", "ten_companies"]

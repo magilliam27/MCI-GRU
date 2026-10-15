@@ -825,6 +825,8 @@ The filings pull and the pair scoring, end to end with canned EDGAR and Jev (#28
 | `test_every_filing_is_checked_and_a_clean_pull_lists_no_finding` |  |  |
 | `test_a_failed_check_is_reported_and_blocks_the_manifest` |  |  |
 | `test_a_named_filer_is_read_with_its_own_layout_under_its_own_key` |  |  |
+| `test_the_fiscal_year_rule_and_each_years_period_are_recorded` |  |  |
+| `test_two_reports_in_one_fiscal_year_block_the_manifest` |  |  |
 | `test_several_filers_share_one_manifest_named_by_package_id` |  |  |
 | `test_several_filers_without_a_package_id_are_refused` |  |  |
 | `test_only_filings_in_the_fiscal_year_range_are_read` |  |  |

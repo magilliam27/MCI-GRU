@@ -48,6 +48,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from collections import Counter
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -75,6 +76,12 @@ ATTEMPTS = 4
 RETRY_WAIT_SECONDS = 10.0
 #: SEC limits an over-eager client for about ten minutes; wait that out on a 429.
 RATE_LIMITED_WAIT_SECONDS = 600.0
+FISCAL_YEAR_RULE = (
+    "fiscal_year is the calendar year of the 10-K's period of report (its reportDate), "
+    "so Walmart's year ending 31 January 2025 is fiscal 2025 and Microsoft's ending "
+    "30 June 2025 is fiscal 2025; a company has at most one report per fiscal year, "
+    "so the prior year of each filing is the company's previous filing"
+)
 
 Transport = Callable[[str, dict[str, str]], bytes]
 
@@ -214,9 +221,17 @@ def export_filer(
     )
     filings = [record for record in index.filings if _in_years(record.fiscal_year, args)]
     duplicates = [record for record in index.duplicates if _in_years(record.fiscal_year, args)]
+    # Pairing takes the previous fiscal year as the prior filing, so a year
+    # reached by two reports (a changed year end) would pair the wrong text.
+    years = Counter(record.fiscal_year for record in filings)
+    failures = [
+        f"{filer.key}: fiscal {year} has {count} reports"
+        for year, count in years.items()
+        if count > 1
+    ]
 
     prefix = filer.key
-    index_rows, report_rows, failures, check_rows = [], [], [], []
+    index_rows, report_rows, check_rows = [], [], []
     risk_path = out / f"{prefix}_risk_factors.jsonl"
     with risk_path.open("w", encoding="utf-8") as handle:
         for record in filings:
@@ -288,6 +303,10 @@ def export_filer(
         "layout": filer.layout,
         "forms": ["10-K"],
         "accepted_from": args.accepted_from,
+        "fiscal_year_rule": FISCAL_YEAR_RULE,
+        "period_of_report_by_fiscal_year": {
+            str(record.fiscal_year): record.report_date for record in filings
+        },
         "first_fiscal_year": args.first_fiscal_year,
         "last_fiscal_year": args.last_fiscal_year,
         "acquired_at": acquired_at,
@@ -349,6 +368,7 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
             },
             metadata={
                 "description": f"10-K Item 1A risk factors (#289, #297): {names}.",
+                "fiscal_year_rule": FISCAL_YEAR_RULE,
                 "repository_commit": _git_commit(),
             },
         )
