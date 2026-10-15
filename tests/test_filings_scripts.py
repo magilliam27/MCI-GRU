@@ -337,6 +337,7 @@ def test_a_named_filer_is_read_with_its_own_layout_under_its_own_key(tmp_path, a
     assert [risk["heading"] for risk in risks] == ["Economic conditions.", "Competition."]
     meta = json.loads((out / "acme_risk_factors.meta.json").read_text())
     assert (meta["filer"], meta["layout"], meta["filers"]) == ("acme", "run_in", [ACME_CIK])
+    assert meta["network_requests"] == 2
     manifest = read_input_manifest(tmp_path / "manifest.json")
     assert manifest.manifest.package_id == "acme_10k_risk_factors"
     assert not (out / "alphabet_risk_factors.jsonl").exists()
@@ -351,6 +352,10 @@ def test_several_filers_share_one_manifest_named_by_package_id(tmp_path, acme):
     paths = {record.path for record in manifest.manifest.files}
     assert {"filings/alphabet_risk_factors.jsonl", "filings/acme_risk_factors.jsonl"} <= paths
     assert len(paths) == 12
+    acme_meta = json.loads(
+        (tmp_path / "package" / "filings" / "acme_risk_factors.meta.json").read_text()
+    )
+    assert acme_meta["network_requests"] == 2
 
 
 def test_several_filers_without_a_package_id_are_refused(tmp_path, acme):

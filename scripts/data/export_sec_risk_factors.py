@@ -204,6 +204,7 @@ def export_filer(
     client: EdgarClient, filer: Filer, args: argparse.Namespace, out: Path, acquired_at: str
 ) -> tuple[list[InputFileSpec], list[str]]:
     """One company's files under ``out``, and what blocks the manifest."""
+    requests_before = client.requests
     records = [record for cik in filer.ciks for record in read_filer(client, cik)]
     index = build_filing_index(
         records,
@@ -290,7 +291,7 @@ def export_filer(
         "first_fiscal_year": args.first_fiscal_year,
         "last_fiscal_year": args.last_fiscal_year,
         "acquired_at": acquired_at,
-        "network_requests": client.requests,
+        "network_requests": client.requests - requests_before,
         "repository_commit": _git_commit(),
         "filings": len(filings),
         "duplicates_dropped": len(duplicates),
