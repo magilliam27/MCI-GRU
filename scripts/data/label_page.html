@@ -80,7 +80,6 @@ main {
 .btn:hover { border-color: var(--accent); }
 .btn:disabled { opacity: .45; cursor: default; border-color: var(--line); }
 .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 500; }
-.jump { display: none; align-items: center; text-decoration: none; }
 
 .overview { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 6px; margin-bottom: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
 .overview button { font-family: var(--mono); font-size: 12px; border: 1px solid var(--line); background: var(--bg); border-radius: 4px; padding: 6px 0; font-variant-numeric: tabular-nums; }
@@ -97,7 +96,6 @@ main {
   .desk { grid-template-columns: minmax(0, 1fr) 340px; }
   .ask { position: sticky; top: calc(var(--bar-h) + 16px); max-height: calc(100dvh - var(--bar-h) - 32px); overflow-y: auto; }
 }
-@media (max-width: 1179px) { .jump { display: inline-flex; } }
 
 .risk { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px 20px; min-width: 0; }
 .risk .when { font-family: var(--mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
@@ -156,7 +154,6 @@ main {
       <button class="btn" id="next" type="button">Next →</button>
       <button class="btn" id="next-open" type="button">Next unanswered</button>
       <button class="btn" id="toggle-all" type="button" aria-expanded="false">All risks</button>
-      <a class="btn jump" id="jump" href="#questions">Questions ↓</a>
     </nav>
     <div class="overview" id="overview" hidden></div>
     <div class="desk">
