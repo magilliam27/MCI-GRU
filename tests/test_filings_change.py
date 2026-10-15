@@ -1,5 +1,7 @@
 """Milestone 2 of #289: how each risk factor changed, the word baseline and the grade.
 
+Also E4 (#295): changed or not, from the same answers and word shares.
+
 Jev itself is never called: a fake client answers each Choice in the SDK's
 response shape (``choices[name].choice``, ``.confidence``, ``.probabilities``).
 """
@@ -14,12 +16,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import scripts.data.score_risk_change_flags as flags_script
 import scripts.data.score_risk_changes as script
 from mci_gru.filings.change import (
     CHANGE_LABELS,
+    JEV_SAME_CUT,
+    WORD_SCORE_CUT,
     ChangeGradingError,
     balanced_accuracy,
     baseline_change,
+    change_flags,
     change_label_sheet,
     grade_changes,
     option_order,
@@ -399,3 +405,95 @@ def test_an_existing_change_sheet_is_kept(tmp_path):
     labelled.to_csv(sheet, index=False)
     assert _run(tmp_path) == 0
     assert (pd.read_csv(sheet, dtype=str)["change"] == "new").all()
+
+
+# --- E4: changed or not (#295) -------------------------------------------
+
+
+def test_e4_cuts_are_the_values_frozen_before_its_labels():
+    assert (JEV_SAME_CUT, WORD_SCORE_CUT) == (0.05, 0.04)
+
+
+def _flag_inputs(rows: list[tuple[float, float, float]]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    ids = [f"p{i}" for i in range(len(rows))]
+    table = pd.DataFrame(
+        {
+            "pair_id": ids,
+            "words_added": [added for added, _, _ in rows],
+            "words_removed": [removed for _, removed, _ in rows],
+        }
+    )
+    return table, pd.DataFrame({"pair_id": ids, "p_same": [p for _, _, p in rows]})
+
+
+def test_jev_calls_changed_only_below_its_cut():
+    table, choices = _flag_inputs([(0, 0, 0.049), (0, 0, 0.05), (0, 0, 0.5)])
+    assert change_flags(table, choices)["jev_changed"].tolist() == [True, False, False]
+
+
+def test_word_score_is_the_larger_share_and_changed_from_its_cut_up():
+    table, choices = _flag_inputs(
+        [(0.04, 0.0, 1), (0.0, 0.04, 1), (0.039, 0.039, 1), (0.1, 0.3, 1)]
+    )
+    flags = change_flags(table, choices)
+    assert flags["word_score"].tolist() == [0.04, 0.04, 0.039, 0.3]
+    assert flags["word_changed"].tolist() == [True, True, False, True]
+
+
+def test_flags_keep_every_pair_in_order_with_the_agreed_columns():
+    table, choices = _flag_inputs([(0, 0, 0.9), (0.5, 0, 0.0)])
+    flags = change_flags(table, choices.iloc[::-1])
+    assert list(flags.columns) == ["pair_id", "p_same", "word_score", "jev_changed", "word_changed"]
+    assert flags["pair_id"].tolist() == ["p0", "p1"]
+    assert flags["p_same"].tolist() == [0.9, 0.0]
+
+
+def test_a_pair_without_a_jev_answer_stops_the_flags():
+    table, choices = _flag_inputs([(0, 0, 0.9), (0, 0, 0.1)])
+    with pytest.raises(ChangeGradingError, match="1 pairs have no Jev answer"):
+        change_flags(table, choices.iloc[:1])
+
+
+def _flag_run(tmp_path: Path, answers: Path) -> int:
+    return flags_script.main(
+        [
+            "--risk-factors",
+            str(tmp_path / "risks.jsonl"),
+            "--answers",
+            str(answers),
+            "--output-dir",
+            str(tmp_path / "e4"),
+        ]
+    )
+
+
+def test_e4_scores_come_from_the_e2_answers_without_calling_jev(tmp_path):
+    assert _run(tmp_path, "--score", client=FakeChoiceClient(pick="broadened")) == 0
+    answers = tmp_path / "out" / "sealed" / "answers.jsonl"
+    before = answers.read_bytes()
+    assert _flag_run(tmp_path, answers) == 0
+    assert answers.read_bytes() == before
+    scores = pd.read_csv(tmp_path / "e4" / "scores.csv")
+    pairs = pd.read_csv(tmp_path / "out" / "sealed" / "pairs.csv")
+    assert scores["pair_id"].tolist() == pairs["pair_id"].tolist()
+    assert scores["p_same"].eq(0.075).all() and not scores["jev_changed"].any()
+    word = pairs[["words_added", "words_removed"]].max(axis=1)
+    assert scores["word_score"].tolist() == pytest.approx(word.tolist())
+    assert scores["word_changed"].tolist() == (word >= WORD_SCORE_CUT).tolist()
+    meta = json.loads((tmp_path / "e4" / "scores.meta.json").read_text(encoding="utf-8"))
+    assert meta["pairs"] == 12 and meta["model"] == MODEL
+
+
+def test_a_pair_missing_from_the_answers_stops_e4_with_no_output(tmp_path):
+    assert _run(tmp_path, "--score", "--limit", "11", client=FakeChoiceClient()) == 0
+    assert _flag_run(tmp_path, tmp_path / "out" / "sealed" / "answers.jsonl") == 1
+    assert not (tmp_path / "e4" / "scores.csv").exists()
+
+
+def test_an_unfinished_answers_file_is_refused_and_left_alone(tmp_path):
+    assert _run(tmp_path, "--score", client=FakeChoiceClient()) == 0
+    answers = tmp_path / "out" / "sealed" / "answers.jsonl"
+    torn = answers.read_bytes() + b'{"key": "unfinished'
+    answers.write_bytes(torn)
+    assert _flag_run(tmp_path, answers) == 1
+    assert answers.read_bytes() == torn

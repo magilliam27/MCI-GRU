@@ -605,7 +605,7 @@ Every feature group must accept the regime overrides that launchers pass, withou
 
 Milestone 2 of #289: how each risk factor changed, the word baseline and the grade.
 
-**Exercises:** `mci_gru.filings.change`, `mci_gru.filings.jev`, `mci_gru.filings.pairing`, `mci_gru.filings.risk_factors`, `scripts.data.score_risk_changes`
+**Exercises:** `mci_gru.filings.change`, `mci_gru.filings.jev`, `mci_gru.filings.pairing`, `mci_gru.filings.risk_factors`, `scripts.data.score_risk_change_flags`, `scripts.data.score_risk_changes`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -631,6 +631,14 @@ Milestone 2 of #289: how each risk factor changed, the word baseline and the gra
 | `test_step_one_writes_the_sheet_and_guide_and_seals_the_rest` |  |  |
 | `test_score_then_grade_end_to_end` |  |  |
 | `test_an_existing_change_sheet_is_kept` |  |  |
+| `test_e4_cuts_are_the_values_frozen_before_its_labels` |  |  |
+| `test_jev_calls_changed_only_below_its_cut` |  |  |
+| `test_word_score_is_the_larger_share_and_changed_from_its_cut_up` |  |  |
+| `test_flags_keep_every_pair_in_order_with_the_agreed_columns` |  |  |
+| `test_a_pair_without_a_jev_answer_stops_the_flags` |  |  |
+| `test_e4_scores_come_from_the_e2_answers_without_calling_jev` |  |  |
+| `test_a_pair_missing_from_the_answers_stops_e4_with_no_output` |  |  |
+| `test_an_unfinished_answers_file_is_refused_and_left_alone` |  |  |
 
 ## `tests/test_filings_edgar.py`
 
