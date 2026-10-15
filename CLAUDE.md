@@ -73,6 +73,10 @@ below; and its testing guidance is weaker than the mutation-check standard here.
 Their names differ from the plugin's so there is never a question about which
 fired.
 
+A third, **`blind-ai-reviewers`**, has no plugin counterpart: it is the
+Labelling desk's fixed step for three blind AI reviewers on a filings label
+sheet, with their instructions in `configs/filings/labels/` (#291).
+
 What stays human-gated, and why: **charting** a map, `triage`, `to-spec`, and
 `to-tickets`. Each creates or restructures work. `wayfinder/SKILL.md` § *Ticket
 Types* is explicit that a HITL ticket "only resolves through that live exchange;

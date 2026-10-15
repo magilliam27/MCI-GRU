@@ -1,0 +1,46 @@
+# Yes/no questions for labelling how a risk factor changed from last year.
+# Do not edit a version once labels exist against it: a changed question is a
+# new file (change_v2.yaml). The labelling page, the AI reviewers and the
+# grading code all read this file, so every labeller is asked the same thing.
+#
+# Labellers answer only the yes/no questions; code derives the category from
+# the rules below (mci_gru.filings.labelling). The categories are the five
+# options of the change question in configs/filings/questions_v2.yaml. The
+# questions cover "adds" and "drops" scope; the option text's other route to
+# "reworked" (rewritten so its emphasis changed) has no question of its own, as
+# in the 2026-10-14 spot-check sheet these questions come from.
+#
+# Answers are the strings "yes" and "no", quoted: unquoted, YAML reads them as
+# booleans.
+id: change_v1
+title: How did this risk change?
+intro: >-
+  Each item is one risk factor from a company's 10-K this year, beside the most
+  similar risk factor in last year's 10-K. Read both, then answer the
+  questions. There are no right answers to find on the page: nothing is
+  highlighted and no one else's answer is shown.
+questions:
+  - id: same_risk
+    text: Is this year's text about the same underlying risk as last year's?
+    help: >-
+      Answer no if last year's text warns about a different risk, even when the
+      two share a topic or many words.
+  - id: added
+    ask_if: {same_risk: "yes"}
+    text: Does this year's version add something material that last year's did not cover?
+    help: >-
+      For example a new driver, exposure, product, jurisdiction or consequence.
+      Updated figures, new examples or rewording alone do not count.
+  - id: dropped
+    ask_if: {same_risk: "yes"}
+    text: Does this year's version leave out something material that last year's covered?
+    help: >-
+      Something last year's text warned about that this year's no longer does.
+      Shorter wording or fewer examples alone do not count.
+# First matching rule wins; the last rule must match everything.
+categories:
+  - {label: new, when: {same_risk: "no"}}
+  - {label: reworked, when: {added: "yes", dropped: "yes"}}
+  - {label: broadened, when: {added: "yes"}}
+  - {label: narrowed, when: {dropped: "yes"}}
+  - {label: same, when: {}}

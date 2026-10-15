@@ -1,0 +1,19 @@
+# One yes/no question: are two risk factors the same risk? The milestone-1
+# question of the Jev filings pilot (#289), in labelling-page form. Do not edit
+# a version once labels exist against it.
+id: same_risk_v1
+title: Is this the same risk?
+intro: >-
+  Each item is one risk factor from a company's 10-K this year, beside a risk
+  factor from last year's 10-K. Read both and say whether they describe the
+  same risk. Nothing is highlighted and no one else's answer is shown.
+questions:
+  - id: same_risk
+    text: Is this year's text about the same underlying risk as last year's?
+    help: >-
+      Answer yes even if the wording, figures or examples changed. Answer no if
+      last year's text warns about a different risk, even when the two share a
+      topic or many words.
+categories:
+  - {label: same, when: {same_risk: "yes"}}
+  - {label: different, when: {}}

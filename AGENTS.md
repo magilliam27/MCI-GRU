@@ -74,7 +74,7 @@ mci_gru/             ← core Python package
 ├── graph/           ← Pearson-correlation graph (static or dynamic): builder, correlation math, schedule, sector, edge width
 └── training/        ← Trainer, losses (MSE/IC/combined), ensemble
 skills/              ← versioned Codex skills for GitHub review/upload
-.claude/skills/      ← repo-owned model-invoked skills (work-the-map, implement-ticket)
+.claude/skills/      ← repo-owned model-invoked skills (work-the-map, implement-ticket, blind-ai-reviewers)
 tests/               ← pytest suite and golden fixtures
 ```
 
