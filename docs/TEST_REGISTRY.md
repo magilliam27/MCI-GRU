@@ -643,14 +643,18 @@ Automatic checks on one filing's Item 1A extraction (#292).
 | `test_a_clean_filing_raises_no_finding` |  |  |
 | `test_findings_are_named_by_the_published_check_list` |  |  |
 | `test_a_title_read_as_a_risk_heading_is_flagged` |  | parametrize |
-| `test_a_heading_of_fewer_than_four_words_is_flagged` |  |  |
+| `test_a_short_topic_heading_is_not_a_title` |  |  |
 | `test_a_heading_starting_mid_sentence_is_flagged` |  |  |
 | `test_a_brand_name_in_lower_case_is_not_a_split_heading` |  |  |
-| `test_a_category_as_long_as_a_sentence_is_flagged` |  |  |
+| `test_a_heading_over_a_heading_too_long_for_a_category_is_flagged` |  |  |
 | `test_page_furniture_left_in_a_body_is_flagged` |  | parametrize |
 | `test_numbers_that_are_text_are_not_page_furniture` |  | parametrize |
 | `test_an_emphasised_paragraph_read_as_body_is_flagged` |  |  |
 | `test_a_heading_with_nothing_under_it_is_flagged` |  |  |
+| `test_any_number_between_sentences_is_flagged_when_no_page_number_was_dropped` |  |  |
+| `test_text_under_no_heading_after_the_first_risk_is_flagged` |  |  |
+| `test_a_risk_read_from_its_lead_leaves_no_text_without_heading` |  |  |
+| `test_introduction_under_a_cautionary_title_is_not_text_without_heading` |  |  |
 
 ## `tests/test_filings_edgar.py`
 
@@ -784,19 +788,29 @@ Item 1A of a 10-K, cut into individual risk factors (#289).
 | `test_a_heading_of_two_long_sentences_is_still_a_heading` |  |  |
 | `test_a_line_break_inside_a_heading_is_a_wrap_not_a_category` |  |  |
 | `test_a_running_page_header_is_dropped_whether_bold_or_not` |  | parametrize |
-| `test_a_section_title_on_its_own_line_is_not_a_risk` |  |  |
+| `test_a_section_title_on_its_own_line_is_not_a_risk` |  | parametrize |
 | `test_a_page_number_with_a_full_stop_is_not_body_text` |  |  |
 | `test_a_heading_broken_across_a_page_is_one_heading_not_a_category` |  |  |
 | `test_a_lower_case_heading_after_body_text_starts_a_new_risk` |  |  |
 | `test_a_bullet_in_its_own_table_cell_is_kept_before_its_item` |  |  |
 | `test_a_bullet_run_into_its_item_is_followed_by_one_space` |  |  |
 | `test_an_emphasised_bullet_is_not_a_heading` |  |  |
+| `test_a_plain_span_inside_a_bold_paragraph_is_plain` |  |  |
+| `test_a_full_stop_left_plain_does_not_make_a_heading_body_text` |  |  |
+| `test_a_footer_with_its_page_number_is_dropped` |  | parametrize |
+| `test_a_part_line_is_page_furniture` |  |  |
+| `test_a_list_item_repeated_across_risks_is_text_not_a_header` |  | parametrize |
+| `test_an_introduction_title_drops_the_text_under_it` |  | parametrize |
+| `test_a_long_emphasised_preamble_before_the_first_risk_is_introduction` |  |  |
+| `test_run_in_headings_open_their_paragraphs` |  |  |
+| `test_sentence_headings_keep_their_titled_sub_headings_as_text` |  |  |
+| `test_an_unknown_layout_is_refused` |  |  |
 
 ## `tests/test_filings_scripts.py`
 
 The filings pull and the pair scoring, end to end with canned EDGAR and Jev (#289).
 
-**Exercises:** `mci_gru.data.input_manifest`, `mci_gru.filings.edgar`, `scripts.data.export_sec_risk_factors`, `scripts.data.score_risk_factor_pairs`
+**Exercises:** `mci_gru.data.input_manifest`, `mci_gru.filings.edgar`, `mci_gru.filings.filers`, `scripts.data.export_sec_risk_factors`, `scripts.data.score_risk_factor_pairs`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -810,6 +824,10 @@ The filings pull and the pair scoring, end to end with canned EDGAR and Jev (#28
 | `test_an_unreadable_item_1a_blocks_the_manifest` |  |  |
 | `test_every_filing_is_checked_and_a_clean_pull_lists_no_finding` |  |  |
 | `test_a_failed_check_is_reported_and_blocks_the_manifest` |  |  |
+| `test_a_named_filer_is_read_with_its_own_layout_under_its_own_key` |  |  |
+| `test_several_filers_share_one_manifest_named_by_package_id` |  |  |
+| `test_several_filers_without_a_package_id_are_refused` |  |  |
+| `test_only_filings_in_the_fiscal_year_range_are_read` |  |  |
 | `test_pairs_and_blind_sheet_are_written_without_calling_jev` |  |  |
 | `test_scoring_twice_calls_jev_once_per_distinct_pair` |  |  |
 | `test_an_existing_label_sheet_is_never_overwritten` |  |  |

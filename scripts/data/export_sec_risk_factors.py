@@ -1,4 +1,4 @@
-"""Pull Alphabet's 10-K risk factors from SEC EDGAR for the Jev pilot (#289).
+"""Pull companies' 10-K risk factors from SEC EDGAR (#289, #297).
 
 Run from the repository root wherever EDGAR is reachable (since 2026-10-13 that
 includes the project's cloud environment). SEC asks every automated client to
@@ -11,17 +11,21 @@ name itself with a contact email and to stay under 10 requests a second::
         --manifest-output /content/alphabet_risk_factors.r1.json \\
         --package-revision r1
 
-It reads the submissions files of Google Inc. and Alphabet Inc. (with their
-older history files), keeps one copy of every 10-K accepted from
-``--accepted-from`` (default 2014-01-01, so fiscal 2013 is the reference year
-for fiscal 2014), downloads each primary document once into ``--cache-dir``
-(outside any checkout), and cuts out Item 1A.
+``--filer`` names a company in ``mci_gru.filings.filers`` (repeat it for
+several; the default is Alphabet). For each, it reads the submissions files of
+every CIK the company filed under (with their older history files), keeps one
+copy of every 10-K accepted from ``--accepted-from`` (default 2014-01-01, so
+fiscal 2013 is the reference year for fiscal 2014) and, if given, within
+``--first-fiscal-year`` and ``--last-fiscal-year``, downloads each primary
+document once into ``--cache-dir`` (outside any checkout), and cuts out Item 1A
+with the company's layout.
 
-What it writes under ``--package-root/filings``:
+What it writes under ``--package-root/filings``, for each company's key (here
+``alphabet``):
 
 - ``alphabet_10k_index.csv``: the kept filings, with acceptance time in UTC and
   the SHA-256 of the document read.
-- ``alphabet_10k_duplicates.csv``: copies of the same report under the other CIK.
+- ``alphabet_10k_duplicates.csv``: copies of the same report under another CIK.
 - ``alphabet_risk_factors.jsonl``: one risk factor per line.
 - ``alphabet_extraction_report.csv``: per filing, the encoding read, how many
   risks and categories were found, and how many check findings it raised.
@@ -30,7 +34,8 @@ What it writes under ``--package-root/filings``:
 - ``alphabet_risk_factors.meta.json``: provenance.
 
 A filing whose Item 1A cannot be read, or that fails a check, is reported and
-stops the manifest.
+stops the manifest. One manifest covers every company pulled; with more than one
+company, ``--package-id`` names it.
 """
 
 from __future__ import annotations
@@ -53,14 +58,13 @@ import pandas as pd
 from mci_gru.data.input_manifest import InputFileSpec, write_input_manifest
 from mci_gru.filings.checks import CheckFinding, check_extraction
 from mci_gru.filings.edgar import (
-    ALPHABET_CIK,
-    GOOGLE_INC_CIK,
     SUBMISSIONS_FILE_URL,
     SUBMISSIONS_URL,
     build_filing_index,
     filings_from_block,
     submissions_blocks,
 )
+from mci_gru.filings.filers import FILERS, Filer
 from mci_gru.filings.risk_factors import RiskFactorExtractionError, read_item_1a
 
 #: Seconds between requests: SEC's stated ceiling is 10 a second.
@@ -71,8 +75,6 @@ ATTEMPTS = 4
 RETRY_WAIT_SECONDS = 10.0
 #: SEC limits an over-eager client for about ten minutes; wait that out on a 429.
 RATE_LIMITED_WAIT_SECONDS = 600.0
-FILERS = (GOOGLE_INC_CIK, ALPHABET_CIK)
-PREFIX = "alphabet"
 
 Transport = Callable[[str, dict[str, str]], bytes]
 
@@ -82,12 +84,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--user-agent", required=True, help="Name and contact email for SEC")
     parser.add_argument("--package-root", type=Path, required=True)
     parser.add_argument("--cache-dir", type=Path, required=True)
+    parser.add_argument(
+        "--filer", action="append", choices=sorted(FILERS), help="Company key; repeat for several"
+    )
     parser.add_argument("--accepted-from", default="2014-01-01")
+    parser.add_argument("--first-fiscal-year", type=int, default=None)
+    parser.add_argument("--last-fiscal-year", type=int, default=None)
     parser.add_argument("--manifest-output", type=Path, default=None)
+    parser.add_argument("--package-id", default=None)
     parser.add_argument("--package-revision", default="r1")
     args = parser.parse_args(argv)
     if "@" not in args.user_agent:
         parser.error("--user-agent must include a contact email, as SEC asks")
+    args.filer = list(dict.fromkeys(args.filer or ["alphabet"]))
+    if args.package_id is None:
+        if len(args.filer) > 1:
+            parser.error("--package-id is required when pulling more than one --filer")
+        args.package_id = f"{args.filer[0]}_10k_risk_factors"
     return args
 
 
@@ -181,27 +194,38 @@ def read_filer(client: EdgarClient, cik: str) -> list:
     return records
 
 
-def main(argv: list[str] | None = None, *, transport: Transport | None = None) -> int:
-    args = parse_args(argv)
-    client = EdgarClient(args.user_agent, args.cache_dir, transport or _urllib_transport)
-    acquired_at = datetime.now(timezone.utc).isoformat()
+def _in_years(fiscal_year: int, args: argparse.Namespace) -> bool:
+    return (args.first_fiscal_year is None or fiscal_year >= args.first_fiscal_year) and (
+        args.last_fiscal_year is None or fiscal_year <= args.last_fiscal_year
+    )
 
-    records = [record for cik in FILERS for record in read_filer(client, cik)]
-    index = build_filing_index(records, forms=("10-K",), accepted_from=args.accepted_from)
 
-    out = args.package_root / "filings"
-    out.mkdir(parents=True, exist_ok=True)
+def export_filer(
+    client: EdgarClient, filer: Filer, args: argparse.Namespace, out: Path, acquired_at: str
+) -> tuple[list[InputFileSpec], list[str]]:
+    """One company's files under ``out``, and what blocks the manifest."""
+    records = [record for cik in filer.ciks for record in read_filer(client, cik)]
+    index = build_filing_index(
+        records,
+        forms=("10-K",),
+        accepted_from=args.accepted_from,
+        preferred_cik=filer.preferred_cik,
+    )
+    filings = [record for record in index.filings if _in_years(record.fiscal_year, args)]
+    duplicates = [record for record in index.duplicates if _in_years(record.fiscal_year, args)]
+
+    prefix = filer.key
     index_rows, report_rows, failures, check_rows = [], [], [], []
-    risk_path = out / f"{PREFIX}_risk_factors.jsonl"
+    risk_path = out / f"{prefix}_risk_factors.jsonl"
     with risk_path.open("w", encoding="utf-8") as handle:
-        for record in index.filings:
+        for record in filings:
             document = client.get(record.document_url)
             index_rows.append(
                 {**record.to_dict(), "document_sha256": hashlib.sha256(document).hexdigest()}
             )
             text, encoding = decode_document(document)
             try:
-                reading = read_item_1a(text)
+                reading = read_item_1a(text, layout=filer.layout)
                 risks = reading.risk_factors(
                     accession_number=record.accession_number,
                     fiscal_year=record.fiscal_year,
@@ -244,34 +268,62 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
                 }
             )
 
-    index_path = out / f"{PREFIX}_10k_index.csv"
-    duplicates_path = out / f"{PREFIX}_10k_duplicates.csv"
-    report_path = out / f"{PREFIX}_extraction_report.csv"
-    checks_path = out / f"{PREFIX}_extraction_checks.csv"
-    meta_path = out / f"{PREFIX}_risk_factors.meta.json"
+    index_path = out / f"{prefix}_10k_index.csv"
+    duplicates_path = out / f"{prefix}_10k_duplicates.csv"
+    report_path = out / f"{prefix}_extraction_report.csv"
+    checks_path = out / f"{prefix}_extraction_checks.csv"
+    meta_path = out / f"{prefix}_risk_factors.meta.json"
     pd.DataFrame(index_rows).to_csv(index_path, index=False)
-    pd.DataFrame([record.to_dict() for record in index.duplicates]).to_csv(
-        duplicates_path, index=False
-    )
+    pd.DataFrame([record.to_dict() for record in duplicates]).to_csv(duplicates_path, index=False)
     pd.DataFrame(report_rows).to_csv(report_path, index=False)
     pd.DataFrame(
         check_rows, columns=["accession_number", "fiscal_year", "check", "risk_id", "detail"]
     ).to_csv(checks_path, index=False)
     meta = {
         "source": "SEC EDGAR submissions and primary documents",
-        "filers": list(FILERS),
+        "filer": filer.key,
+        "name": filer.name,
+        "filers": list(filer.ciks),
+        "layout": filer.layout,
         "forms": ["10-K"],
         "accepted_from": args.accepted_from,
+        "first_fiscal_year": args.first_fiscal_year,
+        "last_fiscal_year": args.last_fiscal_year,
         "acquired_at": acquired_at,
         "network_requests": client.requests,
         "repository_commit": _git_commit(),
-        "filings": len(index.filings),
-        "duplicates_dropped": len(index.duplicates),
+        "filings": len(filings),
+        "duplicates_dropped": len(duplicates),
         "check_findings": len(check_rows),
         "failures": failures,
     }
     meta_path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({key: value for key, value in meta.items() if key != "failures"}, indent=2))
+    name = filer.name
+    files = [
+        InputFileSpec(f"filings/{index_path.name}", f"{name}: 10-K filings read, one per report"),
+        InputFileSpec(f"filings/{duplicates_path.name}", f"{name}: copies dropped as duplicates"),
+        InputFileSpec(f"filings/{risk_path.name}", f"{name}: Item 1A risk factors, one per line"),
+        InputFileSpec(f"filings/{report_path.name}", f"{name}: extraction counts per filing"),
+        InputFileSpec(f"filings/{checks_path.name}", f"{name}: extraction check findings"),
+        InputFileSpec(f"filings/{meta_path.name}", f"{name}: pull provenance"),
+    ]
+    return files, failures
+
+
+def main(argv: list[str] | None = None, *, transport: Transport | None = None) -> int:
+    args = parse_args(argv)
+    client = EdgarClient(args.user_agent, args.cache_dir, transport or _urllib_transport)
+    acquired_at = datetime.now(timezone.utc).isoformat()
+
+    out = args.package_root / "filings"
+    out.mkdir(parents=True, exist_ok=True)
+    files: list[InputFileSpec] = []
+    failures: list[str] = []
+    for key in args.filer:
+        filer_files, filer_failures = export_filer(client, FILERS[key], args, out, acquired_at)
+        files += filer_files
+        failures += filer_failures
     for failure in failures:
         print(f"BLOCKING {failure}")
     if failures:
@@ -279,22 +331,15 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
         return 1
 
     if args.manifest_output is not None:
-        files = [
-            InputFileSpec(f"filings/{index_path.name}", "10-K filings read, one per report"),
-            InputFileSpec(f"filings/{duplicates_path.name}", "Copies dropped as duplicates"),
-            InputFileSpec(f"filings/{risk_path.name}", "Item 1A risk factors, one per line"),
-            InputFileSpec(f"filings/{report_path.name}", "Extraction counts per filing"),
-            InputFileSpec(f"filings/{checks_path.name}", "Extraction check findings"),
-            InputFileSpec(f"filings/{meta_path.name}", "Pull provenance"),
-        ]
+        names = ", ".join(FILERS[key].name for key in args.filer)
         snapshot = write_input_manifest(
             args.manifest_output,
             args.package_root,
-            package_id=f"{PREFIX}_10k_risk_factors",
+            package_id=args.package_id,
             package_revision=args.package_revision,
             files=files,
             provenance={
-                "source": meta["source"],
+                "source": "SEC EDGAR submissions and primary documents",
                 "acquisition_mode": client.acquisition_mode,
                 "acquired_at": acquired_at,
                 "producing_command": "python -m scripts.data.export_sec_risk_factors",
@@ -302,8 +347,8 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
                 "unknowns": [],
             },
             metadata={
-                "description": "Alphabet and Google Inc. 10-K Item 1A risk factors (#289).",
-                "repository_commit": meta["repository_commit"],
+                "description": f"10-K Item 1A risk factors (#289, #297): {names}.",
+                "repository_commit": _git_commit(),
             },
         )
         print(json.dumps({"manifest": str(args.manifest_output), "sha256": snapshot.sha256}))

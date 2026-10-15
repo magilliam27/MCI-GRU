@@ -4,7 +4,11 @@ What this module decides:
 
 - **What counts as text.** The document is read with the standard-library HTML
   parser into blocks (paragraph-level elements), each knowing whether all of its
-  text is bold or italic. Hidden content (an inline-XBRL header inside a
+  words are bold or italic, and which emphasised words open it (its lead).
+  Emphasis is set by the innermost element that says so, so a plain span inside
+  a bold paragraph is plain (Microsoft's fiscal 2017-2022 filings), and a
+  full stop or other mark left unemphasised does not make a heading body text
+  (Caterpillar's). Hidden content (an inline-XBRL header inside a
   ``display:none`` element), scripts, styles and the head are not text.
 - **Where Item 1A is.** A 10-K names Item 1A twice: in the table of contents and
   at the section itself. Each short block starting ``Item 1A`` opens a candidate
@@ -13,16 +17,33 @@ What this module decides:
 - **Where one risk ends and the next begins.** Each risk factor opens with an
   emphasised heading followed by plain paragraphs. A heading followed directly by
   another heading is a category ("Risks Related to ..."), carried by the risks
-  under it. Text before the first heading is the section's introduction; a
-  "Risk Factors" title set apart from "Item 1A." is part of the section's own
-  heading, not a risk (Alphabet's fiscal 2014 to 2019 filings). A
+  under it, unless it is longer than a title (``MAX_CATEGORY_CHARS``): then it
+  is emphasised introduction (Pfizer's forward-looking-statement paragraphs)
+  and dropped. Text before the first heading is the section's introduction; a
+  "Risk Factors" or "Item 1A. Risk Factors" title set apart from the item
+  heading is part of the section's own heading, not a risk (Alphabet's fiscal
+  2014 to 2019 filings, Delta's from 2020). A heading such as "Cautionary
+  Statements" or "Summary" opens more introduction, dropped with the text under
+  it until the next heading (UnitedHealth's cautionary statements, the risk
+  summaries JPMorgan and others print before the risks themselves). A
   ``<br>`` inside a paragraph is a line wrap, not a new block, and a heading
   that a page break cuts in two (its second part starting in lower case,
   Alphabet's fiscal 2017 filing) is one heading, not a category and a heading.
 - **What is page furniture.** Page numbers (with or without a full stop, as
-  in Alphabet's filings from fiscal 2023), "Table of Contents" lines, and any
-  short line repeated on several pages of the section (a running header such as
-  "Alphabet Inc.", bold or not) are dropped wherever they fall.
+  in Alphabet's filings from fiscal 2023), "Table of Contents" and "Part I"
+  lines, and any short line repeated on several pages of the section, once a
+  page number at either end is set aside (a running header such as "Alphabet
+  Inc.", bold or not, or a footer such as "Pfizer Inc. | 2015 Form 10-K | 20"),
+  are dropped wherever they fall.
+- **Layouts other than Alphabet's.** ``read_item_1a`` takes a layout. The
+  default, ``blocks``, is the rule above. ``run_in`` is for filers whose risk
+  headings open the paragraph they head (Exxon Mobil: "*Economic conditions.*
+  The demand for energy ..."): each emphasised lead ending in a full stop or
+  colon starts a risk, and whole emphasised blocks are categories.
+  ``sentences`` is for filers who put titled sub-headings under each risk
+  (Microsoft): a risk heading is an emphasised sentence, as a block or a lead;
+  an emphasised title without a full stop is a sub-heading kept in the risk's
+  text; and a short line in capitals is a category.
 - **How a list item reads.** A bullet is kept and followed by one space, whether
   the filing sets it in its own table cell (Alphabet's fiscal 2013 to 2019
   filings) or in a span run into the item's text (fiscal 2020 on), so the same
@@ -30,9 +51,11 @@ What this module decides:
   words is never a heading.
 
 ``read_item_1a`` also records what a reader would otherwise lose silently: an
-emphasised paragraph too long to be a heading, read as body text, and a heading
-at the end of the section with no text under it. ``mci_gru.filings.checks``
-turns those, and the output itself, into per-filing checks (#292).
+emphasised paragraph too long to be a heading, read as body text; a heading
+after the first risk with no text under it; text after the first risk with no
+heading over it, outside introduction; and the page numbers it dropped.
+``mci_gru.filings.checks`` turns those, and the output itself, into per-filing
+checks (#292).
 """
 
 from __future__ import annotations
@@ -85,18 +108,41 @@ MAX_ITEM_HEADING_CHARS = 100
 #: A short line seen this many times in one Item 1A is a running page header.
 RUNNING_HEADER_REPEATS = 3
 RUNNING_HEADER_MAX_CHARS = 100
+#: A category is a title; a longer emphasised block over a heading is introduction.
+MAX_CATEGORY_CHARS = 100
+#: A run-in heading is the emphasised start of a paragraph, at most this long.
+MAX_RUN_IN_CHARS = 400
+LAYOUTS = ("blocks", "run_in", "sentences")
 
 _SPACE = re.compile(r"\s+")
-_BOLD_STYLE = re.compile(r"font-weight\s*:\s*(bold|bolder|[6-9]00)", re.I)
-_ITALIC_STYLE = re.compile(r"font-style\s*:\s*(italic|oblique)", re.I)
+_WEIGHT_STYLE = re.compile(r"font-weight\s*:\s*([a-z0-9]+)", re.I)
+_SLANT_STYLE = re.compile(r"font-style\s*:\s*([a-z]+)", re.I)
 _HIDDEN_STYLE = re.compile(r"display\s*:\s*none", re.I)
 _ITEM_1A = re.compile(r"^item\s*1a\b", re.I)
 _ITEM_END = re.compile(r"^item\s*(1b|1c|2)\b", re.I)
-_FURNITURE = re.compile(r"^(\d{1,3}\.?|table of contents)$", re.I)
-#: The section's own title, when a filing sets it apart from "Item 1A.".
-_SECTION_TITLE = re.compile(r"^risk\s+factors\.?$", re.I)
+_FURNITURE = re.compile(
+    r"^(\d{1,3}\.?|table of contents|part\s+[ivx]+|parts\s+[ivx]+\s+(and|&)\s+[ivx]+)$", re.I
+)
+_PAGE_NUMBER_BLOCK = re.compile(r"^(\d{1,3})\.?$")
+#: A page number at either end of a running header or footer, with its separator.
+_PAGE_AFFIX = re.compile(r"^\d{1,3}\s*[|\u2022\u00b7-]?\s+|\s+[|\u2022\u00b7-]?\s*\d{1,3}$")
+#: The section's own title, when a filing sets it apart from the item heading.
+_SECTION_TITLE = re.compile(r"^(item\s*1a\.?\s*)?risk\s+factors\.?$", re.I)
+#: A heading that opens introduction rather than a risk.
+_INTRO_TITLE = re.compile(
+    r"^(cautionary\s+statements?|forward[-\s]looking\s+statements|"
+    r"(risk\s+factors?\s+)?summary(\s+of\s+(the\s+)?risk\s+factors)?|summary\s+risk\s+factors)\.?$",
+    re.I,
+)
+#: A sentence ends in a full stop, question or exclamation mark, perhaps quoted.
+_SENTENCE_END = re.compile(r"[.?!][\"\u201d\u2019)]?$")
+_RUN_IN_END = re.compile(r"[.:][\"\u201d\u2019)]?$")
+#: A lead's own full stop set in plain type, opening the rest of its paragraph.
+_PLAIN_STOP = re.compile(r"^[.:?!][\"\u201d\u2019)]?(?=\s|$)")
 #: A bullet opening a block, and whatever space follows it.
-_LEADING_BULLET = re.compile(r"^([\u2022\u25cf\u25aa\u25e6\u2023])\s*")
+_LEADING_BULLET = re.compile(r"^([\u2022\u25cf\u25aa\u25e6\u2023\u00b7])\s*")
+#: A bullet on its own, its item in the next block.
+_BARE_BULLET = re.compile(r"^[\u2022\u25cf\u25aa\u25e6\u2023\u00b7]$")
 
 
 class RiskFactorExtractionError(ValueError):
@@ -105,10 +151,12 @@ class RiskFactorExtractionError(ValueError):
 
 @dataclass(frozen=True)
 class Block:
-    """One paragraph-level element's text, and whether all of it is emphasised."""
+    """One paragraph-level element's text, whether all of its words are emphasised,
+    and the emphasised words that open it (all of it when ``emphasised``)."""
 
     text: str
     emphasised: bool
+    lead: str = ""
 
 
 @dataclass(frozen=True)
@@ -153,25 +201,61 @@ class RiskFactor:
         )
 
 
+def _clean(text: str) -> str:
+    text = _SPACE.sub(" ", text).strip()
+    return _LEADING_BULLET.sub(r"\1 ", text).strip()
+
+
+def _weight(style: str) -> bool | None:
+    """Whether a style makes text bold, makes it plain, or says nothing of weight."""
+    match = _WEIGHT_STYLE.search(style)
+    if match is None:
+        return None
+    value = match.group(1).lower()
+    if value in ("bold", "bolder") or (value.isdigit() and int(value) >= 600):
+        return True
+    if value in ("normal", "lighter") or value.isdigit():
+        return False
+    return None
+
+
+def _slant(style: str) -> bool | None:
+    """Whether a style makes text italic, makes it upright, or says nothing of slant."""
+    match = _SLANT_STYLE.search(style)
+    if match is None:
+        return None
+    value = match.group(1).lower()
+    if value in ("italic", "oblique"):
+        return True
+    return False if value == "normal" else None
+
+
 class _BlockParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.blocks: list[Block] = []
-        self._stack: list[tuple[str, bool, bool, bool]] = []
+        self._stack: list[tuple[str, bool | None, bool | None, bool]] = []
         self._runs: list[tuple[str, bool]] = []
 
     def _state(self) -> tuple[bool, bool, bool]:
-        bold = any(entry[1] for entry in self._stack)
-        italic = any(entry[2] for entry in self._stack)
+        # The innermost element that sets a weight or a slant decides it.
+        bold = next((entry[1] for entry in reversed(self._stack) if entry[1] is not None), False)
+        italic = next((entry[2] for entry in reversed(self._stack) if entry[2] is not None), False)
         hidden = any(entry[3] for entry in self._stack)
         return bold, italic, hidden
 
     def _flush(self) -> None:
-        text = _SPACE.sub(" ", "".join(run for run, _ in self._runs)).strip()
-        text = _LEADING_BULLET.sub(r"\1 ", text).strip()
+        text = _clean("".join(run for run, _ in self._runs))
         if text:
-            emphasised = all(flag for run, flag in self._runs if run.strip())
-            self.blocks.append(Block(text, emphasised))
+            worded = [flag for run, flag in self._runs if _has_words(run)]
+            emphasised = bool(worded) and all(worded)
+            lead_runs: list[str] = []
+            for run, flag in self._runs:
+                if _has_words(run) and not flag:
+                    break
+                lead_runs.append(run)
+            lead = _clean("".join(lead_runs)) if any(worded[:1]) else ""
+            self.blocks.append(Block(text, emphasised, text if emphasised else lead))
         self._runs = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -185,8 +269,8 @@ class _BlockParser(HTMLParser):
         self._stack.append(
             (
                 tag,
-                tag in BOLD_TAGS or bool(_BOLD_STYLE.search(style)),
-                tag in ITALIC_TAGS or bool(_ITALIC_STYLE.search(style)),
+                True if tag in BOLD_TAGS else _weight(style),
+                True if tag in ITALIC_TAGS else _slant(style),
                 tag in SKIPPED_TAGS or bool(_HIDDEN_STYLE.search(style)),
             )
         )
@@ -244,19 +328,65 @@ def _has_words(text: str) -> bool:
     return any(character.isalnum() for character in text)
 
 
+def _furniture_key(text: str) -> str:
+    """A short line with any page number at either end set aside."""
+    return _PAGE_AFFIX.sub("", text).strip() if len(text) <= RUNNING_HEADER_MAX_CHARS else text
+
+
+def _listed(section: list[Block]) -> list[bool]:
+    """Whether each block is a list item: it opens with a bullet, or follows one."""
+    after = [False] + [_BARE_BULLET.match(block.text) is not None for block in section[:-1]]
+    return [
+        follows or (_LEADING_BULLET.match(block.text) is not None and _has_words(block.text))
+        for block, follows in zip(section, after, strict=True)
+    ]
+
+
 def _running_headers(section: list[Block]) -> set[str]:
-    counts = Counter(block.text for block in section)
+    # A list item repeated across risks ("harm to JPMorgan Chase's reputation.")
+    # is text, not a header.
+    counts = Counter(
+        _furniture_key(block.text)
+        for block, listed in zip(section, _listed(section), strict=True)
+        if not listed
+    )
     return {
-        text
-        for text, seen in counts.items()
+        key
+        for key, seen in counts.items()
         if seen >= RUNNING_HEADER_REPEATS
-        and len(text) <= RUNNING_HEADER_MAX_CHARS
-        and _has_words(text)
+        and len(key) <= RUNNING_HEADER_MAX_CHARS
+        and _has_words(key)
     }
 
 
 def _is_heading(block: Block) -> bool:
     return block.emphasised and _has_words(block.text) and len(block.text) <= MAX_HEADING_CHARS
+
+
+def _is_capitals_title(block: Block) -> bool:
+    letters = [character for character in block.text if character.isalpha()]
+    return (
+        len(block.text) <= MAX_CATEGORY_CHARS
+        and len(letters) >= 4
+        and all(character.isupper() for character in letters)
+        and not _SENTENCE_END.search(block.text)
+    )
+
+
+def _run_in(block: Block, *, sentence: bool) -> tuple[str, str] | None:
+    """A paragraph's emphasised opening as a heading, and the rest as body, or None."""
+    lead = block.lead
+    if block.emphasised or not lead or len(lead) > MAX_RUN_IN_CHARS or not _has_words(lead):
+        return None
+    end = _SENTENCE_END if sentence else _RUN_IN_END
+    rest = block.text[len(lead) :].strip() if block.text.startswith(lead) else ""
+    stop = _PLAIN_STOP.match(rest)
+    if stop and not end.search(lead):
+        # Microsoft sets some leads' full stops in plain type.
+        lead, rest = lead + stop.group(), rest[stop.end() :].strip()
+    if not end.search(lead) or not _has_words(rest):
+        return None
+    return lead, rest
 
 
 @dataclass(frozen=True)
@@ -273,8 +403,17 @@ class SectionReading:
     drafts: tuple[_Draft, ...]
     #: Emphasised paragraphs with words, too long for a heading, read as body text.
     emphasised_body: tuple[str, ...]
-    #: A heading (or category) at the end of the section with no text under it.
-    unclosed_heading: str | None
+    #: Headings after the first risk with no text under them: dropped.
+    lost_headings: tuple[str, ...]
+    #: Page numbers dropped as page furniture, in filing order.
+    page_numbers: tuple[int, ...] = ()
+    #: Paragraphs after the first risk under no heading, outside introduction: dropped.
+    unheaded_text: tuple[str, ...] = ()
+
+    @property
+    def unclosed_heading(self) -> str | None:
+        """The last lost heading, kept for readers of #292's field."""
+        return self.lost_headings[-1] if self.lost_headings else None
 
     def risk_factors(self, *, accession_number: str, fiscal_year: int) -> list[RiskFactor]:
         if not self.drafts:
@@ -292,45 +431,122 @@ class SectionReading:
         ]
 
 
-def read_item_1a(html: str) -> SectionReading:
+def read_item_1a(html: str, *, layout: str = "blocks") -> SectionReading:
     """Item 1A cut into risks, with the blocks that fit no risk cleanly."""
+    if layout not in LAYOUTS:
+        raise ValueError(f"layout must be one of {LAYOUTS}, not {layout!r}")
     section = item_1a_blocks(html_blocks(html))
     drafts: list[_Draft] = []
     emphasised_body: list[str] = []
+    lost: list[str] = []
+    page_numbers: list[int] = []
+    unheaded: list[str] = []
+    introduction = True
     category: str | None = None
     heading: str | None = None
     body: list[str] = []
 
+    def _drop(text: str) -> None:
+        # Text under no heading: introduction, or a risk the reading missed.
+        if not introduction and _has_words(text):
+            unheaded.append(text)
+
+    def _close() -> None:
+        # The current heading ends: as a risk if text sits under it.
+        nonlocal heading, body
+        if heading is not None and body:
+            drafts.append(_Draft(category, heading, tuple(body)))
+        elif heading is not None and drafts:
+            lost.append(heading)
+        heading, body = None, []
+
+    def _open(text: str, first_body: str | None = None) -> None:
+        nonlocal heading, body, category
+        if heading is not None and not body:
+            # A heading over a heading: a category if it is a title, else
+            # emphasised introduction.
+            if len(heading) <= MAX_CATEGORY_CHARS:
+                category = heading
+            elif drafts:
+                lost.append(heading)
+            heading = None
+        _close()
+        _start(text, first_body)
+
+    def _start(text: str, first_body: str | None = None) -> None:
+        nonlocal heading, body, introduction
+        heading, body, introduction = text, [first_body] if first_body else [], False
+
     furniture = _running_headers(section)
     for block in section[1:]:
-        if _FURNITURE.match(block.text) or block.text in furniture:
+        number = _PAGE_NUMBER_BLOCK.match(block.text)
+        if number:
+            page_numbers.append(int(number.group(1)))
             continue
-        if heading is None and _SECTION_TITLE.match(block.text):
+        if _FURNITURE.match(block.text) or _furniture_key(block.text) in furniture:
             continue
+        if not drafts and heading is None and _SECTION_TITLE.match(block.text):
+            continue
+        if layout == "run_in":
+            if _is_heading(block):
+                # A category, with its own introduction under it (Exxon Mobil).
+                _close()
+                category, introduction = block.text, True
+                continue
+            run_in = _run_in(block, sentence=False)
+            if run_in is not None:
+                _close()
+                _start(*run_in)
+            elif heading is not None:
+                body.append(block.text)
+            else:
+                _drop(block.text)
+            continue
+        if layout == "sentences":
+            if _is_capitals_title(block):
+                _close()
+                category = block.text
+                continue
+            if _is_heading(block) and not _SENTENCE_END.search(block.text):
+                if heading is not None:
+                    body.append(block.text)
+                else:
+                    category = block.text
+                continue
+            run_in = _run_in(block, sentence=True)
+            if run_in is not None:
+                _close()
+                _start(*run_in)
+                continue
         if _is_heading(block):
+            if _INTRO_TITLE.match(block.text):
+                _close()
+                introduction = True
+                continue
             if heading is not None and not body and block.text[:1].islower():
                 heading = f"{heading} {block.text}"
                 continue
-            if heading is not None and not body:
-                category = heading
-            elif heading is not None:
-                drafts.append(_Draft(category, heading, tuple(body)))
-            heading, body = block.text, []
+            _open(block.text)
         elif heading is not None:
             body.append(block.text)
             if block.emphasised and _has_words(block.text):
                 emphasised_body.append(block.text)
-    if heading is not None and body:
-        drafts.append(_Draft(category, heading, tuple(body)))
+        else:
+            _drop(block.text)
+    _close()
     return SectionReading(
         drafts=tuple(drafts),
         emphasised_body=tuple(emphasised_body),
-        unclosed_heading=heading if heading is not None and not body else None,
+        lost_headings=tuple(lost),
+        page_numbers=tuple(page_numbers),
+        unheaded_text=tuple(unheaded),
     )
 
 
-def extract_risk_factors(html: str, *, accession_number: str, fiscal_year: int) -> list[RiskFactor]:
+def extract_risk_factors(
+    html: str, *, accession_number: str, fiscal_year: int, layout: str = "blocks"
+) -> list[RiskFactor]:
     """Item 1A's risk factors, in filing order."""
-    return read_item_1a(html).risk_factors(
+    return read_item_1a(html, layout=layout).risk_factors(
         accession_number=accession_number, fiscal_year=fiscal_year
     )
