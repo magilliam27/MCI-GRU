@@ -1,5 +1,7 @@
 """The frozen question set, the answer cache and the blind label sheet (#289).
 
+Also E6 (#298): a Noul with described outcomes, asked in independent draws.
+
 Jev itself is never called here: a fake client stands in for the TypeSafe SDK
 and answers in the SDK's response shape (``nouls[name].noul``, ``model``,
 ``request_id``, ``usage.input_tokens``).
@@ -26,6 +28,7 @@ from mci_gru.filings.pairing import RiskPair
 from mci_gru.filings.risk_factors import RiskFactor
 
 REPO_QUESTIONS = Path(__file__).resolve().parents[1] / "configs" / "filings" / "questions_v1.yaml"
+V3_QUESTIONS = REPO_QUESTIONS.with_name("questions_v3.yaml")
 MODEL = "jev-1.13.0"
 
 
@@ -249,3 +252,100 @@ def test_label_sample_is_reproducible_for_a_seed():
     first, _ = blind_label_sheet(pairs, n=12, seed=7)
     second, _ = blind_label_sheet(pairs, n=12, seed=7)
     assert first.equals(second)
+
+
+# --- E6 (#298): Noul criteria and independent draws ------------------------
+
+TUNED_YES = (
+    "Material scope was added or dropped, such as a driver, exposure, product, jurisdiction, "
+    "event or consequence, or last year's text describes a different risk."
+)
+TUNED_NO = (
+    "The same risk, only lightly reworded or with updated figures or examples; "
+    "nothing material was added or removed."
+)
+
+
+def test_v3_question_is_the_tuned_wording_word_for_word():
+    question_set = load_question_set(V3_QUESTIONS)
+    question = question_set.questions["materially_changed"]
+    assert question_set.model == MODEL and question.kind == "noul"
+    assert question.instructions == (
+        "Compared with `prior_year_risk_factor`, did `current_risk_factor` materially change?"
+    )
+    assert dict(question.criteria) == {"true": TUNED_YES, "false": TUNED_NO}
+    assert question.spec()["criteria"] == {"true": TUNED_YES, "false": TUNED_NO}
+
+
+def test_the_v3_instructions_name_the_state_fields_jev_is_given():
+    question = load_question_set(V3_QUESTIONS).questions["materially_changed"]
+    state = pair_state(_pairs(per_year=1, k=1)[0])
+    for field in state:
+        assert f"`{field}`" in question.instructions
+
+
+def _criteria_file(tmp_path: Path, criteria: str, kind: str = "noul") -> Path:
+    path = tmp_path / "q.yaml"
+    path.write_text(
+        f"version: 9\nmodel: {MODEL}\nquestions:\n  q:\n    kind: {kind}\n"
+        f"    instructions: Did it change?\n{criteria}",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_unquoted_yaml_true_and_false_keys_read_as_the_sdk_names(tmp_path):
+    path = _criteria_file(tmp_path, "    criteria:\n      true: Yes, it did.\n      false: No.\n")
+    assert load_question_set(path).questions["q"].criteria == (
+        ("true", "Yes, it did."),
+        ("false", "No."),
+    )
+
+
+@pytest.mark.parametrize(
+    "criteria",
+    [
+        "    criteria:\n      maybe: Unsure.\n",
+        "    criteria:\n      true: ''\n",
+        "    criteria: {}\n",
+        "    criteria: plain text\n",
+    ],
+)
+def test_criteria_other_than_described_true_or_false_are_refused(tmp_path, criteria):
+    with pytest.raises(QuestionSetError, match="criteria"):
+        load_question_set(_criteria_file(tmp_path, criteria))
+
+
+def test_only_a_noul_takes_criteria(tmp_path):
+    criteria = "    options:\n      a: A.\n      b: B.\n    criteria:\n      true: Yes.\n"
+    with pytest.raises(QuestionSetError, match="only a Noul"):
+        load_question_set(_criteria_file(tmp_path, criteria, kind="choice"))
+
+
+def test_a_noul_without_criteria_keeps_milestone_one_spec(question_set):
+    assert "criteria" not in question_set.questions["same_risk"].spec()
+
+
+def test_each_draw_is_a_fresh_call_and_a_rerun_asks_none_again(tmp_path):
+    question = load_question_set(V3_QUESTIONS).questions["materially_changed"]
+    pairs = _pairs(per_year=2, k=1)
+    cache = AnswerCache(tmp_path / "answers.jsonl")
+    client = FakeClient()
+    kwargs = {"sdk_question": "q", "client": client, "cache": cache, "model": MODEL}
+    for draw in (1, 2, 3):
+        scored = score_pairs(pairs, question, draw=draw, **kwargs)
+        assert [item.draw for item in scored] == [draw] * len(pairs)
+    assert len(client.calls) == 3 * len(pairs)
+    reread = AnswerCache(tmp_path / "answers.jsonl")
+    for draw in (1, 2, 3):
+        score_pairs(pairs, question, draw=draw, **{**kwargs, "cache": reread})
+    assert len(client.calls) == 3 * len(pairs)
+    assert {record["question"]["draw"] for record in reread._records.values()} == {1, 2, 3}
+
+
+def test_without_a_draw_the_cache_key_is_milestone_ones(tmp_path, question_set):
+    question = question_set.questions["same_risk"]
+    pair = _pairs(per_year=1, k=1)[0]
+    cache = AnswerCache(tmp_path / "answers.jsonl")
+    score_pairs([pair], question, sdk_question="q", client=FakeClient(), cache=cache, model=MODEL)
+    assert cache_key(pair_state(pair), question.spec(), MODEL) in cache

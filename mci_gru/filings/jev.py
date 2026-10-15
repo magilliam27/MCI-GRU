@@ -66,11 +66,14 @@ class Question:
     instructions: str
     #: A Choice's options as (name, description), in the order the file gives.
     options: tuple[tuple[str, str], ...] = ()
+    #: A Noul's described outcomes as (``"true"`` or ``"false"``, description).
+    criteria: tuple[tuple[str, str], ...] = ()
 
     def spec(self) -> dict[str, Any]:
         """The wording that defines the question, as hashed into the cache key.
 
-        A Noul's spec has no options key, so milestone 1's cache keys are unchanged.
+        A Noul's spec has no options key, and a criteria key only when it
+        describes its outcomes, so milestone 1's cache keys are unchanged.
         """
         spec: dict[str, Any] = {
             "question_id": self.question_id,
@@ -79,6 +82,8 @@ class Question:
         }
         if self.kind == "choice":
             spec["options"] = dict(self.options)
+        if self.criteria:
+            spec["criteria"] = dict(self.criteria)
         return spec
 
 
@@ -115,15 +120,46 @@ def load_question_set(path: Path) -> QuestionSet:
                 raise QuestionSetError(
                     f"{path}: {question_id} needs at least two options, each described"
                 )
+        criteria = _noul_criteria(path, str(question_id), kind, entry.get("criteria"))
         questions[str(question_id)] = Question(
             question_id=str(question_id),
             kind=kind,
             instructions=str(entry.get("instructions", "")).strip(),
             options=options,
+            criteria=criteria,
         )
     if not questions:
         raise QuestionSetError(f"{path}: no questions")
     return QuestionSet(version=version, model=model, questions=questions)
+
+
+def _noul_criteria(
+    path: Path, question_id: str, kind: str, raw: Any
+) -> tuple[tuple[str, str], ...]:
+    """A Noul's outcome descriptions keyed ``"true"`` and ``"false"``, as the SDK takes them.
+
+    YAML reads an unquoted ``true:`` key as a boolean, so both spellings are accepted.
+    """
+    if raw is None:
+        return ()
+    if kind != "noul":
+        raise QuestionSetError(f"{path}: {question_id}: only a Noul takes criteria")
+    if not isinstance(raw, dict):
+        raise QuestionSetError(f"{path}: {question_id}: criteria must be a mapping")
+    criteria: list[tuple[str, str]] = []
+    for key, value in raw.items():
+        name = str(key).lower()
+        description = str(value or "").strip()
+        if name not in ("true", "false") or not description:
+            raise QuestionSetError(
+                f"{path}: {question_id}: criteria take a described true and/or false only"
+            )
+        criteria.append((name, description))
+    if not criteria or len({name for name, _ in criteria}) != len(criteria):
+        raise QuestionSetError(
+            f"{path}: {question_id}: criteria take a described true and/or false only"
+        )
+    return tuple(criteria)
 
 
 def pair_state(pair: RiskPair) -> dict[str, Any]:
@@ -200,6 +236,7 @@ class ScoredPair:
     request_id: str | None
     input_tokens: int | None
     cached: bool
+    draw: int | None = None
 
 
 def score_pairs(
@@ -210,14 +247,21 @@ def score_pairs(
     client: Any,
     cache: AnswerCache,
     model: str,
+    draw: int | None = None,
 ) -> list[ScoredPair]:
-    """Ask one Noul of every pair, from the cache where it already holds the answer."""
+    """Ask one Noul of every pair, from the cache where it already holds the answer.
+
+    ``draw`` numbers independent asks of the same question: it is part of the
+    cache key, so draw 2 is a fresh call even when draw 1 is cached. Without it
+    the key is milestone 1's.
+    """
     if question.kind != "noul":
         raise QuestionSetError(f"{question.question_id}: only Noul questions are scored here")
+    spec = question.spec() if draw is None else {**question.spec(), "draw": draw}
     scored: list[ScoredPair] = []
     for pair in pairs:
         state = pair_state(pair)
-        key = cache_key(state, question.spec(), model)
+        key = cache_key(state, spec, model)
         cached = key in cache
         if not cached:
             response = client.system_one(
@@ -229,7 +273,7 @@ def score_pairs(
                 {
                     "key": key,
                     "pair_id": pair.pair_id,
-                    "question": question.spec(),
+                    "question": spec,
                     "model": response.model,
                     "probability": float(response.nouls[question.question_id].noul),
                     "request_id": response.request_id,
@@ -247,6 +291,7 @@ def score_pairs(
                 request_id=record["request_id"],
                 input_tokens=record["input_tokens"],
                 cached=cached,
+                draw=draw,
             )
         )
     return scored

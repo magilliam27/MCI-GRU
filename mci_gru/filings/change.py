@@ -66,6 +66,9 @@ BOOTSTRAP_DRAWS = 2000
 #: shares added and removed reaches ``WORD_SCORE_CUT``.
 JEV_SAME_CUT = 0.05
 WORD_SCORE_CUT = 0.04
+#: E6's cut, fixed on its card before any E6 label: Jev calls a risk changed when
+#: the mean of its three draws of "did it materially change?" is at least 0.5.
+JEV_CHANGED_CUT = 0.5
 FLAG_COLUMNS = ("pair_id", "p_same", "word_score", "jev_changed", "word_changed")
 LABEL_COLUMNS = (
     "label_id",
@@ -112,6 +115,11 @@ def baseline_change(similarity: float, added: float, removed: float) -> str:
     return "same"
 
 
+def word_score(table: pd.DataFrame) -> pd.Series:
+    """E4's word score: the larger of the shares of distinct words added and removed."""
+    return table[["words_added", "words_removed"]].max(axis=1)
+
+
 def change_flags(table: pd.DataFrame, choices: pd.DataFrame) -> pd.DataFrame:
     """E4's call for every pair: changed or not, by Jev's ``same`` probability and by words.
 
@@ -125,7 +133,7 @@ def change_flags(table: pd.DataFrame, choices: pd.DataFrame) -> pd.DataFrame:
     unscored = flags.loc[flags["p_same"].isna(), "pair_id"].tolist()
     if unscored:
         raise ChangeGradingError(f"{len(unscored)} pairs have no Jev answer: {unscored[:3]}")
-    flags["word_score"] = flags[["words_added", "words_removed"]].max(axis=1)
+    flags["word_score"] = word_score(flags)
     flags["jev_changed"] = flags["p_same"] < JEV_SAME_CUT
     flags["word_changed"] = flags["word_score"] >= WORD_SCORE_CUT
     return flags[list(FLAG_COLUMNS)]
