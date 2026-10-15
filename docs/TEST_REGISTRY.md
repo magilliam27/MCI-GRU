@@ -601,6 +601,170 @@ Every feature group must accept the regime overrides that launchers pass, withou
 | `test_feature_drift_flags_shifted_distribution` |  |  |
 | `test_missing_feature_reference_returns_not_available` |  |  |
 
+## `tests/test_filings_change.py`
+
+Milestone 2 of #289: how each risk factor changed, the word baseline and the grade.
+
+**Exercises:** `mci_gru.filings.change`, `mci_gru.filings.jev`, `mci_gru.filings.pairing`, `mci_gru.filings.risk_factors`, `scripts.data.score_risk_changes`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_v2_question_offers_exactly_the_five_change_kinds_each_described` |  |  |
+| `test_a_noul_spec_is_unchanged_so_milestone_one_cache_keys_hold` |  |  |
+| `test_a_choice_needs_two_or_more_described_options` |  | parametrize |
+| `test_word_change_counts_distinct_words_added_and_removed` |  |  |
+| `test_baseline_rule_and_its_frozen_thresholds` |  | parametrize |
+| `test_pair_table_carries_both_years_and_the_baseline` |  |  |
+| `test_option_order_is_a_fixed_shuffle_per_pair` |  |  |
+| `test_jev_sees_the_options_in_the_pairs_shuffled_order` |  |  |
+| `test_cached_choices_are_never_asked_again` |  |  |
+| `test_an_answer_from_another_model_stops_the_choice_run` |  |  |
+| `test_a_choice_without_the_five_change_kinds_is_refused` |  |  |
+| `test_label_sample_oversamples_rare_kinds_and_weights_undo_it` |  |  |
+| `test_label_sheet_shows_years_and_texts_but_no_answer_hints` |  |  |
+| `test_labels_outside_the_five_kinds_stop_the_grade` |  |  |
+| `test_calling_everything_same_earns_one_over_the_kinds_present` |  |  |
+| `test_balanced_accuracy_uses_the_design_weights` |  |  |
+| `test_jev_wins_only_when_its_whole_interval_is_above_zero` |  |  |
+| `test_a_gap_whose_interval_spans_zero_is_not_a_win` |  |  |
+| `test_per_kind_recall_and_precision` |  |  |
+| `test_step_one_writes_the_sheet_and_guide_and_seals_the_rest` |  |  |
+| `test_score_then_grade_end_to_end` |  |  |
+| `test_an_existing_change_sheet_is_kept` |  |  |
+
+## `tests/test_filings_edgar.py`
+
+The EDGAR filing index and when each filing was knowable (#289).
+
+**Exercises:** `mci_gru.data.pit`, `mci_gru.filings.edgar`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_acceptance_is_true_utc_as_checked_against_filing_headers` | The header says 16:01:36 New York; the submissions file says 20:01:36Z (summer). |  |
+| `test_naive_acceptance_is_refused` |  |  |
+| `test_filing_accepted_before_the_clock_counts_that_session` |  |  |
+| `test_filing_accepted_after_the_clock_counts_the_next_session` |  |  |
+| `test_filing_accepted_exactly_at_the_clock_counts_that_session` | #225: equality counts. |  |
+| `test_filing_after_the_last_session_has_no_forecast` |  |  |
+| `test_report_filed_under_both_ciks_is_kept_once_at_its_earliest_acceptance` |  |  |
+| `test_tie_on_acceptance_goes_to_the_preferred_filer` |  |  |
+| `test_one_accession_listed_under_both_filers_is_kept_once_under_the_preferred_filer` |  |  |
+| `test_index_keeps_only_requested_forms_from_the_start_date` |  |  |
+| `test_older_submission_files_are_listed_for_reading` |  |  |
+| `test_ragged_submissions_block_is_refused` |  |  |
+| `test_document_url_uses_unpadded_cik_and_bare_accession` |  |  |
+
+## `tests/test_filings_grading.py`
+
+Jev's answers graded against the hand labels (#289).
+
+**Exercises:** `mci_gru.filings.grading`, `scripts.data.grade_risk_factor_pairs`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_labels_are_read_in_any_letter_case` |  |  |
+| `test_a_blank_or_unknown_label_stops_grading` |  | parametrize |
+| `test_a_labelled_pair_without_a_jev_score_stops_grading` |  |  |
+| `test_jev_and_both_baselines_answer_each_pair` |  |  |
+| `test_accuracy_and_the_gap_over_each_baseline` |  |  |
+| `test_weighted_accuracy_uses_the_design_weights` |  |  |
+| `test_a_gap_whose_interval_includes_zero_is_not_a_win` |  |  |
+| `test_the_weighted_gap_describes_the_shortlist_not_the_labelled_pairs` |  |  |
+| `test_calibration_sets_mean_probability_beside_share_labelled_yes` |  |  |
+| `test_grading_script_writes_summary_calibration_and_disagreements_first` |  |  |
+| `test_grading_script_refuses_a_half_labelled_sheet` |  |  |
+
+## `tests/test_filings_jev.py`
+
+The frozen question set, the answer cache and the blind label sheet (#289).
+
+**Exercises:** `mci_gru.filings.jev`, `mci_gru.filings.pairing`, `mci_gru.filings.risk_factors`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_repository_question_set_pins_a_versioned_model` |  |  |
+| `test_moving_model_aliases_are_refused` |  | parametrize |
+| `test_cached_pairs_are_never_sent_again` |  |  |
+| `test_a_torn_last_line_is_set_aside_and_its_pair_asked_again` |  |  |
+| `test_a_damaged_line_before_the_last_is_refused` |  |  |
+| `test_a_different_model_is_a_different_cache_entry` |  |  |
+| `test_a_different_question_wording_is_a_different_cache_entry` |  |  |
+| `test_an_answer_from_another_model_version_is_refused_and_not_cached` |  |  |
+| `test_each_answer_records_model_request_and_tokens` |  |  |
+| `test_state_holds_both_risks_and_none_of_the_shortlist_score` |  |  |
+| `test_label_sheet_shows_no_scores_ranks_or_ids` |  |  |
+| `test_label_sheet_columns_are_fixed_whatever_the_pair_carries` |  |  |
+| `test_label_rows_are_shuffled_across_strata` |  |  |
+| `test_label_sample_covers_every_year_and_both_rank_strata_with_weights` |  |  |
+| `test_label_sample_is_reproducible_for_a_seed` |  |  |
+
+## `tests/test_filings_pairing.py`
+
+Each risk factor paired with its most similar prior-year risks (#289).
+
+**Exercises:** `mci_gru.filings.pairing`, `mci_gru.filings.risk_factors`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_most_similar_prior_risk_ranks_first` |  |  |
+| `test_every_current_risk_gets_k_pairs_even_with_no_word_overlap` |  |  |
+| `test_k_larger_than_the_prior_year_takes_every_prior_risk` |  |  |
+| `test_k_none_pairs_every_current_risk_with_every_prior_risk_in_rank_order` |  |  |
+| `test_pair_ids_are_stable` |  |  |
+| `test_consecutive_years_pair_each_year_with_the_one_before_only` |  |  |
+| `test_a_missing_prior_year_is_refused_rather_than_skipped` |  |  |
+
+## `tests/test_filings_risk_factors.py`
+
+Item 1A of a 10-K, cut into individual risk factors (#289).
+
+**Exercises:** `mci_gru.filings.risk_factors`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_hidden_xbrl_header_and_styles_are_not_text` |  |  |
+| `test_item_1a_is_the_section_not_the_table_of_contents` |  |  |
+| `test_risks_are_split_at_emphasised_headings_with_their_bodies` |  |  |
+| `test_a_heading_followed_by_a_heading_is_a_category` |  |  |
+| `test_page_numbers_and_running_headers_are_not_body_text` |  |  |
+| `test_intro_paragraph_before_the_first_heading_is_not_a_risk` |  |  |
+| `test_risk_ids_are_stable_and_ordered` |  |  |
+| `test_filing_without_item_1a_is_refused` |  |  |
+| `test_a_long_emphasised_paragraph_is_body_text_not_a_heading` |  |  |
+| `test_a_heading_of_two_long_sentences_is_still_a_heading` |  |  |
+| `test_a_line_break_inside_a_heading_is_a_wrap_not_a_category` |  |  |
+| `test_a_running_page_header_is_dropped_whether_bold_or_not` |  | parametrize |
+| `test_a_section_title_on_its_own_line_is_not_a_risk` |  |  |
+| `test_a_page_number_with_a_full_stop_is_not_body_text` |  |  |
+| `test_a_heading_broken_across_a_page_is_one_heading_not_a_category` |  |  |
+| `test_a_lower_case_heading_after_body_text_starts_a_new_risk` |  |  |
+
+## `tests/test_filings_scripts.py`
+
+The filings pull and the pair scoring, end to end with canned EDGAR and Jev (#289).
+
+**Exercises:** `mci_gru.data.input_manifest`, `mci_gru.filings.edgar`, `scripts.data.export_sec_risk_factors`, `scripts.data.score_risk_factor_pairs`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_export_reads_both_filers_and_older_files_and_publishes_a_manifest` |  |  |
+| `test_every_request_names_the_client_as_sec_asks` |  |  |
+| `test_user_agent_without_contact_email_is_refused` |  |  |
+| `test_a_second_pull_rereads_only_the_filers_main_submissions_files` |  |  |
+| `test_rate_limits_server_errors_and_dropped_connections_are_retried_after_a_wait` |  | parametrize |
+| `test_a_request_refused_outright_is_not_retried` |  |  |
+| `test_a_document_that_is_not_utf8_is_read_as_cp1252_and_reported` |  |  |
+| `test_an_unreadable_item_1a_blocks_the_manifest` |  |  |
+| `test_pairs_and_blind_sheet_are_written_without_calling_jev` |  |  |
+| `test_scoring_twice_calls_jev_once_per_distinct_pair` |  |  |
+| `test_an_existing_label_sheet_is_never_overwritten` |  |  |
+| `test_only_the_label_sheet_sits_outside_the_sealed_folder` |  |  |
+| `test_a_rerun_that_changes_the_pairs_under_a_label_sheet_stops` |  |  |
+| `test_jev_is_asked_about_every_prior_year_risk_by_default` |  |  |
+| `test_shortlist_scope_asks_jev_only_about_the_top_k` |  |  |
+| `test_risk_verdicts_name_jevs_best_match_and_flag_a_new_risk` |  |  |
+| `test_a_limited_run_marks_risks_it_did_not_finish` |  |  |
+
 ## `tests/test_first_run_cessation.py`
 
 The first run declares no cessation file; this pins why that is safe, and when not.

@@ -1,0 +1,18 @@
+# Frozen question set for the Jev filings pilot (#289). Do not edit a frozen
+# version: a changed question is a new file (questions_v2.yaml), so cached
+# answers and graded labels always name the wording they were given.
+#
+# `model` must be a versioned Jev ID, never a moving alias such as jev-latest.
+# The state each question is asked against is built in code
+# (mci_gru.filings.jev.pair_state): a current-year risk factor and one
+# shortlisted prior-year risk factor, each as heading and text.
+version: 1
+model: jev-1.13.0
+questions:
+  same_risk:
+    kind: noul
+    instructions: >-
+      Does the prior-year risk factor describe the same underlying risk to the
+      company as the current risk factor? Answer yes if it is the same risk even
+      when the wording, examples or details have changed. Answer no if the
+      current risk factor describes a risk the prior-year one does not cover.
