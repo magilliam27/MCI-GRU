@@ -698,6 +698,36 @@ The frozen question set, the answer cache and the blind label sheet (#289).
 | `test_label_sample_covers_every_year_and_both_rank_strata_with_weights` |  |  |
 | `test_label_sample_is_reproducible_for_a_seed` |  |  |
 
+## `tests/test_filings_labelling.py`
+
+The Labelling desk (#291): yes/no label sets, blind sheets, AI reviewers, agreement.
+
+**Exercises:** `mci_gru.filings.labelling`, `scripts.data.label_desk`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_change_answers_derive_the_five_change_options` |  | parametrize |
+| `test_change_categories_are_the_options_of_the_jev_change_question` |  |  |
+| `test_every_label_set_in_the_repo_loads` |  |  |
+| `test_a_skipped_question_must_stay_unanswered` |  |  |
+| `test_an_unquoted_yes_in_yaml_is_refused` |  |  |
+| `test_a_category_no_answers_reach_is_refused` |  |  |
+| `test_the_last_rule_must_match_everything` |  |  |
+| `test_a_sheet_never_reads_an_answer_column` |  |  |
+| `test_a_hand_over_missing_a_text_column_is_refused` |  |  |
+| `test_sheet_ids_are_fresh_and_the_order_is_shuffled_by_seed` |  |  |
+| `test_the_page_gets_questions_but_never_the_category_rules` |  |  |
+| `test_each_reviewer_sees_every_item_once_in_its_own_order` |  |  |
+| `test_the_reviewer_prompt_states_every_question_and_the_header` |  |  |
+| `test_a_reviewer_answering_a_skipped_question_is_rejected` |  |  |
+| `test_combining_takes_the_majority_and_leaves_a_split_empty` |  |  |
+| `test_combining_refuses_a_reviewer_who_skipped_an_item` |  |  |
+| `test_page_labels_derive_a_category_only_when_finished` |  |  |
+| `test_agreement_counts_only_items_both_labelled` |  |  |
+| `test_cohen_kappa_matches_a_worked_example` |  |  |
+| `test_the_desk_runs_end_to_end_on_the_practice_sheet` |  |  |
+| `test_a_changed_label_set_stops_the_later_steps` |  |  |
+
 ## `tests/test_filings_pairing.py`
 
 Each risk factor paired with its most similar prior-year risks (#289).

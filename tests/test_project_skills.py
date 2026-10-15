@@ -29,7 +29,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_DIR = REPO_ROOT / ".claude" / "skills"
 
-EXPECTED_SKILLS = ("implement-ticket", "work-the-map")
+EXPECTED_SKILLS = ("blind-ai-reviewers", "implement-ticket", "work-the-map")
 
 # The ticket-sequencing rule, amended by the maintainer on 2026-09-27 (issue 227):
 # the next ticket only after the previous one has landed. Each document that

@@ -1,0 +1,508 @@
+<title>Risk Labelling Desk</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+/* Layout: a reading desk. Two filing texts side by side (stacked on a phone),
+   the yes/no questions in a sticky column on wide screens, below on narrow. */
+:root {
+  --bg: #f2f4f7;
+  --surface: #ffffff;
+  --ink: #18202b;
+  --muted: #5a6474;
+  --line: #d6dce4;
+  --accent: #245b8a;
+  --accent-ink: #ffffff;
+  --accent-soft: #e2ebf4;
+  --flag: #9a5714;
+  --flag-soft: #f7ead9;
+  --ok: #2c7349;
+  --err: #b0342b;
+  --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --bar-h: 0px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11151b; --surface: #191f27; --ink: #e5e9ef; --muted: #9ba5b3; --line: #2b333f;
+    --accent: #80b1de; --accent-ink: #0f1620; --accent-soft: #1f2c3a;
+    --flag: #e2a45e; --flag-soft: #33281b; --ok: #6cc08f; --err: #ef8a80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11151b; --surface: #191f27; --ink: #e5e9ef; --muted: #9ba5b3; --line: #2b333f;
+  --accent: #80b1de; --accent-ink: #0f1620; --accent-soft: #1f2c3a;
+  --flag: #e2a45e; --flag-soft: #33281b; --ok: #6cc08f; --err: #ef8a80;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.5; }
+button, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.bar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: var(--surface); border-bottom: 1px solid var(--line);
+  padding-block: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; max-width: 1440px; margin: 0 auto; }
+.bar h1 { font-size: 16px; font-weight: 600; margin: 0; letter-spacing: 0.01em; }
+.bar select { border: 1px solid var(--line); background: var(--bg); border-radius: 6px; padding: 4px 8px; max-width: 100%; }
+.progress { display: flex; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; flex: 1 1 200px; min-width: 0; }
+.meter { flex: 1; height: 6px; background: var(--accent-soft); border-radius: 3px; overflow: hidden; min-width: 60px; max-width: 280px; }
+.meter > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .25s; }
+.save { font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); }
+.save.ok { color: var(--ok); }
+.save.err { color: var(--err); }
+.save button { border: 0; background: none; color: var(--err); text-decoration: underline; padding: 0 0 0 4px; }
+
+main {
+  max-width: 1440px; margin: 0 auto;
+  padding-block: 16px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.notice { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 20px; max-width: 640px; }
+.notice h2 { margin: 0 0 6px; font-size: 18px; }
+.notice p { margin: 0; color: var(--muted); }
+.banner { background: var(--flag-soft); color: var(--flag); border-radius: 6px; padding: 8px 12px; font-size: 13px; margin-bottom: 12px; }
+
+.nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; }
+.nav .where { font-family: var(--mono); font-size: 13px; color: var(--muted); margin-right: auto; font-variant-numeric: tabular-nums; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 6px 12px; min-height: 36px; }
+.btn:hover { border-color: var(--accent); }
+.btn:disabled { opacity: .45; cursor: default; border-color: var(--line); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 500; }
+.jump { display: none; align-items: center; text-decoration: none; }
+
+.overview { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 6px; margin-bottom: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.overview button { font-family: var(--mono); font-size: 12px; border: 1px solid var(--line); background: var(--bg); border-radius: 4px; padding: 6px 0; font-variant-numeric: tabular-nums; }
+.overview button.done { background: var(--accent-soft); border-color: var(--accent); }
+.overview button.part { border-style: dashed; border-color: var(--accent); }
+.overview button.flagged { box-shadow: inset 0 -3px 0 var(--flag); }
+.overview button.here { outline: 2px solid var(--ink); outline-offset: 1px; }
+.legend { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--muted); }
+
+.desk { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+.texts { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 760px) { .texts { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+@media (min-width: 1180px) {
+  .desk { grid-template-columns: minmax(0, 1fr) 340px; }
+  .ask { position: sticky; top: calc(var(--bar-h) + 16px); max-height: calc(100dvh - var(--bar-h) - 32px); overflow-y: auto; }
+}
+@media (max-width: 1179px) { .jump { display: inline-flex; } }
+
+.risk { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px 20px; min-width: 0; }
+.risk .when { font-family: var(--mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+.risk h2 { font-family: var(--serif); font-size: 17px; font-weight: 600; line-height: 1.4; margin: 0 0 12px; text-wrap: pretty; }
+.risk .body { font-family: var(--serif); font-size: 16px; line-height: 1.62; max-width: 68ch; overflow-wrap: anywhere; }
+.risk .body p { margin: 0 0 0.9em; white-space: pre-line; }
+
+.ask { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 16px; }
+.ask details { font-size: 13px; color: var(--muted); }
+.ask summary { cursor: pointer; color: var(--ink); font-weight: 500; }
+.ask details p { margin: 6px 0 0; }
+.q { display: grid; gap: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
+.q:first-of-type { border-top: 0; padding-top: 0; }
+.q .text { font-weight: 500; margin: 0; }
+.q .help { font-size: 13px; color: var(--muted); margin: 0; }
+.yn { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.yn button { border: 1px solid var(--line); background: var(--bg); border-radius: 6px; min-height: 44px; font-weight: 500; }
+.yn button:hover:not(:disabled) { border-color: var(--accent); }
+.yn button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.yn button:disabled { cursor: default; opacity: .6; }
+.extra { display: grid; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+.flagrow { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.flagrow input { width: 18px; height: 18px; accent-color: var(--flag); }
+.extra label.notelabel { font-size: 13px; color: var(--muted); }
+.extra textarea { width: 100%; min-height: 64px; resize: vertical; border: 1px solid var(--line); background: var(--bg); border-radius: 6px; padding: 8px; font-size: 14px; }
+.state { font-size: 13px; color: var(--muted); }
+.state.done { color: var(--ok); }
+.keys { font-size: 12px; color: var(--muted); }
+.keys kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
+@media (hover: none) { .keys { display: none; } }
+@media (prefers-reduced-motion: reduce) { .meter > i { transition: none; } }
+</style>
+
+<header class="bar" id="bar">
+  <div class="bar-row">
+    <h1 id="title">Risk labelling desk</h1>
+    <select id="sheet-picker" aria-label="Choose a sheet" hidden></select>
+    <div class="progress" id="progress" hidden>
+      <div class="meter" aria-hidden="true"><i id="meter"></i></div>
+      <span id="count"></span>
+    </div>
+    <span class="save" id="save" aria-live="polite"></span>
+  </div>
+</header>
+
+<main id="main">
+  <div class="notice" id="notice">
+    <h2>Opening your label sheets</h2>
+    <p>Each sheet shows one risk factor from last year's 10-K beside this year's, in full, with a few yes or no questions. Every answer saves the moment you tap it, so you can stop on your phone and carry on at your PC.</p>
+  </div>
+  <div id="work" hidden>
+    <div class="banner" id="banner" hidden></div>
+    <nav class="nav" aria-label="Move between risks">
+      <span class="where" id="where"></span>
+      <button class="btn" id="prev" type="button">← Previous</button>
+      <button class="btn" id="next" type="button">Next →</button>
+      <button class="btn" id="next-open" type="button">Next unanswered</button>
+      <button class="btn" id="toggle-all" type="button" aria-expanded="false">All risks</button>
+      <a class="btn jump" id="jump" href="#questions">Questions ↓</a>
+    </nav>
+    <div class="overview" id="overview" hidden></div>
+    <div class="desk">
+      <div class="texts">
+        <article class="risk" aria-labelledby="prior-heading">
+          <p class="when" id="prior-when"></p>
+          <h2 id="prior-heading"></h2>
+          <div class="body" id="prior-body"></div>
+        </article>
+        <article class="risk" aria-labelledby="current-heading">
+          <p class="when" id="current-when"></p>
+          <h2 id="current-heading"></h2>
+          <div class="body" id="current-body"></div>
+        </article>
+      </div>
+      <section class="ask" id="questions" aria-label="Questions">
+        <details id="intro-box"><summary>How to answer</summary><p id="intro"></p></details>
+        <div id="qs"></div>
+        <div class="extra">
+          <label class="flagrow"><input type="checkbox" id="flag"> Flag to look at again</label>
+          <label class="notelabel" for="note">Note (optional)</label>
+          <textarea id="note" placeholder="Anything that made this one hard to call"></textarea>
+        </div>
+        <p class="state" id="state"></p>
+        <button class="btn primary" id="next-2" type="button">Next risk →</button>
+        <p class="keys">Keys: <kbd>Y</kbd> <kbd>N</kbd> answer the first open question, <kbd>←</kbd> <kbd>→</kbd> move.</p>
+      </section>
+    </div>
+  </div>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage off */ } },
+  };
+  const S = { db: null, sheets: [], sheet: null, items: [], labels: {}, idx: 0, unsub: null, noteTimer: null, failed: null, readOnly: false };
+
+  function notice(title, text) {
+    $("work").hidden = true;
+    $("notice").hidden = false;
+    $("notice").innerHTML = "";
+    const h = document.createElement("h2"); h.textContent = title;
+    const p = document.createElement("p"); p.textContent = text;
+    $("notice").append(h, p);
+  }
+
+  function setSave(kind, text) {
+    const el = $("save");
+    el.className = "save " + (kind || "");
+    el.textContent = text;
+    if (kind === "err") {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = "Try again";
+      b.onclick = () => S.failed && save(S.failed.item, S.failed.body);
+      el.append(b);
+    }
+  }
+
+  function measureBar() {
+    document.documentElement.style.setProperty("--bar-h", $("bar").offsetHeight + "px");
+  }
+
+  // Which questions apply, given the answers so far. Mirrors LabelSet.asked in
+  // mci_gru/filings/labelling.py; the category itself is derived only in code.
+  function asked(answers) {
+    return S.sheet.questions.filter((q) =>
+      Object.entries(q.ask_if || {}).every(([dep, want]) => answers[dep] === want));
+  }
+  function prune(answers) {
+    const out = {};
+    for (const q of asked(answers)) if (answers[q.id]) out[q.id] = answers[q.id];
+    // A later answer can hide an earlier-given one; loop until stable.
+    return JSON.stringify(out) === JSON.stringify(answers) ? out : prune(out);
+  }
+  function complete(answers) { return asked(answers).every((q) => answers[q.id]); }
+  function labelOf(item) { return S.labels[item.item_id] || null; }
+  function isDone(item) { const l = labelOf(item); return !!(l && l.complete); }
+
+  function paragraphs(el, text) {
+    el.innerHTML = "";
+    const parts = String(text || "").split(/\n\s*\n/).map((s) => s.trim()).filter(Boolean);
+    for (const part of parts.length ? parts : ["(No text.)"]) {
+      const p = document.createElement("p"); p.textContent = part; el.append(p);
+    }
+  }
+
+  function renderProgress() {
+    const total = S.items.length;
+    const done = S.items.filter(isDone).length;
+    const flagged = S.items.filter((it) => (labelOf(it) || {}).flagged).length;
+    $("progress").hidden = false;
+    $("meter").style.width = total ? (100 * done / total) + "%" : "0";
+    $("count").textContent = `${done} of ${total} answered` + (flagged ? ` · ${flagged} flagged` : "");
+  }
+
+  function renderOverview() {
+    const box = $("overview");
+    if (box.hidden) return;
+    box.innerHTML = "";
+    S.items.forEach((it, i) => {
+      const l = labelOf(it);
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = String(i + 1);
+      b.title = it.item_id;
+      if (l && l.complete) b.classList.add("done");
+      else if (l && Object.keys(l.answers || {}).length) b.classList.add("part");
+      if (l && l.flagged) b.classList.add("flagged");
+      if (i === S.idx) b.classList.add("here");
+      b.onclick = () => go(i);
+      box.append(b);
+    });
+    const legend = document.createElement("p");
+    legend.className = "legend";
+    legend.textContent = "Filled: answered · Dashed: started · Underlined: flagged";
+    box.append(legend);
+  }
+
+  function renderQuestions() {
+    const item = S.items[S.idx];
+    const l = labelOf(item) || {};
+    const answers = l.answers || {};
+    const box = $("qs");
+    box.innerHTML = "";
+    for (const q of asked(answers)) {
+      const wrap = document.createElement("div");
+      wrap.className = "q";
+      const t = document.createElement("p"); t.className = "text"; t.id = "q-" + q.id; t.textContent = q.text;
+      wrap.append(t);
+      if (q.help) { const h = document.createElement("p"); h.className = "help"; h.textContent = q.help; wrap.append(h); }
+      const yn = document.createElement("div");
+      yn.className = "yn"; yn.setAttribute("role", "group"); yn.setAttribute("aria-labelledby", t.id);
+      for (const value of ["yes", "no"]) {
+        const b = document.createElement("button");
+        b.type = "button"; b.id = `a-${q.id}-${value}`;
+        b.textContent = value === "yes" ? "Yes" : "No";
+        b.setAttribute("aria-pressed", String(answers[q.id] === value));
+        b.disabled = S.readOnly;
+        b.onclick = () => answer(q.id, value);
+        yn.append(b);
+      }
+      wrap.append(yn);
+      box.append(wrap);
+    }
+    $("flag").checked = !!l.flagged;
+    $("flag").disabled = S.readOnly;
+    if (document.activeElement !== $("note")) $("note").value = l.note || "";
+    $("note").disabled = S.readOnly;
+    const st = $("state");
+    if (l.complete) { st.className = "state done"; st.textContent = "All questions answered for this risk."; }
+    else { st.className = "state"; st.textContent = Object.keys(answers).length ? "Some questions still open." : "Not answered yet."; }
+  }
+
+  function renderItem() {
+    const item = S.items[S.idx];
+    if (!item) return;
+    $("where").textContent = `Risk ${S.idx + 1} of ${S.items.length} · ${item.item_id}`;
+    $("prior-when").textContent = `Last year · fiscal ${item.prior_year}`;
+    $("current-when").textContent = `This year · fiscal ${item.current_year}`;
+    $("prior-heading").textContent = item.prior_heading;
+    $("current-heading").textContent = item.current_heading;
+    paragraphs($("prior-body"), item.prior_body);
+    paragraphs($("current-body"), item.current_body);
+    $("prev").disabled = S.idx === 0;
+    $("next").disabled = S.idx >= S.items.length - 1;
+    $("next-2").disabled = S.idx >= S.items.length - 1;
+    renderQuestions();
+    renderOverview();
+    renderProgress();
+  }
+
+  function go(i) {
+    if (i < 0 || i >= S.items.length) return;
+    flushNote();
+    S.idx = i;
+    store.set("pos:" + S.sheet.sheet_id, S.items[i].item_id);
+    renderItem();
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }
+  function nextOpen() {
+    const n = S.items.length;
+    for (let k = 1; k <= n; k++) {
+      const i = (S.idx + k) % n;
+      if (!isDone(S.items[i])) return go(i);
+    }
+    setSave("ok", "Every risk on this sheet is answered.");
+  }
+
+  async function save(item, body) {
+    S.labels[item.item_id] = body;
+    renderProgress();
+    setSave("", "Saving…");
+    try {
+      await S.db.doc(`sheets/${S.sheet.sheet_id}/labels/${item.item_id}`).set(body);
+      S.failed = null;
+      const t = new Date();
+      setSave("ok", `Saved ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`);
+    } catch (e) {
+      S.failed = { item, body };
+      const code = e && e.code;
+      setSave("err", code === "quota_exceeded" ? "Not saved: the store is full." : "Not saved.");
+    }
+  }
+
+  function bodyFor(item, patch) {
+    const prev = labelOf(item) || {};
+    const answers = prune({ ...(prev.answers || {}), ...(patch.answers || {}) });
+    return {
+      item_id: item.item_id,
+      label_set: S.sheet.label_set,
+      label_set_digest: S.sheet.label_set_digest,
+      answers,
+      complete: complete(answers),
+      flagged: patch.flagged !== undefined ? patch.flagged : !!prev.flagged,
+      note: patch.note !== undefined ? patch.note : (prev.note || ""),
+      updated_at: new Date().toISOString(),
+      source: "labelling-page",
+    };
+  }
+
+  function answer(qid, value) {
+    if (S.readOnly) return;
+    const item = S.items[S.idx];
+    save(item, bodyFor(item, { answers: { [qid]: value } }));
+    renderQuestions();
+    renderOverview();
+  }
+
+  function flushNote() {
+    if (!S.noteTimer) return;
+    clearTimeout(S.noteTimer); S.noteTimer = null;
+    const item = S.items[S.idx];
+    const l = labelOf(item) || {};
+    if ((l.note || "") !== $("note").value) save(item, bodyFor(item, { note: $("note").value }));
+  }
+
+  async function openSheet(sheetId) {
+    if (S.unsub) { S.unsub(); S.unsub = null; }
+    const snap = S.sheets.find((s) => s.sheet_id === sheetId);
+    if (!snap) return;
+    S.sheet = snap;
+    S.readOnly = !!snap.closed;
+    store.set("sheet", sheetId);
+    $("title").textContent = snap.title || "Risk labelling desk";
+    notice("Loading the sheet", "Fetching the risk texts for this sheet.");
+    try {
+      const items = await S.db.collection(`sheets/${sheetId}/items`).limit(1000).get();
+      S.items = items.docs.map((d) => d.data()).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    } catch (e) {
+      return notice("Couldn't load this sheet", "The label store did not answer. Reload the page to try again.");
+    }
+    if (!S.items.length) return notice("This sheet has no risks yet", "Claude adds the risks when the sheet is built. Check back after it says the sheet is ready.");
+    S.labels = {};
+    $("intro").textContent = snap.intro || "";
+    const banner = $("banner");
+    banner.hidden = !(snap.practice || snap.closed);
+    banner.textContent = snap.closed
+      ? "This sheet is closed. You can read your answers but not change them."
+      : "Practice sheet: the texts are made up and these answers are never used. Try the buttons, then switch sheets.";
+    $("notice").hidden = true;
+    $("work").hidden = false;
+    const remembered = store.get("pos:" + sheetId);
+    const at = S.items.findIndex((it) => it.item_id === remembered);
+    S.idx = at >= 0 ? at : 0;
+    renderItem();
+    measureBar();
+    let firstSnapshot = at < 0;
+    S.unsub = S.db.collection(`sheets/${sheetId}/labels`).onSnapshot((qs) => {
+      const next = {};
+      for (const d of qs.docs) next[d.id] = d.data();
+      S.labels = next;
+      if (firstSnapshot) {
+        // No remembered place on this device: start at the first unanswered risk.
+        firstSnapshot = false;
+        const open = S.items.findIndex((it) => !(next[it.item_id] && next[it.item_id].complete));
+        if (open > 0) S.idx = open;
+      }
+      renderItem();
+    }, () => setSave("err", "Live updates stopped; reload to see answers from other devices."));
+  }
+
+  function pickDefault() {
+    const remembered = store.get("sheet");
+    if (S.sheets.some((s) => s.sheet_id === remembered)) return remembered;
+    const real = S.sheets.filter((s) => !s.practice && !s.closed);
+    return (real[0] || S.sheets[0]).sheet_id;
+  }
+
+  async function boot() {
+    let db = null;
+    try { db = await window.claude.use("db"); } catch (e) { db = null; }
+    if (!db) return notice("Open this page in Claude", "Your answers save to this page's label store, which only works when the page is opened from claude.ai or the Claude app.");
+    S.db = db;
+    try {
+      const snap = await db.collection("sheets").get();
+      S.sheets = snap.docs.map((d) => ({ sheet_id: d.id, ...d.data() }))
+        .sort((a, b) => String(b.created || "").localeCompare(String(a.created || "")));
+    } catch (e) {
+      return notice("Couldn't reach the label store", "Reload the page to try again.");
+    }
+    if (!S.sheets.length) return notice("No sheets yet", "When an experiment needs your labels, Claude adds a sheet here and tells you in the project.");
+    const picker = $("sheet-picker");
+    picker.innerHTML = "";
+    for (const s of S.sheets) {
+      const o = document.createElement("option");
+      o.value = s.sheet_id;
+      o.textContent = (s.title || s.sheet_id) + (s.practice ? " (practice)" : "") + (s.closed ? " (closed)" : "");
+      picker.append(o);
+    }
+    picker.hidden = S.sheets.length < 2;
+    const first = pickDefault();
+    picker.value = first;
+    picker.onchange = () => openSheet(picker.value);
+    await openSheet(first);
+  }
+
+  $("prev").onclick = () => go(S.idx - 1);
+  $("next").onclick = () => go(S.idx + 1);
+  $("next-2").onclick = () => go(S.idx + 1);
+  $("next-open").onclick = nextOpen;
+  $("toggle-all").onclick = () => {
+    const box = $("overview");
+    box.hidden = !box.hidden;
+    $("toggle-all").setAttribute("aria-expanded", String(!box.hidden));
+    renderOverview();
+  };
+  $("flag").onchange = () => { const it = S.items[S.idx]; save(it, bodyFor(it, { flagged: $("flag").checked })); renderOverview(); };
+  $("note").oninput = () => { clearTimeout(S.noteTimer); S.noteTimer = setTimeout(flushNote, 900); };
+  $("note").onblur = flushNote;
+  document.addEventListener("keydown", (e) => {
+    if (!S.sheet || e.target.closest("textarea, input, select") || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === "ArrowLeft") go(S.idx - 1);
+    else if (e.key === "ArrowRight") go(S.idx + 1);
+    else if (e.key === "y" || e.key === "n") {
+      const l = labelOf(S.items[S.idx]) || {};
+      const open = asked(l.answers || {}).find((q) => !(l.answers || {})[q.id]);
+      if (open) answer(open.id, e.key === "y" ? "yes" : "no");
+    } else return;
+    e.preventDefault();
+  });
+  window.addEventListener("resize", measureBar);
+  window.addEventListener("pagehide", flushNote);
+  measureBar();
+  boot();
+})();
+</script>
