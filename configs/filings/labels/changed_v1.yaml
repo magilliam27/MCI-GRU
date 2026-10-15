@@ -1,0 +1,22 @@
+# One yes/no question: did a risk factor materially change from last year's
+# closest match? The answer key of experiment E4 (filings/experiments/
+# E4-changed-or-not). "No" is the change question's "same" option, word for
+# word from configs/filings/questions_v2.yaml; anything else, a different risk
+# included, is "yes". Do not edit a version once labels exist against it.
+id: changed_v1
+title: Did this risk materially change?
+intro: >-
+  Each item is one risk factor from a company's 10-K this year, beside the most
+  similar risk factor in last year's 10-K. Read both and say whether the risk
+  materially changed. Nothing is highlighted and no one else's answer is shown.
+questions:
+  - id: changed
+    text: Did this risk materially change from last year's version?
+    help: >-
+      Answer no only if it is the same risk, lightly reworded or with updated
+      figures or examples, with nothing material added or removed. Answer yes
+      for anything else, including when last year's text describes a different
+      risk.
+categories:
+  - {label: changed, when: {changed: "yes"}}
+  - {label: unchanged, when: {}}
