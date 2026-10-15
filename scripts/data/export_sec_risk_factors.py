@@ -1,8 +1,8 @@
 """Pull Alphabet's 10-K risk factors from SEC EDGAR for the Jev pilot (#289).
 
-Run from the repository root where EDGAR is reachable (Colab or your machine;
-this cloud's network refuses ``data.sec.gov``). SEC asks every automated client
-to name itself with a contact email and to stay under 10 requests a second::
+Run from the repository root wherever EDGAR is reachable (since 2026-10-13 that
+includes the project's cloud environment). SEC asks every automated client to
+name itself with a contact email and to stay under 10 requests a second::
 
     python -m scripts.data.export_sec_risk_factors \\
         --user-agent "Your Name you@example.com" \\
@@ -23,12 +23,14 @@ What it writes under ``--package-root/filings``:
   the SHA-256 of the document read.
 - ``alphabet_10k_duplicates.csv``: copies of the same report under the other CIK.
 - ``alphabet_risk_factors.jsonl``: one risk factor per line.
-- ``alphabet_extraction_report.csv``: per filing, the encoding read and how many
-  risks and categories were found. Check three years against the filings by
-  hand before scoring.
+- ``alphabet_extraction_report.csv``: per filing, the encoding read, how many
+  risks and categories were found, and how many check findings it raised.
+- ``alphabet_extraction_checks.csv``: one row per finding of the checks in
+  ``mci_gru.filings.checks`` (#292), run on every filing; empty when clean.
 - ``alphabet_risk_factors.meta.json``: provenance.
 
-A filing whose Item 1A cannot be read is reported and stops the manifest.
+A filing whose Item 1A cannot be read, or that fails a check, is reported and
+stops the manifest.
 """
 
 from __future__ import annotations
@@ -49,6 +51,7 @@ from typing import Any
 import pandas as pd
 
 from mci_gru.data.input_manifest import InputFileSpec, write_input_manifest
+from mci_gru.filings.checks import CheckFinding, check_extraction
 from mci_gru.filings.edgar import (
     ALPHABET_CIK,
     GOOGLE_INC_CIK,
@@ -58,7 +61,7 @@ from mci_gru.filings.edgar import (
     filings_from_block,
     submissions_blocks,
 )
-from mci_gru.filings.risk_factors import RiskFactorExtractionError, extract_risk_factors
+from mci_gru.filings.risk_factors import RiskFactorExtractionError, read_item_1a
 
 #: Seconds between requests: SEC's stated ceiling is 10 a second.
 MIN_INTERVAL_SECONDS = 0.11
@@ -188,7 +191,7 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
 
     out = args.package_root / "filings"
     out.mkdir(parents=True, exist_ok=True)
-    index_rows, report_rows, failures = [], [], []
+    index_rows, report_rows, failures, check_rows = [], [], [], []
     risk_path = out / f"{PREFIX}_risk_factors.jsonl"
     with risk_path.open("w", encoding="utf-8") as handle:
         for record in index.filings:
@@ -198,8 +201,8 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
             )
             text, encoding = decode_document(document)
             try:
-                risks = extract_risk_factors(
-                    text,
+                reading = read_item_1a(text)
+                risks = reading.risk_factors(
                     accession_number=record.accession_number,
                     fiscal_year=record.fiscal_year,
                 )
@@ -212,10 +215,21 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
                         "encoding": encoding,
                         "risks": 0,
                         "categories": 0,
+                        "check_findings": 0,
                         "error": str(error),
                     }
                 )
                 continue
+            findings: list[CheckFinding] = check_extraction(reading, risks)
+            for finding in findings:
+                failures.append(f"{record.accession_number}: {finding.check}: {finding.detail}")
+                check_rows.append(
+                    {
+                        "accession_number": record.accession_number,
+                        "fiscal_year": record.fiscal_year,
+                        **finding.to_dict(),
+                    }
+                )
             for risk in risks:
                 handle.write(json.dumps(risk.to_dict(), ensure_ascii=False) + "\n")
             report_rows.append(
@@ -225,6 +239,7 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
                     "encoding": encoding,
                     "risks": len(risks),
                     "categories": len({risk.category for risk in risks if risk.category}),
+                    "check_findings": len(findings),
                     "error": "",
                 }
             )
@@ -232,12 +247,16 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
     index_path = out / f"{PREFIX}_10k_index.csv"
     duplicates_path = out / f"{PREFIX}_10k_duplicates.csv"
     report_path = out / f"{PREFIX}_extraction_report.csv"
+    checks_path = out / f"{PREFIX}_extraction_checks.csv"
     meta_path = out / f"{PREFIX}_risk_factors.meta.json"
     pd.DataFrame(index_rows).to_csv(index_path, index=False)
     pd.DataFrame([record.to_dict() for record in index.duplicates]).to_csv(
         duplicates_path, index=False
     )
     pd.DataFrame(report_rows).to_csv(report_path, index=False)
+    pd.DataFrame(
+        check_rows, columns=["accession_number", "fiscal_year", "check", "risk_id", "detail"]
+    ).to_csv(checks_path, index=False)
     meta = {
         "source": "SEC EDGAR submissions and primary documents",
         "filers": list(FILERS),
@@ -248,6 +267,7 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
         "repository_commit": _git_commit(),
         "filings": len(index.filings),
         "duplicates_dropped": len(index.duplicates),
+        "check_findings": len(check_rows),
         "failures": failures,
     }
     meta_path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
@@ -264,6 +284,7 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
             InputFileSpec(f"filings/{duplicates_path.name}", "Copies dropped as duplicates"),
             InputFileSpec(f"filings/{risk_path.name}", "Item 1A risk factors, one per line"),
             InputFileSpec(f"filings/{report_path.name}", "Extraction counts per filing"),
+            InputFileSpec(f"filings/{checks_path.name}", "Extraction check findings"),
             InputFileSpec(f"filings/{meta_path.name}", "Pull provenance"),
         ]
         snapshot = write_input_manifest(
