@@ -605,7 +605,7 @@ Every feature group must accept the regime overrides that launchers pass, withou
 
 Milestone 2 of #289: how each risk factor changed, the word baseline and the grade.
 
-**Exercises:** `mci_gru.filings.change`, `mci_gru.filings.jev`, `mci_gru.filings.pairing`, `mci_gru.filings.risk_factors`, `scripts.data.score_risk_change_flags`, `scripts.data.score_risk_change_noul`, `scripts.data.score_risk_changes`
+**Exercises:** `mci_gru.filings.change`, `mci_gru.filings.jev`, `mci_gru.filings.pairing`, `mci_gru.filings.risk_factors`, `scripts.data.score_company_risk_changes`, `scripts.data.score_risk_change_flags`, `scripts.data.score_risk_change_noul`, `scripts.data.score_risk_changes`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -648,6 +648,11 @@ Milestone 2 of #289: how each risk factor changed, the word baseline and the gra
 | `test_e6_a_pair_id_the_risk_file_does_not_produce_stops_it` |  |  |
 | `test_e6_a_mean_of_exactly_the_cut_counts_as_changed` |  |  |
 | `test_e6_sends_jev_the_frozen_wording_and_both_criteria` |  |  |
+| `test_e5_pairs_each_company_only_with_its_own_risks` |  |  |
+| `test_e5_baselines_are_frozen_for_every_pair_without_calling_jev` |  |  |
+| `test_e5_stops_when_the_pairs_do_not_reproduce_the_leads_list` |  |  |
+| `test_e5_test_call_then_side_by_side_companies_then_collect` |  |  |
+| `test_e5_collect_never_calls_jev` |  |  |
 
 ## `tests/test_filings_checks.py`
 

@@ -1,7 +1,8 @@
 """Milestone 2 of #289: how each risk factor changed, the word baseline and the grade.
 
 Also E4 (#295): changed or not, from the same answers and word shares; and E6
-(#298): the yes/no "did it materially change?" question, three draws per risk.
+(#298): the yes/no "did it materially change?" question, three draws per risk;
+and E5 (#299): the five-way question on many companies, each paired on its own.
 
 Jev itself is never called: a fake client answers each Choice in the SDK's
 response shape (``choices[name].choice``, ``.confidence``, ``.probabilities``).
@@ -17,6 +18,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import scripts.data.score_company_risk_changes as company_script
 import scripts.data.score_risk_change_flags as flags_script
 import scripts.data.score_risk_change_noul as noul_script
 import scripts.data.score_risk_changes as script
@@ -631,3 +633,116 @@ def test_e6_sends_jev_the_frozen_wording_and_both_criteria(tmp_path, monkeypatch
     question = load_question_set(CONFIGS / "questions_v3.yaml").questions["materially_changed"]
     assert built == [{"instructions": question.instructions, "criteria": dict(question.criteria)}]
     assert client.calls[0]["questions"] == {"materially_changed": built[0]}
+
+
+# --- E5: many companies, each paired on its own (#299) ---------------------
+
+
+def _company_dir(tmp_path: Path) -> Path:
+    """Two companies with word-for-word the same risks, so pairing across them would show.
+
+    In 2025 risk 1 gains words and risk 2 loses some, so the word score must take
+    the larger of the two shares.
+    """
+    data = tmp_path / "companies"
+    data.mkdir()
+    shared = "users advertisers revenue growth competition search mobile cloud devices"
+    for key, accession in (("aaa", "0000000001"), ("bbb", "0000000002")):
+        risks = []
+        for year in (2023, 2024, 2025):
+            for i in range(3):
+                body = f"{shared} topic{i} detail{i} more{i}"
+                if year == 2025 and i == 0:
+                    body += " sanctions tariffs embargo"
+                if year == 2025 and i == 1:
+                    body = f"users advertisers topic{i} detail{i}"
+                risks.append(
+                    RiskFactor(
+                        f"{accession}-{year}", year, i + 1, None, f"Risk {i}", body
+                    ).to_dict()
+                )
+        lines = "\n".join(json.dumps(r) for r in risks) + "\n"
+        (data / f"{key}_risk_factors.jsonl").write_text(lines, encoding="utf-8")
+    return data
+
+
+def _population(tmp_path: Path, data: Path, drop: int = 0) -> Path:
+    pairs = company_script.company_pairs(data)
+    rows = [{"company": k, "pair_id": p.pair_id} for k, items in pairs.items() for p in items]
+    path = tmp_path / "population.csv"
+    pd.DataFrame(rows[drop:]).assign(fiscal_year=0).to_csv(path, index=False)
+    return path
+
+
+def _company_run(tmp_path: Path, *extra: str, client=None, drop: int = 0) -> int:
+    data = (
+        _company_dir(tmp_path) if not (tmp_path / "companies").exists() else tmp_path / "companies"
+    )
+    argv = ["--data-dir", str(data), "--population", str(_population(tmp_path, data, drop))]
+    return company_script.main(
+        [*argv, "--output-dir", str(tmp_path / "e5"), *extra],
+        client=client,
+        sdk_question_for=lambda criteria: criteria,
+    )
+
+
+def test_e5_pairs_each_company_only_with_its_own_risks(tmp_path):
+    pairs = company_script.company_pairs(_company_dir(tmp_path))
+    assert set(pairs) == {"aaa", "bbb"}
+    for key, items in pairs.items():
+        accession = "0000000001" if key == "aaa" else "0000000002"
+        assert len(items) == 6
+        assert all(p.current.accession_number.startswith(accession) for p in items)
+        assert all(p.prior.accession_number.startswith(accession) for p in items)
+
+
+def test_e5_baselines_are_frozen_for_every_pair_without_calling_jev(tmp_path):
+    client = FakeChoiceClient()
+    assert _company_run(tmp_path, client=client) == 0
+    assert client.calls == []
+    table = pd.read_csv(tmp_path / "e5" / "baselines.csv")
+    assert list(table.columns) == list(company_script.BASELINE_COLUMNS)
+    assert len(table) == 12 and set(table["company"]) == {"aaa", "bbb"}
+    expected = table[["words_added", "words_removed"]].max(axis=1)
+    assert table["word_score"].tolist() == pytest.approx(expected.tolist())
+    assert (table["words_removed"] > table["words_added"]).any()
+    assert (table["words_added"] > table["words_removed"]).any()
+    assert table["similarity"].between(0, 1.0000001).all()
+    meta = json.loads((tmp_path / "e5" / "baselines.meta.json").read_text(encoding="utf-8"))
+    assert meta["pairs_by_company"] == {"aaa": 6, "bbb": 6}
+
+
+def test_e5_stops_when_the_pairs_do_not_reproduce_the_leads_list(tmp_path):
+    client = FakeChoiceClient()
+    assert _company_run(tmp_path, "--score", client=client, drop=1) == 1
+    assert client.calls == [] and not (tmp_path / "e5").exists()
+
+
+def test_e5_test_call_then_side_by_side_companies_then_collect(tmp_path):
+    client = FakeChoiceClient(pick="new")
+    assert _company_run(tmp_path, "--score", "--company", "aaa", "--limit", "1", client=client) == 0
+    assert len(client.calls) == 1
+    assert not (tmp_path / "e5" / "scores.csv").exists()
+    loud = FakeChoiceClient()
+    assert _company_run(tmp_path, "--collect", client=loud) == 1
+    assert loud.calls == [] and not (tmp_path / "e5" / "scores.csv").exists()
+    assert _company_run(tmp_path, "--score", "--company", "aaa", client=client) == 0
+    assert _company_run(tmp_path, "--score", "--company", "bbb", client=client) == 0
+    assert len(client.calls) == 12
+    answers = tmp_path / "e5" / "answers"
+    assert sorted(p.name for p in answers.iterdir()) == ["aaa.jsonl", "bbb.jsonl"]
+    assert _company_run(tmp_path, "--collect") == 0
+    assert len(client.calls) == 12
+    scores = pd.read_csv(tmp_path / "e5" / "scores.csv")
+    assert len(scores) == 12 and scores["pair_id"].is_unique
+    assert {f"p_{name}" for name in CHANGE_LABELS} <= set(scores.columns)
+    assert scores["p_new"].eq(0.7).all() and scores["choice"].eq("new").all()
+    meta = json.loads((tmp_path / "e5" / "scores.meta.json").read_text(encoding="utf-8"))
+    assert meta["distinct_calls"] == 12 and meta["models_answering"] == [MODEL]
+
+
+def test_e5_collect_never_calls_jev(tmp_path):
+    assert _company_run(tmp_path, "--score", client=FakeChoiceClient()) == 0
+    loud = FakeChoiceClient()
+    assert _company_run(tmp_path, "--collect", client=loud) == 0
+    assert loud.calls == []
