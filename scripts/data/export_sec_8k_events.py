@@ -197,6 +197,7 @@ def read_event_text(
         ("item_section_empty", f"item {section.code} has no text under its heading")
         for section in sections
         if section.code not in LEFT_OUT_ITEMS
+        and not section.stacked
         and not any(character.isalnum() for character in section.body)
     ]
     if release is not None and not exhibit_text:

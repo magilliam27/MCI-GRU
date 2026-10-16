@@ -107,14 +107,16 @@ def test_a_signature_without_a_title_still_ends_the_last_section():
         ("<div><b>1.01 Entry into a Material Definitive Agreement</b></div>", "1.01"),
         ("<div><b>ITEM 2.05 Costs Associated with Exit Activities</b></div>", "2.05"),
         ("<div>Item 5.02(b) Departure of Directors</div>", "5.02"),
+        ("<div><b>Item 5.02Departure of Directors</b></div>", "5.02"),
         ("<div>1.01 Entry into a Material Definitive Agreement</div>", None),
         ("<div><b>0.75% Notes due 2026</b></div>", None),
         ("<div><b>1.875% Notes due 2026</b></div>", None),
     ],
 )
 def test_which_lines_open_an_item_section(line, code):
-    # Caterpillar heads "1.01 Entry into ..." in bold with no "Item"; Coca-Cola's
-    # cover lists bold notes such as "0.75% Notes due 2026".
+    # Caterpillar heads "1.01 Entry into ..." in bold with no "Item"; Agilent runs
+    # the title on with no space; Coca-Cola's cover lists bold notes such as
+    # "0.75% Notes due 2026".
     sections = item_sections(_eight_k(line + "<div>Terms were agreed.</div>"))
     assert [section.code for section in sections] == ([code] if code else [])
 
@@ -130,6 +132,28 @@ def test_one_item_may_have_several_sections():
     assert [(section.code, section.body) for section in sections] == [
         ("5.02", "A director retired."),
         ("5.02", "A director joined."),
+    ]
+
+
+def test_a_heading_followed_straight_by_another_items_shares_its_text():
+    # Fifth Third heads "Item 1.01" and "Item 2.03" over one account of a deal.
+    sections = item_sections(
+        _eight_k(
+            "<div><b>Item 1.01 Entry into a Material Definitive Agreement</b></div>"
+            "<div><b>Item 2.03 Creation of a Direct Financial Obligation</b></div>"
+            "<div>The bank issued notes.</div>"
+            "<div><b>Item 5.02 Departure of Directors</b></div>"
+            "<div><b>Item 9.01 Financial Statements and Exhibits</b></div><div>99.1</div>"
+            "<div><b>Item 8.01 Other Events</b></div>"
+        )
+    )
+    assert [(section.code, section.body, section.stacked) for section in sections] == [
+        ("1.01", "", True),
+        ("2.03", "The bank issued notes.", False),
+        # Item 9.01's text is left out, and the signature ends the last item.
+        ("5.02", "", False),
+        ("9.01", "99.1", False),
+        ("8.01", "", False),
     ]
 
 
@@ -438,6 +462,21 @@ def test_an_item_with_no_text_blocks_the_manifest(tmp_path, capsys):
     assert "BLOCKING 0000000077-24-000003: item_section_empty" in capsys.readouterr().out
     checks = pd.read_csv(tmp_path / "package" / "8k_events_checks.csv")
     assert checks["check"].tolist() == ["item_section_empty"]
+
+
+def test_an_item_heading_stacked_on_the_next_items_passes_the_checks(tmp_path):
+    responses = _acme()
+    url = f"{BASE}/000000007724000003/e2.htm"
+    responses[url] = responses[url].replace(
+        b"<div>Jane Smith",
+        b"<div><b>Item 5.02(e) Compensatory Arrangements.</b></div><div>Jane Smith",
+    )
+    assert _run(tmp_path, Transport(responses)) == 0
+    event = json.loads((tmp_path / "package" / "8k_events.jsonl").read_text())
+    assert event["text"].startswith(
+        "Item 5.02. Departure of Directors or Certain Officers.\n\n"
+        "Item 5.02(e) Compensatory Arrangements.\nJane Smith resigned"
+    )
 
 
 def test_a_listed_item_with_no_section_blocks_the_manifest(tmp_path, capsys):

@@ -725,6 +725,7 @@ The EDGAR filing index and when each filing was knowable (#289).
 | `test_a_signature_without_a_title_still_ends_the_last_section` |  |  |
 | `test_which_lines_open_an_item_section` |  | parametrize |
 | `test_one_item_may_have_several_sections` |  |  |
+| `test_a_heading_followed_straight_by_another_items_shares_its_text` |  |  |
 | `test_edgars_wrapper_header_is_not_text` |  |  |
 | `test_the_press_release_is_exhibit_99_1_or_a_lone_unnumbered_99` |  | parametrize |
 | `test_event_text_leaves_out_the_exhibit_list_and_adds_the_press_release` |  |  |
@@ -735,6 +736,7 @@ The EDGAR filing index and when each filing was knowable (#289).
 | `test_a_year_ending_in_january_is_that_years_fiscal_year` |  |  |
 | `test_an_event_carries_its_text_and_only_what_was_public_when_it_was_filed` |  |  |
 | `test_an_item_with_no_text_blocks_the_manifest` |  |  |
+| `test_an_item_heading_stacked_on_the_next_items_passes_the_checks` |  |  |
 | `test_a_listed_item_with_no_section_blocks_the_manifest` |  |  |
 | `test_the_index_page_gives_the_acceptance_time_in_eastern_time` |  | parametrize |
 | `test_an_index_page_without_an_acceptance_time_gives_none` |  |  |

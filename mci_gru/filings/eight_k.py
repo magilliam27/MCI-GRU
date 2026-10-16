@@ -56,7 +56,9 @@ FISCAL_YEAR_DAYS = (350, 380)
 #: The last January day on which a 52- or 53-week fiscal year can end.
 LAST_DAY_OF_YEAR_END_WEEK = 7
 
-_ITEM_HEADING = re.compile(r"^(item\s*)?(\d)\s*\.\s*(\d{2})(?=\b|\()", re.I)
+#: An item number ends at a word boundary, a bracket ("5.02(b)") or the title
+#: run on without a space (Agilent's "Item 5.02Departure of Directors").
+_ITEM_HEADING = re.compile(r"^(item\s*)?(\d)\s*\.\s*(\d{2})(?=\b|\(|[A-Za-z])", re.I)
 #: After a bare item number, the item's title ("1.01 Entry into ...").
 _BARE_ITEM_TITLE = re.compile(r"^\d\.\d{2}\s+[A-Z]")
 #: The signature block, by its title or, when a filing gives it none
@@ -89,11 +91,18 @@ def is_event(form: str, items: Iterable[str]) -> bool:
 
 @dataclass(frozen=True)
 class ItemSection:
-    """One item of an 8-K: its code, heading line and the text under it."""
+    """One item of an 8-K: its code, heading line and the text under it.
+
+    ``stacked`` marks a heading followed straight by another item's heading,
+    which shares that item's text (Fifth Third heads "Item 1.01" and "Item 2.03"
+    over one account of a deal). A heading followed by item 9.01's is not
+    stacked: that text is left out.
+    """
 
     code: str
     heading: str
     body: str
+    stacked: bool = False
 
     @property
     def text(self) -> str:
@@ -107,9 +116,13 @@ def item_sections(html: str) -> list[ItemSection]:
     heading = ""
     body: list[str] = []
 
-    def _close() -> None:
+    def _close(next_code: str | None = None) -> None:
         if code is not None:
-            sections.append(ItemSection(code, heading, "\n".join(body)))
+            text = "\n".join(body)
+            stacked = next_code not in (None, *LEFT_OUT_ITEMS) and not any(
+                character.isalnum() for character in text
+            )
+            sections.append(ItemSection(code, heading, text, stacked))
 
     for block in html_blocks(_SGML_HEADER.sub("", html)):
         match = _ITEM_HEADING.match(block.text)
@@ -123,8 +136,9 @@ def item_sections(html: str) -> list[ItemSection]:
                 or (block.emphasised and _BARE_ITEM_TITLE.match(block.text) is not None)
             )
         ):
-            _close()
-            code, heading, body = f"{match.group(2)}.{match.group(3)}", block.text, []
+            next_code = f"{match.group(2)}.{match.group(3)}"
+            _close(next_code)
+            code, heading, body = next_code, block.text, []
         elif code is not None and _SIGNATURE.match(block.text):
             _close()
             code = None
