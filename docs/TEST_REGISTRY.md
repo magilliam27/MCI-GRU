@@ -605,7 +605,7 @@ Every feature group must accept the regime overrides that launchers pass, withou
 
 Milestone 2 of #289: how each risk factor changed, the word baseline and the grade.
 
-**Exercises:** `mci_gru.filings.change`, `mci_gru.filings.jev`, `mci_gru.filings.pairing`, `mci_gru.filings.risk_factors`, `scripts.data.score_risk_changes`
+**Exercises:** `mci_gru.filings.change`, `mci_gru.filings.jev`, `mci_gru.filings.pairing`, `mci_gru.filings.risk_factors`, `scripts.data.score_change_direction`, `scripts.data.score_company_risk_changes`, `scripts.data.score_risk_change_flags`, `scripts.data.score_risk_change_noul`, `scripts.data.score_risk_changes`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -631,6 +631,35 @@ Milestone 2 of #289: how each risk factor changed, the word baseline and the gra
 | `test_step_one_writes_the_sheet_and_guide_and_seals_the_rest` |  |  |
 | `test_score_then_grade_end_to_end` |  |  |
 | `test_an_existing_change_sheet_is_kept` |  |  |
+| `test_e4_cuts_are_the_values_frozen_before_its_labels` |  |  |
+| `test_jev_calls_changed_only_below_its_cut` |  |  |
+| `test_word_score_is_the_larger_share_and_changed_from_its_cut_up` |  |  |
+| `test_flags_keep_every_pair_in_order_with_the_agreed_columns` |  |  |
+| `test_a_pair_without_a_jev_answer_stops_the_flags` |  |  |
+| `test_e4_scores_come_from_the_e2_answers_without_calling_jev` |  |  |
+| `test_a_pair_missing_from_the_answers_stops_e4_with_no_output` |  |  |
+| `test_an_unfinished_answers_file_is_refused_and_left_alone` |  |  |
+| `test_e6_cut_is_the_value_on_its_card` |  |  |
+| `test_e6_without_score_checks_pairs_and_calls_nothing` |  |  |
+| `test_e6_scores_three_draws_in_design_order_with_both_cuts` |  |  |
+| `test_e6_draws_are_distinct_calls_and_the_mean_decides` |  |  |
+| `test_e6_test_call_is_one_call_writes_no_scores_and_is_reused` |  |  |
+| `test_e6_reads_only_the_pair_id_column_of_the_design` |  |  |
+| `test_e6_a_pair_id_the_risk_file_does_not_produce_stops_it` |  |  |
+| `test_e6_a_mean_of_exactly_the_cut_counts_as_changed` |  |  |
+| `test_e6_sends_jev_the_frozen_wording_and_both_criteria` |  |  |
+| `test_e5_pairs_each_company_only_with_its_own_risks` |  |  |
+| `test_e5_baselines_are_frozen_for_every_pair_without_calling_jev` |  |  |
+| `test_e5_stops_when_the_pairs_do_not_reproduce_the_leads_list` |  |  |
+| `test_e5_test_call_then_side_by_side_companies_then_collect` |  |  |
+| `test_e5_collect_never_calls_jev` |  |  |
+| `test_e8_questions_offer_the_cards_option_sets_each_described` |  |  |
+| `test_lm_negative_list_keeps_only_words_currently_on_it` |  |  |
+| `test_negative_share_counts_every_occurrence` |  |  |
+| `test_e8_baselines_follow_the_list_with_both_signs_right` |  |  |
+| `test_e8_refuses_any_dictionary_but_the_frozen_one` |  |  |
+| `test_e8_a_repeated_or_unknown_listed_pair_stops_it` |  | parametrize |
+| `test_e8_test_call_then_each_question_on_its_own_then_collect` |  |  |
 
 ## `tests/test_filings_checks.py`
 
@@ -723,6 +752,14 @@ The frozen question set, the answer cache and the blind label sheet (#289).
 | `test_label_rows_are_shuffled_across_strata` |  |  |
 | `test_label_sample_covers_every_year_and_both_rank_strata_with_weights` |  |  |
 | `test_label_sample_is_reproducible_for_a_seed` |  |  |
+| `test_v3_question_is_the_tuned_wording_word_for_word` |  |  |
+| `test_the_v3_instructions_name_the_state_fields_jev_is_given` |  |  |
+| `test_unquoted_yaml_true_and_false_keys_read_as_the_sdk_names` |  |  |
+| `test_criteria_other_than_described_true_or_false_are_refused` |  | parametrize |
+| `test_only_a_noul_takes_criteria` |  |  |
+| `test_a_noul_without_criteria_keeps_milestone_one_spec` |  |  |
+| `test_each_draw_is_a_fresh_call_and_a_rerun_asks_none_again` |  |  |
+| `test_without_a_draw_the_cache_key_is_milestone_ones` |  |  |
 
 ## `tests/test_filings_labelling.py`
 

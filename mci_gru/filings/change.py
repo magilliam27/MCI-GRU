@@ -50,6 +50,7 @@ from mci_gru.filings.pairing import pair_consecutive_years
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
+    from pathlib import Path
 
     from mci_gru.filings.pairing import RiskPair
     from mci_gru.filings.risk_factors import RiskFactor
@@ -59,6 +60,21 @@ CHANGE_LABELS = ("same", "broadened", "narrowed", "reworked", "new")
 NEW_SIMILARITY = 0.25
 CHANGED_SHARE = 0.20
 BOOTSTRAP_DRAWS = 2000
+#: E4's two-way cuts (changed or not), chosen 2026-10-15 by the research lead as
+#: each method's best balanced accuracy on E2's 76 labels, the same procedure for
+#: both, and frozen before any E4 label existed. Jev: changed when its probability
+#: for ``same`` is under ``JEV_SAME_CUT``. Words: changed when the larger of the
+#: shares added and removed reaches ``WORD_SCORE_CUT``.
+JEV_SAME_CUT = 0.05
+WORD_SCORE_CUT = 0.04
+#: E6's cut, fixed on its card before any E6 label: Jev calls a risk changed when
+#: the mean of its three draws of "did it materially change?" is at least 0.5.
+JEV_CHANGED_CUT = 0.5
+FLAG_COLUMNS = ("pair_id", "p_same", "word_score", "jev_changed", "word_changed")
+#: E8's two questions (configs/filings/questions_v4.yaml): is the change bad, good
+#: or neutral for the company, and the finer list of what changed.
+DIRECTION_LABELS = ("worse", "better", "neutral")
+KIND_LABELS = ("materialized", "new_exposure", "escalated", "eased", "neutral")
 LABEL_COLUMNS = (
     "label_id",
     "current_year",
@@ -102,6 +118,47 @@ def baseline_change(similarity: float, added: float, removed: float) -> str:
     if shrank:
         return "narrowed"
     return "same"
+
+
+def word_score(table: pd.DataFrame) -> pd.Series:
+    """E4's word score: the larger of the shares of distinct words added and removed."""
+    return table[["words_added", "words_removed"]].max(axis=1)
+
+
+def change_flags(table: pd.DataFrame, choices: pd.DataFrame) -> pd.DataFrame:
+    """E4's call for every pair: changed or not, by Jev's ``same`` probability and by words.
+
+    ``table`` is :func:`pair_table`'s output and ``choices`` holds ``pair_id`` and
+    ``p_same``. Every pair must have a Jev answer: a pair left blank would be
+    graded as neither changed nor unchanged, so it stops the run instead.
+    """
+    flags = table[["pair_id", "words_added", "words_removed"]].merge(
+        choices[["pair_id", "p_same"]], on="pair_id", how="left", validate="one_to_one"
+    )
+    unscored = flags.loc[flags["p_same"].isna(), "pair_id"].tolist()
+    if unscored:
+        raise ChangeGradingError(f"{len(unscored)} pairs have no Jev answer: {unscored[:3]}")
+    flags["word_score"] = word_score(flags)
+    flags["jev_changed"] = flags["p_same"] < JEV_SAME_CUT
+    flags["word_changed"] = flags["word_score"] >= WORD_SCORE_CUT
+    return flags[list(FLAG_COLUMNS)]
+
+
+def lm_negative_words(path: Path) -> frozenset[str]:
+    """The Loughran-McDonald negative list, lower-cased, from its master dictionary CSV.
+
+    The ``Negative`` column holds the year a word joined the list, or minus the
+    year it left, so only positive years are on the current list.
+    """
+    table = pd.read_csv(path, usecols=["Word", "Negative"], keep_default_na=False)
+    listed = table.loc[table["Negative"].astype(int) > 0, "Word"]
+    return frozenset(str(word).lower() for word in listed)
+
+
+def negative_share(text: str, negative: frozenset[str]) -> float:
+    """The share of a text's words (every occurrence) that are on the negative list."""
+    words = _WORD.findall(text.lower())
+    return sum(word in negative for word in words) / len(words) if words else 0.0
 
 
 def pair_table(pairs: Sequence[RiskPair]) -> pd.DataFrame:
@@ -156,13 +213,18 @@ def score_choices(
     client: Any,
     cache: AnswerCache,
     model: str,
+    labels: Sequence[str] = CHANGE_LABELS,
 ) -> list[ScoredChoice]:
-    """Ask the Choice of every pair, options shuffled per pair, from the cache when held."""
+    """Ask the Choice of every pair, options shuffled per pair, from the cache when held.
+
+    ``labels`` are the options the question must offer, exactly: E2's five change
+    kinds unless another question set is being scored.
+    """
     if question.kind != "choice":
         raise QuestionSetError(f"{question.question_id}: only Choice questions are scored here")
-    if sorted(name for name, _ in question.options) != sorted(CHANGE_LABELS):
+    if sorted(name for name, _ in question.options) != sorted(labels):
         raise QuestionSetError(
-            f"{question.question_id}: options must be exactly {', '.join(CHANGE_LABELS)}"
+            f"{question.question_id}: options must be exactly {', '.join(labels)}"
         )
     scored: list[ScoredChoice] = []
     for pair in pairs:

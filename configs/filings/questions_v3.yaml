@@ -1,0 +1,26 @@
+# Frozen question set for experiment E6 of the 10-K research plan (#298): did a
+# risk factor materially change from last year? Do not edit a frozen version: a
+# changed question is a new file (questions_v4.yaml).
+#
+# Copied word for word from the tuning thread's best variant (`n_criteria` in
+# jev_tuning/runs/2026-10-15-knobs/run.py). The state is built in code
+# (mci_gru.filings.jev.pair_state): a current-year risk factor and its closest
+# prior-year risk factor by TF-IDF, each as heading and text, as in E2. The
+# instructions name those two state fields. Each pair is asked three times
+# (independent draws, each its own cache key) and the probabilities averaged.
+version: 3
+model: jev-1.13.0
+questions:
+  materially_changed:
+    kind: noul
+    instructions: >-
+      Compared with `prior_year_risk_factor`, did `current_risk_factor`
+      materially change?
+    criteria:
+      "true": >-
+        Material scope was added or dropped, such as a driver, exposure,
+        product, jurisdiction, event or consequence, or last year's text
+        describes a different risk.
+      "false": >-
+        The same risk, only lightly reworded or with updated figures or
+        examples; nothing material was added or removed.

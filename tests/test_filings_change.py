@@ -1,5 +1,9 @@
 """Milestone 2 of #289: how each risk factor changed, the word baseline and the grade.
 
+Also E4 (#295): changed or not, from the same answers and word shares; and E6
+(#298): the yes/no "did it materially change?" question, three draws per risk;
+and E5 (#299): the five-way question on many companies, each paired on its own.
+
 Jev itself is never called: a fake client answers each Choice in the SDK's
 response shape (``choices[name].choice``, ``.confidence``, ``.probabilities``).
 """
@@ -14,14 +18,26 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import scripts.data.score_change_direction as direction_script
+import scripts.data.score_company_risk_changes as company_script
+import scripts.data.score_risk_change_flags as flags_script
+import scripts.data.score_risk_change_noul as noul_script
 import scripts.data.score_risk_changes as script
 from mci_gru.filings.change import (
     CHANGE_LABELS,
+    DIRECTION_LABELS,
+    JEV_CHANGED_CUT,
+    JEV_SAME_CUT,
+    KIND_LABELS,
+    WORD_SCORE_CUT,
     ChangeGradingError,
     balanced_accuracy,
     baseline_change,
+    change_flags,
     change_label_sheet,
     grade_changes,
+    lm_negative_words,
+    negative_share,
     option_order,
     pair_table,
     read_change_labels,
@@ -399,3 +415,483 @@ def test_an_existing_change_sheet_is_kept(tmp_path):
     labelled.to_csv(sheet, index=False)
     assert _run(tmp_path) == 0
     assert (pd.read_csv(sheet, dtype=str)["change"] == "new").all()
+
+
+# --- E4: changed or not (#295) -------------------------------------------
+
+
+def test_e4_cuts_are_the_values_frozen_before_its_labels():
+    assert (JEV_SAME_CUT, WORD_SCORE_CUT) == (0.05, 0.04)
+
+
+def _flag_inputs(rows: list[tuple[float, float, float]]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    ids = [f"p{i}" for i in range(len(rows))]
+    table = pd.DataFrame(
+        {
+            "pair_id": ids,
+            "words_added": [added for added, _, _ in rows],
+            "words_removed": [removed for _, removed, _ in rows],
+        }
+    )
+    return table, pd.DataFrame({"pair_id": ids, "p_same": [p for _, _, p in rows]})
+
+
+def test_jev_calls_changed_only_below_its_cut():
+    table, choices = _flag_inputs([(0, 0, 0.049), (0, 0, 0.05), (0, 0, 0.5)])
+    assert change_flags(table, choices)["jev_changed"].tolist() == [True, False, False]
+
+
+def test_word_score_is_the_larger_share_and_changed_from_its_cut_up():
+    table, choices = _flag_inputs(
+        [(0.04, 0.0, 1), (0.0, 0.04, 1), (0.039, 0.039, 1), (0.1, 0.3, 1)]
+    )
+    flags = change_flags(table, choices)
+    assert flags["word_score"].tolist() == [0.04, 0.04, 0.039, 0.3]
+    assert flags["word_changed"].tolist() == [True, True, False, True]
+
+
+def test_flags_keep_every_pair_in_order_with_the_agreed_columns():
+    table, choices = _flag_inputs([(0, 0, 0.9), (0.5, 0, 0.0)])
+    flags = change_flags(table, choices.iloc[::-1])
+    assert list(flags.columns) == ["pair_id", "p_same", "word_score", "jev_changed", "word_changed"]
+    assert flags["pair_id"].tolist() == ["p0", "p1"]
+    assert flags["p_same"].tolist() == [0.9, 0.0]
+
+
+def test_a_pair_without_a_jev_answer_stops_the_flags():
+    table, choices = _flag_inputs([(0, 0, 0.9), (0, 0, 0.1)])
+    with pytest.raises(ChangeGradingError, match="1 pairs have no Jev answer"):
+        change_flags(table, choices.iloc[:1])
+
+
+def _flag_run(tmp_path: Path, answers: Path) -> int:
+    return flags_script.main(
+        [
+            "--risk-factors",
+            str(tmp_path / "risks.jsonl"),
+            "--answers",
+            str(answers),
+            "--output-dir",
+            str(tmp_path / "e4"),
+        ]
+    )
+
+
+def test_e4_scores_come_from_the_e2_answers_without_calling_jev(tmp_path):
+    assert _run(tmp_path, "--score", client=FakeChoiceClient(pick="broadened")) == 0
+    answers = tmp_path / "out" / "sealed" / "answers.jsonl"
+    before = answers.read_bytes()
+    assert _flag_run(tmp_path, answers) == 0
+    assert answers.read_bytes() == before
+    scores = pd.read_csv(tmp_path / "e4" / "scores.csv")
+    pairs = pd.read_csv(tmp_path / "out" / "sealed" / "pairs.csv")
+    assert scores["pair_id"].tolist() == pairs["pair_id"].tolist()
+    assert scores["p_same"].eq(0.075).all() and not scores["jev_changed"].any()
+    word = pairs[["words_added", "words_removed"]].max(axis=1)
+    assert scores["word_score"].tolist() == pytest.approx(word.tolist())
+    assert scores["word_changed"].tolist() == (word >= WORD_SCORE_CUT).tolist()
+    meta = json.loads((tmp_path / "e4" / "scores.meta.json").read_text(encoding="utf-8"))
+    assert meta["pairs"] == 12 and meta["model"] == MODEL
+
+
+def test_a_pair_missing_from_the_answers_stops_e4_with_no_output(tmp_path):
+    assert _run(tmp_path, "--score", "--limit", "11", client=FakeChoiceClient()) == 0
+    assert _flag_run(tmp_path, tmp_path / "out" / "sealed" / "answers.jsonl") == 1
+    assert not (tmp_path / "e4" / "scores.csv").exists()
+
+
+def test_an_unfinished_answers_file_is_refused_and_left_alone(tmp_path):
+    assert _run(tmp_path, "--score", client=FakeChoiceClient()) == 0
+    answers = tmp_path / "out" / "sealed" / "answers.jsonl"
+    torn = answers.read_bytes() + b'{"key": "unfinished'
+    answers.write_bytes(torn)
+    assert _flag_run(tmp_path, answers) == 1
+    assert answers.read_bytes() == torn
+
+
+# --- E6: did it materially change? three draws (#298) ----------------------
+
+
+class FakeNoulClient:
+    """Answers each Noul with the next probability in a cycle, recording each call."""
+
+    def __init__(self, probabilities=(0.2, 0.6, 0.7), model: str = MODEL) -> None:
+        self.calls: list[dict] = []
+        self.probabilities = probabilities
+        self.model = model
+
+    def system_one(self, *, state, questions):
+        p = self.probabilities[len(self.calls) % len(self.probabilities)]
+        self.calls.append({"state": state, "questions": questions})
+        return SimpleNamespace(
+            model=self.model,
+            request_id=f"req-{len(self.calls)}",
+            usage=SimpleNamespace(input_tokens=40, output_tokens=0),
+            nouls={name: SimpleNamespace(noul=p) for name in questions},
+        )
+
+
+def test_e6_cut_is_the_value_on_its_card():
+    assert JEV_CHANGED_CUT == 0.5
+
+
+def _noul_run(tmp_path: Path, *extra: str, client=None, ids=None) -> int:
+    risks = _risk_file(tmp_path)
+    if not (tmp_path / "out" / "sealed" / "pairs.csv").exists():
+        assert _run(tmp_path) == 0
+    pairs = pd.read_csv(tmp_path / "out" / "sealed" / "pairs.csv")
+    chosen = pairs["pair_id"].iloc[[7, 2, 9]] if ids is None else pd.Series(ids)
+    design = tmp_path / "design.csv"
+    pd.DataFrame({"label_id": ["X1", "X2", "X3"][: len(chosen)], "pair_id": chosen}).to_csv(
+        design, index=False
+    )
+    argv = ["--risk-factors", str(risks), "--pair-ids", str(design)]
+    return noul_script.main(
+        [*argv, "--output-dir", str(tmp_path / "e6"), *extra],
+        client=client,
+        sdk_question=object(),
+    )
+
+
+def test_e6_without_score_checks_pairs_and_calls_nothing(tmp_path):
+    client = FakeNoulClient()
+    assert _noul_run(tmp_path, client=client) == 0
+    assert client.calls == [] and not (tmp_path / "e6").exists()
+
+
+def test_e6_scores_three_draws_in_design_order_with_both_cuts(tmp_path):
+    client = FakeNoulClient(probabilities=(0.2, 0.6, 0.7))
+    assert _noul_run(tmp_path, "--score", client=client) == 0
+    assert len(client.calls) == 9
+    scores = pd.read_csv(tmp_path / "e6" / "scores.csv")
+    pairs = pd.read_csv(tmp_path / "out" / "sealed" / "pairs.csv").set_index("pair_id")
+    assert scores["pair_id"].tolist() == pairs.index[[7, 2, 9]].tolist()
+    draws = scores[["p_changed_draw1", "p_changed_draw2", "p_changed_draw3"]]
+    assert scores["p_changed_mean"].tolist() == pytest.approx(draws.mean(axis=1).tolist())
+    assert scores["jev_changed"].tolist() == (scores["p_changed_mean"] >= 0.5).tolist()
+    word = pairs.loc[scores["pair_id"], ["words_added", "words_removed"]].max(axis=1)
+    assert scores["word_score"].tolist() == pytest.approx(word.tolist())
+    assert scores["word_changed"].tolist() == (word >= WORD_SCORE_CUT).tolist()
+
+
+def test_e6_draws_are_distinct_calls_and_the_mean_decides(tmp_path):
+    # Draw 1 asks all three pairs, then draw 2, then draw 3, so a cycle of four
+    # answers gives each pair different values per draw. Draw 1 alone would call
+    # the second pair changed and draw 3 alone the first; the mean calls the third.
+    client = FakeNoulClient(probabilities=(0.1, 0.9, 0.9, 0.3))
+    assert _noul_run(tmp_path, "--score", client=client) == 0
+    scores = pd.read_csv(tmp_path / "e6" / "scores.csv")
+    assert scores["p_changed_draw1"].tolist() == [0.1, 0.9, 0.9]
+    assert scores["p_changed_draw2"].tolist() == [0.3, 0.1, 0.9]
+    assert scores["p_changed_draw3"].tolist() == [0.9, 0.3, 0.1]
+    assert scores["p_changed_mean"].tolist() == pytest.approx([1.3 / 3, 1.3 / 3, 1.9 / 3])
+    assert scores["jev_changed"].tolist() == [False, False, True]
+
+
+def test_e6_test_call_is_one_call_writes_no_scores_and_is_reused(tmp_path):
+    client = FakeNoulClient()
+    assert _noul_run(tmp_path, "--score", "--limit", "1", "--draws", "1", client=client) == 0
+    assert len(client.calls) == 1 and not (tmp_path / "e6" / "scores.csv").exists()
+    assert _noul_run(tmp_path, "--score", client=client) == 0
+    assert len(client.calls) == 9
+
+
+def test_e6_reads_only_the_pair_id_column_of_the_design(tmp_path, monkeypatch):
+    read = []
+    real = pd.read_csv
+
+    def spy(path, *args, **kwargs):
+        if Path(path).name == "design.csv":
+            read.append(kwargs.get("usecols"))
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(noul_script.pd, "read_csv", spy)
+    assert _noul_run(tmp_path, client=FakeNoulClient()) == 0
+    assert read == [["pair_id"]]
+
+
+def test_e6_a_pair_id_the_risk_file_does_not_produce_stops_it(tmp_path):
+    client = FakeNoulClient()
+    assert _noul_run(tmp_path, "--score", client=client, ids=["nope|nope"]) == 1
+    assert client.calls == []
+
+
+def test_e6_a_mean_of_exactly_the_cut_counts_as_changed(tmp_path):
+    assert _noul_run(tmp_path, "--score", client=FakeNoulClient(probabilities=(0.5,))) == 0
+    assert pd.read_csv(tmp_path / "e6" / "scores.csv")["jev_changed"].all()
+
+
+def test_e6_sends_jev_the_frozen_wording_and_both_criteria(tmp_path, monkeypatch):
+    built = []
+    monkeypatch.setattr(noul_script, "Noul", lambda **kwargs: built.append(kwargs) or kwargs)
+    risks = _risk_file(tmp_path)
+    assert _run(tmp_path) == 0
+    pair_id = pd.read_csv(tmp_path / "out" / "sealed" / "pairs.csv")["pair_id"].iloc[0]
+    design = tmp_path / "design.csv"
+    pd.DataFrame({"pair_id": [pair_id]}).to_csv(design, index=False)
+    client = FakeNoulClient()
+    argv = ["--risk-factors", str(risks), "--pair-ids", str(design)]
+    assert (
+        noul_script.main([*argv, "--output-dir", str(tmp_path / "e6"), "--score"], client=client)
+        == 0
+    )
+    question = load_question_set(CONFIGS / "questions_v3.yaml").questions["materially_changed"]
+    assert built == [{"instructions": question.instructions, "criteria": dict(question.criteria)}]
+    assert client.calls[0]["questions"] == {"materially_changed": built[0]}
+
+
+# --- E5: many companies, each paired on its own (#299) ---------------------
+
+
+def _company_dir(tmp_path: Path) -> Path:
+    """Two companies with word-for-word the same risks, so pairing across them would show.
+
+    In 2025 risk 1 gains words and risk 2 loses some, so the word score must take
+    the larger of the two shares.
+    """
+    data = tmp_path / "companies"
+    data.mkdir()
+    shared = "users advertisers revenue growth competition search mobile cloud devices"
+    for key, accession in (("aaa", "0000000001"), ("bbb", "0000000002")):
+        risks = []
+        for year in (2023, 2024, 2025):
+            for i in range(3):
+                body = f"{shared} topic{i} detail{i} more{i}"
+                if year == 2025 and i == 0:
+                    body += " sanctions tariffs embargo"
+                if year == 2025 and i == 1:
+                    body = f"users advertisers topic{i} detail{i}"
+                risks.append(
+                    RiskFactor(
+                        f"{accession}-{year}", year, i + 1, None, f"Risk {i}", body
+                    ).to_dict()
+                )
+        lines = "\n".join(json.dumps(r) for r in risks) + "\n"
+        (data / f"{key}_risk_factors.jsonl").write_text(lines, encoding="utf-8")
+    return data
+
+
+def _population(tmp_path: Path, data: Path, drop: int = 0) -> Path:
+    pairs = company_script.company_pairs(data)
+    rows = [{"company": k, "pair_id": p.pair_id} for k, items in pairs.items() for p in items]
+    path = tmp_path / "population.csv"
+    pd.DataFrame(rows[drop:]).assign(fiscal_year=0).to_csv(path, index=False)
+    return path
+
+
+def _company_run(tmp_path: Path, *extra: str, client=None, drop: int = 0) -> int:
+    data = (
+        _company_dir(tmp_path) if not (tmp_path / "companies").exists() else tmp_path / "companies"
+    )
+    argv = ["--data-dir", str(data), "--population", str(_population(tmp_path, data, drop))]
+    return company_script.main(
+        [*argv, "--output-dir", str(tmp_path / "e5"), *extra],
+        client=client,
+        sdk_question_for=lambda criteria: criteria,
+    )
+
+
+def test_e5_pairs_each_company_only_with_its_own_risks(tmp_path):
+    pairs = company_script.company_pairs(_company_dir(tmp_path))
+    assert set(pairs) == {"aaa", "bbb"}
+    for key, items in pairs.items():
+        accession = "0000000001" if key == "aaa" else "0000000002"
+        assert len(items) == 6
+        assert all(p.current.accession_number.startswith(accession) for p in items)
+        assert all(p.prior.accession_number.startswith(accession) for p in items)
+
+
+def test_e5_baselines_are_frozen_for_every_pair_without_calling_jev(tmp_path):
+    client = FakeChoiceClient()
+    assert _company_run(tmp_path, client=client) == 0
+    assert client.calls == []
+    table = pd.read_csv(tmp_path / "e5" / "baselines.csv")
+    assert list(table.columns) == list(company_script.BASELINE_COLUMNS)
+    assert len(table) == 12 and set(table["company"]) == {"aaa", "bbb"}
+    expected = table[["words_added", "words_removed"]].max(axis=1)
+    assert table["word_score"].tolist() == pytest.approx(expected.tolist())
+    assert (table["words_removed"] > table["words_added"]).any()
+    assert (table["words_added"] > table["words_removed"]).any()
+    assert table["similarity"].between(0, 1.0000001).all()
+    meta = json.loads((tmp_path / "e5" / "baselines.meta.json").read_text(encoding="utf-8"))
+    assert meta["pairs_by_company"] == {"aaa": 6, "bbb": 6}
+
+
+def test_e5_stops_when_the_pairs_do_not_reproduce_the_leads_list(tmp_path):
+    client = FakeChoiceClient()
+    assert _company_run(tmp_path, "--score", client=client, drop=1) == 1
+    assert client.calls == [] and not (tmp_path / "e5").exists()
+
+
+def test_e5_test_call_then_side_by_side_companies_then_collect(tmp_path):
+    client = FakeChoiceClient(pick="new")
+    assert _company_run(tmp_path, "--score", "--company", "aaa", "--limit", "1", client=client) == 0
+    assert len(client.calls) == 1
+    assert not (tmp_path / "e5" / "scores.csv").exists()
+    loud = FakeChoiceClient()
+    assert _company_run(tmp_path, "--collect", client=loud) == 1
+    assert loud.calls == [] and not (tmp_path / "e5" / "scores.csv").exists()
+    assert _company_run(tmp_path, "--score", "--company", "aaa", client=client) == 0
+    assert _company_run(tmp_path, "--score", "--company", "bbb", client=client) == 0
+    assert len(client.calls) == 12
+    answers = tmp_path / "e5" / "answers"
+    assert sorted(p.name for p in answers.iterdir()) == ["aaa.jsonl", "bbb.jsonl"]
+    assert _company_run(tmp_path, "--collect") == 0
+    assert len(client.calls) == 12
+    scores = pd.read_csv(tmp_path / "e5" / "scores.csv")
+    assert len(scores) == 12 and scores["pair_id"].is_unique
+    assert {f"p_{name}" for name in CHANGE_LABELS} <= set(scores.columns)
+    assert scores["p_new"].eq(0.7).all() and scores["choice"].eq("new").all()
+    meta = json.loads((tmp_path / "e5" / "scores.meta.json").read_text(encoding="utf-8"))
+    assert meta["distinct_calls"] == 12 and meta["models_answering"] == [MODEL]
+
+
+def test_e5_collect_never_calls_jev(tmp_path):
+    assert _company_run(tmp_path, "--score", client=FakeChoiceClient()) == 0
+    loud = FakeChoiceClient()
+    assert _company_run(tmp_path, "--collect", client=loud) == 0
+    assert loud.calls == []
+
+
+def test_e8_questions_offer_the_cards_option_sets_each_described():
+    question_set = load_question_set(CONFIGS / "questions_v4.yaml")
+    assert question_set.model == MODEL
+    assert DIRECTION_LABELS == ("worse", "better", "neutral")
+    assert KIND_LABELS == ("materialized", "new_exposure", "escalated", "eased", "neutral")
+    for name, labels in (("direction", DIRECTION_LABELS), ("change_kind", KIND_LABELS)):
+        question = question_set.questions[name]
+        assert question.kind == "choice"
+        assert [option for option, _ in question.options] == list(labels)
+        assert all(description for _, description in question.options)
+
+
+def _lm_dictionary(tmp_path: Path) -> Path:
+    """A tiny master dictionary: a word that joined the list, one that left it, one never on it."""
+    path = tmp_path / "lm.csv"
+    pd.DataFrame(
+        {
+            "Word": ["SANCTIONS", "EMBARGO", "TARIFFS", "LOSS", "GROWTH"],
+            "Seq_num": [1, 2, 3, 4, 5],
+            "Negative": [2009, 2014, -2020, 2009, 0],
+            "Positive": [0, 0, 0, 0, 2009],
+        }
+    ).to_csv(path, index=False)
+    return path
+
+
+def test_lm_negative_list_keeps_only_words_currently_on_it(tmp_path):
+    assert lm_negative_words(_lm_dictionary(tmp_path)) == {"sanctions", "embargo", "loss"}
+
+
+def test_negative_share_counts_every_occurrence():
+    negative = frozenset({"loss"})
+    assert negative_share("Loss, loss and growth.", negative) == pytest.approx(0.5)
+    assert negative_share("", negative) == 0.0
+
+
+def _direction_pairs(
+    tmp_path: Path, data: Path, *, repeat: bool = False, extra: bool = False
+) -> Path:
+    """The lead's list: four pairs from both companies, in an order the pairing does not use."""
+    pairs = company_script.company_pairs(data)
+    picked = [("bbb", pairs["bbb"][5]), ("aaa", pairs["aaa"][4]), ("aaa", pairs["aaa"][3])]
+    picked.append(("bbb", pairs["bbb"][0]))
+    rows = [{"company": key, "pair_id": pair.pair_id} for key, pair in picked]
+    if repeat:
+        rows.append(rows[0])
+    if extra:
+        rows.append({"company": "aaa", "pair_id": "0000000009-2025#001|0000000009-2024#001"})
+    path = tmp_path / "e8_pairs.csv"
+    pd.DataFrame(rows).to_csv(path, index=False)
+    return path
+
+
+def _direction_run(
+    tmp_path: Path, monkeypatch, *extra: str, client=None, frozen: bool = True, **pairs_kw
+) -> int:
+    data = tmp_path / "companies"
+    if not data.exists():
+        _company_dir(tmp_path)
+    dictionary = _lm_dictionary(tmp_path)
+    if frozen:
+        monkeypatch.setattr(direction_script, "LM_SHA256", direction_script._sha256(dictionary))
+    argv = [
+        "--data-dir",
+        str(data),
+        "--pairs",
+        str(_direction_pairs(tmp_path, data, **pairs_kw)),
+        "--lm-dictionary",
+        str(dictionary),
+        "--output-dir",
+        str(tmp_path / "e8"),
+    ]
+    return direction_script.main(
+        [*argv, *extra], client=client, sdk_question_for=lambda criteria: criteria
+    )
+
+
+def test_e8_baselines_follow_the_list_with_both_signs_right(tmp_path, monkeypatch):
+    client = FakeChoiceClient()
+    assert _direction_run(tmp_path, monkeypatch, client=client) == 0
+    assert client.calls == []
+    table = pd.read_csv(tmp_path / "e8" / "baselines.csv")
+    listed = pd.read_csv(tmp_path / "e8_pairs.csv")
+    assert table["pair_id"].tolist() == listed["pair_id"].tolist()
+    assert table["company"].tolist() == ["bbb", "aaa", "aaa", "bbb"]
+    assert list(table.columns) == list(direction_script.BASELINE_COLUMNS)
+    grew = table.iloc[2]  # aaa's 2025 risk 0 gains "sanctions tariffs embargo"
+    assert grew["neg_share_prior"] == 0.0
+    # 16 words with the heading's "risk"; tariffs left the list, so two count.
+    assert grew["neg_share_current"] == pytest.approx(2 / 16)
+    assert grew["neg_change"] == pytest.approx(2 / 16)
+    shrank = table.iloc[1]  # aaa's 2025 risk 1 loses words
+    assert shrank["word_balance"] == pytest.approx(shrank["words_added"] - shrank["words_removed"])
+    assert shrank["word_balance"] < 0 < grew["word_balance"]
+    meta = json.loads((tmp_path / "e8" / "baselines.meta.json").read_text(encoding="utf-8"))
+    assert meta["pairs"] == 4 and meta["lm_negative_words"] == 3
+
+
+def test_e8_refuses_any_dictionary_but_the_frozen_one(tmp_path, monkeypatch):
+    assert direction_script.LM_SHA256.startswith("147cb24a")
+    assert _direction_run(tmp_path, monkeypatch, frozen=False) == 1
+    assert not (tmp_path / "e8").exists()
+
+
+@pytest.mark.parametrize("bad", [{"repeat": True}, {"extra": True}])
+def test_e8_a_repeated_or_unknown_listed_pair_stops_it(tmp_path, monkeypatch, bad):
+    client = FakeChoiceClient()
+    assert _direction_run(tmp_path, monkeypatch, "--score", client=client, **bad) == 1
+    assert client.calls == [] and not (tmp_path / "e8").exists()
+
+
+def test_e8_test_call_then_each_question_on_its_own_then_collect(tmp_path, monkeypatch):
+    client = FakeChoiceClient(pick="neutral")
+    run = lambda *extra, c=client: _direction_run(tmp_path, monkeypatch, *extra, client=c)  # noqa: E731
+    assert run("--score", "--question", "direction", "--limit", "1") == 0
+    assert len(client.calls) == 1
+    assert list(client.calls[0]["questions"]) == ["direction"]
+    assert sorted(client.calls[0]["questions"]["direction"]) == sorted(DIRECTION_LABELS)
+    assert not (tmp_path / "e8" / "scores.csv").exists()
+    loud = FakeChoiceClient()
+    assert run("--collect", c=loud) == 1
+    assert loud.calls == [] and not (tmp_path / "e8" / "scores.csv").exists()
+    assert run("--score") == 0
+    assert len(client.calls) == 8
+    assert all(len(call["questions"]) == 1 for call in client.calls)
+    kinds = [call for call in client.calls if "change_kind" in call["questions"]]
+    assert len(kinds) == 4
+    assert all(sorted(c["questions"]["change_kind"]) == sorted(KIND_LABELS) for c in kinds)
+    answers = tmp_path / "e8" / "answers"
+    assert sorted(p.name for p in answers.iterdir()) == ["change_kind.jsonl", "direction.jsonl"]
+    assert run("--collect", c=loud) == 0
+    assert loud.calls == [] and len(client.calls) == 8
+    scores = pd.read_csv(tmp_path / "e8" / "scores.csv")
+    assert scores["pair_id"].tolist() == pd.read_csv(tmp_path / "e8_pairs.csv")["pair_id"].tolist()
+    for name, labels in (("direction", DIRECTION_LABELS), ("change_kind", KIND_LABELS)):
+        assert scores[f"{name}_choice"].eq("neutral").all()
+        assert scores[f"{name}_p_neutral"].eq(0.7).all()
+        others = [f"{name}_p_{label}" for label in labels if label != "neutral"]
+        assert scores[others].eq(0.075).all().all()
+    meta = json.loads((tmp_path / "e8" / "scores.meta.json").read_text(encoding="utf-8"))
+    assert meta["distinct_calls"] == {"direction": 4, "change_kind": 4}
+    assert meta["models_answering"] == [MODEL]
