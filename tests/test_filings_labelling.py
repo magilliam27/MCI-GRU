@@ -173,6 +173,16 @@ def test_the_change_direction_set_keeps_the_e8_card_options():
     assert label_set.category({"direction": "better", "finer": "eased"}) == "better"
 
 
+def test_the_e9_set_asks_the_e5_and_e8_questions_word_for_word():
+    combined = load_label_set(LABELS / "new_changed_direction_v1.yaml")
+    e5 = load_label_set(LABELS / "new_changed_v1.yaml")
+    e8 = load_label_set(DIRECTION)
+    assert combined.questions == e5.questions + e8.questions
+    assert combined.categories == e5.categories
+    answers = {"new_risk": "no", "changed": "yes", "direction": "worse", "finer": "escalated"}
+    assert combined.category(answers) == "changed"
+
+
 # --- Blind sheets -------------------------------------------------------------
 
 

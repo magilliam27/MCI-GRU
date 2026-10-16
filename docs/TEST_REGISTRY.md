@@ -762,6 +762,7 @@ The Labelling desk (#291): label sets, blind sheets, AI reviewers, agreement.
 | `test_a_category_reached_only_through_a_choice_option_loads` |  |  |
 | `test_a_condition_naming_an_option_a_question_lacks_is_refused` |  |  |
 | `test_the_change_direction_set_keeps_the_e8_card_options` |  |  |
+| `test_the_e9_set_asks_the_e5_and_e8_questions_word_for_word` |  |  |
 | `test_a_sheet_never_reads_an_answer_column` |  |  |
 | `test_a_hand_over_missing_a_text_column_is_refused` |  |  |
 | `test_sheet_ids_are_fresh_and_the_order_is_shuffled_by_seed` |  |  |
