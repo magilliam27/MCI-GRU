@@ -703,6 +703,29 @@ The EDGAR filing index and when each filing was knowable (#289).
 | `test_ragged_submissions_block_is_refused` |  |  |
 | `test_document_url_uses_unpadded_cik_and_bare_accession` |  |  |
 
+## `tests/test_filings_events.py`
+
+E10 (#305): what Jev reads for an 8-K event, the baseline, the scores and the run.
+
+**Exercises:** `mci_gru.filings.change`, `mci_gru.filings.events`, `mci_gru.filings.jev`, `scripts.data.score_8k_events`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_v5_questions_offer_the_cards_option_sets_each_described` |  |  |
+| `test_item_lean_puts_negative_items_over_auditor_changes_over_the_rest` |  | parametrize |
+| `test_baseline_badness_orders_by_lean_first_then_net_tone` |  |  |
+| `test_tone_shares_count_every_occurrence_on_the_current_lists` |  |  |
+| `test_rating_score_weights_minus_two_to_plus_two_and_bad_score_sums_the_bad_side` |  |  |
+| `test_event_state_holds_only_context_known_at_filing_and_the_text` |  |  |
+| `test_event_state_says_when_context_is_missing` |  |  |
+| `test_revenue_words_scale_to_billions_or_millions` |  |  |
+| `test_events_breaking_the_contract_are_refused` |  | parametrize |
+| `test_e10_baselines_follow_the_sample_with_lean_first` |  |  |
+| `test_e10_baselines_cover_every_event_before_the_sample_exists` |  |  |
+| `test_e10_refuses_any_dictionary_but_the_frozen_one` |  |  |
+| `test_e10_scoring_needs_the_leads_sample_and_every_id_in_it` |  | parametrize |
+| `test_e10_test_call_then_each_question_on_its_own_then_collect` |  |  |
+
 ## `tests/test_filings_grading.py`
 
 Jev's answers graded against the hand labels (#289).
