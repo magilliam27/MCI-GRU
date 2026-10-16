@@ -287,3 +287,20 @@ def test_e7_stops_before_any_call_when_the_estimate_is_over_the_budget(tmp_path)
     client = FakeClient()
     assert _run(tmp_path, "--score", "--max-cost", "0", client=client) == 1
     assert client.calls == []
+
+
+def test_e7_a_left_out_report_gets_no_signal_4_and_needs_no_answers(tmp_path):
+    _write_data(tmp_path)
+    assert _run(tmp_path) == 0
+    leave_out = tmp_path / "left_out.csv"
+    leave_out.write_text("accession_number,reason\nB2,no risk signals\n", encoding="utf-8")
+    assert _run(tmp_path, "--collect", "--leave-out", str(leave_out)) == 1  # B2 has none
+    leave_out.write_text("accession_number,reason\nA1,too long for Jev\n", encoding="utf-8")
+    client = FakeClient()
+    assert _run(tmp_path, "--score", "--leave-out", str(leave_out), client=client) == 0
+    assert client.calls == []  # A1 held the only flagged risks
+    assert _run(tmp_path, "--collect", "--leave-out", str(leave_out)) == 0
+    worse = pd.read_csv(tmp_path / "E7" / "jev" / "worse_share.csv")
+    assert worse["accession_number"].tolist() == ["A2"]
+    meta = json.loads((tmp_path / "E7" / "jev" / "jev.meta.json").read_text())
+    assert meta["left_out"] == [{"accession_number": "A1", "reason": "too long for Jev"}]

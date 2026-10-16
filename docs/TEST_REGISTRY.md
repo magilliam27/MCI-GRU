@@ -842,6 +842,7 @@ E7 (#310): each member 10-K's change signals against its pair partner, and the r
 | `test_e7_signals_pair_each_member_report_with_its_partner` |  |  |
 | `test_e7_jev_is_asked_only_about_flagged_risks_then_signal_4_is_collected` |  |  |
 | `test_e7_stops_before_any_call_when_the_estimate_is_over_the_budget` |  |  |
+| `test_e7_a_left_out_report_gets_no_signal_4_and_needs_no_answers` |  |  |
 
 ## `tests/test_filings_risk_factors.py`
 

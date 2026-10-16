@@ -19,8 +19,9 @@ No price or return is read here. Three steps::
     ... --score [--workers 8]
 
     # 3. Signal 4 from the caches. Never calls Jev: a flagged risk with no answer
-    #    stops it.
-    ... --collect
+    #    stops it, unless its report is on the --leave-out list (accession_number,
+    #    reason), which the metadata records.
+    ... --collect [--leave-out left_out.csv]
 
 What it writes under ``--output-dir``:
 
@@ -107,6 +108,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=None, help="Score only the first N risks")
     parser.add_argument("--workers", type=int, default=8, help="Companies scored side by side")
     parser.add_argument("--max-cost", type=float, default=8.0, help="US dollars, all flagged risks")
+    parser.add_argument(
+        "--leave-out",
+        type=Path,
+        default=None,
+        help="CSV of accession_number and reason: reports given no Signal 4",
+    )
     return parser.parse_args(argv)
 
 
@@ -313,6 +320,16 @@ def main(
     pairs = pd.read_csv(signals_dir / "risk_pairs.csv", dtype=str)
     pairs["changed"] = pairs["changed"] == "True"
     pairs["similarity"] = pairs["similarity"].astype(float)
+    left_out = pd.DataFrame(columns=["accession_number", "reason"])
+    if args.leave_out is not None:
+        left_out = pd.read_csv(args.leave_out, usecols=["accession_number", "reason"], dtype=str)
+        with_risks = set(reports.loc[reports["changed_share"].notna(), "accession_number"])
+        unknown = sorted(set(left_out["accession_number"]) - with_risks)
+        if unknown or not left_out["accession_number"].is_unique:
+            print(f"--leave-out must name reports with risk signals once each: {unknown[:3]}")
+            return 1
+    pairs = pairs[~pairs["accession_number"].isin(left_out["accession_number"])]
+    reports = reports[~reports["accession_number"].isin(left_out["accession_number"])]
     companies = dict(zip(index["accession_number"], index["company"], strict=True))
     items = flagged_items(pairs, risks, companies)
     tokens = {
@@ -427,7 +444,9 @@ def main(
     except ChangeGradingError as error:
         print(f"Cannot collect: {error}")
         return 1
-    answers = pd.DataFrame(rows)
+    answer_columns = ["company", "pair_id", "choice"]
+    answer_columns += [f"p_{label}" for label in DIRECTION_LABELS] + ["option_order"]
+    answers = pd.DataFrame(rows, columns=answer_columns)
     answers = pairs.loc[pairs["changed"], ["accession_number", "pair_id"]].merge(
         answers, on="pair_id", how="left", validate="one_to_one"
     )
@@ -459,6 +478,7 @@ def main(
         "question": QUESTION_ID,
         "flagged_risks": len(answers),
         "reports": len(worse),
+        "left_out": left_out.to_dict(orient="records"),
         "distinct_calls": len(records),
         "input_tokens_total": input_tokens,
         "cost_usd": round(input_tokens * USD_PER_INPUT_TOKEN, 2),
@@ -470,6 +490,7 @@ def main(
             "signals/risk_pairs.csv": _sha256(signals_dir / "risk_pairs.csv"),
             "jev/answers.csv": _sha256(jev_dir / "answers.csv"),
             "jev/worse_share.csv": _sha256(jev_dir / "worse_share.csv"),
+            **({"leave_out": _sha256(args.leave_out)} if args.leave_out else {}),
             **{
                 f"jev/answers/{path.name}": _sha256(path)
                 for path in sorted((jev_dir / "answers").glob("*.jsonl"))
