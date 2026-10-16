@@ -342,3 +342,16 @@ def test_e11_several_workers_ask_each_event_once_and_keep_the_events_order(tmp_p
     assert _run(tmp_path, monkeypatch, "--collect", "--question", "rating") == 0
     scores = pd.read_csv(tmp_path / "e10" / "scores.csv")
     assert scores["event_id"].tolist() == ["e3", "e1", "e2"]
+
+
+def test_e11_estimates_only_the_question_it_will_ask(tmp_path, monkeypatch):
+    assert _run(tmp_path, monkeypatch) == 0
+    both = json.loads((tmp_path / "e10" / "baselines.meta.json").read_text(encoding="utf-8"))
+    extra = ("--question", "rating", "--experiment", "E11-8k-returns")
+    assert _run(tmp_path, monkeypatch, *extra) == 0
+    rating = json.loads((tmp_path / "e10" / "baselines.meta.json").read_text(encoding="utf-8"))
+    assert rating["experiment"] == "E11-8k-returns"
+    assert list(rating["estimated_input_tokens_by_question"]) == ["rating"]
+    by_question = both["estimated_input_tokens_by_question"]
+    assert rating["estimated_input_tokens"] == by_question["rating"]
+    assert both["estimated_input_tokens"] >= sum(by_question.values())

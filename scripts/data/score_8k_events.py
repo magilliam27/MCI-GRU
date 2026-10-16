@@ -63,6 +63,7 @@ from mci_gru.filings.events import (
 from mci_gru.filings.jev import AnswerCache, load_question_set
 from scripts.data.score_change_direction import LM_SHA256
 from scripts.data.score_company_risk_changes import NoJev, _commit, _sha256
+from scripts.data.score_e7_signals import USD_PER_INPUT_TOKEN
 from scripts.data.score_risk_changes import CHARS_PER_TOKEN
 
 try:
@@ -100,6 +101,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--question", choices=sorted(QUESTIONS), default=None)
     parser.add_argument("--limit", type=int, default=None, help="Score only the first N events")
     parser.add_argument("--workers", type=int, default=1, help="Calls in flight at once")
+    parser.add_argument("--experiment", default="E10-8k-events", help="Recorded in the metadata")
     return parser.parse_args(argv)
 
 
@@ -183,15 +185,20 @@ def main(argv: list[str] | None = None, *, client: Any = None, sdk_question_for:
         positive = lm_words(args.lm_dictionary, "Positive")
         table = baselines(events, negative, positive)
         table.to_csv(out / "baselines.csv", index=False)
-        chars = sum(
-            len(json.dumps(event_state(event), ensure_ascii=False))
-            + len(question.instructions)
-            + sum(len(n) + len(d) for n, d in question.options)
-            for event in events
-            for question in question_set.questions.values()
-        )
+        asked = [args.question] if args.question else list(QUESTIONS)
+        chars = {
+            name: sum(
+                len(json.dumps(event_state(event), ensure_ascii=False))
+                + len(question.instructions)
+                + sum(len(n) + len(d) for n, d in question.options)
+                for event in events
+            )
+            for name, question in question_set.questions.items()
+            if name in asked
+        }
+        tokens = sum(chars.values()) // CHARS_PER_TOKEN
         meta = {
-            "experiment": "E10-8k-events",
+            "experiment": args.experiment,
             "commit": _commit(),
             "events": len(table),
             "events_by_lean": {int(k): int(v) for k, v in table["lean"].value_counts().items()},
@@ -199,7 +206,11 @@ def main(argv: list[str] | None = None, *, client: Any = None, sdk_question_for:
             "net_tone": "Loughran-McDonald (negative - positive) words / all words",
             "baseline_badness": "lean + (1 + net_tone) / 3; higher is worse",
             "lm_words": {"negative": len(negative), "positive": len(positive)},
-            "estimated_input_tokens": chars // CHARS_PER_TOKEN,
+            "estimated_input_tokens": tokens,
+            "estimated_input_tokens_by_question": {
+                name: count // CHARS_PER_TOKEN for name, count in chars.items()
+            },
+            "estimated_cost_usd": round(tokens * USD_PER_INPUT_TOKEN, 2),
             "sha256": {**_inputs(args), "baselines.csv": _sha256(out / "baselines.csv")},
         }
         (out / "baselines.meta.json").write_text(
@@ -307,7 +318,7 @@ def main(argv: list[str] | None = None, *, client: Any = None, sdk_question_for:
         for name in names
     }
     meta = {
-        "experiment": "E10-8k-events",
+        "experiment": args.experiment,
         "commit": _commit(),
         "model": question_set.model,
         "question_file": args.questions.name,
