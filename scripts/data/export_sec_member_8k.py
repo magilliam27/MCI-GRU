@@ -25,8 +25,9 @@ What it writes under ``--package-root``:
 
 - ``member_8k_events.jsonl``: one event per line, keyed by ``event_id`` (the
   accession), in E10's fields plus ``listed_accepted_utc``,
-  ``accepted_from_index_page``, ``release`` and ``sic``. ``accepted_utc`` is the
-  index page's time.
+  ``accepted_from_index_page``, ``nearby_202_listed_utc`` (the listed times of
+  the company's other earnings 8-Ks, item 2.02, within five calendar days either
+  side), ``release`` and ``sic``. ``accepted_utc`` is the index page's time.
 - ``member_8k_checks.csv``: one row per check finding.
 - ``member_8k_left_out.csv``: with ``--leave-out-flagged``, each event left out
   because a check failed or a document could not be read, with its year and
@@ -88,6 +89,9 @@ if TYPE_CHECKING:
     from mci_gru.filings.membership import Spell
 
 PROGRESS_EVERY = 1000
+#: How many calendar days either side of an event an earnings 8-K is "nearby".
+NEARBY_DAYS = 5
+EARNINGS_ITEM = "2.02"
 CHECK_COLUMNS = ["event_id", "company", "check", "detail"]
 LEFT_OUT_COLUMNS = ["event_id", "company", "cik", "accepted_utc", "year", "items", "reason"]
 
@@ -148,6 +152,26 @@ def member_events(
             is_member(spells, eastern_day(row["accepted"]) - pd.Timedelta(days=lag), args)
             for lag in (0, 1)
         )
+    ]
+
+
+def nearby_earnings(
+    eight_ks: list[tuple[pd.Timestamp, str, tuple[str, ...]]],
+    accepted: pd.Timestamp,
+    accession: str,
+) -> list[str]:
+    """Listed acceptance times of the company's other 8-Ks carrying item 2.02 nearby.
+
+    Nearby is within ``NEARBY_DAYS`` calendar days either side, by Eastern day
+    (each listed time as SEC lists it, which can run hours late).
+    """
+    day = eastern_day(accepted)
+    return [
+        when.isoformat()
+        for when, other, items in sorted(eight_ks)
+        if other != accession
+        and EARNINGS_ITEM in items
+        and abs((eastern_day(when) - day).days) <= NEARBY_DAYS
     ]
 
 
@@ -284,6 +308,7 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
         event.update(
             listed_accepted_utc=listed.isoformat(),
             accepted_from_index_page=read["index_accepted"] is not None,
+            nearby_202_listed_utc=nearby_earnings(eight_ks, row["accepted"], row["accession"]),
             release=company.release,
             sic=sic.get(row["cik"], ""),
         )
@@ -364,6 +389,7 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
             year: dict(sorted(counts.items())) for year, counts in sorted(by_year_item.items())
         },
         "events_by_release": dict(Counter(event["release"] for event in kept)),
+        "with_nearby_earnings_8k": sum(bool(event["nearby_202_listed_utc"]) for event in kept),
         "truncated": sum(event["truncated"] for event in kept),
         "without_revenue": sum(event["prior_revenue_usd"] is None for event in kept),
         "with_press_release": sum(event["press_release"] is not None for event in kept),

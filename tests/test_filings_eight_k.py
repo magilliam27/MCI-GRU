@@ -497,6 +497,12 @@ def _beta(broken: bool = False) -> dict[str, bytes]:
         _beta_8k("0000000088-14-000013", "2014-06-02T01:00:00.000Z"),
         # D is weeks after the company left.
         _beta_8k("0000000088-14-000014", "2014-07-15T20:00:00.000Z"),
+        # Earnings 8-Ks (item 2.02): five calendar days after A by the Eastern
+        # day, and six after it.
+        _beta_8k("0000000088-14-000021", "2014-03-08T22:00:00.000Z", "2.02,9.01"),
+        _beta_8k("0000000088-14-000022", "2014-03-09T22:00:00.000Z", "2.02,9.01"),
+        # Another nearby 8-K that is not about earnings.
+        _beta_8k("0000000088-14-000023", "2014-03-05T22:00:00.000Z", "8.01"),
         # E has an empty item section when ``broken``; F's document is gone.
         _beta_8k("0000000088-14-000015", "2014-04-01T20:00:00.000Z"),
         _beta_8k("0000000088-14-000016", "2014-04-15T20:00:00.000Z"),
@@ -570,6 +576,8 @@ def test_a_members_events_are_those_accepted_while_a_member_by_their_index_page(
         "2834",
     )
     assert first["text"].endswith("Event 11: an officer resigned.")
+    assert first["nearby_202_listed_utc"] == ["2014-03-08T22:00:00+00:00"]
+    assert events[1]["nearby_202_listed_utc"] == []
     assert (first["prior_revenue_usd"], first["prior_10k_accession"]) == (
         700.0,
         "0000000088-14-000001",
