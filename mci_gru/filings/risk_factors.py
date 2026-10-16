@@ -284,6 +284,12 @@ class _BlockParser(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in BLOCK_TAGS:
             self._flush()
+        if tag == "body":
+            # The body ends the head even when the head is never closed
+            # (Pfizer's 8-Ks before 2018).
+            heads = [position for position, entry in enumerate(self._stack) if entry[0] == "head"]
+            if heads:
+                del self._stack[heads[0] :]
         if tag == "br":
             self._runs.append((" ", False))
         if tag in VOID_TAGS:

@@ -599,3 +599,11 @@ def test_a_run_in_heading_on_its_own_line_too_long_for_a_category_is_a_risk():
         ("BUSINESS RISK FACTORS", heading, "Demand collapsed."),
         ("BUSINESS RISK FACTORS", "Prices.", "Prices are volatile."),
     ]
+
+
+def test_the_body_ends_a_head_that_is_never_closed():
+    # Pfizer's 8-Ks before 2018 open <HEAD> and go straight to <BODY>.
+    blocks = html_blocks(
+        "<HTML><HEAD><TITLE>Pfizer Inc. 8-K</TITLE><BODY><P>Item 5.02</P><P>Text.</P></BODY>"
+    )
+    assert [block.text for block in blocks] == ["Item 5.02", "Text."]

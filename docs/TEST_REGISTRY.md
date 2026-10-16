@@ -709,6 +709,32 @@ The EDGAR filing index and when each filing was knowable (#289).
 | `test_document_url_uses_unpadded_cik_and_bare_accession` |  |  |
 | `test_a_year_ending_in_the_first_week_of_january_belongs_to_the_year_before` |  | parametrize |
 
+## `tests/test_filings_eight_k.py`
+
+8-K events, their item sections and their filing-time context (#308).
+
+**Exercises:** `mci_gru.data.input_manifest`, `mci_gru.filings.eight_k`, `mci_gru.filings.filers`, `scripts.data.export_sec_8k_events`, `scripts.data.export_sec_risk_factors`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_listed_items_keep_their_order_without_blanks` |  |  |
+| `test_an_event_is_an_original_8k_with_an_event_item` |  | parametrize |
+| `test_item_sections_run_from_their_heading_to_the_next_item_or_the_signature` |  |  |
+| `test_a_signature_without_a_title_still_ends_the_last_section` |  |  |
+| `test_which_lines_open_an_item_section` |  | parametrize |
+| `test_one_item_may_have_several_sections` |  |  |
+| `test_edgars_wrapper_header_is_not_text` |  |  |
+| `test_the_press_release_is_exhibit_99_1_or_a_lone_unnumbered_99` |  | parametrize |
+| `test_event_text_leaves_out_the_exhibit_list_and_adds_the_press_release` |  |  |
+| `test_event_text_is_cut_at_the_limit_and_says_so` |  |  |
+| `test_prior_items_are_the_other_8ks_of_the_90_days_before_oldest_first` |  |  |
+| `test_revenue_is_the_10ks_own_full_year_not_a_comparative_or_a_quarter` |  |  |
+| `test_revenue_falls_back_through_the_concepts_a_filing_tags` |  |  |
+| `test_a_year_ending_in_january_is_that_years_fiscal_year` |  |  |
+| `test_an_event_carries_its_text_and_only_what_was_public_when_it_was_filed` |  |  |
+| `test_an_item_with_no_text_blocks_the_manifest` |  |  |
+| `test_a_listed_item_with_no_section_blocks_the_manifest` |  |  |
+
 ## `tests/test_filings_grading.py`
 
 Jev's answers graded against the hand labels (#289).
@@ -854,6 +880,7 @@ Item 1A of a 10-K, cut into individual risk factors (#289).
 | `test_a_section_found_by_its_title_when_item_1a_is_only_an_index` |  |  |
 | `test_a_run_in_lead_without_punctuation_opens_its_paragraph` |  |  |
 | `test_a_run_in_heading_on_its_own_line_too_long_for_a_category_is_a_risk` |  |  |
+| `test_the_body_ends_a_head_that_is_never_closed` |  |  |
 
 ## `tests/test_filings_scripts.py`
 
