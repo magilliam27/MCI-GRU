@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import gzip
+import hashlib
 import json
 import urllib.error
 from dataclasses import replace
@@ -186,6 +188,23 @@ def test_a_second_pull_rereads_only_the_filers_main_submissions_files(tmp_path):
     assert sorted(url for url, _ in again.seen) == sorted(
         f"https://data.sec.gov/submissions/CIK{cik}.json" for cik in (GOOGLE_INC_CIK, ALPHABET_CIK)
     )
+
+
+def test_the_cache_holds_documents_gzipped(tmp_path):
+    _export(tmp_path, Transport(_edgar()), manifest=False)
+    url = "https://www.sec.gov/Archives/edgar/data/1652044/000165204416000012/a15.htm"
+    name = hashlib.sha256(url.encode("utf-8")).hexdigest()[:24] + ".htm.gz"
+    assert gzip.decompress((tmp_path / "cache" / name).read_bytes()) == _edgar()[url]
+
+
+def test_an_uncompressed_entry_from_an_older_cache_is_still_read(tmp_path):
+    first = export.EdgarClient(AGENT, tmp_path, Transport({"https://x/a.htm": b"<html>a</html>"}))
+    first.get("https://x/a.htm")
+    (packed,) = tmp_path.glob("*.gz")
+    packed.with_suffix("").write_bytes(gzip.decompress(packed.read_bytes()))
+    packed.unlink()
+    again = export.EdgarClient(AGENT, tmp_path, Transport({}))
+    assert again.get("https://x/a.htm") == b"<html>a</html>" and again.cache_hits == 1
 
 
 class Flaky(Transport):

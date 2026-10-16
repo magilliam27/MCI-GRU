@@ -817,6 +817,31 @@ The Labelling desk (#291): yes/no label sets, blind sheets, AI reviewers, agreem
 | `test_the_desk_runs_end_to_end_on_the_practice_sheet` |  |  |
 | `test_a_changed_label_set_stops_the_later_steps` |  |  |
 
+## `tests/test_filings_membership.py`
+
+S&P 500 membership spells, name checks and the 10-Ks a membership calls for (#309).
+
+**Exercises:** `mci_gru.filings.membership`, `scripts.data.build_sp500_members`, `scripts.data.export_sec_member_10k`, `scripts.data.export_sec_risk_factors`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_a_spell_runs_from_the_first_list_to_the_first_list_without_the_ticker` |  |  |
+| `test_a_spell_holds_from_its_start_to_the_day_before_its_end` |  |  |
+| `test_changes_after_the_last_list_extend_it_and_earlier_ones_are_ignored` |  |  |
+| `test_names_match_once_legal_words_are_dropped` |  | parametrize |
+| `test_name_key_drops_case_punctuation_and_legal_words` |  |  |
+| `test_a_membership_calls_for_its_reports_and_the_one_before_each_entry` |  |  |
+| `test_two_reports_in_one_year_are_both_kept_in_filing_order` |  |  |
+| `test_a_member_from_its_first_report_has_no_prior` |  |  |
+| `test_names_on_a_day_are_the_dated_names_then_the_current_one` |  |  |
+| `test_a_new_holding_company_follows_its_predecessor` |  |  |
+| `test_no_other_company_follows` |  | parametrize |
+| `test_every_run_is_named_and_a_reused_ticker_is_not_taken` |  | usefixtures |
+| `test_a_manual_cik_whose_reports_carry_another_name_is_refused` |  | usefixtures |
+| `test_a_ticker_passed_to_another_company_hands_over_its_part_of_the_run` |  |  |
+| `test_a_members_reports_are_those_filed_while_in_the_index_and_the_one_before` |  | usefixtures |
+| `test_a_report_that_fails_the_checks_stops_the_manifest_unless_its_company_is_left_out` |  | usefixtures |
+
 ## `tests/test_filings_pairing.py`
 
 Each risk factor paired with its most similar prior-year risks (#289).
@@ -894,6 +919,8 @@ The filings pull and the pair scoring, end to end with canned EDGAR and Jev (#28
 | `test_every_request_names_the_client_as_sec_asks` |  |  |
 | `test_user_agent_without_contact_email_is_refused` |  |  |
 | `test_a_second_pull_rereads_only_the_filers_main_submissions_files` |  |  |
+| `test_the_cache_holds_documents_gzipped` |  |  |
+| `test_an_uncompressed_entry_from_an_older_cache_is_still_read` |  |  |
 | `test_rate_limits_server_errors_and_dropped_connections_are_retried_after_a_wait` |  | parametrize |
 | `test_a_request_refused_outright_is_not_retried` |  |  |
 | `test_a_document_that_is_not_utf8_is_read_as_cp1252_and_reported` |  |  |

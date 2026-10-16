@@ -41,10 +41,12 @@ company, ``--package-id`` names it.
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -122,7 +124,10 @@ class EdgarClient:
 
     Documents and older submissions files never change, so each is read from the
     network once. A filer's main submissions file does change (new filings), so
-    it is read fresh on every run.
+    it is read fresh on every run. Each response is cached gzipped (a 10-K is
+    about a tenth the size), so a cache of thousands of filings can be kept and
+    re-read after a parser fix; an uncompressed entry from an older cache is
+    still read.
     """
 
     def __init__(self, user_agent: str, cache_dir: Path, transport: Transport) -> None:
@@ -132,19 +137,27 @@ class EdgarClient:
         self.requests = 0
         self.cache_hits = 0
         self._last = 0.0
+        self._pace = threading.Lock()
 
     def get(self, url: str, *, fresh: bool = False) -> bytes:
         name = hashlib.sha256(url.encode("utf-8")).hexdigest()[:24] + Path(url).suffix
-        path = self.cache_dir / name
-        if path.exists() and not fresh:
-            self.cache_hits += 1
-            return path.read_bytes()
+        path = self.cache_dir / f"{name}.gz"
+        legacy = self.cache_dir / name
+        if not fresh:
+            if path.exists():
+                self.cache_hits += 1
+                return gzip.decompress(path.read_bytes())
+            if legacy.exists():
+                self.cache_hits += 1
+                return legacy.read_bytes()
         for attempt in range(ATTEMPTS):
-            wait = MIN_INTERVAL_SECONDS - (time.monotonic() - self._last)
-            if wait > 0:
-                time.sleep(wait)
-            self._last = time.monotonic()
-            self.requests += 1
+            # Requests from several threads share one pace (SEC's limit is per client).
+            with self._pace:
+                wait = MIN_INTERVAL_SECONDS - (time.monotonic() - self._last)
+                if wait > 0:
+                    time.sleep(wait)
+                self._last = time.monotonic()
+                self.requests += 1
             try:
                 body = self.transport(url, self.headers)
                 break
@@ -160,7 +173,7 @@ class EdgarClient:
                     raise
                 time.sleep(RETRY_WAIT_SECONDS * 2**attempt)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(body)
+        path.write_bytes(gzip.compress(body, compresslevel=6, mtime=0))
         return body
 
     @property
