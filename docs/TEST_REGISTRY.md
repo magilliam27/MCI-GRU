@@ -724,7 +724,8 @@ E10 (#305): what Jev reads for an 8-K event, the baseline, the scores and the ru
 | `test_e10_baselines_follow_the_sample_with_lean_first` |  |  |
 | `test_e10_baselines_cover_every_event_before_the_sample_exists` |  |  |
 | `test_e10_refuses_any_dictionary_but_the_frozen_one` |  |  |
-| `test_e10_scoring_needs_the_leads_sample_and_every_id_in_it` |  | parametrize |
+| `test_e10_a_listed_subset_must_name_each_published_event_once` |  | parametrize |
+| `test_e10_without_a_subset_every_published_event_is_scored` |  |  |
 | `test_e10_test_call_then_each_question_on_its_own_then_collect` |  |  |
 
 ## `tests/test_filings_grading.py`

@@ -1,20 +1,20 @@
 """E10: how good or bad is an 8-K event for shareholders? (#305).
 
 Two frozen Choice questions (``configs/filings/questions_v5.yaml``), each asked
-on its own for every event the research lead sampled: ``rating`` (very bad, bad,
+on its own for every published event (the lead dropped the sample on 16 Oct, so
+every qualifying event is scored), or for a listed subset: ``rating`` (very bad, bad,
 neutral, good, very good) and ``size`` (the amount involved against prior
 annual revenue). Jev reads :func:`mci_gru.filings.events.event_state`. Options
 are shuffled per event. Three steps::
 
-    # 1. Freeze the baseline for the sampled events (or every event, before the
-    #    sample exists). No Jev calls, no API key.
+    # 1. Freeze the baseline for every event (or a listed subset with --sample).
+    #    No Jev calls, no API key.
     python -m scripts.data.score_8k_events \\
         --events <the Data lane's 8-K events .jsonl> \\
-        --sample /mnt/project-files/filings/experiments/E10-8k-events/<sample>.csv \\
         --lm-dictionary <Loughran-McDonald_MasterDictionary_1993-2025.csv> \\
         --output-dir /mnt/project-files/filings/experiments/E10-8k-events/jev
 
-    # 2. Score: one test call, then every sampled event, one question or both.
+    # 2. Score: one test call, then every event, one question or both.
     ... --score --question rating --limit 1
     ... --score [--question size]
 
@@ -151,9 +151,6 @@ def main(argv: list[str] | None = None, *, client: Any = None, sdk_question_for:
         return 1
     if _sha256(args.lm_dictionary) != LM_SHA256:
         print(f"{args.lm_dictionary.name} is not the frozen dictionary (sha256 {LM_SHA256}).")
-        return 1
-    if (args.score or args.collect) and args.sample is None:
-        print("Scoring and collecting need --sample: only the lead's sample is scored.")
         return 1
     sample = None
     if args.sample is not None:

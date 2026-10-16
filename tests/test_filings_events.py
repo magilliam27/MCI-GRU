@@ -265,11 +265,20 @@ def test_e10_refuses_any_dictionary_but_the_frozen_one(tmp_path, monkeypatch):
     assert not (tmp_path / "e10").exists()
 
 
-@pytest.mark.parametrize("sample", [None, ("e1", "e9"), ("e1", "e1")])
-def test_e10_scoring_needs_the_leads_sample_and_every_id_in_it(tmp_path, monkeypatch, sample):
+@pytest.mark.parametrize("sample", [("e1", "e9"), ("e1", "e1")])
+def test_e10_a_listed_subset_must_name_each_published_event_once(tmp_path, monkeypatch, sample):
     client = FakeClient()
     assert _run(tmp_path, monkeypatch, "--score", client=client, sample=sample) == 1
     assert client.calls == [] and not (tmp_path / "e10").exists()
+
+
+def test_e10_without_a_subset_every_published_event_is_scored(tmp_path, monkeypatch):
+    client = FakeClient()
+    assert _run(tmp_path, monkeypatch, "--score", client=client, sample=None) == 0
+    assert len(client.calls) == 8
+    assert _run(tmp_path, monkeypatch, "--collect", client=FakeClient(), sample=None) == 0
+    scores = pd.read_csv(tmp_path / "e10" / "scores.csv")
+    assert scores["event_id"].tolist() == ["e1", "e2", "e3", "e4"]
 
 
 def test_e10_test_call_then_each_question_on_its_own_then_collect(tmp_path, monkeypatch):
