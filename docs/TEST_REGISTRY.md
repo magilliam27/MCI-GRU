@@ -896,12 +896,14 @@ Item 1A of a 10-K, cut into individual risk factors (#289).
 | `test_a_part_line_is_page_furniture` |  |  |
 | `test_a_list_item_repeated_across_risks_is_text_not_a_header` |  | parametrize |
 | `test_an_introduction_title_drops_the_text_under_it` |  | parametrize |
+| `test_a_risk_about_forward_looking_statements_is_not_introduction` |  |  |
 | `test_a_long_emphasised_preamble_before_the_first_risk_is_introduction` |  |  |
 | `test_run_in_headings_open_their_paragraphs` |  |  |
 | `test_sentence_headings_keep_their_titled_sub_headings_as_text` |  |  |
 | `test_an_unknown_layout_is_refused` |  |  |
 | `test_a_category_title_with_text_under_it_introduces_the_category` |  |  |
 | `test_a_category_title_may_be_long_or_end_in_a_full_stop_without_a_verb` |  | parametrize |
+| `test_a_topic_title_about_risks_affecting_something_is_a_risk` |  |  |
 | `test_a_sentence_that_starts_like_a_category_title_is_a_risk` |  |  |
 | `test_a_long_title_case_heading_over_a_heading_is_a_category` |  |  |
 | `test_topic_headings_over_a_summarys_bullets_stay_in_the_summary` |  |  |

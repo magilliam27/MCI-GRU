@@ -182,7 +182,12 @@ def test_the_section_title_repeated_inside_the_section_is_not_a_risk(html, line)
     reading = read_item_1a(html)
     risks = reading.risk_factors(accession_number="a", fiscal_year=2025)
     assert [risk.heading for risk in risks][1] == "We face intense competition."
-    assert len(risks) == 3
+    # Nor a category over the next risk.
+    assert [risk.category for risk in risks] == [
+        "Risks Related to Our Business and Industry",
+        "Risks Related to Our Business and Industry",
+        "Risks Related to Laws and Regulations",
+    ]
     assert reading.lost_headings == ()
 
 
@@ -363,6 +368,18 @@ def test_an_introduction_title_drops_the_text_under_it(html, title):
     assert reading.unheaded_text == ()
 
 
+def test_a_risk_about_forward_looking_statements_is_not_introduction(html):
+    # A heading that names forward-looking statements but says something of
+    # them is a risk.
+    heading = "Our forward-looking statements may prove inaccurate."
+    html = html.replace(
+        COMPETITION,
+        f"<div><b>{heading}</b></div><div><span>Our plans can change.</span></div>" + COMPETITION,
+    )
+    risks = extract_risk_factors(html, accession_number="a", fiscal_year=2025)
+    assert [(risk.heading, risk.body) for risk in risks][1] == (heading, "Our plans can change.")
+
+
 def test_a_long_emphasised_preamble_before_the_first_risk_is_introduction(html):
     # Pfizer opens Item 1A with bold forward-looking-statement paragraphs.
     preamble = "This report contains forward-looking statements about our business. " * 3
@@ -499,6 +516,20 @@ def test_a_category_title_may_be_long_or_end_in_a_full_stop_without_a_verb(title
         (title, "The spin-off may fail."),
     ]
     assert reading.unheaded_text == ()
+
+
+def test_a_topic_title_about_risks_affecting_something_is_a_risk():
+    # Pfizer heads a risk "Risks Affecting International Operations"; only
+    # "Risk Factors Affecting ..." (CenterPoint) is a category.
+    _, risks = _blocks_reading(
+        "<div><b>Demand may fall.</b></div><div>Customers can leave.</div>"
+        "<div><b>Risks Affecting International Operations</b></div>"
+        "<div>Most of our revenues come from outside the U.S.</div>"
+    )
+    assert [risk.heading for risk in risks] == [
+        "Demand may fall.",
+        "Risks Affecting International Operations",
+    ]
 
 
 def test_a_sentence_that_starts_like_a_category_title_is_a_risk():
