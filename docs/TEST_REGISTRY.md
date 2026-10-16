@@ -836,7 +836,8 @@ S&P 500 membership spells, name checks and the 10-Ks a membership calls for (#30
 | `test_names_on_a_day_are_the_dated_names_then_the_current_one` |  |  |
 | `test_a_new_holding_company_follows_its_predecessor` |  |  |
 | `test_no_other_company_follows` |  | parametrize |
-| `test_every_run_is_named_and_a_reused_ticker_is_not_taken` |  | usefixtures |
+| `test_wikipedia_tables_are_read_with_spans_filled_and_no_html_library` |  | usefixtures |
+| `test_every_run_is_named_and_a_reused_ticker_is_not_taken` |  |  |
 | `test_a_manual_cik_whose_reports_carry_another_name_is_refused` |  | usefixtures |
 | `test_a_ticker_passed_to_another_company_hands_over_its_part_of_the_run` |  |  |
 | `test_a_members_reports_are_those_filed_while_in_the_index_and_the_one_before` |  | usefixtures |

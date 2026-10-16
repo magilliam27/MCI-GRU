@@ -50,11 +50,12 @@ What it writes under ``--output-dir``:
 from __future__ import annotations
 
 import argparse
-import io
 import json
+import re
 import sys
 from collections import defaultdict
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
@@ -113,21 +114,126 @@ def read_member_lists(path: Path) -> list[tuple[pd.Timestamp, frozenset[str]]]:
     ]
 
 
+class _Row(list):
+    """A table row's cell texts; ``header`` when every cell is a ``th``."""
+
+    header = False
+
+
+class _FirstTable(HTMLParser):
+    """The first ``table`` in a page as rows of cell text, spans filled in."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.rows: list[_Row] = []
+        self._depth = 0
+        self._done = False
+        self._cells: list[tuple[str, int, int, bool]] | None = None
+        self._text: list[str] | None = None
+        self._cell: tuple[int, int, bool] = (1, 1, False)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if self._done:
+            return
+        if tag == "table":
+            self._depth += 1
+        elif self._depth == 1 and tag == "tr":
+            self._cells = []
+        elif self._depth == 1 and tag in ("td", "th") and self._cells is not None:
+            spans = dict(attrs)
+            self._cell = (
+                _span_of(spans.get("rowspan")),
+                _span_of(spans.get("colspan")),
+                tag == "th",
+            )
+            self._text = []
+        elif self._text is not None and tag == "br":
+            self._text.append(" ")
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._done:
+            return
+        if tag == "table":
+            self._depth -= 1
+            self._done = self._depth == 0
+        elif self._depth == 1 and tag in ("td", "th") and self._text is not None:
+            assert self._cells is not None
+            text = _SPACES.sub(" ", "".join(self._text)).strip()
+            self._cells.append((text, *self._cell))
+            self._text = None
+        elif self._depth == 1 and tag == "tr" and self._cells is not None:
+            self._place(self._cells)
+            self._cells = None
+
+    def handle_data(self, data: str) -> None:
+        if self._text is not None and self._depth == 1:
+            self._text.append(data)
+
+    def _place(self, cells: list[tuple[str, int, int, bool]]) -> None:
+        row_index = len(self.rows)
+        while len(self._grid) <= row_index:
+            self._grid.append({})
+        filled = self._grid[row_index]
+        column = 0
+        for text, rows, columns, is_header in cells:
+            while column in filled:
+                column += 1
+            for down in range(rows):
+                while len(self._grid) <= row_index + down:
+                    self._grid.append({})
+                for across in range(columns):
+                    self._grid[row_index + down][column + across] = (text, is_header)
+            column += columns
+        self.rows.append(_Row())
+        self._finish(row_index)
+
+    def _finish(self, row_index: int) -> None:
+        cells = self._grid[row_index]
+        row = _Row(cells[column][0] for column in sorted(cells))
+        row.header = bool(cells) and all(is_header for _, is_header in cells.values())
+        self.rows[row_index] = row
+
+    _grid: list[dict[int, tuple[str, bool]]]
+
+    def reset(self) -> None:
+        super().reset()
+        self._grid = []
+
+
+_SPACES = re.compile(r"\s+")
+
+
+def _span_of(value: str | None) -> int:
+    digits = re.match(r"\d+", value or "")
+    return max(int(digits.group()), 1) if digits else 1
+
+
+def first_table(html: str) -> list[_Row]:
+    """The first table in ``html`` as rows of cell text, with row and column spans filled in."""
+    reader = _FirstTable()
+    reader.feed(html)
+    reader.close()
+    return reader.rows
+
+
 def read_wiki_changes(path: Path) -> pd.DataFrame:
     """Wikipedia's changes table: ``date``, ``added``, ``added_name``, ``removed``, ``removed_name``."""
-    table = pd.read_html(io.StringIO(path.read_text(encoding="utf-8")))[0]
-    table = table.iloc[:, :5]
-    table.columns = ["date", "added", "added_name", "removed", "removed_name"]
+    rows = [row[:5] for row in first_table(path.read_text(encoding="utf-8")) if not row.header]
+    table = pd.DataFrame(
+        [row + [""] * (5 - len(row)) for row in rows],
+        columns=["date", "added", "added_name", "removed", "removed_name"],
+    ).replace("", None)
     table["date"] = pd.to_datetime(table["date"])
     return table.astype(object).where(table.notna(), None)
 
 
 def read_wiki_current(path: Path) -> dict[str, tuple[str, str]]:
     """Ticker to (name, CIK) from Wikipedia's current member table."""
-    table = pd.read_html(io.StringIO(path.read_text(encoding="utf-8")))[0]
+    rows = first_table(path.read_text(encoding="utf-8"))
+    header = rows[0]
+    symbol, security, cik = (header.index(name) for name in ("Symbol", "Security", "CIK"))
     return {
-        str(row.Symbol): (str(row.Security), f"{int(row.CIK):010d}")
-        for row in table.itertuples(index=False)
+        row[symbol]: (row[security], f"{int(row[cik]):010d}") for row in rows[1:] if not row.header
     }
 
 

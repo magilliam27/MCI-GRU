@@ -309,6 +309,41 @@ def _no_throttle(monkeypatch):
 
 
 @pytest.mark.usefixtures("_no_throttle")
+def test_wikipedia_tables_are_read_with_spans_filled_and_no_html_library(tmp_path):
+    # Wikipedia's changes table gives a date shared by several changes one
+    # cell with a rowspan, under two header rows; pandas' read_html needs
+    # lxml, which CI's locked environment does not carry.
+    (tmp_path / "changes.html").write_text(
+        "<p>intro</p><table>"
+        '<tr><th rowspan="2">Effective Date</th><th colspan="2">Added</th>'
+        '<th colspan="2">Removed</th><th rowspan="2">Reason</th></tr>'
+        "<tr><th>Ticker</th><th>Security</th><th>Ticker</th><th>Security</th></tr>"
+        '<tr><td rowspan="2">March 23, 2026</td><td>NEW</td><td>New &amp; Co.<sup>[1]</sup></td>'
+        "<td>OLD</td><td>Old<br>Corp</td><td>Cap</td></tr>"
+        "<tr><td>TWO</td><td>Two Inc.</td><td></td><td></td><td>Cap</td></tr>"
+        "</table><table><tr><td>a later table</td></tr></table>",
+        encoding="utf-8",
+    )
+    changes = build_members.read_wiki_changes(tmp_path / "changes.html")
+
+    assert changes.to_dict("records") == [
+        {
+            "date": _day("2026-03-23"),
+            "added": "NEW",
+            "added_name": "New & Co.[1]",
+            "removed": "OLD",
+            "removed_name": "Old Corp",
+        },
+        {
+            "date": _day("2026-03-23"),
+            "added": "TWO",
+            "added_name": "Two Inc.",
+            "removed": None,
+            "removed_name": None,
+        },
+    ]
+
+
 def test_every_run_is_named_and_a_reused_ticker_is_not_taken(tmp_path):
     assert build_members.main(_build_inputs(tmp_path), transport=FakeSec(FAKE_FILERS)) == 0
     runs = pd.read_csv(tmp_path / "out" / "sp500_ticker_runs.csv", dtype=str).fillna("")
