@@ -328,11 +328,11 @@ def main(
             return sdk_question_for(criteria)
         return Choice(instructions=question.instructions, criteria=criteria)
 
-    def run(company: str, found: list, client: Any) -> list:
+    def run(company: str, found: list, client: Any, asked: Any = sdk_question) -> list:
         return score_states(
             found,
             question,
-            sdk_question_for=sdk_question,
+            sdk_question_for=asked,
             client=client,
             cache=AnswerCache(jev_dir / "answers" / f"{company}.jsonl"),
             model=question_set.model,
@@ -417,7 +417,8 @@ def main(
     rows = []
     try:
         for company, found in items.items():
-            for item in run(company, found, NoJev()):
+            # Collecting builds no SDK question: NoJev refuses any call first.
+            for item in run(company, found, NoJev(), lambda criteria: criteria):
                 rows.append(
                     {"company": company, "pair_id": item.pair_id, "choice": item.choice}
                     | {f"p_{label}": item.probabilities.get(label) for label in DIRECTION_LABELS}

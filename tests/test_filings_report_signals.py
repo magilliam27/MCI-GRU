@@ -214,7 +214,12 @@ def _write_data(root: Path) -> Path:
 
 def _run(root: Path, *extra: str, client: FakeClient | None = None) -> int:
     argv = ["--data-dir", str(root / "data"), "--output-dir", str(root / "E7"), *extra]
-    return script.main(argv, client_factory=(lambda: client) if client else None)
+    # The SDK is optional (CI has none): the fake client takes the criteria as the question.
+    return script.main(
+        argv,
+        client_factory=(lambda: client) if client else None,
+        sdk_question_for=lambda criteria: criteria,
+    )
 
 
 def test_e7_refuses_data_that_differs_from_its_manifest(tmp_path):
