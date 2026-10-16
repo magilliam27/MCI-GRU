@@ -50,6 +50,7 @@ from mci_gru.filings.pairing import pair_consecutive_years
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
+    from pathlib import Path
 
     from mci_gru.filings.pairing import RiskPair
     from mci_gru.filings.risk_factors import RiskFactor
@@ -70,6 +71,10 @@ WORD_SCORE_CUT = 0.04
 #: the mean of its three draws of "did it materially change?" is at least 0.5.
 JEV_CHANGED_CUT = 0.5
 FLAG_COLUMNS = ("pair_id", "p_same", "word_score", "jev_changed", "word_changed")
+#: E8's two questions (configs/filings/questions_v4.yaml): is the change bad, good
+#: or neutral for the company, and the finer list of what changed.
+DIRECTION_LABELS = ("worse", "better", "neutral")
+KIND_LABELS = ("materialized", "new_exposure", "escalated", "eased", "neutral")
 LABEL_COLUMNS = (
     "label_id",
     "current_year",
@@ -139,6 +144,23 @@ def change_flags(table: pd.DataFrame, choices: pd.DataFrame) -> pd.DataFrame:
     return flags[list(FLAG_COLUMNS)]
 
 
+def lm_negative_words(path: Path) -> frozenset[str]:
+    """The Loughran-McDonald negative list, lower-cased, from its master dictionary CSV.
+
+    The ``Negative`` column holds the year a word joined the list, or minus the
+    year it left, so only positive years are on the current list.
+    """
+    table = pd.read_csv(path, usecols=["Word", "Negative"], keep_default_na=False)
+    listed = table.loc[table["Negative"].astype(int) > 0, "Word"]
+    return frozenset(str(word).lower() for word in listed)
+
+
+def negative_share(text: str, negative: frozenset[str]) -> float:
+    """The share of a text's words (every occurrence) that are on the negative list."""
+    words = _WORD.findall(text.lower())
+    return sum(word in negative for word in words) / len(words) if words else 0.0
+
+
 def pair_table(pairs: Sequence[RiskPair]) -> pd.DataFrame:
     """One row per pair: ids, texts, similarity, word change and the baseline's answer."""
     rows = []
@@ -191,13 +213,18 @@ def score_choices(
     client: Any,
     cache: AnswerCache,
     model: str,
+    labels: Sequence[str] = CHANGE_LABELS,
 ) -> list[ScoredChoice]:
-    """Ask the Choice of every pair, options shuffled per pair, from the cache when held."""
+    """Ask the Choice of every pair, options shuffled per pair, from the cache when held.
+
+    ``labels`` are the options the question must offer, exactly: E2's five change
+    kinds unless another question set is being scored.
+    """
     if question.kind != "choice":
         raise QuestionSetError(f"{question.question_id}: only Choice questions are scored here")
-    if sorted(name for name, _ in question.options) != sorted(CHANGE_LABELS):
+    if sorted(name for name, _ in question.options) != sorted(labels):
         raise QuestionSetError(
-            f"{question.question_id}: options must be exactly {', '.join(CHANGE_LABELS)}"
+            f"{question.question_id}: options must be exactly {', '.join(labels)}"
         )
     scored: list[ScoredChoice] = []
     for pair in pairs:

@@ -1,0 +1,55 @@
+# Frozen question set for E8 (#303): is a risk's change bad, good or neutral for
+# the company? Frozen before any E8 label existed. Do not edit a frozen version:
+# a changed question is a new file (questions_v5.yaml).
+#
+# The state is the same as E2's (mci_gru.filings.jev.pair_state): a current-year
+# risk factor and its closest prior-year risk factor by TF-IDF, each as heading
+# and text. Each question is its own call, so one answer cannot steer the other,
+# and its options are shuffled per pair (mci_gru.filings.change.option_order).
+#
+# The option sets are the research lead's card's. In change_kind, materialized,
+# new_exposure and escalated correspond to worse in direction, eased to better
+# and neutral to neutral.
+version: 4
+model: jev-1.13.0
+questions:
+  direction:
+    kind: choice
+    instructions: >-
+      Compare the current-year risk factor with the prior-year risk factor,
+      which is its closest match in last year's filing. From the company's
+      point of view, did the risk get worse, get better, or stay as serious as
+      it was?
+    options:
+      worse: >-
+        The risk became more serious or more likely for the company: a new
+        exposure or a wider scope, an event that actually happened, or a
+        stronger warning.
+      better: >-
+        The risk eased for the company: an exposure was removed or shrank, a
+        matter was resolved, or the warning softened.
+      neutral: >-
+        No change in how serious or likely the risk is: only rewording, updated
+        figures or dates, or reorganised text.
+  change_kind:
+    kind: choice
+    instructions: >-
+      Compare the current-year risk factor with the prior-year risk factor,
+      which is its closest match in last year's filing. Which option best
+      describes what changed for the company?
+    options:
+      materialized: >-
+        The current version reports that the risk actually happened: an
+        incident, ruling, fine, loss or disruption.
+      new_exposure: >-
+        The current version adds a new driver, product, market, rule or
+        counterparty that exposes the company to this risk.
+      escalated: >-
+        The same exposure, but the current version warns of larger or likelier
+        harm.
+      eased: >-
+        An exposure shrank or was removed, a matter was resolved, or the warning
+        softened.
+      neutral: >-
+        Only wording, figures, dates or layout changed; the risk is no more and
+        no less serious.
