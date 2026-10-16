@@ -315,3 +315,16 @@ def test_e10_test_call_then_each_question_on_its_own_then_collect(tmp_path, monk
     meta = json.loads((tmp_path / "e10" / "scores.meta.json").read_text(encoding="utf-8"))
     assert meta["distinct_calls"] == {"rating": 3, "size": 3}
     assert meta["models_answering"] == [MODEL]
+
+
+def test_e11_collects_the_rating_alone_when_only_the_rating_was_asked(tmp_path, monkeypatch):
+    client, loud = FakeClient(), FakeClient()
+    assert _run(tmp_path, monkeypatch, "--score", "--question", "rating", client=client) == 0
+    assert all(list(c["questions"]) == ["rating"] for c in client.calls)
+    assert _run(tmp_path, monkeypatch, "--collect", client=loud) == 1  # size never asked
+    assert _run(tmp_path, monkeypatch, "--collect", "--question", "rating", client=loud) == 0
+    assert loud.calls == []
+    scores = pd.read_csv(tmp_path / "e10" / "scores.csv")
+    assert "rating_score" in scores.columns and "size_choice" not in scores.columns
+    meta = json.loads((tmp_path / "e10" / "scores.meta.json").read_text(encoding="utf-8"))
+    assert meta["distinct_calls"] == {"rating": 3}

@@ -727,6 +727,7 @@ E10 (#305): what Jev reads for an 8-K event, the baseline, the scores and the ru
 | `test_e10_a_listed_subset_must_name_each_published_event_once` |  | parametrize |
 | `test_e10_without_a_subset_every_published_event_is_scored` |  |  |
 | `test_e10_test_call_then_each_question_on_its_own_then_collect` |  |  |
+| `test_e11_collects_the_rating_alone_when_only_the_rating_was_asked` |  |  |
 
 ## `tests/test_filings_grading.py`
 

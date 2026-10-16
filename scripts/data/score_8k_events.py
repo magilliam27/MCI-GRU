@@ -18,9 +18,9 @@ are shuffled per event. Three steps::
     ... --score --question rating --limit 1
     ... --score [--question size]
 
-    # 3. Collect both questions' answers into scores.csv. Never calls Jev: an
-    #    event with no answer stops it.
-    ... --collect
+    # 3. Collect both questions' answers into scores.csv, or one question's with
+    #    --question. Never calls Jev: an event with no answer stops it.
+    ... --collect [--question rating]
 
 The baseline, fixed on the card before any label: the item code's lean, then
 the Loughran-McDonald net tone (negative minus positive words as a share of all
@@ -206,7 +206,8 @@ def main(argv: list[str] | None = None, *, client: Any = None, sdk_question_for:
         client = TypeSafeClient(model=question_set.model)
     chosen = events if args.limit is None else events[: args.limit]
     items = [(event.event_id, event_state(event)) for event in chosen]
-    names = list(QUESTIONS) if args.question is None or args.collect else [args.question]
+    # E11 asks the rating only, so --question also limits what --collect gathers.
+    names = list(QUESTIONS) if args.question is None else [args.question]
     scored = {}
     try:
         for name in names:
