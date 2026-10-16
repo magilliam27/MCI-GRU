@@ -180,9 +180,8 @@ _CATEGORY_TITLE = re.compile(
     r"risk\s+factors\s+affecting\b|general\s+risks?\b)",
     re.I,
 )
-#: A verb that makes a heading ending in a full stop a sentence, not a title:
-#: "Forward-looking statements may prove inaccurate." is a risk, and "Risks
-#: relating to proposed spin-off." is a title.
+#: A verb makes a heading that names forward-looking statements a risk, not an
+#: introduction's title: "Forward-looking statements may prove inaccurate."
 _VERB = re.compile(
     r"\b(may|might|could|can|cannot|will|would|should|must|is|are|was|were|has|have|had|"
     r"be|been|being|do|does|did)\b",
@@ -462,11 +461,6 @@ def _is_capitals_title(block: Block) -> bool:
     )
 
 
-def _is_sentence(text: str) -> bool:
-    """A heading that ends a sentence with a verb in it, which no title does."""
-    return bool(_SENTENCE_END.search(text) and _VERB.search(text))
-
-
 def _is_intro_title(text: str) -> bool:
     return bool(_INTRO_TITLE.match(text)) or (
         len(text) <= MAX_INTRO_TITLE_CHARS
@@ -681,11 +675,12 @@ def read_item_1a(html: str, *, layout: str = "blocks") -> SectionReading:
             if (
                 len(block.text) <= MAX_TITLE_CASE_CATEGORY_CHARS
                 and _CATEGORY_TITLE.match(block.text)
-                and not _is_sentence(block.text)
+                and not _SENTENCE_END.search(block.text)
             ):
                 # A category title, with text under it introducing the category
-                # (NextEra). A sentence that starts like one is a risk
-                # (Honeywell's "Risks related to our ... pension plans may ...").
+                # (NextEra). One ending in a full stop is a risk (Honeywell's
+                # "Risks related to our ... pension plans may ...", and CVS's
+                # "Risks related to the seasonality of our business.").
                 _close()
                 category, introduction, summary = block.text, True, False
                 continue

@@ -497,15 +497,14 @@ def test_a_category_title_with_text_under_it_introduces_the_category():
 @pytest.mark.parametrize(
     "title",
     [
-        "Risks relating to the proposed spin-off.",
         "Risk Factors Affecting Our Interests in Enable Midstream Partners",
         "Risks related to our intellectual property, cybersecurity, information technology "
         "systems, data privacy, and the protection of our confidential information",
     ],
 )
-def test_a_category_title_may_be_long_or_end_in_a_full_stop_without_a_verb(title):
-    # Long category titles (Nike), titles ending in a full stop (Willis Towers
-    # Watson) and "Risk Factors Affecting ..." (CenterPoint) are categories.
+def test_a_category_title_may_be_long(title):
+    # Long category titles (Nike) and "Risk Factors Affecting ..." (CenterPoint)
+    # are categories.
     reading, risks = _blocks_reading(
         "<div><b>Demand may fall.</b></div><div>Customers can leave.</div>"
         f"<div><b>{title}</b></div><div>The risks below concern the spin-off.</div>"
@@ -530,6 +529,19 @@ def test_a_topic_title_about_risks_affecting_something_is_a_risk():
         "Demand may fall.",
         "Risks Affecting International Operations",
     ]
+
+
+def test_a_category_title_ending_in_a_full_stop_is_a_risk():
+    # CVS heads risks "Risks related to the seasonality of our business."
+    _, risks = _blocks_reading(
+        "<div><b>Demand may fall.</b></div><div>Customers can leave.</div>"
+        "<div><b>Risks related to the seasonality of our business.</b></div>"
+        "<div>Our sales peak in winter.</div>"
+    )
+    assert [(risk.heading, risk.body) for risk in risks][1] == (
+        "Risks related to the seasonality of our business.",
+        "Our sales peak in winter.",
+    )
 
 
 def test_a_sentence_that_starts_like_a_category_title_is_a_risk():

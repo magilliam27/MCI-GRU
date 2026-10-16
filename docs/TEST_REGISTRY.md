@@ -902,8 +902,9 @@ Item 1A of a 10-K, cut into individual risk factors (#289).
 | `test_sentence_headings_keep_their_titled_sub_headings_as_text` |  |  |
 | `test_an_unknown_layout_is_refused` |  |  |
 | `test_a_category_title_with_text_under_it_introduces_the_category` |  |  |
-| `test_a_category_title_may_be_long_or_end_in_a_full_stop_without_a_verb` |  | parametrize |
+| `test_a_category_title_may_be_long` |  | parametrize |
 | `test_a_topic_title_about_risks_affecting_something_is_a_risk` |  |  |
+| `test_a_category_title_ending_in_a_full_stop_is_a_risk` |  |  |
 | `test_a_sentence_that_starts_like_a_category_title_is_a_risk` |  |  |
 | `test_a_long_title_case_heading_over_a_heading_is_a_category` |  |  |
 | `test_topic_headings_over_a_summarys_bullets_stay_in_the_summary` |  |  |
