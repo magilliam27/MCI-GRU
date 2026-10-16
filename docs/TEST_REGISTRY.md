@@ -713,9 +713,9 @@ The EDGAR filing index and when each filing was knowable (#289).
 
 ## `tests/test_filings_eight_k.py`
 
-8-K events, their item sections and their filing-time context (#308).
+8-K events, their item sections and their filing-time context (#308, #311).
 
-**Exercises:** `mci_gru.data.input_manifest`, `mci_gru.filings.eight_k`, `mci_gru.filings.filers`, `scripts.data.export_sec_8k_events`, `scripts.data.export_sec_risk_factors`
+**Exercises:** `mci_gru.data.input_manifest`, `mci_gru.filings.eight_k`, `mci_gru.filings.filers`, `scripts.data.export_sec_8k_events`, `scripts.data.export_sec_member_8k`, `scripts.data.export_sec_risk_factors`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -736,6 +736,10 @@ The EDGAR filing index and when each filing was knowable (#289).
 | `test_an_event_carries_its_text_and_only_what_was_public_when_it_was_filed` |  |  |
 | `test_an_item_with_no_text_blocks_the_manifest` |  |  |
 | `test_a_listed_item_with_no_section_blocks_the_manifest` |  |  |
+| `test_the_index_page_gives_the_acceptance_time_in_eastern_time` |  | parametrize |
+| `test_an_index_page_without_an_acceptance_time_gives_none` |  |  |
+| `test_a_members_events_are_those_accepted_while_a_member_by_their_index_page` |  |  |
+| `test_a_flagged_event_is_left_out_or_stops_the_manifest` |  |  |
 
 ## `tests/test_filings_grading.py`
 
@@ -836,12 +840,18 @@ S&P 500 membership spells, name checks and the 10-Ks a membership calls for (#30
 | `test_two_reports_in_one_year_are_both_kept_in_filing_order` |  |  |
 | `test_a_member_from_its_first_report_has_no_prior` |  |  |
 | `test_names_on_a_day_are_the_dated_names_then_the_current_one` |  |  |
+| `test_a_rename_into_the_name_is_dated_and_a_name_held_all_along_is_not` |  |  |
 | `test_a_new_holding_company_follows_its_predecessor` |  |  |
 | `test_no_other_company_follows` |  | parametrize |
 | `test_wikipedia_tables_are_read_with_spans_filled_and_no_html_library` |  | usefixtures |
 | `test_every_run_is_named_and_a_reused_ticker_is_not_taken` |  |  |
 | `test_a_manual_cik_whose_reports_carry_another_name_is_refused` |  | usefixtures |
 | `test_a_ticker_passed_to_another_company_hands_over_its_part_of_the_run` |  |  |
+| `test_a_handover_ends_on_the_day_it_is_dated` |  |  |
+| `test_a_company_renamed_into_a_ticker_later_takes_it_from_that_day` |  |  |
+| `test_only_a_company_that_filed_before_its_rename_takes_a_ticker_by_it` |  |  |
+| `test_without_a_rename_a_ticker_passes_after_the_earlier_companys_last_own_filing` |  |  |
+| `test_a_company_that_took_a_ticker_holds_only_its_own_part_of_the_run` |  | usefixtures |
 | `test_a_members_reports_are_those_filed_while_in_the_index_and_the_one_before` |  | usefixtures |
 | `test_a_report_that_fails_the_checks_stops_the_manifest_unless_its_risks_are_left_out` |  | usefixtures |
 | `test_other_layouts_are_tried_and_whole_sections_kept_where_risks_fail` |  | usefixtures |

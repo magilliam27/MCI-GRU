@@ -67,6 +67,11 @@ _SIGNATURE = re.compile(
 _ROW = re.compile(r"<tr[^>]*>(.*?)</tr>", re.I | re.S)
 _CELL = re.compile(r"<td[^>]*>(.*?)</td>", re.I | re.S)
 _TAG = re.compile(r"<[^>]+>")
+#: The acceptance time a filing's index page shows, in EDGAR's Eastern time.
+_ACCEPTED = re.compile(
+    r">\s*Accepted\s*</div>\s*<div[^>]*>\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s*<", re.I
+)
+EDGAR_TIMEZONE = "America/New_York"
 _PRESS_RELEASE = re.compile(r"^EX-99(\.0?1)?$", re.I)
 #: The header lines of EDGAR's SGML wrapper ("<TYPE>EX-99.1"), which open some
 #: documents and have no closing tag, so a parser reads them as text.
@@ -140,6 +145,21 @@ def index_exhibits(index_html: str) -> list[tuple[str, str]]:
         if len(cells) >= 4 and cells[2]:
             rows.append((cells[3], cells[2].split()[0]))
     return rows
+
+
+def index_accepted(index_html: str) -> pd.Timestamp | None:
+    """The acceptance time a filing's ``-index.htm`` page shows, as a UTC instant.
+
+    The page gives EDGAR's own Eastern clock time. SEC's submissions files give
+    the same moment as UTC, but for some filers four or five hours late
+    (JPMorgan's 8-K accepted at 16:56 Eastern on 9 January 2013 is listed at
+    02:56 UTC the next day, which would be 21:56 Eastern, after the 17:30 cut-off
+    its filing date shows it beat). None when the page shows no time.
+    """
+    match = _ACCEPTED.search(index_html)
+    if match is None:
+        return None
+    return pd.Timestamp(match.group(1)).tz_localize(EDGAR_TIMEZONE).tz_convert("UTC")
 
 
 def press_release(exhibits: Iterable[tuple[str, str]]) -> tuple[str, str] | None:

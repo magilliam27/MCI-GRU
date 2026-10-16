@@ -1,4 +1,4 @@
-"""8-K events, their item sections and their filing-time context (#308).
+"""8-K events, their item sections and their filing-time context (#308, #311).
 
 The module tests feed the functions 8-Ks shaped like the ones E10's ten companies
 filed; the export tests drive the whole pull against a fake EDGAR.
@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 
 import scripts.data.export_sec_8k_events as export
+import scripts.data.export_sec_member_8k as member_export
 import scripts.data.export_sec_risk_factors as export_10k
 from mci_gru.data.input_manifest import read_input_manifest
 from mci_gru.filings.eight_k import (
@@ -20,6 +21,7 @@ from mci_gru.filings.eight_k import (
     ItemSection,
     document_text,
     event_text,
+    index_accepted,
     index_exhibits,
     is_event,
     item_sections,
@@ -446,3 +448,163 @@ def test_a_listed_item_with_no_section_blocks_the_manifest(tmp_path, capsys):
     assert "item_section_missing: item 5.02 is listed but has no section" in (
         capsys.readouterr().out
     )
+
+
+# The acceptance time a filing's index page shows, and the members' pull (#311).
+
+
+def _index_page(accepted: str, *exhibits: tuple[str, str]) -> str:
+    """An index page as EDGAR lays it out, with its Eastern acceptance time."""
+    return (
+        '<div class="formGrouping"><div class="infoHead">Filing Date</div>'
+        '<div class="info">2014-03-03</div>\n<div class="infoHead">Accepted</div>\n'
+        f'<div class="info">{accepted}</div></div>' + _index(*exhibits)
+    )
+
+
+@pytest.mark.parametrize(
+    ("accepted", "expected"),
+    [
+        # Eastern standard time in winter, daylight time in summer.
+        ("2013-01-09 16:56:08", "2013-01-09T21:56:08+00:00"),
+        ("2019-09-10 16:38:35", "2019-09-10T20:38:35+00:00"),
+    ],
+)
+def test_the_index_page_gives_the_acceptance_time_in_eastern_time(accepted, expected):
+    assert index_accepted(_index_page(accepted)).isoformat() == expected
+
+
+def test_an_index_page_without_an_acceptance_time_gives_none():
+    assert index_accepted(_index(("EX-99.1", "a.htm"))) is None
+
+
+BETA = "https://www.sec.gov/Archives/edgar/data/88"
+
+
+def _beta_8k(accession: str, listed: str, items: str = "5.02,9.01") -> tuple:
+    return (accession, "8-K", "", listed, f"{accession[-3:]}.htm", items)
+
+
+def _beta(broken: bool = False) -> dict[str, bytes]:
+    """A member from 2014-01-02 until 2014-06-01, the first day it was out."""
+    filings = [
+        ("0000000088-14-000001", "10-K", "2013-12-31", "2014-02-20T21:00:00.000Z", "k.htm", ""),
+        # SEC lists A five hours late: its index page says 16:00 Eastern.
+        _beta_8k("0000000088-14-000011", "2014-03-04T02:00:00.000Z"),
+        # B is listed in the first hour of 1 June Eastern; its page says 31 May.
+        _beta_8k("0000000088-14-000012", "2014-06-01T05:00:00.000Z"),
+        # C's page puts it on 1 June, the first day out.
+        _beta_8k("0000000088-14-000013", "2014-06-02T01:00:00.000Z"),
+        # D is weeks after the company left.
+        _beta_8k("0000000088-14-000014", "2014-07-15T20:00:00.000Z"),
+        # E has an empty item section when ``broken``; F's document is gone.
+        _beta_8k("0000000088-14-000015", "2014-04-01T20:00:00.000Z"),
+        _beta_8k("0000000088-14-000016", "2014-04-15T20:00:00.000Z"),
+    ]
+    pages = {
+        "0000000088-14-000011": "2014-03-03 16:00:00",
+        "0000000088-14-000012": "2014-05-31 20:00:00",
+        "0000000088-14-000013": "2014-06-01 09:00:00",
+        "0000000088-14-000015": "2014-04-01 16:00:00",
+        "0000000088-14-000016": "2014-04-15 16:00:00",
+    }
+    responses = {
+        "https://data.sec.gov/submissions/CIK0000000088.json": json.dumps(
+            {"sic": "2834", "filings": {"recent": _submissions(filings)}}
+        ).encode(),
+        "https://data.sec.gov/api/xbrl/companyfacts/CIK0000000088.json": json.dumps(
+            _facts(Revenues=[_fact("0000000088-14-000001", "2013-01-01", "2013-12-31", 700.0)])
+        ).encode(),
+    }
+    for accession, accepted in pages.items():
+        folder = f"{BETA}/{accession.replace('-', '')}"
+        empty = broken and accession.endswith("15")
+        body = "" if empty else f"<div>Event {accession[-2:]}: an officer resigned.</div>"
+        if not accession.endswith("16"):
+            responses[f"{folder}/{accession[-3:]}.htm"] = _eight_k(
+                f"<div><b>Item 5.02. Departure of Officers.</b></div>{body}"
+            ).encode()
+        responses[f"{folder}/{accession}-index.htm"] = _index_page(accepted).encode()
+    return responses
+
+
+def _member_run(tmp_path: Path, responses: dict[str, bytes], *extra: str) -> int:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    companies = tmp_path / "companies.csv"
+    companies.write_text(
+        "key,name,ciks,tickers,spells,release\n"
+        "beta,Beta Corp,0000000088,BETA,BETA:2014-01-02:2014-06-01,r2\n",
+        encoding="utf-8",
+    )
+    return member_export.main(
+        [
+            "--user-agent", AGENT,
+            "--companies", str(companies),
+            "--package-root", str(tmp_path / "package"),
+            "--cache-dir", str(tmp_path / "cache"),
+            "--manifest-output", str(tmp_path / "manifest.json"),
+            *extra,
+        ],
+        transport=Transport(responses),
+    )  # fmt: skip
+
+
+def test_a_members_events_are_those_accepted_while_a_member_by_their_index_page(tmp_path):
+    assert _member_run(tmp_path, _beta(), "--leave-out-flagged") == 0
+    package = tmp_path / "package"
+    events = [
+        json.loads(line) for line in (package / "member_8k_events.jsonl").read_text().splitlines()
+    ]
+    assert [
+        (event["event_id"], event["accepted_utc"], event["listed_accepted_utc"]) for event in events
+    ] == [
+        ("0000000088-14-000011", "2014-03-03T21:00:00+00:00", "2014-03-04T02:00:00+00:00"),
+        ("0000000088-14-000015", "2014-04-01T20:00:00+00:00", "2014-04-01T20:00:00+00:00"),
+        ("0000000088-14-000012", "2014-06-01T00:00:00+00:00", "2014-06-01T05:00:00+00:00"),
+    ]
+    first = events[0]
+    assert (first["company"], first["cik"], first["release"], first["sic"]) == (
+        "beta",
+        "0000000088",
+        "r2",
+        "2834",
+    )
+    assert first["text"].endswith("Event 11: an officer resigned.")
+    assert (first["prior_revenue_usd"], first["prior_10k_accession"]) == (
+        700.0,
+        "0000000088-14-000001",
+    )
+    left_out = pd.read_csv(package / "member_8k_left_out.csv", dtype=str)
+    assert left_out[["event_id", "year", "reason"]].values.tolist() == [
+        ["0000000088-14-000016", "2014", "document_unreadable"]
+    ]
+    meta = json.loads((package / "member_8k_events.meta.json").read_text())
+    assert meta["events_by_item"] == {"5.02": 3}
+    assert meta["events_by_year"] == {"2014": 3}
+    assert meta["events_by_year_and_item"] == {"2014": {"5.02": 3}}
+    assert meta["outside_membership_by_index_page"] == 1
+    assert meta["acceptance_corrected_from_index_page"] == 3
+    assert meta["events_left_out_by_year"]["2014"] == {
+        "events": 4,
+        "left_out": 1,
+        "share_left_out": 0.25,
+    }
+    assert read_input_manifest(tmp_path / "manifest.json").manifest.package_id == (
+        "member_8k_events"
+    )
+
+
+def test_a_flagged_event_is_left_out_or_stops_the_manifest(tmp_path):
+    assert _member_run(tmp_path / "out", _beta(broken=True), "--leave-out-flagged") == 0
+    left_out = pd.read_csv(tmp_path / "out" / "package" / "member_8k_left_out.csv", dtype=str)
+    assert dict(zip(left_out["event_id"], left_out["reason"], strict=True)) == {
+        "0000000088-14-000015": "item_section_empty",
+        "0000000088-14-000016": "document_unreadable",
+    }
+    lines = (tmp_path / "out" / "package" / "member_8k_events.jsonl").read_text().splitlines()
+    assert [json.loads(line)["event_id"] for line in lines] == [
+        "0000000088-14-000011",
+        "0000000088-14-000012",
+    ]
+    assert _member_run(tmp_path / "kept", _beta(broken=True)) == 1
+    assert not (tmp_path / "kept" / "manifest.json").exists()

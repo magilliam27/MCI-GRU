@@ -40,7 +40,7 @@ import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
@@ -61,6 +61,7 @@ from mci_gru.filings.eight_k import (
     REVENUE_CONCEPTS,
     document_text,
     event_text,
+    index_accepted,
     index_exhibits,
     is_event,
     item_sections,
@@ -77,6 +78,9 @@ from scripts.data.export_sec_risk_factors import (
     _urllib_transport,
     decode_document,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping, Sequence
 
 COMPANY_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 ARCHIVE_URL = "https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/{name}"
@@ -111,15 +115,16 @@ def _archive_url(cik: str, accession: str, name: str) -> str:
     return ARCHIVE_URL.format(cik=int(cik), accession=accession.replace("-", ""), name=name)
 
 
-def read_listings(client: EdgarClient, filer: Filer) -> list[dict[str, Any]]:
+def read_listings(client: EdgarClient, filer: Filer, *, fresh: bool = True) -> list[dict[str, Any]]:
     """Every filing listed under the company's CIKs, once per accession.
 
     A filing listed under two CIKs keeps the listing of the CIK named last.
+    ``fresh`` reads each CIK's main submissions file from SEC rather than the cache.
     """
     listings: dict[str, dict[str, Any]] = {}
     for cik in filer.ciks:
         recent, older = submissions_blocks(
-            client.get_json(SUBMISSIONS_URL.format(cik=cik), fresh=True)
+            client.get_json(SUBMISSIONS_URL.format(cik=cik), fresh=fresh)
         )
         blocks = [recent] + [
             client.get_json(SUBMISSIONS_FILE_URL.format(name=name)) for name in older
@@ -141,7 +146,8 @@ def read_listings(client: EdgarClient, filer: Filer) -> list[dict[str, Any]]:
     return sorted(listings.values(), key=lambda row: (row["accepted"], row["accession"]))
 
 
-def _ten_ks(listings: list[dict[str, Any]], filer: Filer) -> list[FilingRecord]:
+def ten_k_index(listings: Sequence[Mapping[str, Any]], preferred_cik: str) -> list[FilingRecord]:
+    """The company's 10-Ks, one per report, oldest first."""
     records = [
         FilingRecord(
             cik=row["cik"],
@@ -156,8 +162,103 @@ def _ten_ks(listings: list[dict[str, Any]], filer: Filer) -> list[FilingRecord]:
         if row["form"] == "10-K"
     ]
     return build_filing_index(
-        records, forms=("10-K",), accepted_from="1990-01-01", preferred_cik=filer.preferred_cik
+        records, forms=("10-K",), accepted_from="1990-01-01", preferred_cik=preferred_cik
     ).filings
+
+
+def read_event_text(
+    get: Callable[[str], bytes], cik: str, accession: str, document_name: str, items: Sequence[str]
+) -> tuple[dict[str, Any], list[tuple[str, str]]]:
+    """An event's text from its filing's documents, and the problems the checks find.
+
+    ``get`` fetches a URL: the primary document, the filing's index page and its
+    press-release exhibit. The index page also gives the acceptance time
+    (``index_accepted``).
+    """
+    document = get(_archive_url(cik, accession, document_name))
+    sections = item_sections(decode_document(document)[0])
+    index_page = get(_archive_url(cik, accession, f"{accession}-index.htm"))
+    index_html = decode_document(index_page)[0]
+    release = press_release(index_exhibits(index_html))
+    exhibit_text = None
+    if release is not None:
+        exhibit_text = document_text(
+            decode_document(get(_archive_url(cik, accession, release[1])))[0]
+        )
+    text, truncated = event_text(sections, exhibit_text, release[0] if release else None)
+
+    found = {section.code for section in sections}
+    problems = [
+        ("item_section_missing", f"item {code} is listed but has no section")
+        for code in items
+        if code not in LEFT_OUT_ITEMS and code not in found
+    ]
+    problems += [
+        ("item_section_empty", f"item {section.code} has no text under its heading")
+        for section in sections
+        if section.code not in LEFT_OUT_ITEMS
+        and not any(character.isalnum() for character in section.body)
+    ]
+    if release is not None and not exhibit_text:
+        problems.append(("press_release_empty", f"{release[1]} reads empty"))
+    read = {
+        "text": text,
+        "truncated": truncated,
+        "sections": [section.code for section in sections],
+        "press_release": release[1] if release else None,
+        "document_url": _archive_url(cik, accession, document_name),
+        "document_sha256": hashlib.sha256(document).hexdigest(),
+        "index_accepted": index_accepted(index_html),
+    }
+    return read, problems
+
+
+def event_record(
+    row: Mapping[str, Any],
+    company: str,
+    company_name: str,
+    read: Mapping[str, Any],
+    ten_ks: Sequence[FilingRecord],
+    revenue_of: Callable[[FilingRecord], dict[str, Any] | None],
+    eight_ks: Sequence[tuple[pd.Timestamp, str, tuple[str, ...]]],
+) -> dict[str, Any]:
+    """One event line: its text, and the context public when it was accepted."""
+    earlier = [record for record in ten_ks if record.accepted_utc < row["accepted"]]
+    prior = earlier[-1] if earlier else None
+    revenue = revenue_of(prior) if prior else None
+    return {
+        "event_id": row["accession"],
+        "company": company,
+        "company_name": company_name,
+        "items": list(row["items"]),
+        "event_items": [code for code in row["items"] if code in EVENT_ITEMS],
+        "text": read["text"],
+        "truncated": read["truncated"],
+        "prior_revenue_usd": revenue["value"] if revenue else None,
+        "prior_revenue_fiscal_year": revenue["fiscal_year"] if revenue else None,
+        "prior_revenue_concept": revenue["concept"] if revenue else None,
+        "prior_revenue_period_end": revenue["period_end"] if revenue else None,
+        "prior_10k_accession": prior.accession_number if prior else None,
+        "prior_90d_items": prior_items(eight_ks, row["accepted"], row["accession"]),
+        "accepted_utc": row["accepted"].isoformat(),
+        "filing_date": row["filing_date"],
+        "cik": row["cik"],
+        "sections": read["sections"],
+        "press_release": read["press_release"],
+        "document_url": read["document_url"],
+        "document_sha256": read["document_sha256"],
+    }
+
+
+def original_8ks(
+    listings: Sequence[Mapping[str, Any]],
+) -> list[tuple[pd.Timestamp, str, tuple[str, ...]]]:
+    """``(accepted, accession, items)`` of every original 8-K listed."""
+    return [
+        (row["accepted"], row["accession"], row["items"])
+        for row in listings
+        if row["form"] == "8-K"
+    ]
 
 
 def export_filer(
@@ -165,12 +266,8 @@ def export_filer(
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     """One company's events, and the check findings they raised."""
     listings = read_listings(client, filer)
-    eight_ks = [
-        (row["accepted"], row["accession"], row["items"])
-        for row in listings
-        if row["form"] == "8-K"
-    ]
-    ten_ks = _ten_ks(listings, filer)
+    eight_ks = original_8ks(listings)
+    ten_ks = ten_k_index(listings, filer.preferred_cik)
     facts = {
         cik: client.get_json(COMPANY_FACTS_URL.format(cik=cik), fresh=True) for cik in filer.ciks
     }
@@ -180,63 +277,23 @@ def export_filer(
             continue
         if not args.first_date <= row["filing_date"] <= args.last_date:
             continue
-        accession, cik = row["accession"], row["cik"]
-        document = client.get(_archive_url(cik, accession, row["document"]))
-        sections = item_sections(decode_document(document)[0])
-        index_page = client.get(_archive_url(cik, accession, f"{accession}-index.htm"))
-        release = press_release(index_exhibits(decode_document(index_page)[0]))
-        exhibit_text = None
-        if release is not None:
-            exhibit_text = document_text(
-                decode_document(client.get(_archive_url(cik, accession, release[1])))[0]
-            )
-        text, truncated = event_text(sections, exhibit_text, release[0] if release else None)
-
-        found = {section.code for section in sections}
-        problems = [
-            ("item_section_missing", f"item {code} is listed but has no section")
-            for code in row["items"]
-            if code not in LEFT_OUT_ITEMS and code not in found
-        ]
-        problems += [
-            ("item_section_empty", f"item {section.code} has no text under its heading")
-            for section in sections
-            if section.code not in LEFT_OUT_ITEMS
-            and not any(character.isalnum() for character in section.body)
-        ]
-        if release is not None and not exhibit_text:
-            problems.append(("press_release_empty", f"{release[1]} reads empty"))
+        read, problems = read_event_text(
+            client.get, row["cik"], row["accession"], row["document"], row["items"]
+        )
         findings += [
-            {"event_id": accession, "company": filer.key, "check": check, "detail": detail}
+            {"event_id": row["accession"], "company": filer.key, "check": check, "detail": detail}
             for check, detail in problems
         ]
-
-        earlier = [record for record in ten_ks if record.accepted_utc < row["accepted"]]
-        prior = earlier[-1] if earlier else None
-        revenue = tagged_revenue(facts[prior.cik], prior.accession_number) if prior else None
         events.append(
-            {
-                "event_id": accession,
-                "company": filer.key,
-                "company_name": filer.name,
-                "items": list(row["items"]),
-                "event_items": [code for code in row["items"] if code in EVENT_ITEMS],
-                "text": text,
-                "truncated": truncated,
-                "prior_revenue_usd": revenue["value"] if revenue else None,
-                "prior_revenue_fiscal_year": revenue["fiscal_year"] if revenue else None,
-                "prior_revenue_concept": revenue["concept"] if revenue else None,
-                "prior_revenue_period_end": revenue["period_end"] if revenue else None,
-                "prior_10k_accession": prior.accession_number if prior else None,
-                "prior_90d_items": prior_items(eight_ks, row["accepted"], accession),
-                "accepted_utc": row["accepted"].isoformat(),
-                "filing_date": row["filing_date"],
-                "cik": cik,
-                "sections": [section.code for section in sections],
-                "press_release": release[1] if release else None,
-                "document_url": _archive_url(cik, accession, row["document"]),
-                "document_sha256": hashlib.sha256(document).hexdigest(),
-            }
+            event_record(
+                row,
+                filer.key,
+                filer.name,
+                read,
+                ten_ks,
+                lambda prior: tagged_revenue(facts[prior.cik], prior.accession_number),
+                eight_ks,
+            )
         )
     return events, findings
 
