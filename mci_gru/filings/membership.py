@@ -198,6 +198,38 @@ def names_on(submissions: Mapping[str, Any], when: pd.Timestamp) -> list[str]:
     return list(dict.fromkeys(name for name in held if name))
 
 
+def renamed_into(
+    submissions: Mapping[str, Any], names: Iterable[str], after: pd.Timestamp, until: pd.Timestamp
+) -> pd.Timestamp | None:
+    """The day in ``(after, until]`` from which a CIK went by one of ``names`` by a rename.
+
+    Only the days SEC dates a change of the CIK's name are tried (each former
+    name's first day, and the day after its last), and the name must hold from
+    that day through ``until`` without a break: a gap between two dated names
+    falls back to the current name for a day or two (Tyco in November 2014),
+    which is no rename. A CIK that never changed its name gives None: ACE Ltd
+    became Chubb Ltd on 16 January 2016, while Fox Corp has only been Fox Corp.
+    """
+    names = list(names)
+
+    def _holds(day: pd.Timestamp) -> bool:
+        return any(names_match(name, held) for name in names for held in names_on(submissions, day))
+
+    days = set()
+    for entry in submissions.get("formerNames", []) or []:
+        # SEC stamps a change at a time of day; ``names_on`` reads whole days.
+        days.add(_naive(entry.get("from")).ceil("D"))
+        days.add(_naive(entry.get("to")).floor("D") + pd.Timedelta(days=1))
+    if not _holds(until):
+        return None
+    found = None
+    for day in sorted((day for day in days if after < day <= until), reverse=True):
+        if not _holds(day):
+            break
+        found = day
+    return found
+
+
 def _naive(value: object) -> pd.Timestamp:
     stamp = pd.Timestamp(str(value)) if value else pd.Timestamp.min
     return stamp.tz_convert(None) if stamp.tzinfo is not None else stamp

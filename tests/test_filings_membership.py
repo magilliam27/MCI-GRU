@@ -19,6 +19,7 @@ from mci_gru.filings.membership import (
     name_key,
     names_match,
     names_on,
+    renamed_into,
     spells,
     successors,
 )
@@ -153,6 +154,47 @@ def test_names_on_a_day_are_the_dated_names_then_the_current_one():
     assert names_on(SUBMISSIONS, _day("2013-11-20")) == ["DISNEY ENTERPRISES INC"]
     assert names_on(SUBMISSIONS, _day("2020-11-20")) == ["Walt Disney Co"]
     assert names_on({"name": "ACME INC"}, _day("2001-01-01")) == ["ACME INC"]
+
+
+ACE = {
+    "name": "Chubb Ltd",
+    "formerNames": [
+        {"name": "ACE LTD", "from": "2009-12-17T05:00:00.000Z", "to": "2016-01-15T05:00:00.000Z"}
+    ],
+}
+
+
+def test_a_rename_into_the_name_is_dated_and_a_name_held_all_along_is_not():
+    assert renamed_into(ACE, ["Chubb"], _day("2015-02-27"), _day("2016-02-26")) == _day(
+        "2016-01-16"
+    )
+    # A rename outside the days asked about does not count.
+    assert renamed_into(ACE, ["Chubb"], _day("2016-01-16"), _day("2017-02-26")) is None
+    # Nor does a rename into another name.
+    assert renamed_into(ACE, ["Travelers"], _day("2015-02-27"), _day("2016-02-26")) is None
+    assert (
+        renamed_into({"name": "Fox Corp"}, ["Fox"], _day("2018-08-13"), _day("2019-08-10")) is None
+    )
+    # A day between two dated names falls back to the current name; no rename.
+    # SEC stamps each change at a time of day, as here.
+    tyco = {
+        "name": "Johnson Controls International plc",
+        "formerNames": [
+            {
+                "name": "TYCO INTERNATIONAL plc",
+                "from": "2014-11-17T05:00:00.000Z",
+                "to": "2016-09-07T04:00:00.000Z",
+            },
+            {
+                "name": "TYCO INTERNATIONAL LTD",
+                "from": "2010-03-08T05:00:00.000Z",
+                "to": "2014-11-14T05:00:00.000Z",
+            },
+        ],
+    }
+    assert renamed_into(tyco, ["Johnson Controls"], _day("2013-11-15"), _day("2016-11-24")) == _day(
+        "2016-09-08"
+    )
 
 
 def _filer(cik, first, last, first_names, last_names):
@@ -387,6 +429,142 @@ def test_a_ticker_passed_to_another_company_hands_over_its_part_of_the_run():
     parts = build_members._handovers(run, ["ace"], list(tried), tried)
     before = Spell("CB", _day("1996-01-02"), _day("2016-02-26"))
     assert parts == [(before, "chubb"), (before, "joint")]
+
+
+def test_a_handover_ends_on_the_day_it_is_dated():
+    run = Spell("CB", _day("1996-01-02"), None)
+    tried = {
+        "ace": ("wiki_cik", [(_day(f"{year}-02-26"), f"ace-{year}") for year in range(2016, 2020)], "", 0),
+        "chubb": ("name_lookup", [(_day(f"{year}-02-26"), f"chubb-{year}") for year in range(2013, 2016)], "", 0),
+    }  # fmt: skip
+    asked = []
+
+    def passed_on(earlier, later, after, until):
+        asked.append((earlier, later, after, until))
+        return _day("2016-01-16")
+
+    parts = build_members._handovers(run, ["ace"], list(tried), tried, passed_on)
+    assert parts == [(Spell("CB", _day("1996-01-02"), _day("2016-01-16")), "chubb")]
+    # Dated between the earlier company's first report of its own and the later's first.
+    assert asked == [("chubb", "ace", _day("2013-02-26"), _day("2016-02-26"))]
+
+
+def test_a_company_renamed_into_a_ticker_later_takes_it_from_that_day():
+    # Allergan Inc. was bought; Actavis took its name, and its ticker, months later.
+    run = Spell("AGN", _day("1996-01-02"), _day("2020-05-12"))
+    tried = {
+        "allergan": ("name_lookup", [(_day(f"{year}-02-20"), f"agn-{year}") for year in range(2013, 2016)], "", 0),
+        "actavis": ("name_lookup", [(_day(f"{year}-02-26"), f"act-{year}") for year in range(2016, 2020)], "", 0),
+    }  # fmt: skip
+    asked = []
+
+    def passed_on(earlier, later, after, until):
+        asked.append((earlier, later, after, until))
+        return _day("2015-06-16")
+
+    parts = build_members._handovers(run, ["allergan"], list(tried), tried, passed_on)
+    assert parts == [(Spell("AGN", _day("2015-06-16"), _day("2020-05-12")), "actavis")]
+    assert asked == [("allergan", "actavis", _day("2015-02-20"), _day("2016-02-26"))]
+    assert build_members._own_part(run, parts) == Spell(
+        "AGN", _day("1996-01-02"), _day("2015-06-16")
+    )
+
+
+class _Filers:
+    def __init__(self, filers):
+        self.filers = filers
+
+    def get(self, cik):
+        return self.filers.get(cik)
+
+
+def test_only_a_company_that_filed_before_its_rename_takes_a_ticker_by_it():
+    filers = _Filers(
+        {
+            "ace": {**ACE, "annual_dates": [_day("2013-02-28"), _day("2016-02-26")]},
+            # Fox Corp was New Fox, Inc. for a day before it had filed anything.
+            "fox": {
+                "name": "Fox Corp",
+                "formerNames": [
+                    {"name": "NEW FOX, INC.", "from": "2018-10-09", "to": "2018-10-09"}
+                ],
+                "annual_dates": [_day("2019-08-10")],
+            },
+        }
+    )
+    window = (_day("2013-01-01"), _day("2020-01-01"))
+    assert build_members._renamed(filers, "ace", ["Chubb"], *window) == _day("2016-01-16")
+    assert build_members._renamed(filers, "fox", ["Fox Corporation"], *window) is None
+    assert build_members._renamed(filers, "unknown", ["Fox"], *window) is None
+
+
+def _recent(*filings):
+    """A submissions file's recent block of ``(accepted day, accession, form)``."""
+    return {
+        "recent": {
+            "acceptanceDateTime": [f"{day}T21:00:00.000Z" for day, _, _ in filings],
+            "accessionNumber": [accession for _, accession, _ in filings],
+            "form": [form for _, _, form in filings],
+        }
+    }
+
+
+def test_without_a_rename_a_ticker_passes_after_the_earlier_companys_last_own_filing():
+    filers = _Filers(
+        {
+            "walgreen": {
+                "name": "WALGREEN CO",
+                "annual_dates": [_day("2013-10-21"), _day("2014-10-20")],
+                # After its last report: one filed jointly with its new holding
+                # company, and a holder's 13D amendment about it.
+                "filings": _recent(("2014-10-20", "w-1", "10-K"), ("2014-12-31", "w-2", "15-12B"),
+                                   ("2015-01-05", "joint", "8-K"), ("2015-01-16", "h-1", "SC 13D/A")),
+            },
+            "wba": {
+                "name": "Walgreens Boots Alliance, Inc.",
+                "annual_dates": [_day("2015-10-28")],
+                "filings": _recent(("2015-01-05", "joint", "8-K"), ("2015-10-28", "b-1", "10-K")),
+            },
+        }
+    )  # fmt: skip
+    window = (_day("2013-10-21"), _day("2015-10-28"))
+    assert build_members._passed_on(filers, ["Walgreen"], "walgreen", "wba", *window) == _day(
+        "2015-01-01"
+    )
+    # A last filing after the later company's first report dates nothing.
+    late = (_day("2013-10-21"), _day("2014-12-15"))
+    assert build_members._passed_on(filers, ["Walgreen"], "walgreen", "wba", *late) is None
+
+
+@pytest.mark.usefixtures("_no_throttle")
+def test_a_company_that_took_a_ticker_holds_only_its_own_part_of_the_run(tmp_path):
+    # ACE Ltd filed 10-Ks for years before it took Chubb Corp's ticker and name;
+    # those years are Chubb Corp's membership, not ACE's.
+    argv = _build_inputs(tmp_path)
+    (tmp_path / "lists.csv").write_text(
+        "date,tickers\n2012-12-28,CB\n2015-06-01,CB\n", encoding="utf-8"
+    )
+    (tmp_path / "current.html").write_text(
+        _html_table(["Symbol", "Security", "CIK"], [["CB", "Chubb", "9"]]), encoding="utf-8"
+    )
+    (tmp_path / "tickers.json").write_text(
+        json.dumps({"0": {"ticker": "CB", "cik_str": 9}}), encoding="utf-8"
+    )
+    (tmp_path / "lookup.txt").write_text("CHUBB CORP:0000000008:\n", encoding="latin-1")
+    filers = {
+        "0000000008": _submissions("CHUBB CORP", _reports("8", range(2013, 2016))),
+        "0000000009": _submissions(
+            "Chubb Ltd",
+            _reports("9", range(2013, 2020)),
+            former=[("ACE LTD", "2009-12-17T05:00:00.000Z", "2016-01-15T05:00:00.000Z")],
+        ),
+    }
+    assert build_members.main(argv, transport=FakeSec(filers)) == 0
+    companies = pd.read_csv(tmp_path / "out" / "sp500_companies.csv", dtype=str).fillna("")
+    assert companies.set_index("ciks")["spells"].to_dict() == {
+        "0000000008": "CB:2012-12-28:2016-01-16",
+        "0000000009": "CB:2016-01-16:",
+    }
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "filings" / "tenk_item1a_sample.htm"

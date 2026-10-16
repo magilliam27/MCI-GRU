@@ -25,7 +25,9 @@ Inputs, each saved so a run can be repeated:
   ``cik-lookup-data.txt``, every name EDGAR has held, with its CIK) propose CIKs.
 - ``--manual``: ``ticker``, ``start``, ``name``, ``cik`` (``;`` between several
   in turn) and ``note``, for runs the pages do not name or name differently from
-  SEC.
+  SEC. A row with no ``cik`` only adds names, which are then confirmed like
+  any other (Twenty-First Century Fox, whose years the lists file under Fox
+  Corp's FOXA).
 
 For each run that overlaps ``--window-start`` onwards, the candidate CIKs are,
 in order: the manual row's, Wikipedia's, SEC's for the ticker, then each CIK
@@ -33,7 +35,9 @@ EDGAR lists under one of the run's names, then names starting with them. A CIK
 is confirmed when it filed a 10-K during the run while going by a name that
 matches one of the run's names (``mci_gru.filings.membership.names_match``).
 The first confirmed CIK is the company; another confirmed CIK joins it only as
-its successor (``successors``), and the manual row's CIKs always do.
+its successor (``successors``), and the manual row's CIKs always do. A confirmed
+CIK whose own reports all come before or after the company's held that part of
+the run (``_handovers``), and the company keeps only the rest.
 
 What it writes under ``--output-dir``:
 
@@ -57,7 +61,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
@@ -68,6 +72,7 @@ from mci_gru.filings.membership import (
     name_key,
     names_match,
     names_on,
+    renamed_into,
     spells,
     successors,
 )
@@ -78,7 +83,12 @@ from scripts.data.export_sec_risk_factors import (
     _urllib_transport,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 ANNUAL_FORMS = ("10-K", "10-KT")
+#: Forms only the company itself files: reports, and the notices that end them.
+ISSUER_FORMS = ("8-K", "10-K", "10-Q", "15-12B", "15-12G", "15-15D")
 #: Reports a company must have filed under a ticker to have held part of its run.
 MIN_HANDOVER_REPORTS = 2
 #: Name-prefix candidates tried per name, at most.
@@ -371,6 +381,7 @@ def _handovers(
     chosen: list[str],
     confirmed: list[str],
     tried: dict[str, tuple[str, list[tuple[pd.Timestamp, str]], str, int]],
+    passed_on: Callable[[str, str, pd.Timestamp, pd.Timestamp], pd.Timestamp | None] | None = None,
 ) -> list[tuple[Spell, str]]:
     """Parts of a run that belong to another company the ticker passed from or to.
 
@@ -378,12 +389,16 @@ def _handovers(
     reports of its own (not the chosen company's filed jointly) all before or
     all after the chosen company's, held the ticker for that part of the run:
     Chubb Corp until ACE took its name, Twenty-First Century Fox until Fox Corp.
+    The ticker passes on the day ``passed_on(earlier, later, after, until)``
+    gives, a day in ``(after, until]``; without one, on the day of the later
+    company's first report under the run's name, or the day after the earlier
+    company's last.
     """
     held = {accession for cik in chosen for _, accession in tried[cik][1]}
-    dates = [when for cik in chosen for when, _ in tried[cik][1]]
-    if not dates:
+    dated = sorted((when, cik) for cik in chosen for when, _ in tried[cik][1])
+    if not dated:
         return []
-    first, last = min(dates), max(dates)
+    (first, first_cik), (last, last_cik) = dated[0], dated[-1]
     parts = []
     for cik in confirmed:
         if cik in chosen:
@@ -392,10 +407,89 @@ def _handovers(
         if len(own) < MIN_HANDOVER_REPORTS:
             continue
         if max(own) < first:
-            parts.append((Spell(run.ticker, run.start, first), cik))
+            day = passed_on(cik, first_cik, min(own), first) if passed_on else None
+            parts.append((Spell(run.ticker, run.start, day or first), cik))
         elif min(own) > last:
-            parts.append((Spell(run.ticker, last + pd.Timedelta(days=1), run.end), cik))
+            day = passed_on(last_cik, cik, last, min(own)) if passed_on else None
+            parts.append((Spell(run.ticker, day or last + pd.Timedelta(days=1), run.end), cik))
     return parts
+
+
+def _renamed(
+    filers: Filers, cik: str, names: list[str], after: pd.Timestamp, until: pd.Timestamp
+) -> pd.Timestamp | None:
+    """The day a CIK was renamed into one of ``names``, if it had filed 10-Ks before.
+
+    That is an acquirer taking the name (ACE Ltd becoming Chubb Ltd, Tyco
+    becoming Johnson Controls International), not a new company's first name
+    (Fox Corp was New Fox, Inc. for a day before it filed anything).
+    """
+    filer = filers.get(cik)
+    if filer is None:
+        return None
+    day = renamed_into(filer, names, after, until)
+    if day is None or not filer["annual_dates"] or filer["annual_dates"][0] >= day:
+        return None
+    return day
+
+
+def _last_own_filing(filers: Filers, cik: str, other: str) -> pd.Timestamp | None:
+    """The day a CIK last filed a report of its own, not jointly with ``other``.
+
+    Only the company's own reports count (``ISSUER_FORMS``): its submissions
+    file also lists what others file about it, such as holders' 13D amendments,
+    insiders' Form 144s and exchanges' delisting notices.
+    """
+    filer, later = filers.get(cik), filers.get(other)
+    if filer is None:
+        return None
+    recent = filer["filings"]["recent"]
+    joint = set(later["filings"]["recent"]["accessionNumber"]) if later else set()
+    days = [
+        pd.Timestamp(str(accepted)[:10])
+        for accepted, accession, form in zip(
+            recent["acceptanceDateTime"], recent["accessionNumber"], recent["form"], strict=True
+        )
+        if accession not in joint and str(form).startswith(ISSUER_FORMS)
+    ]
+    return max(days, default=None)
+
+
+def _passed_on(
+    filers: Filers,
+    names: list[str],
+    earlier: str,
+    later: str,
+    after: pd.Timestamp,
+    until: pd.Timestamp,
+) -> pd.Timestamp | None:
+    """The day a ticker passed from ``earlier`` to ``later``, within ``(after, until]``.
+
+    The later company's rename into the run's name when there is one; otherwise
+    the day after the earlier company's last filing of its own, when that falls
+    before the later company's first report (Walgreen Co. filed its last on
+    31 December 2014, the day Walgreens Boots Alliance became its holding
+    company; Twenty-First Century Fox its last in March 2019, when Fox Corp
+    was spun off).
+    """
+    day = _renamed(filers, later, names, after, until)
+    if day is not None:
+        return day
+    last = _last_own_filing(filers, earlier, later)
+    if last is not None and after < last + pd.Timedelta(days=1) <= until:
+        return last + pd.Timedelta(days=1)
+    return None
+
+
+def _own_part(run: Spell, handovers: list[tuple[Spell, str]]) -> Spell:
+    """The run without the parts handed over to other companies."""
+    start, end = run.start, run.end
+    for part, _ in handovers:
+        if part.start == run.start and part.end is not None:
+            start = max(start, part.end)
+        else:
+            end = part.start if end is None else min(end, part.start)
+    return Spell(run.ticker, start, end)
 
 
 def build(args: argparse.Namespace, client: EdgarClient) -> dict[str, Any]:
@@ -487,7 +581,19 @@ def build(args: argparse.Namespace, client: EdgarClient) -> dict[str, Any]:
             chosen = successors(confirmed[0], spans)
         else:
             chosen = []
-        handovers = _handovers(run, chosen, confirmed, tried) if not manual_ciks else []
+        handovers = (
+            _handovers(
+                run,
+                chosen,
+                confirmed,
+                tried,
+                lambda earlier, later, after, until, names=plain: _passed_on(
+                    filers, names, earlier, later, after, until
+                ),
+            )
+            if not manual_ciks
+            else []
+        )
         for part, cik in handovers:
             chains.append((part, successors(cik, spans)))
         if (
@@ -530,7 +636,8 @@ def build(args: argparse.Namespace, client: EdgarClient) -> dict[str, Any]:
             }
         )
         if chosen:
-            chains.append((run, chosen))
+            # The company holds the run only where it did not hand it over.
+            chains.append((_own_part(run, handovers), chosen))
 
     companies = _companies(chains, filers, listed_ciks)
     out = args.output_dir
