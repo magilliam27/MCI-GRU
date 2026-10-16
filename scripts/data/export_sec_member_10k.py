@@ -426,7 +426,7 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
         "repository_commit": _git_commit(),
         "companies": int(len(companies)),
         "companies_read": len({row["company"] for row in index_rows}),
-        "companies_left_out": len(left_out),
+        "companies_left_out": sum(1 for row in left_out if "accession_number" not in row),
         "reports": len(index_rows),
         "member_reports": len(members),
         "member_reports_by_year": dict(

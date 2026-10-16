@@ -507,6 +507,9 @@ def test_a_report_that_fails_the_checks_stops_the_manifest_unless_its_risks_are_
     assert "1-2014" not in {json.loads(line)["accession_number"] for line in risks}
     assert "1-2015" in {json.loads(line)["accession_number"] for line in risks}
     meta = json.loads((tmp_path / "package" / "member_10k.meta.json").read_text())
+    # One company has no report; aaa's one left-out report does not leave aaa out.
+    assert meta["companies_left_out"] == 1
+    assert meta["member_reports_risks_left_out"] == 1
     assert meta["member_reports_risks_left_out_by_year"]["2014"] == {
         "reports": 2,
         "left_out": 1,
