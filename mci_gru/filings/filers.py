@@ -11,7 +11,13 @@ fiscal 2013 to 2025 filing and checked by ``mci_gru.filings.checks``; a company
 added here is read with the default until its filings show otherwise.
 
 The ten companies after Alphabet are those experiment E5 asked for: one or two
-per sector, each a 10-K filer through the whole window.
+per sector, each a 10-K filer through the whole window. The ten after those are
+experiment E9's (#304), chosen the same way. American Airlines Group filed as
+AMR Corporation until the 2013 merger under the same CIK, so that one CIK covers
+every year.
+
+``first_fiscal_year`` leaves out a company's earlier reports when they hold no
+risk factors to read, and ``note`` says why.
 """
 
 from __future__ import annotations
@@ -29,6 +35,8 @@ class Filer:
     name: str
     ciks: tuple[str, ...]
     layout: str = "blocks"
+    first_fiscal_year: int | None = None
+    note: str = ""
 
     @property
     def preferred_cik(self) -> str:
@@ -56,5 +64,24 @@ FILERS: dict[str, Filer] = {
         Filer("ko", "The Coca-Cola Company", ("0000021344",)),
         Filer("unh", "UnitedHealth Group Incorporated", ("0000731766",)),
         Filer("cat", "Caterpillar Inc.", ("0000018230",)),
+        Filer("aapl", "Apple Inc.", ("0000320193",)),
+        Filer("hd", "The Home Depot, Inc.", ("0000354950",)),
+        Filer(
+            "jnj",
+            "Johnson & Johnson",
+            ("0000200406",),
+            first_fiscal_year=2016,
+            note=(
+                "Fiscal 2013-2015 reports' Item 1A only points to Exhibit 99, which holds "
+                "the risk factors, so those years are left out"
+            ),
+        ),
+        Filer("bac", "Bank of America Corporation", ("0000070858",)),
+        Filer("aal", "American Airlines Group Inc. (AMR Corporation before 2013)", ("0000006201",)),
+        Filer("cvx", "Chevron Corporation", ("0000093410",), layout="run_in"),
+        Filer("pg", "The Procter & Gamble Company", ("0000080424",)),
+        Filer("hon", "Honeywell International Inc.", ("0000773840",)),
+        Filer("vz", "Verizon Communications Inc.", ("0000732712",)),
+        Filer("nee", "NextEra Energy, Inc.", ("0000753308",)),
     )
 }

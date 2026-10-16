@@ -643,6 +643,7 @@ Automatic checks on one filing's Item 1A extraction (#292).
 | `test_a_clean_filing_raises_no_finding` |  |  |
 | `test_findings_are_named_by_the_published_check_list` |  |  |
 | `test_a_title_read_as_a_risk_heading_is_flagged` |  | parametrize |
+| `test_a_sentence_that_starts_like_a_title_is_not_a_title` |  |  |
 | `test_a_short_topic_heading_is_not_a_title` |  |  |
 | `test_a_heading_starting_mid_sentence_is_flagged` |  |  |
 | `test_a_brand_name_in_lower_case_is_not_a_split_heading` |  |  |
@@ -677,6 +678,7 @@ The EDGAR filing index and when each filing was knowable (#289).
 | `test_older_submission_files_are_listed_for_reading` |  |  |
 | `test_ragged_submissions_block_is_refused` |  |  |
 | `test_document_url_uses_unpadded_cik_and_bare_accession` |  |  |
+| `test_a_year_ending_in_the_first_week_of_january_belongs_to_the_year_before` |  | parametrize |
 
 ## `tests/test_filings_grading.py`
 
@@ -805,6 +807,16 @@ Item 1A of a 10-K, cut into individual risk factors (#289).
 | `test_run_in_headings_open_their_paragraphs` |  |  |
 | `test_sentence_headings_keep_their_titled_sub_headings_as_text` |  |  |
 | `test_an_unknown_layout_is_refused` |  |  |
+| `test_a_category_title_with_text_under_it_introduces_the_category` |  |  |
+| `test_a_sentence_that_starts_like_a_category_title_is_a_risk` |  |  |
+| `test_a_long_title_case_heading_over_a_heading_is_a_category` |  |  |
+| `test_topic_headings_over_a_summarys_bullets_stay_in_the_summary` |  |  |
+| `test_a_category_in_plain_capitals_closes_the_risk_before_it` |  |  |
+| `test_an_emphasised_continuation_of_an_unfinished_sentence_is_body_text` |  |  |
+| `test_an_item_split_by_markup_still_ends_the_section` |  |  |
+| `test_a_section_found_by_its_title_when_item_1a_is_only_an_index` |  |  |
+| `test_a_run_in_lead_without_punctuation_opens_its_paragraph` |  |  |
+| `test_a_run_in_heading_on_its_own_line_too_long_for_a_category_is_a_risk` |  |  |
 
 ## `tests/test_filings_scripts.py`
 
@@ -827,6 +839,7 @@ The filings pull and the pair scoring, end to end with canned EDGAR and Jev (#28
 | `test_a_named_filer_is_read_with_its_own_layout_under_its_own_key` |  |  |
 | `test_the_fiscal_year_rule_and_each_years_period_are_recorded` |  |  |
 | `test_two_reports_in_one_fiscal_year_block_the_manifest` |  |  |
+| `test_a_filers_first_fiscal_year_leaves_out_its_earlier_reports` |  |  |
 | `test_several_filers_share_one_manifest_named_by_package_id` |  |  |
 | `test_several_filers_without_a_package_id_are_refused` |  |  |
 | `test_only_filings_in_the_fiscal_year_range_are_read` |  |  |

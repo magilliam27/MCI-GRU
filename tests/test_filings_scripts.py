@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import urllib.error
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -372,6 +373,29 @@ def test_two_reports_in_one_fiscal_year_block_the_manifest(tmp_path, acme, capsy
     assert _export(tmp_path, Transport(responses), extra=["--filer", "acme"]) == 1
     assert not (tmp_path / "manifest.json").exists()
     assert "BLOCKING acme: fiscal 2024 has 2 reports" in capsys.readouterr().out
+
+
+def test_a_filers_first_fiscal_year_leaves_out_its_earlier_reports(tmp_path, monkeypatch):
+    # Johnson & Johnson's fiscal 2013-2015 risk factors sit only in Exhibit 99.
+    note = "Earlier reports keep their risk factors in an exhibit"
+    monkeypatch.setitem(FILERS, "acme", replace(ACME, first_fiscal_year=2024, note=note))
+    responses = _acme()
+    main = json.loads(responses[f"https://data.sec.gov/submissions/CIK{ACME_CIK}.json"])
+    main["filings"]["recent"] = _block(
+        [
+            ("0000000042-25-000001", "10-K", "2024-12-31", "2025-02-20T21:10:00.000Z", "x.htm"),
+            ("0000000042-24-000001", "10-K", "2023-12-31", "2024-02-20T21:10:00.000Z", "y.htm"),
+        ]
+    )
+    responses[f"https://data.sec.gov/submissions/CIK{ACME_CIK}.json"] = json.dumps(main).encode()
+    transport = Transport(responses)
+    assert _export(tmp_path, transport, extra=["--filer", "acme"]) == 0
+    meta = json.loads(
+        (tmp_path / "package" / "filings" / "acme_risk_factors.meta.json").read_text()
+    )
+    assert meta["period_of_report_by_fiscal_year"] == {"2024": "2024-12-31"}
+    assert (meta["filer_first_fiscal_year"], meta["note"]) == (2024, note)
+    assert not any(url.endswith("y.htm") for url, _ in transport.seen)
 
 
 def test_several_filers_share_one_manifest_named_by_package_id(tmp_path, acme):

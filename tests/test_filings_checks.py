@@ -40,16 +40,26 @@ def test_findings_are_named_by_the_published_check_list(html):
     assert {check for check, _ in _checks(html)} <= set(CHECKS)
 
 
-@pytest.mark.parametrize("title", ["Risk Factors", "General Risks", "Risks Related to Taxes"])
+@pytest.mark.parametrize("title", ["Risk Factors", "Risks Related to Taxes."])
 def test_a_title_read_as_a_risk_heading_is_flagged(html, title):
     # A title with text under it reads as a risk: Alphabet's fiscal 2014-2019
-    # "RISK FACTORS" did, over the section's introduction.
+    # "RISK FACTORS" did, over the section's introduction. (A category title
+    # such as "General Risks" with text under it introduces its category.)
     html = html.replace(
         COMPETITION,
         f"<div><b>{title}</b></div><div><span>The risks below apply to any company.</span></div>"
         + COMPETITION,
     )
     assert _checks(html) == [("title_read_as_risk", "a#002")]
+
+
+def test_a_sentence_that_starts_like_a_title_is_not_a_title(html):
+    # Honeywell's "Risks related to our defined benefit pension plans may
+    # adversely impact our results of operations and cash flow."
+    html = html.replace(
+        "We face intense competition.", "Risks related to competition may harm our business."
+    )
+    assert _checks(html) == []
 
 
 def test_a_short_topic_heading_is_not_a_title(html):
@@ -103,6 +113,7 @@ def test_page_furniture_left_in_a_body_is_flagged(html, furniture):
         "competitive. 5G networks change how users reach us.",
         "competitive. 14. Customers",
         "competitive. 737 MAX deliveries resumed.",
+        "competitive with deliveries through 2017: 12 Airbus aircraft.",
     ],
 )
 def test_numbers_that_are_text_are_not_page_furniture(html, text):

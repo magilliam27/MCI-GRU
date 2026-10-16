@@ -64,7 +64,10 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from html.parser import HTMLParser
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 BLOCK_TAGS = frozenset(
     {
@@ -110,6 +113,10 @@ RUNNING_HEADER_REPEATS = 3
 RUNNING_HEADER_MAX_CHARS = 100
 #: A category is a title; a longer emphasised block over a heading is introduction.
 MAX_CATEGORY_CHARS = 100
+#: A category in title case may run longer (Bank of America's "Market Risk is the
+#: Risk that Values of Assets and Liabilities or Revenues will be Adversely
+#: Affected by Changes in Market Conditions ...", 379 characters).
+MAX_TITLE_CASE_CATEGORY_CHARS = 400
 #: A run-in heading is the emphasised start of a paragraph, at most this long.
 MAX_RUN_IN_CHARS = 400
 LAYOUTS = ("blocks", "run_in", "sentences")
@@ -118,8 +125,17 @@ _SPACE = re.compile(r"\s+")
 _WEIGHT_STYLE = re.compile(r"font-weight\s*:\s*([a-z0-9]+)", re.I)
 _SLANT_STYLE = re.compile(r"font-style\s*:\s*([a-z]+)", re.I)
 _HIDDEN_STYLE = re.compile(r"display\s*:\s*none", re.I)
-_ITEM_1A = re.compile(r"^item\s*1a\b", re.I)
-_ITEM_END = re.compile(r"^item\s*(1b|1c|2)\b", re.I)
+#: "Item", even with markup splitting the word ("I tem 1B" in Verizon's fiscal 2015).
+_ITEM_1A = re.compile(r"^i\s?t\s?e\s?m\s*1a\b", re.I)
+_ITEM_END = re.compile(r"^i\s?t\s?e\s?m\s*(1b|1c|2)\b", re.I)
+#: The title of a 10-K section that can follow the risk factors, when a filing
+#: is laid out by topic rather than by item (Honeywell from fiscal 2020).
+_NEXT_SECTION_TITLE = re.compile(
+    r"^(unresolved\s+staff\s+comments|cybersecurity|properties|legal\s+proceedings|"
+    r"mine\s+safety\s+disclosures|market\s+for\s+(the\s+)?registrant|selected\s+financial\s+data|"
+    r"management.s\s+discussion\s+and\s+analysis|quantitative\s+and\s+qualitative\s+disclosures?)",
+    re.I,
+)
 _FURNITURE = re.compile(
     r"^(\d{1,3}\.?|table of contents|part\s+[ivx]+|parts\s+[ivx]+\s+(and|&)\s+[ivx]+)$", re.I
 )
@@ -130,8 +146,15 @@ _PAGE_AFFIX = re.compile(r"^\d{1,3}\s*[|\u2022\u00b7-]?\s+|\s+[|\u2022\u00b7-]?\
 _SECTION_TITLE = re.compile(r"^(item\s*1a\.?\s*)?risk\s+factors\.?$", re.I)
 #: A heading that opens introduction rather than a risk.
 _INTRO_TITLE = re.compile(
-    r"^(cautionary\s+statements?|forward[-\s]looking\s+statements|"
+    r"^(cautionary\s+(statements?|notes?)(\s+(about|regarding|concerning|relating\s+to|on|for)\s+"
+    r"forward[-\s]looking\s+(statements|information))?|forward[-\s]looking\s+statements|"
     r"(risk\s+factors?\s+)?summary(\s+of\s+(the\s+)?risk\s+factors)?|summary\s+risk\s+factors)\.?$",
+    re.I,
+)
+#: A category title, with any text under it introducing the category (NextEra's
+#: "Risks Relating to NEE's and FPL's Business").
+_CATEGORY_TITLE = re.compile(
+    r"^((risks?|risk\s+factors)\s+(related|relating|specific|pertaining)\s+to\b|general\s+risks?\b)",
     re.I,
 )
 #: A sentence ends in a full stop, question or exclamation mark, perhaps quoted.
@@ -307,18 +330,42 @@ def html_blocks(html: str) -> list[Block]:
     return parser.blocks
 
 
-def item_1a_blocks(blocks: list[Block]) -> list[Block]:
-    """The blocks of the Item 1A section, its own heading first."""
+def _longest_span(
+    blocks: list[Block], opens: Callable[[Block], bool], closes: Callable[[Block], bool]
+) -> tuple[int, int] | None:
     best: tuple[int, int] | None = None
     for start, block in enumerate(blocks):
-        if len(block.text) > MAX_ITEM_HEADING_CHARS or not _ITEM_1A.match(block.text):
+        if len(block.text) > MAX_ITEM_HEADING_CHARS or not opens(block):
             continue
         for end in range(start + 1, len(blocks)):
-            candidate = blocks[end].text
-            if len(candidate) <= MAX_ITEM_HEADING_CHARS and _ITEM_END.match(candidate):
+            if len(blocks[end].text) <= MAX_ITEM_HEADING_CHARS and closes(blocks[end]):
                 if best is None or end - start > best[1] - best[0]:
                     best = (start, end)
                 break
+    return best
+
+
+def item_1a_blocks(blocks: list[Block]) -> list[Block]:
+    """The blocks of the Item 1A section, its own heading first."""
+    best = _longest_span(
+        blocks,
+        lambda block: bool(_ITEM_1A.match(block.text)),
+        lambda block: bool(_ITEM_END.match(block.text)),
+    )
+    if best is None or not any(
+        len(block.text) > MAX_ITEM_HEADING_CHARS for block in blocks[best[0] : best[1]]
+    ):
+        # Item 1A only points elsewhere (an index of items at the back of a
+        # filing laid out by topic): the section titled "Risk Factors", up to
+        # the next section's title.
+        titled = _longest_span(
+            blocks,
+            lambda block: block.emphasised and bool(_SECTION_TITLE.match(block.text)),
+            lambda block: bool(
+                _NEXT_SECTION_TITLE.match(block.text) or _ITEM_END.match(block.text)
+            ),
+        )
+        best = titled or best
     if best is None:
         raise RiskFactorExtractionError("no Item 1A section closed by Item 1B, 1C or 2")
     return blocks[best[0] : best[1]]
@@ -363,6 +410,11 @@ def _is_heading(block: Block) -> bool:
     return block.emphasised and _has_words(block.text) and len(block.text) <= MAX_HEADING_CHARS
 
 
+def _is_title_case(text: str) -> bool:
+    words = [word for word in re.findall(r"[A-Za-z][A-Za-z'\u2019-]*", text) if len(word) > 3]
+    return bool(words) and sum(word[0].isupper() for word in words) >= 0.75 * len(words)
+
+
 def _is_capitals_title(block: Block) -> bool:
     letters = [character for character in block.text if character.isalpha()]
     return (
@@ -384,7 +436,11 @@ def _run_in(block: Block, *, sentence: bool) -> tuple[str, str] | None:
     if stop and not end.search(lead):
         # Microsoft sets some leads' full stops in plain type.
         lead, rest = lead + stop.group(), rest[stop.end() :].strip()
-    if not end.search(lead) or not _has_words(rest):
+    if not _has_words(rest):
+        return None
+    if not end.search(lead) and (sentence or not rest[:1].isupper()):
+        # Chevron's run-in leads from fiscal 2015 end with no mark at all; the
+        # plain text after them starts a sentence.
         return None
     return lead, rest
 
@@ -442,6 +498,8 @@ def read_item_1a(html: str, *, layout: str = "blocks") -> SectionReading:
     page_numbers: list[int] = []
     unheaded: list[str] = []
     introduction = True
+    # Introduction under a summary title, whose topics may be headed.
+    summary = False
     category: str | None = None
     heading: str | None = None
     body: list[str] = []
@@ -465,7 +523,9 @@ def read_item_1a(html: str, *, layout: str = "blocks") -> SectionReading:
         if heading is not None and not body:
             # A heading over a heading: a category if it is a title, else
             # emphasised introduction.
-            if len(heading) <= MAX_CATEGORY_CHARS:
+            if len(heading) <= MAX_CATEGORY_CHARS or (
+                len(heading) <= MAX_TITLE_CASE_CATEGORY_CHARS and _is_title_case(heading)
+            ):
                 category = heading
             elif drafts:
                 lost.append(heading)
@@ -474,11 +534,17 @@ def read_item_1a(html: str, *, layout: str = "blocks") -> SectionReading:
         _start(text, first_body)
 
     def _start(text: str, first_body: str | None = None) -> None:
-        nonlocal heading, body, introduction
-        heading, body, introduction = text, [first_body] if first_body else [], False
+        nonlocal heading, body, introduction, summary
+        heading, body, introduction, summary = (
+            text,
+            [first_body] if first_body else [],
+            False,
+            False,
+        )
 
     furniture = _running_headers(section)
-    for block in section[1:]:
+    for position, block in enumerate(section[1:], start=1):
+        following = section[position + 1].text if position + 1 < len(section) else ""
         number = _PAGE_NUMBER_BLOCK.match(block.text)
         if number:
             page_numbers.append(int(number.group(1)))
@@ -488,10 +554,16 @@ def read_item_1a(html: str, *, layout: str = "blocks") -> SectionReading:
         if not drafts and heading is None and _SECTION_TITLE.match(block.text):
             continue
         if layout == "run_in":
+            if _is_heading(block) and len(block.text) > MAX_CATEGORY_CHARS:
+                # A heading on its own line, too long for a category (Chevron's
+                # fiscal 2020 COVID-19 and Noble acquisition risks).
+                _close()
+                _start(block.text)
+                continue
             if _is_heading(block):
                 # A category, with its own introduction under it (Exxon Mobil).
                 _close()
-                category, introduction = block.text, True
+                category, introduction, summary = block.text, True, False
                 continue
             run_in = _run_in(block, sentence=False)
             if run_in is not None:
@@ -518,13 +590,43 @@ def read_item_1a(html: str, *, layout: str = "blocks") -> SectionReading:
                 _close()
                 _start(*run_in)
                 continue
+        if not block.emphasised and _is_capitals_title(block):
+            # A category set in capitals but not emphasised (Honeywell from
+            # fiscal 2020).
+            _close()
+            category = block.text
+            continue
         if _is_heading(block):
             if _INTRO_TITLE.match(block.text):
                 _close()
-                introduction = True
+                introduction, summary = True, "summary" in block.text.lower()
+                continue
+            if (
+                summary
+                and len(block.text) <= MAX_CATEGORY_CHARS
+                and (_LEADING_BULLET.match(following) or _BARE_BULLET.match(following))
+            ):
+                # A topic heading over a summary's bullets (Bank of America's
+                # fiscal 2021).
                 continue
             if heading is not None and not body and block.text[:1].islower():
                 heading = f"{heading} {block.text}"
+                continue
+            if body and block.text[:1].islower() and not _SENTENCE_END.search(body[-1]):
+                # A sentence carried across a page, quoting another risk's
+                # heading in emphasis (American Airlines' fiscal 2020).
+                body.append(block.text)
+                continue
+            if (
+                len(block.text) <= MAX_CATEGORY_CHARS
+                and _CATEGORY_TITLE.match(block.text)
+                and not _SENTENCE_END.search(block.text)
+            ):
+                # A category title, with text under it introducing the category
+                # (NextEra). A sentence that starts like one is a risk
+                # (Honeywell's "Risks related to our ... pension plans may ...").
+                _close()
+                category, introduction, summary = block.text, True, False
                 continue
             _open(block.text)
         elif heading is not None:

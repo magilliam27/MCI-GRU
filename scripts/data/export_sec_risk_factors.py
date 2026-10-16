@@ -201,8 +201,12 @@ def read_filer(client: EdgarClient, cik: str) -> list:
     return records
 
 
-def _in_years(fiscal_year: int, args: argparse.Namespace) -> bool:
-    return (args.first_fiscal_year is None or fiscal_year >= args.first_fiscal_year) and (
+def _in_years(fiscal_year: int, args: argparse.Namespace, filer: Filer) -> bool:
+    first = max(
+        (year for year in (args.first_fiscal_year, filer.first_fiscal_year) if year is not None),
+        default=None,
+    )
+    return (first is None or fiscal_year >= first) and (
         args.last_fiscal_year is None or fiscal_year <= args.last_fiscal_year
     )
 
@@ -219,8 +223,10 @@ def export_filer(
         accepted_from=args.accepted_from,
         preferred_cik=filer.preferred_cik,
     )
-    filings = [record for record in index.filings if _in_years(record.fiscal_year, args)]
-    duplicates = [record for record in index.duplicates if _in_years(record.fiscal_year, args)]
+    filings = [record for record in index.filings if _in_years(record.fiscal_year, args, filer)]
+    duplicates = [
+        record for record in index.duplicates if _in_years(record.fiscal_year, args, filer)
+    ]
     # Pairing takes the previous fiscal year as the prior filing, so a year
     # reached by two reports (a changed year end) would pair the wrong text.
     years = Counter(record.fiscal_year for record in filings)
@@ -301,6 +307,8 @@ def export_filer(
         "name": filer.name,
         "filers": list(filer.ciks),
         "layout": filer.layout,
+        "filer_first_fiscal_year": filer.first_fiscal_year,
+        "note": filer.note,
         "forms": ["10-K"],
         "accepted_from": args.accepted_from,
         "fiscal_year_rule": FISCAL_YEAR_RULE,

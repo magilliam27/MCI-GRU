@@ -10,9 +10,10 @@ layouts showed which parts were Alphabet's habits rather than rules:
   from "Item 1A." in bold, and it opened a fake risk over the section's
   introduction; UnitedHealth's "CAUTIONARY STATEMENTS" did the same. Flagged: a
   heading that starts like such a title ("Risk Factors", "Item 1A", "Risks
-  Related to ...", "General Risks", "Cautionary Statements", "Summary"). A short
-  heading alone is not flagged: Pfizer heads its risks with topic titles such as
-  "Outsourcing".
+  Related to ...", "General Risks", "Cautionary Statements", "Summary") and is
+  not a sentence: Honeywell's "Risks related to our defined benefit pension
+  plans may adversely impact ..." is a risk. A short heading alone is not
+  flagged: Pfizer heads its risks with topic titles such as "Outsourcing".
 - ``heading_split_across_page``: one heading cut in two. Alphabet's fiscal 2017
   filing broke a heading across a page; the second part became a heading of its
   own. Flagged: a heading whose first word is in lower case. (The first part,
@@ -67,6 +68,9 @@ _TITLE_LIKE = re.compile(
     r"cautionary\s+statements?\b|forward[-\s]looking\s+statements\b|summary\b)",
     re.I,
 )
+#: A heading of more words than this that ends a sentence is a risk, not a title.
+MAX_TITLE_WORDS = 6
+_SENTENCE_END = re.compile(r"[.?!][\"\u201d\u2019)]?$")
 #: A heading whose first word is all lower case continues a sentence ("being
 #: secure, ..."); a brand such as "iPhone" or "eBay" is not that.
 _LOWER_CASE_WORD = re.compile(r"[a-z]+\b")
@@ -74,7 +78,7 @@ _TABLE_OF_CONTENTS = re.compile(r"table\s+of\s+contents", re.I)
 #: A page number between sentences: at the start, or after a sentence's end and
 #: a space, and followed by the end or a space and a capital, bullet or quote.
 _PAGE_NUMBER = re.compile(
-    r"(?:^|(?<=[.!?;:\u201d\"\u2019)] ))(\d{1,3})\.?(?= [A-Z\u2022\u201c\"]|$)"
+    r"(?:^|(?<=[.!?;\u201d\"\u2019)] ))(\d{1,3})\.?(?= [A-Z\u2022\u201c\"]|$)"
 )
 
 
@@ -118,7 +122,9 @@ def check_extraction(reading: SectionReading, risks: list[RiskFactor]) -> list[C
     """Every check's findings for one filing, in the order of ``CHECKS``."""
     findings: list[CheckFinding] = []
     for risk in risks:
-        if _TITLE_LIKE.match(risk.heading):
+        if _TITLE_LIKE.match(risk.heading) and not (
+            _SENTENCE_END.search(risk.heading) and len(risk.heading.split()) > MAX_TITLE_WORDS
+        ):
             findings.append(
                 CheckFinding(
                     "title_read_as_risk",

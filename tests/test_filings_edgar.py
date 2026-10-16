@@ -175,3 +175,25 @@ def test_document_url_uses_unpadded_cik_and_bare_accession():
         "https://www.sec.gov/Archives/edgar/data/1652044/000165204426000012/goog-20260204.htm"
     )
     assert isinstance(record.accepted_utc, pd.Timestamp)
+
+
+@pytest.mark.parametrize(
+    ("report_date", "fiscal_year"),
+    [
+        ("2016-01-03", 2015),
+        ("2017-01-01", 2016),
+        ("2016-01-08", 2016),
+        ("2025-01-31", 2025),
+        ("2015-12-27", 2015),
+    ],
+)
+def test_a_year_ending_in_the_first_week_of_january_belongs_to_the_year_before(
+    report_date, fiscal_year
+):
+    # Johnson & Johnson's 52- or 53-week fiscal 2015 ended on 3 January 2016;
+    # Walmart's year ending 31 January 2025 is its fiscal 2025.
+    records = filings_from_block(
+        ALPHABET_CIK,
+        _block([("a-1", "10-K", report_date, "2016-02-20T21:00:00.000Z", "k.htm")]),
+    )
+    assert records[0].fiscal_year == fiscal_year
