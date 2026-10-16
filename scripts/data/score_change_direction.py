@@ -53,6 +53,7 @@ from mci_gru.filings.change import (
     KIND_LABELS,
     ChangeGradingError,
     lm_negative_words,
+    negative_count,
     negative_share,
     pair_table,
     score_choices,
@@ -64,6 +65,7 @@ from scripts.data.score_company_risk_changes import (
     _sha256,
     company_files,
     company_pairs,
+    population_mismatch,
 )
 from scripts.data.score_risk_changes import CHARS_PER_TOKEN
 
@@ -90,6 +92,9 @@ BASELINE_COLUMNS = (
     "neg_share_prior",
     "neg_share_current",
     "neg_change",
+    "neg_count_prior",
+    "neg_count_current",
+    "neg_count_change",
 )
 
 
@@ -97,6 +102,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--data-dir", type=Path, required=True)
     parser.add_argument("--pairs", type=Path, required=True)
+    parser.add_argument(
+        "--population",
+        type=Path,
+        default=None,
+        help="The lead's population_pairs.csv: the pairing must reproduce it exactly",
+    )
+    parser.add_argument("--experiment", default="E8-change-direction")
     parser.add_argument("--lm-dictionary", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--questions", type=Path, default=DEFAULT_QUESTIONS)
@@ -132,6 +144,9 @@ def baselines(pairs: list[tuple[str, Any]], negative: frozenset[str]) -> pd.Data
     table["neg_share_prior"] = [negative_share(p.prior.text, negative) for _, p in pairs]
     table["neg_share_current"] = [negative_share(p.current.text, negative) for _, p in pairs]
     table["neg_change"] = table["neg_share_current"] - table["neg_share_prior"]
+    table["neg_count_prior"] = [negative_count(p.prior.text, negative) for _, p in pairs]
+    table["neg_count_current"] = [negative_count(p.current.text, negative) for _, p in pairs]
+    table["neg_count_change"] = table["neg_count_current"] - table["neg_count_prior"]
     return table[list(BASELINE_COLUMNS)]
 
 
@@ -139,6 +154,7 @@ def _inputs(args: argparse.Namespace) -> dict[str, str]:
     return {
         "pairs": _sha256(args.pairs),
         "lm_dictionary": _sha256(args.lm_dictionary),
+        **({"population": _sha256(args.population)} if args.population is not None else {}),
         **{path.name: _sha256(path) for path in company_files(args.data_dir).values()},
     }
 
@@ -155,6 +171,11 @@ def main(argv: list[str] | None = None, *, client: Any = None, sdk_question_for:
     listed = pd.read_csv(args.pairs, usecols=["company", "pair_id"], dtype=str)
     try:
         pairs = listed_pairs(args.data_dir, listed)
+        if args.population is not None:
+            population = pd.read_csv(args.population, usecols=["company", "pair_id"], dtype=str)
+            mismatch = population_mismatch(company_pairs(args.data_dir), population)
+            if mismatch:
+                raise ChangeGradingError(f"{args.population.name}: {mismatch}")
     except ChangeGradingError as error:
         print(f"The pairs do not match {args.pairs.name}: {error}. Refusing to go on.")
         return 1
@@ -172,10 +193,12 @@ def main(argv: list[str] | None = None, *, client: Any = None, sdk_question_for:
             for question in question_set.questions.values()
         )
         meta = {
-            "experiment": "E8-change-direction",
+            "experiment": args.experiment,
             "commit": _commit(),
             "pairs": len(table),
             "neg_change": "Loughran-McDonald negative-word share, current minus prior",
+            "neg_count_change": "Loughran-McDonald negative-word count, current minus prior",
+            "population_checked": args.population is not None,
             "word_balance": "share of distinct words added minus share removed",
             "lm_negative_words": len(lm_negative_words(args.lm_dictionary)),
             "estimated_input_tokens": chars // CHARS_PER_TOKEN,
@@ -266,7 +289,7 @@ def main(argv: list[str] | None = None, *, client: Any = None, sdk_question_for:
         for name in names
     }
     meta = {
-        "experiment": "E8-change-direction",
+        "experiment": args.experiment,
         "commit": _commit(),
         "model": question_set.model,
         "question_file": args.questions.name,

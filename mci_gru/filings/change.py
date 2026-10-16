@@ -167,6 +167,11 @@ def negative_share(text: str, negative: frozenset[str]) -> float:
     return sum(word in negative for word in words) / len(words) if words else 0.0
 
 
+def negative_count(text: str, negative: frozenset[str]) -> int:
+    """How many of a text's words (every occurrence) are on the negative list."""
+    return sum(word in negative for word in _WORD.findall(text.lower()))
+
+
 def pair_table(pairs: Sequence[RiskPair]) -> pd.DataFrame:
     """One row per pair: ids, texts, similarity, word change and the baseline's answer."""
     rows = []

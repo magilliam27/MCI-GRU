@@ -37,6 +37,7 @@ from mci_gru.filings.change import (
     change_label_sheet,
     grade_changes,
     lm_negative_words,
+    negative_count,
     negative_share,
     option_order,
     pair_table,
@@ -787,6 +788,7 @@ def test_negative_share_counts_every_occurrence():
     negative = frozenset({"loss"})
     assert negative_share("Loss, loss and growth.", negative) == pytest.approx(0.5)
     assert negative_share("", negative) == 0.0
+    assert negative_count("Loss, loss and growth.", negative) == 2
 
 
 def _direction_pairs(
@@ -844,11 +846,29 @@ def test_e8_baselines_follow_the_list_with_both_signs_right(tmp_path, monkeypatc
     # 16 words with the heading's "risk"; tariffs left the list, so two count.
     assert grew["neg_share_current"] == pytest.approx(2 / 16)
     assert grew["neg_change"] == pytest.approx(2 / 16)
+    assert (grew["neg_count_prior"], grew["neg_count_current"]) == (0, 2)
+    assert grew["neg_count_change"] == 2
+    assert table["neg_count_change"].tolist() == [0, 0, 2, 0]
     shrank = table.iloc[1]  # aaa's 2025 risk 1 loses words
     assert shrank["word_balance"] == pytest.approx(shrank["words_added"] - shrank["words_removed"])
     assert shrank["word_balance"] < 0 < grew["word_balance"]
     meta = json.loads((tmp_path / "e8" / "baselines.meta.json").read_text(encoding="utf-8"))
     assert meta["pairs"] == 4 and meta["lm_negative_words"] == 3
+
+
+@pytest.mark.parametrize("drop", [0, 1])
+def test_e9_the_pairing_must_reproduce_the_leads_population(tmp_path, monkeypatch, drop):
+    data = _company_dir(tmp_path)
+    population = _population(tmp_path, data, drop=drop)
+    extra = ("--population", str(population), "--experiment", "E9-direction-confirm")
+    code = _direction_run(tmp_path, monkeypatch, *extra)
+    if drop:
+        assert code == 1 and not (tmp_path / "e8").exists()
+        return
+    assert code == 0
+    meta = json.loads((tmp_path / "e8" / "baselines.meta.json").read_text(encoding="utf-8"))
+    assert meta["experiment"] == "E9-direction-confirm" and meta["population_checked"] is True
+    assert "population" in meta["sha256"]
 
 
 def test_e8_refuses_any_dictionary_but_the_frozen_one(tmp_path, monkeypatch):

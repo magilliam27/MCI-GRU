@@ -657,6 +657,7 @@ Milestone 2 of #289: how each risk factor changed, the word baseline and the gra
 | `test_lm_negative_list_keeps_only_words_currently_on_it` |  |  |
 | `test_negative_share_counts_every_occurrence` |  |  |
 | `test_e8_baselines_follow_the_list_with_both_signs_right` |  |  |
+| `test_e9_the_pairing_must_reproduce_the_leads_population` |  | parametrize |
 | `test_e8_refuses_any_dictionary_but_the_frozen_one` |  |  |
 | `test_e8_a_repeated_or_unknown_listed_pair_stops_it` |  | parametrize |
 | `test_e8_test_call_then_each_question_on_its_own_then_collect` |  |  |
