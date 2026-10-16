@@ -763,6 +763,9 @@ The Labelling desk (#291): label sets, blind sheets, AI reviewers, agreement.
 | `test_a_condition_naming_an_option_a_question_lacks_is_refused` |  |  |
 | `test_the_change_direction_set_keeps_the_e8_card_options` |  |  |
 | `test_the_e9_set_asks_the_e5_and_e8_questions_word_for_word` |  |  |
+| `test_the_e10_set_rates_8k_events_on_a_scale` |  |  |
+| `test_a_split_rule_needs_a_scale_and_a_known_name` |  |  |
+| `test_an_event_sheet_reads_only_the_context_and_text` |  |  |
 | `test_a_sheet_never_reads_an_answer_column` |  |  |
 | `test_a_hand_over_missing_a_text_column_is_refused` |  |  |
 | `test_sheet_ids_are_fresh_and_the_order_is_shuffled_by_seed` |  |  |
@@ -774,10 +777,12 @@ The Labelling desk (#291): label sets, blind sheets, AI reviewers, agreement.
 | `test_a_reviewer_answering_a_skipped_question_is_rejected` |  |  |
 | `test_combining_takes_the_majority_and_leaves_a_split_empty` |  |  |
 | `test_each_question_takes_its_own_majority` |  |  |
+| `test_a_three_way_rating_split_takes_the_middle_and_is_marked` |  |  |
 | `test_combining_refuses_a_reviewer_who_skipped_an_item` |  |  |
 | `test_page_labels_derive_a_category_only_when_finished` |  |  |
 | `test_agreement_counts_only_items_both_labelled` |  |  |
 | `test_cohen_kappa_matches_a_worked_example` |  |  |
+| `test_the_desk_runs_an_event_sheet_end_to_end` |  |  |
 | `test_the_desk_runs_end_to_end_on_the_practice_sheet` |  |  |
 | `test_a_changed_label_set_stops_the_later_steps` |  |  |
 

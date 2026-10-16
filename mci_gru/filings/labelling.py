@@ -9,8 +9,10 @@ everything here:
   into a category. A question is yes/no unless it lists its own ``options``, in
   which case the labeller picks exactly one of them. The labelling page, the AI reviewers and the grading all
   read the same file, so the owner and the reviewers are asked the same thing.
+  A label set also names the kind of item it labels (``items``): a pair of
+  10-K risk factors by default, or an 8-K event with the context Jev reads.
 - **The desk never sees an answer it is labelling against.** A sheet is read
-  from a hand-over table through an allow-list of columns (``SHEET_COLUMNS``),
+  from a hand-over table through an allow-list of columns (``ITEM_COLUMNS``),
   so a Jev or baseline column in that table is never loaded. Item ids are
   minted afresh after a shuffle, so a source id cannot carry a sample stratum.
 
@@ -49,6 +51,18 @@ SHEET_COLUMNS = (
     "current_heading",
     "current_body",
 )
+#: An 8-K event: exactly the context and text Jev's event state shows.
+EVENT_COLUMNS = (
+    "company",
+    "item_codes",
+    "prior_annual_revenue",
+    "other_8k_item_codes_in_prior_90_days",
+    "event_text",
+)
+#: The columns a sheet reads for each kind of item a label set can label.
+ITEM_COLUMNS = {"risk_pair": SHEET_COLUMNS, "event_8k": EVENT_COLUMNS}
+#: How a question's three-way (or wider) split may still be settled.
+SPLIT_RULES = ("", "middle")
 NOTE_COLUMN = "note"
 
 
@@ -69,6 +83,9 @@ class LabelQuestion:
     ask_if: tuple[tuple[str, str], ...]
     #: The answers a labeller may give, each with its definition; yes/no by default.
     options: tuple[tuple[str, str], ...] = tuple((a, "") for a in ANSWERS)
+    #: "middle": when reviewers all disagree, take the middle answer in option
+    #: order (options listed as a scale). Empty: a split has no majority.
+    on_split: str = ""
 
     @property
     def answers(self) -> tuple[str, ...]:
@@ -93,6 +110,12 @@ class LabelSet:
     questions: tuple[LabelQuestion, ...]
     rules: tuple[CategoryRule, ...]
     digest: str
+    #: The kind of item labelled, a key of ``ITEM_COLUMNS``.
+    items: str = "risk_pair"
+
+    @property
+    def item_columns(self) -> tuple[str, ...]:
+        return ITEM_COLUMNS[self.items]
 
     @property
     def question_ids(self) -> tuple[str, ...]:
@@ -216,6 +239,9 @@ def load_label_set(path: Path) -> LabelSet:
     set_id = str(raw.get("id") or "").strip()
     if not set_id:
         raise LabelSetError(f"{path}: no id")
+    items = str(raw.get("items") or "risk_pair").strip()
+    if items not in ITEM_COLUMNS:
+        raise LabelSetError(f"{path}: items must be one of {list(ITEM_COLUMNS)}, got {items!r}")
     questions: list[LabelQuestion] = []
     for entry in raw.get("questions") or []:
         qid = str(entry.get("id") or "").strip()
@@ -225,13 +251,20 @@ def load_label_set(path: Path) -> LabelSet:
             raise LabelSetError(f"{path}: question id {qid!r} is repeated or reserved")
         earlier = {q.question_id: q for q in questions}
         ask_if = _conditions(entry.get("ask_if"), f"{path}: {qid}.ask_if", earlier)
+        options = _options(entry.get("options"), f"{path}: {qid}.options")
+        on_split = str(entry.get("on_split") or "").strip()
+        if on_split not in SPLIT_RULES:
+            raise LabelSetError(f"{path}: {qid}.on_split must be one of {list(SPLIT_RULES)[1:]}")
+        if on_split and len(options) < 3:
+            raise LabelSetError(f"{path}: {qid}.on_split needs a scale of three or more options")
         questions.append(
             LabelQuestion(
                 question_id=qid,
                 text=" ".join(str(entry["text"]).split()),
                 help=" ".join(str(entry.get("help") or "").split()),
                 ask_if=ask_if,
-                options=_options(entry.get("options"), f"{path}: {qid}.options"),
+                options=options,
+                on_split=on_split,
             )
         )
     if not questions:
@@ -253,6 +286,7 @@ def load_label_set(path: Path) -> LabelSet:
         questions=tuple(questions),
         rules=tuple(rules),
         digest=hashlib.sha256(text.encode("utf-8")).hexdigest()[:16],
+        items=items,
     )
     reachable = {label_set.category(a) for a in complete_answer_sets(label_set)}
     unreachable = [label for label in label_set.categories if label not in reachable]
@@ -277,9 +311,11 @@ def complete_answer_sets(label_set: LabelSet) -> list[dict[str, str]]:
 # --- Sheets -------------------------------------------------------------------
 
 
-def read_blind_table(path: Path, id_column: str) -> pd.DataFrame:
-    """A hand-over table, reading only its id column and ``SHEET_COLUMNS``."""
-    wanted = {id_column, *SHEET_COLUMNS}
+def read_blind_table(
+    path: Path, id_column: str, columns: tuple[str, ...] = SHEET_COLUMNS
+) -> pd.DataFrame:
+    """A hand-over table, reading only its id column and the item ``columns``."""
+    wanted = {id_column, *columns}
     table = pd.read_csv(path, usecols=lambda column: column in wanted, dtype=str)
     missing = sorted(wanted - set(table.columns))
     if missing:
@@ -290,7 +326,12 @@ def read_blind_table(path: Path, id_column: str) -> pd.DataFrame:
 
 
 def blind_sheet(
-    table: pd.DataFrame, id_column: str, *, sample: int | None, seed: int
+    table: pd.DataFrame,
+    id_column: str,
+    *,
+    sample: int | None,
+    seed: int,
+    columns: tuple[str, ...] = SHEET_COLUMNS,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Shuffled items under fresh ids, and the map back to the source ids.
 
@@ -306,7 +347,7 @@ def blind_sheet(
     picked = table.iloc[order].reset_index(drop=True)
     width = max(3, len(str(len(picked))))
     item_ids = [f"R{i + 1:0{width}d}" for i in range(len(picked))]
-    items = picked[list(SHEET_COLUMNS)].copy()
+    items = picked[list(columns)].copy()
     items.insert(0, "item_id", item_ids)
     source = pd.DataFrame({"item_id": item_ids, "source_id": picked[id_column].to_numpy()})
     return items, source
@@ -401,8 +442,10 @@ def render_reviewer_prompt(
     )
 
 
-def items_markdown(items: pd.DataFrame) -> str:
+def items_markdown(items: pd.DataFrame, kind: str = "risk_pair") -> str:
     """Items in full, plain text, nothing marked up between the two years."""
+    if kind == "event_8k":
+        return events_markdown(items)
     blocks = []
     for row in items.itertuples(index=False):
         blocks.append(
@@ -421,6 +464,31 @@ def items_markdown(items: pd.DataFrame) -> str:
                     f"**{row.current_heading.strip()}**",
                     "",
                     row.current_body.strip(),
+                    "",
+                ]
+            )
+        )
+    return "\n".join(blocks)
+
+
+def events_markdown(items: pd.DataFrame) -> str:
+    """8-K events in full: the context Jev is given, then the event text."""
+    blocks = []
+    for row in items.itertuples(index=False):
+        blocks.append(
+            "\n".join(
+                [
+                    f"## Item {row.item_id}",
+                    "",
+                    f"- Company: {row.company.strip()}",
+                    f"- Item codes: {row.item_codes.strip()}",
+                    f"- Prior annual revenue: {row.prior_annual_revenue.strip() or 'not known'}",
+                    "- Item codes of the company's other 8-Ks in the previous 90 days: "
+                    f"{row.other_8k_item_codes_in_prior_90_days.strip() or 'none'}",
+                    "",
+                    "### Event text",
+                    "",
+                    row.event_text.strip(),
                     "",
                 ]
             )
@@ -473,13 +541,19 @@ def read_answer_file(label_set: LabelSet, path: Path) -> pd.DataFrame:
 
 
 def combine_reviewers(
-    item_ids: Iterable[str], reviews: Mapping[str, pd.DataFrame], *, column: str = "category"
+    item_ids: Iterable[str],
+    reviews: Mapping[str, pd.DataFrame],
+    *,
+    column: str = "category",
+    scale: tuple[str, ...] = (),
 ) -> pd.DataFrame:
     """One row per item: each reviewer's category, the majority and whether all agreed.
 
     The majority is a category more than half the reviewers gave; with no such
     category ``ai_label`` is empty, and the item needs a human call. With
     ``column`` set to a question id, the same is done for that question's answers.
+    With a ``scale`` (the options in order), an odd number of answers that all
+    differ settles on the middle one, and ``by_rule`` marks the item.
     """
     ids = list(item_ids)
     table = pd.DataFrame({"item_id": ids})
@@ -491,16 +565,23 @@ def combine_reviewers(
             raise LabelError(f"{name}: missing items {absent[:5]}, unknown items {stray[:5]}")
         table[name] = table["item_id"].map(got)
     names = list(reviews)
-    labels, votes = [], []
+    labels, votes, by_rule = [], [], []
     for row in table[names].itertuples(index=False):
-        counts = pd.Series(list(row)).value_counts()
+        answers = list(row)
+        counts = pd.Series(answers).value_counts()
         top, n = counts.index[0], int(counts.iloc[0])
         winner = top if n * 2 > len(names) else ""
+        settled = False
+        if not winner and scale and n == 1 and len(answers) % 2 == 1:
+            ranked = sorted(answers, key=scale.index)
+            winner, settled = ranked[len(ranked) // 2], True
         labels.append(winner)
         votes.append(n)
+        by_rule.append(settled)
     table["ai_label"] = labels
     table["votes"] = votes
     table["unanimous"] = table["votes"] == len(names)
+    table["by_rule"] = by_rule
     return table
 
 
@@ -510,17 +591,23 @@ def combine_answers(
     """One row per item: each question's majority answer, its votes and whether all agreed.
 
     Each question is decided by its own majority, so a key with several
-    questions does not have to go through one derived category.
+    questions does not have to go through one derived category. A question with
+    ``on_split: middle`` settles a full split on its middle option and marks it
+    in ``<question>_by_rule``.
     """
     ids = list(item_ids)
     table = pd.DataFrame({"item_id": ids})
-    for qid in label_set.question_ids:
-        one = combine_reviewers(ids, reviews, column=qid)
+    for q in label_set.questions:
+        qid = q.question_id
+        scale = q.answers if q.on_split == "middle" else ()
+        one = combine_reviewers(ids, reviews, column=qid, scale=scale)
         for name in reviews:
             table[f"{name}_{qid}"] = one[name]
         table[qid] = one["ai_label"]
         table[f"{qid}_votes"] = one["votes"]
         table[f"{qid}_unanimous"] = one["unanimous"]
+        if scale:
+            table[f"{qid}_by_rule"] = one["by_rule"]
     return table
 
 

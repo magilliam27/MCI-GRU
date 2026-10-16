@@ -3,8 +3,8 @@
 One labels folder per sheet, normally ``filings/experiments/<name>/labels/`` in
 the project's shared folder. Steps, in order::
 
-    # 1. A blind sheet from a hand-over table. Only the id column and the six
-    #    text columns are read (mci_gru.filings.labelling.SHEET_COLUMNS).
+    # 1. A blind sheet from a hand-over table. Only the id column and the item
+    #    columns of the label set's kind are read (labelling.ITEM_COLUMNS).
     python -m scripts.data.label_desk sheet --table handover.csv --id-column pair_id \\
         --label-set configs/filings/labels/change_v1.yaml --sheet-id change-alphabet-1 \\
         --out-dir <labels> [--sample 80] [--seed 0]
@@ -106,8 +106,11 @@ def cmd_sheet(args: argparse.Namespace) -> None:
     if (out / "items.csv").exists():
         raise LabelError(f"{out / 'items.csv'} exists; a sheet is never rebuilt in place")
     label_set = load_label_set(Path(args.label_set))
-    table = read_blind_table(Path(args.table), args.id_column)
-    items, source = blind_sheet(table, args.id_column, sample=args.sample, seed=args.seed)
+    columns = label_set.item_columns
+    table = read_blind_table(Path(args.table), args.id_column, columns)
+    items, source = blind_sheet(
+        table, args.id_column, sample=args.sample, seed=args.seed, columns=columns
+    )
     meta = {
         "sheet_id": args.sheet_id,
         "title": args.title or label_set.title,
@@ -127,6 +130,10 @@ def cmd_sheet(args: argparse.Namespace) -> None:
     items.to_csv(out / "items.csv", index=False)
     source.to_csv(out / "key" / "source_ids.csv", index=False)
     (out / "sheet.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    if label_set.items != "risk_pair":
+        # The labelling page shows risk pairs only; other items go to AI reviewers.
+        print(f"{len(items)} items under {out}; no page seed for {label_set.items} items")
+        return
     page_meta = {k: meta[k] for k in ("title", "practice", "created")}
     batches = write_page_seed(
         page_documents(args.sheet_id, label_set, items, page_meta), out / "page_seed"
@@ -151,7 +158,9 @@ def cmd_reviewers(args: argparse.Namespace) -> None:
             if (folder / "answers.csv").exists():
                 raise LabelError(f"{folder / 'answers.csv'} exists; reviewers are never re-run")
             folder.mkdir(parents=True, exist_ok=True)
-            (folder / "items.md").write_text(items_markdown(part), encoding="utf-8")
+            (folder / "items.md").write_text(
+                items_markdown(part, label_set.items), encoding="utf-8"
+            )
             prompt = render_reviewer_prompt(
                 template,
                 label_set,
@@ -189,7 +198,7 @@ def cmd_combine(args: argparse.Namespace) -> None:
         if len(files) != expected:
             raise LabelError(f"{name}: {len(files)} of {expected} answer files written")
         reviews[name] = pd.concat([read_answer_file(label_set, f) for f in files])
-    table = combine_reviewers(items["item_id"], reviews)
+    table = combine_reviewers(items["item_id"], reviews).drop(columns="by_rule")
     table.to_csv(labels_dir / "ai_labels.csv", index=False)
     answers = combine_answers(label_set, items["item_id"], reviews)
     answers.to_csv(labels_dir / "ai_answers.csv", index=False)
@@ -204,6 +213,12 @@ def cmd_combine(args: argparse.Namespace) -> None:
             qid: {
                 "counts": answers[qid].value_counts().to_dict(),
                 "unanimous": int(answers[f"{qid}_unanimous"].sum()),
+                "empty": answers.loc[answers[qid] == "", "item_id"].tolist(),
+                **(
+                    {"by_rule": answers.loc[answers[f"{qid}_by_rule"], "item_id"].tolist()}
+                    if f"{qid}_by_rule" in answers
+                    else {}
+                ),
             }
             for qid in label_set.question_ids
         },

@@ -14,7 +14,9 @@ The instructions every reviewer reads are `configs/filings/labels/reviewer_v1.md
 filled in from the sheet's label set (`configs/filings/labels/*.yaml`). A label
 set with a pick-one question (one that lists its own `options`) uses
 `reviewer_v2.md` instead, passed as `reviewers --prompt`; v1 tells reviewers
-every answer is yes or no. **Do not
+every answer is yes or no. A label set for 8-K events (`items: event_8k`, such
+as `event_rating_v1.yaml`) uses `reviewer_events_v1.md`; event texts are long,
+so pass `--batch-size 20`. **Do not
 add to them in the subagent prompt.** A reviewer that is told what the
 experiment is, what Jev or a baseline answered, or what the owner thinks is no
 longer blind, and its labels cannot go in a key.

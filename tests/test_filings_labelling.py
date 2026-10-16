@@ -14,6 +14,7 @@ import pytest
 
 import scripts.data.label_desk as desk
 from mci_gru.filings.labelling import (
+    EVENT_COLUMNS,
     SHEET_COLUMNS,
     LabelError,
     LabelSetError,
@@ -23,6 +24,7 @@ from mci_gru.filings.labelling import (
     combine_answers,
     combine_reviewers,
     complete_answer_sets,
+    events_markdown,
     load_label_set,
     page_documents,
     page_label_rows,
@@ -39,6 +41,25 @@ SAME_RISK = LABELS / "same_risk_v1.yaml"
 PROMPT = LABELS / "reviewer_v1.md"
 PROMPT_V2 = LABELS / "reviewer_v2.md"
 DIRECTION = LABELS / "change_direction_v1.yaml"
+EVENTS = LABELS / "event_rating_v1.yaml"
+EVENT_PROMPT = LABELS / "reviewer_events_v1.md"
+
+
+def _events_table(n=6):
+    return pd.DataFrame(
+        {
+            "label_id": [f"K{i:03d}" for i in range(1, n + 1)],
+            "company": [f"Company {i}" for i in range(1, n + 1)],
+            "item_codes": ["5.02 Departure of Directors"] * n,
+            "prior_annual_revenue": ["$10.0 billion (fiscal 2015 10-K)"] * n,
+            "other_8k_item_codes_in_prior_90_days": ["2.02, 9.01"] + [""] * (n - 1),
+            "event_text": [f"The chief financial officer resigned, event {i}." for i in range(n)],
+            "jev_rating": ["bad"] * n,
+            "item_group": ["officer"] * n,
+        }
+    )
+
+
 CHOICE_SET = """id: choice_test
 questions:
   - id: kind
@@ -181,6 +202,61 @@ def test_the_e9_set_asks_the_e5_and_e8_questions_word_for_word():
     assert combined.categories == e5.categories
     answers = {"new_risk": "no", "changed": "yes", "direction": "worse", "finer": "escalated"}
     assert combined.category(answers) == "changed"
+
+
+def test_the_e10_set_rates_8k_events_on_a_scale():
+    label_set = load_label_set(EVENTS)
+    rating, size = label_set.questions
+    assert label_set.items == "event_8k"
+    assert label_set.item_columns == EVENT_COLUMNS
+    assert rating.answers == ("very_bad", "bad", "neutral", "good", "very_good")
+    assert rating.on_split == "middle" and size.on_split == ""
+    assert size.answers[-1] == "no_amount_stated"
+    assert all(text for _, text in rating.options + size.options)
+    assert label_set.category({"rating": "very_bad", "size": "over_5_percent"}) == "bad"
+
+
+def test_a_split_rule_needs_a_scale_and_a_known_name(tmp_path):
+    with pytest.raises(LabelSetError, match="scale of three"):
+        load_label_set(
+            _write(
+                tmp_path,
+                "a.yaml",
+                CHOICE_SET.replace(
+                    "    ask_if: {kind: worse}", "    ask_if: {kind: worse}\n    on_split: middle"
+                ),
+            )
+        )
+    with pytest.raises(LabelSetError, match="on_split must be"):
+        load_label_set(
+            _write(
+                tmp_path,
+                "b.yaml",
+                CHOICE_SET.replace(
+                    "    text: Which kind?", "    text: Which kind?\n    on_split: mean"
+                ),
+            )
+        )
+    with pytest.raises(LabelSetError, match="items must be one of"):
+        load_label_set(_write(tmp_path, "c.yaml", "items: tweets\n" + CHOICE_SET))
+
+
+def test_an_event_sheet_reads_only_the_context_and_text(tmp_path):
+    path = tmp_path / "events.csv"
+    _events_table().to_csv(path, index=False)
+    read = read_blind_table(path, "label_id", EVENT_COLUMNS)
+    assert sorted(read.columns) == sorted(["label_id", *EVENT_COLUMNS])
+    items, _ = blind_sheet(read, "label_id", sample=None, seed=3, columns=EVENT_COLUMNS)
+    assert list(items.columns) == ["item_id", *EVENT_COLUMNS]
+    text = events_markdown(items.sort_values("item_id"))
+    first = items.loc[items["company"] == "Company 1"].iloc[0]
+    block = text.split(f"## Item {first.item_id}")[1].split("## Item")[0]
+    assert "- Company: Company 1" in block
+    assert "- Item codes: 5.02 Departure of Directors" in block
+    assert "- Prior annual revenue: $10.0 billion (fiscal 2015 10-K)" in block
+    assert "in the previous 90 days: 2.02, 9.01" in block
+    assert "event 0." in block
+    assert "jev" not in text.lower() and "officer\n" not in text
 
 
 # --- Blind sheets -------------------------------------------------------------
@@ -355,6 +431,38 @@ def test_each_question_takes_its_own_majority(tmp_path):
     assert table["reviewer_2_kind"].tolist() == ["worse", "neutral"]
 
 
+def test_a_three_way_rating_split_takes_the_middle_and_is_marked():
+    label_set = load_label_set(EVENTS)
+    ids = ["E1", "E2", "E3", "E4"]
+
+    def review(ratings, sizes):
+        return pd.DataFrame({"item_id": ids, "rating": ratings, "size": sizes})
+
+    table = combine_answers(
+        label_set,
+        ids,
+        {
+            "reviewer_1": review(
+                ["very_bad", "very_good", "bad", "bad"],
+                ["under_1_percent", "no_amount_stated", "over_5_percent", "over_5_percent"],
+            ),
+            "reviewer_2": review(
+                ["good", "bad", "bad", "neutral"],
+                ["over_5_percent", "no_amount_stated", "over_5_percent", "under_1_percent"],
+            ),
+            "reviewer_3": review(
+                ["neutral", "very_bad", "bad", "good"],
+                ["no_amount_stated", "no_amount_stated", "over_5_percent", "no_amount_stated"],
+            ),
+        },
+    )
+    assert table["rating"].tolist() == ["neutral", "bad", "bad", "neutral"]
+    assert table["rating_by_rule"].tolist() == [True, True, False, True]
+    assert table["rating_votes"].tolist() == [1, 1, 3, 1]
+    assert table["size"].tolist() == ["", "no_amount_stated", "over_5_percent", ""]
+    assert "size_by_rule" not in table
+
+
 def test_combining_refuses_a_reviewer_who_skipped_an_item():
     full = pd.DataFrame({"item_id": ["R1", "R2"], "category": ["same", "new"]})
     with pytest.raises(LabelError, match="reviewer_2: missing items"):
@@ -399,6 +507,30 @@ def test_cohen_kappa_matches_a_worked_example():
 
 
 # --- The script, end to end ---------------------------------------------------
+
+
+def test_the_desk_runs_an_event_sheet_end_to_end(tmp_path):
+    table = tmp_path / "events.csv"
+    _events_table(3).to_csv(table, index=False)
+    out = tmp_path / "labels"
+    args = ["sheet", "--table", str(table), "--id-column", "label_id", "--label-set", str(EVENTS)]
+    assert desk.main([*args, "--sheet-id", "e10", "--seed", "1", "--out-dir", str(out)]) == 0
+    assert not (out / "page_seed").exists()
+    assert desk.main(["reviewers", "--labels-dir", str(out), "--prompt", str(EVENT_PROMPT)]) == 0
+    packet = out / "reviewers" / "reviewer_1" / "batch_1"
+    assert "- Prior annual revenue:" in (packet / "items.md").read_text()
+    prompt = (packet / "prompt.md").read_text()
+    assert "8-K" in prompt and "   - `very_good`:" in prompt
+    ratings = {"reviewer_1": "very_bad", "reviewer_2": "neutral", "reviewer_3": "good"}
+    for name, rating in ratings.items():
+        lines = ["item_id,rating,size,note"]
+        lines += [f"R00{i},{rating},no_amount_stated,n" for i in range(1, 4)]
+        (out / "reviewers" / name / "batch_1" / "answers.csv").write_text("\n".join(lines) + "\n")
+    assert desk.main(["combine", "--labels-dir", str(out)]) == 0
+    answers = pd.read_csv(out / "ai_answers.csv", keep_default_na=False)
+    assert answers["rating"].tolist() == ["neutral"] * 3
+    summary = json.loads((out / "ai_summary.json").read_text())
+    assert summary["answers"]["rating"]["by_rule"] == ["R001", "R002", "R003"]
 
 
 def test_the_desk_runs_end_to_end_on_the_practice_sheet(tmp_path, capsys):
