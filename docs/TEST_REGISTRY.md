@@ -826,6 +826,23 @@ Each risk factor paired with its most similar prior-year risks (#289).
 | `test_consecutive_years_pair_each_year_with_the_one_before_only` |  |  |
 | `test_a_missing_prior_year_is_refused_rather_than_skipped` |  |  |
 
+## `tests/test_filings_report_signals.py`
+
+E7 (#310): each member 10-K's change signals against its pair partner, and the run.
+
+**Exercises:** `mci_gru.filings.report_signals`, `mci_gru.filings.risk_factors`, `scripts.data.score_e7_signals`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_section_change_is_one_minus_the_cosine_of_word_counts` |  |  |
+| `test_risk_pairs_flag_new_under_the_similarity_cut_and_changed_by_word_score_or_new` |  |  |
+| `test_a_risk_whose_word_score_is_exactly_the_cut_counts_as_changed` |  |  |
+| `test_worse_share_counts_unflagged_risks_as_zero` |  |  |
+| `test_e7_refuses_data_that_differs_from_its_manifest` |  |  |
+| `test_e7_signals_pair_each_member_report_with_its_partner` |  |  |
+| `test_e7_jev_is_asked_only_about_flagged_risks_then_signal_4_is_collected` |  |  |
+| `test_e7_stops_before_any_call_when_the_estimate_is_over_the_budget` |  |  |
+
 ## `tests/test_filings_risk_factors.py`
 
 Item 1A of a 10-K, cut into individual risk factors (#289).
