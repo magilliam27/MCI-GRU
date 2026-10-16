@@ -40,17 +40,43 @@ def test_findings_are_named_by_the_published_check_list(html):
     assert {check for check, _ in _checks(html)} <= set(CHECKS)
 
 
-@pytest.mark.parametrize("title", ["Risk Factors", "Risks Related to Taxes."])
+@pytest.mark.parametrize("title", ["Risk Factors Overview", "Summary of Company Contributions"])
 def test_a_title_read_as_a_risk_heading_is_flagged(html, title):
     # A title with text under it reads as a risk: Alphabet's fiscal 2014-2019
-    # "RISK FACTORS" did, over the section's introduction. (A category title
-    # such as "General Risks" with text under it introduces its category.)
+    # "RISK FACTORS" did, over the section's introduction, before the parser
+    # learned that title. (A category title such as "General Risks" with text
+    # under it introduces its category.)
     html = html.replace(
         COMPETITION,
         f"<div><b>{title}</b></div><div><span>The risks below apply to any company.</span></div>"
         + COMPETITION,
     )
     assert _checks(html) == [("title_read_as_risk", "a#002")]
+
+
+@pytest.mark.parametrize(("sentences", "flagged"), [(25, False), (60, True)])
+def test_a_reading_whose_risks_lose_most_of_the_section_is_flagged(html, sentences, flagged):
+    # Marriott's fiscal 2018 risks ran into their paragraphs; one category was
+    # read over them and every paragraph dropped, with no other finding. Here a
+    # cautionary title drops what follows it: 250 words lost is under the
+    # floor, 600 is not.
+    lost = " ".join(["Our results may differ from our plans and estimates today."] * sentences)
+    html = html.replace(
+        COMPETITION,
+        f"<div><b>Cautionary Statements</b></div><div><span>{lost}</span></div>" + COMPETITION,
+    )
+    checks = [check for check, _ in _checks(html)]
+    assert checks == (["section_text_not_in_risks"] if flagged else [])
+
+
+def test_a_short_sentence_with_a_verb_that_starts_like_a_title_is_not_a_title(html):
+    # Five words, but a risk: "Forward-looking statements may prove inaccurate."
+    html = html.replace(
+        COMPETITION,
+        "<div><b>Forward-looking statements may prove inaccurate.</b></div>"
+        "<div><span>Our plans can change.</span></div>" + COMPETITION,
+    )
+    assert _checks(html) == []
 
 
 def test_a_sentence_that_starts_like_a_title_is_not_a_title(html):

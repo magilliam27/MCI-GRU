@@ -203,10 +203,11 @@ def test_no_other_company_follows(other):
 AGENT = "Test Agent test@example.com"
 
 
-def _submissions(name, reports, former=()):
+def _submissions(name, reports, former=(), sic=""):
     """A submissions file whose 10-Ks are ``(accepted date, accession)``."""
     return {
         "name": name,
+        "sic": sic,
         "formerNames": [{"name": old, "from": start, "to": end} for old, start, end in former],
         "filings": {
             "recent": {
@@ -394,22 +395,26 @@ FIXTURE = Path(__file__).parent / "fixtures" / "filings" / "tenk_item1a_sample.h
 class FakeEdgar(FakeSec):
     """Submissions as ``FakeSec``, and every primary document the fixture 10-K."""
 
-    def __init__(self, filers, broken=()):
+    def __init__(self, filers, broken=(), documents=None):
         super().__init__(filers)
         self.broken = set(broken)
+        self.documents = documents or {}
 
     def __call__(self, url, headers):
         if url.endswith("/doc.htm"):
             if any(accession.replace("-", "") in url for accession in self.broken):
                 return b"<html><body><div>ITEM 1. BUSINESS</div></body></html>"
+            for accession, document in self.documents.items():
+                if accession.replace("-", "") in url:
+                    return document.encode("utf-8")
             return FIXTURE.read_bytes()
         return super().__call__(url, headers)
 
 
 MEMBER_FILERS = {
-    "0000000001": _submissions("ACME INC", _reports("1", range(2011, 2017))),
-    "0000000002": _submissions("BETA CORP", _reports("2", range(2011, 2014))),
-    "0000000003": _submissions("BETA HOLDINGS", _reports("3", range(2014, 2017))),
+    "0000000001": _submissions("ACME INC", _reports("1", range(2011, 2017)), sic="2834"),
+    "0000000002": _submissions("BETA CORP", _reports("2", range(2011, 2014)), sic="6021"),
+    "0000000003": _submissions("BETA HOLDINGS", _reports("3", range(2014, 2017)), sic="6021"),
     "0000000004": _submissions("GAMMA INC", _reports("4", range(2011, 2017))),
 }
 
@@ -470,7 +475,7 @@ def test_a_members_reports_are_those_filed_while_in_the_index_and_the_one_before
 
 
 @pytest.mark.usefixtures("_no_throttle")
-def test_a_report_that_fails_the_checks_stops_the_manifest_unless_its_company_is_left_out(
+def test_a_report_that_fails_the_checks_stops_the_manifest_unless_its_risks_are_left_out(
     tmp_path,
 ):
     transport = FakeEdgar(MEMBER_FILERS, broken={"1-2014"})
@@ -483,7 +488,92 @@ def test_a_report_that_fails_the_checks_stops_the_manifest_unless_its_company_is
     left_out = pd.read_csv(tmp_path / "package" / "member_left_out.csv", dtype=str)
     assert left_out.set_index("company")["reason"].to_dict() == {
         "ccc": "no 10-K accepted while a member in the window",
-        "aaa": "a report failed the extraction checks",
+        "aaa": "no Item 1A section closed by Item 1B, 1C or 2",
     }
+    assert left_out.set_index("company").loc[
+        "aaa", ["accession_number", "year", "sic"]
+    ].tolist() == [
+        "1-2014",
+        "2014",
+        "2834",
+    ]
+    # The report stays in the index, its risks out, and its company's other
+    # reports in.
     index = pd.read_csv(tmp_path / "package" / "member_10k_index.csv", dtype=str)
-    assert set(index["company"]) == {"bbb"}
+    published = index.set_index("accession_number")["risks_published"].to_dict()
+    assert published["1-2014"] == "False"
+    assert published["1-2015"] == "True"
+    risks = (tmp_path / "package" / "member_risk_factors.jsonl").read_text().splitlines()
+    assert "1-2014" not in {json.loads(line)["accession_number"] for line in risks}
+    assert "1-2015" in {json.loads(line)["accession_number"] for line in risks}
+    meta = json.loads((tmp_path / "package" / "member_10k.meta.json").read_text())
+    assert meta["member_reports_risks_left_out_by_year"]["2014"] == {
+        "reports": 2,
+        "left_out": 1,
+        "share": 0.5,
+    }
+    assert meta["member_reports_risks_left_out_by_sic_division"] == {
+        "Finance, Insurance and Real Estate": {"reports": 3, "left_out": 0, "share": 0.0},
+        "Manufacturing": {"reports": 2, "left_out": 1, "share": 0.5},
+    }
+    assert (tmp_path / "manifest.json").exists()
+
+
+def _item_1a(paragraphs: list[str]) -> str:
+    body = "".join(f"<div>{paragraph}</div>" for paragraph in paragraphs)
+    return (
+        "<html><body><div>ITEM 1. BUSINESS</div><div>We make things.</div>"
+        f"<div>ITEM 1A. RISK FACTORS</div>{body}"
+        "<div>ITEM 1B. UNRESOLVED STAFF COMMENTS</div><div>None.</div></body></html>"
+    )
+
+
+_FILLER = " ".join(["Demand for our products depends on conditions we cannot control."] * 20)
+#: Headings run into their paragraphs (Ford), which only the run-in layout reads.
+RUN_IN_10K = _item_1a([f"<b>Risk number {n} may harm us.</b> {_FILLER}" for n in range(1, 5)])
+#: A long Item 1A with no emphasis at all: no layout splits it into risks.
+PLAIN_10K = _item_1a([_FILLER] * 4)
+#: An Item 1A that only points to the annual report (Bank of New York Mellon).
+POINTER_10K = _item_1a(
+    [
+        "The information required by this Item is set forth under the caption Risk Factors "
+        "in the Annual Report to Shareholders, which is incorporated herein by reference."
+    ]
+)
+
+
+@pytest.mark.usefixtures("_no_throttle")
+def test_other_layouts_are_tried_and_whole_sections_kept_where_risks_fail(tmp_path):
+    transport = FakeEdgar(
+        MEMBER_FILERS,
+        documents={"1-2014": RUN_IN_10K, "1-2015": PLAIN_10K, "3-2015": POINTER_10K},
+    )
+    assert (
+        member_export.main(_member_inputs(tmp_path, ["--leave-out-flagged"]), transport=transport)
+        == 0
+    )
+    package = tmp_path / "package"
+    index = pd.read_csv(package / "member_10k_index.csv", dtype=str).set_index("accession_number")
+    assert index.loc["1-2014", "layout"] == "run_in"
+    assert index.loc["1-2013", "layout"] == "blocks"
+    risks = [json.loads(line) for line in (package / "member_risk_factors.jsonl").open()]
+    assert [risk["heading"] for risk in risks if risk["accession_number"] == "1-2014"] == [
+        f"Risk number {n} may harm us." for n in range(1, 5)
+    ]
+    sections = {
+        section["accession_number"]: section
+        for section in map(json.loads, (package / "member_item_1a.jsonl").open())
+    }
+    # The plain section is published whole though its risks are not; the
+    # pointer, and the short fixture sections, are not sections at all.
+    assert set(sections) == {"1-2014", "1-2015"}
+    assert sections["1-2015"]["risks_passed"] is False
+    assert sections["1-2014"]["risks_passed"] is True
+    assert sections["1-2015"]["section_words"] == 4 * len(_FILLER.split())
+    assert sections["1-2015"]["text"] == "\n\n".join([_FILLER] * 4)
+    assert index.loc["3-2015", "section_published"] == "False"
+    left_out = pd.read_csv(package / "member_left_out.csv", dtype=str).fillna("")
+    reasons = left_out.set_index("accession_number")["reason"].to_dict()
+    assert reasons["1-2015"] == "Item 1A holds no heading followed by text"
+    assert reasons["3-2015"] == "Item 1A holds no heading followed by text"
+    assert left_out.set_index("accession_number").loc["1-2015", "section_published"] == "True"

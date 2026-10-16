@@ -144,6 +144,14 @@ _PAGE_NUMBER_BLOCK = re.compile(r"^(\d{1,3})\.?$")
 _PAGE_AFFIX = re.compile(r"^\d{1,3}\s*[|\u2022\u00b7-]?\s+|\s+[|\u2022\u00b7-]?\s*\d{1,3}$")
 #: The section's own title, when a filing sets it apart from the item heading.
 _SECTION_TITLE = re.compile(r"^(item\s*1a\.?\s*)?risk\s+factors\.?$", re.I)
+#: The section's title again, as a line of its own anywhere in the section: a
+#: page's continuation header (Ford's "Item 1A. Risk Factors (Continued)", AIG's
+#: "ITEM 1A | Risk Factors") or a title set apart ("Risk Factors Discussion").
+_SECTION_TITLE_LINE = re.compile(
+    r"^(item\s*1a\.?\s*[|:\u2013\u2014-]?\s*)?risk\s+factors\s*"
+    r"(,?\s*\(?(continued|cont.d)\.?\)?|\(.*\)|discussion)?\s*[.:]?$",
+    re.I,
+)
 #: A heading that opens introduction rather than a risk.
 _INTRO_TITLE = re.compile(
     r"^(cautionary\s+(statements?|notes?)(\s+(about|regarding|concerning|relating\s+to|on|for)\s+"
@@ -151,10 +159,33 @@ _INTRO_TITLE = re.compile(
     r"(risk\s+factors?\s+)?summary(\s+of\s+(the\s+)?risk\s+factors)?|summary\s+risk\s+factors)\.?$",
     re.I,
 )
+#: Words that make a title introduction when it has no verb: forward-looking
+#: statements, a safe harbour, or a summary of the risks ("Forward-Looking
+#: Statements and Risk Factors", "Summary of Risks Associated with Our Business").
+_INTRO_WORDS = re.compile(
+    r"forward[-\s]looking|cautionary\s+statement|safe\s+harbou?r|"
+    r"^(risk\s+factors?\s+)?summary\s*[.:]?$|^summary\s+of\s+(the\s+)?(\w+\s+)?(risks?|risk\s+factors)\b",
+    re.I,
+)
+#: An introduction's title is at most this long (Cautionary Statement for
+#: Purposes of the "Safe Harbor" Provisions of the Private Securities Litigation
+#: Reform Act of 1995).
+MAX_INTRO_TITLE_CHARS = 200
 #: A category title, with any text under it introducing the category (NextEra's
-#: "Risks Relating to NEE's and FPL's Business").
+#: "Risks Relating to NEE's and FPL's Business", CenterPoint's "Risk Factors
+#: Affecting Our Interests in Enable Midstream"). Pfizer's "Risks Affecting
+#: International Operations" is a risk.
 _CATEGORY_TITLE = re.compile(
-    r"^((risks?|risk\s+factors)\s+(related|relating|specific|pertaining)\s+to\b|general\s+risks?\b)",
+    r"^((risks?|risk\s+factors)\s+(related|relating|specific|pertaining)\s+to\b|"
+    r"risk\s+factors\s+affecting\b|general\s+risks?\b)",
+    re.I,
+)
+#: A verb that makes a heading ending in a full stop a sentence, not a title:
+#: "Forward-looking statements may prove inaccurate." is a risk, and "Risks
+#: relating to proposed spin-off." is a title.
+_VERB = re.compile(
+    r"\b(may|might|could|can|cannot|will|would|should|must|is|are|was|were|has|have|had|"
+    r"be|been|being|do|does|did)\b",
     re.I,
 )
 #: A sentence ends in a full stop, question or exclamation mark, perhaps quoted.
@@ -431,6 +462,19 @@ def _is_capitals_title(block: Block) -> bool:
     )
 
 
+def _is_sentence(text: str) -> bool:
+    """A heading that ends a sentence with a verb in it, which no title does."""
+    return bool(_SENTENCE_END.search(text) and _VERB.search(text))
+
+
+def _is_intro_title(text: str) -> bool:
+    return bool(_INTRO_TITLE.match(text)) or (
+        len(text) <= MAX_INTRO_TITLE_CHARS
+        and not _VERB.search(text)
+        and bool(_INTRO_WORDS.search(text))
+    )
+
+
 def _run_in(block: Block, *, sentence: bool) -> tuple[str, str] | None:
     """A paragraph's emphasised opening as a heading, and the rest as body, or None."""
     lead = block.lead
@@ -471,6 +515,13 @@ class SectionReading:
     page_numbers: tuple[int, ...] = ()
     #: Paragraphs after the first risk under no heading, outside introduction: dropped.
     unheaded_text: tuple[str, ...] = ()
+    #: The section's paragraphs after its heading, page furniture and titles aside:
+    #: the whole text, however it splits into risks.
+    paragraphs: tuple[str, ...] = ()
+
+    @property
+    def section_words(self) -> int:
+        return sum(len(paragraph.split()) for paragraph in self.paragraphs)
 
     @property
     def unclosed_heading(self) -> str | None:
@@ -549,6 +600,7 @@ def read_item_1a(html: str, *, layout: str = "blocks") -> SectionReading:
         )
 
     furniture = _running_headers(section)
+    paragraphs: list[str] = []
     for position, block in enumerate(section[1:], start=1):
         following = section[position + 1].text if position + 1 < len(section) else ""
         number = _PAGE_NUMBER_BLOCK.match(block.text)
@@ -557,8 +609,11 @@ def read_item_1a(html: str, *, layout: str = "blocks") -> SectionReading:
             continue
         if _FURNITURE.match(block.text) or _furniture_key(block.text) in furniture:
             continue
-        if not drafts and heading is None and _SECTION_TITLE.match(block.text):
+        if (not drafts and heading is None and _SECTION_TITLE.match(block.text)) or (
+            _SECTION_TITLE_LINE.match(block.text)
+        ):
             continue
+        paragraphs.append(block.text)
         if layout == "run_in":
             if _is_heading(block) and len(block.text) > MAX_CATEGORY_CHARS:
                 # A heading on its own line, too long for a category (Chevron's
@@ -603,7 +658,7 @@ def read_item_1a(html: str, *, layout: str = "blocks") -> SectionReading:
             category = block.text
             continue
         if _is_heading(block):
-            if _INTRO_TITLE.match(block.text):
+            if _is_intro_title(block.text):
                 _close()
                 introduction, summary = True, "summary" in block.text.lower()
                 continue
@@ -624,9 +679,9 @@ def read_item_1a(html: str, *, layout: str = "blocks") -> SectionReading:
                 body.append(block.text)
                 continue
             if (
-                len(block.text) <= MAX_CATEGORY_CHARS
+                len(block.text) <= MAX_TITLE_CASE_CATEGORY_CHARS
                 and _CATEGORY_TITLE.match(block.text)
-                and not _SENTENCE_END.search(block.text)
+                and not _is_sentence(block.text)
             ):
                 # A category title, with text under it introducing the category
                 # (NextEra). A sentence that starts like one is a risk
@@ -648,6 +703,7 @@ def read_item_1a(html: str, *, layout: str = "blocks") -> SectionReading:
         lost_headings=tuple(lost),
         page_numbers=tuple(page_numbers),
         unheaded_text=tuple(unheaded),
+        paragraphs=tuple(paragraphs),
     )
 
 

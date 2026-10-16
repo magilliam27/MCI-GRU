@@ -165,6 +165,27 @@ def test_a_section_title_on_its_own_line_is_not_a_risk(html, title):
     assert not any("subject to various risks" in risk.text for risk in risks)
 
 
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Item 1A. Risk Factors (Continued)",
+        "ITEM 1A | Risk Factors",
+        "ITEM 1A. RISK FACTORS, continued",
+        "Risk Factors:",
+        "Risk Factors Discussion",
+    ],
+)
+def test_the_section_title_repeated_inside_the_section_is_not_a_risk(html, line):
+    # Ford repeats "Item 1A. Risk Factors (Continued)" at the top of each page,
+    # between one risk and the next.
+    html = html.replace(COMPETITION, f"<div><b>{line}</b></div>" + COMPETITION)
+    reading = read_item_1a(html)
+    risks = reading.risk_factors(accession_number="a", fiscal_year=2025)
+    assert [risk.heading for risk in risks][1] == "We face intense competition."
+    assert len(risks) == 3
+    assert reading.lost_headings == ()
+
+
 def test_a_page_number_with_a_full_stop_is_not_body_text(html):
     # Alphabet's 10-Ks from fiscal 2023 number their pages "11." and break
     # paragraphs across them.
@@ -319,6 +340,11 @@ def test_a_list_item_repeated_across_risks_is_text_not_a_header(html, bullet):
         "Summary of Risk Factors",
         "Forward-Looking Statements",
         "Cautionary Statement about Forward-Looking Statements",
+        "Forward-Looking Statements and Risk Factors",
+        "Cautionary Statement for Purposes of the “Safe Harbor” Provisions of the "
+        "Private Securities Litigation Reform Act of 1995",
+        "Risk Factors Summary:",
+        "Summary of Risks Associated with Our Business",
     ],
 )
 def test_an_introduction_title_drops_the_text_under_it(html, title):
@@ -447,6 +473,30 @@ def test_a_category_title_with_text_under_it_introduces_the_category():
             "Rate regulation may harm us.",
             "Regulators set our prices.",
         )
+    ]
+    assert reading.unheaded_text == ()
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Risks relating to the proposed spin-off.",
+        "Risk Factors Affecting Our Interests in Enable Midstream Partners",
+        "Risks related to our intellectual property, cybersecurity, information technology "
+        "systems, data privacy, and the protection of our confidential information",
+    ],
+)
+def test_a_category_title_may_be_long_or_end_in_a_full_stop_without_a_verb(title):
+    # Long category titles (Nike), titles ending in a full stop (Willis Towers
+    # Watson) and "Risk Factors Affecting ..." (CenterPoint) are categories.
+    reading, risks = _blocks_reading(
+        "<div><b>Demand may fall.</b></div><div>Customers can leave.</div>"
+        f"<div><b>{title}</b></div><div>The risks below concern the spin-off.</div>"
+        "<div><b>The spin-off may fail.</b></div><div>Approvals are pending.</div>"
+    )
+    assert [(risk.category, risk.heading) for risk in risks] == [
+        (None, "Demand may fall."),
+        (title, "The spin-off may fail."),
     ]
     assert reading.unheaded_text == ()
 

@@ -672,6 +672,8 @@ Automatic checks on one filing's Item 1A extraction (#292).
 | `test_a_clean_filing_raises_no_finding` |  |  |
 | `test_findings_are_named_by_the_published_check_list` |  |  |
 | `test_a_title_read_as_a_risk_heading_is_flagged` |  | parametrize |
+| `test_a_reading_whose_risks_lose_most_of_the_section_is_flagged` |  | parametrize |
+| `test_a_short_sentence_with_a_verb_that_starts_like_a_title_is_not_a_title` |  |  |
 | `test_a_sentence_that_starts_like_a_title_is_not_a_title` |  |  |
 | `test_a_short_topic_heading_is_not_a_title` |  |  |
 | `test_a_heading_starting_mid_sentence_is_flagged` |  |  |
@@ -841,7 +843,8 @@ S&P 500 membership spells, name checks and the 10-Ks a membership calls for (#30
 | `test_a_manual_cik_whose_reports_carry_another_name_is_refused` |  | usefixtures |
 | `test_a_ticker_passed_to_another_company_hands_over_its_part_of_the_run` |  |  |
 | `test_a_members_reports_are_those_filed_while_in_the_index_and_the_one_before` |  | usefixtures |
-| `test_a_report_that_fails_the_checks_stops_the_manifest_unless_its_company_is_left_out` |  | usefixtures |
+| `test_a_report_that_fails_the_checks_stops_the_manifest_unless_its_risks_are_left_out` |  | usefixtures |
+| `test_other_layouts_are_tried_and_whole_sections_kept_where_risks_fail` |  | usefixtures |
 
 ## `tests/test_filings_pairing.py`
 
@@ -880,6 +883,7 @@ Item 1A of a 10-K, cut into individual risk factors (#289).
 | `test_a_line_break_inside_a_heading_is_a_wrap_not_a_category` |  |  |
 | `test_a_running_page_header_is_dropped_whether_bold_or_not` |  | parametrize |
 | `test_a_section_title_on_its_own_line_is_not_a_risk` |  | parametrize |
+| `test_the_section_title_repeated_inside_the_section_is_not_a_risk` |  | parametrize |
 | `test_a_page_number_with_a_full_stop_is_not_body_text` |  |  |
 | `test_a_heading_broken_across_a_page_is_one_heading_not_a_category` |  |  |
 | `test_a_lower_case_heading_after_body_text_starts_a_new_risk` |  |  |
@@ -897,6 +901,7 @@ Item 1A of a 10-K, cut into individual risk factors (#289).
 | `test_sentence_headings_keep_their_titled_sub_headings_as_text` |  |  |
 | `test_an_unknown_layout_is_refused` |  |  |
 | `test_a_category_title_with_text_under_it_introduces_the_category` |  |  |
+| `test_a_category_title_may_be_long_or_end_in_a_full_stop_without_a_verb` |  | parametrize |
 | `test_a_sentence_that_starts_like_a_category_title_is_a_risk` |  |  |
 | `test_a_long_title_case_heading_over_a_heading_is_a_category` |  |  |
 | `test_topic_headings_over_a_summarys_bullets_stay_in_the_summary` |  |  |

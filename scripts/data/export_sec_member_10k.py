@@ -18,7 +18,10 @@ copy of every 10-K and 10-KT, and picks what the membership calls for (see
 ``--accepted-from`` to ``--accepted-to`` while the company was a member, and the
 report before each one filed while it was not. Each report's pair partner is the
 company's previous report by acceptance time, so a company that changed its
-fiscal year end keeps both reports of that year. Documents are downloaded once
+fiscal year end keeps both reports of that year. A company the registry names is
+read with its own layout; any other company's report is read with the first of
+``LAYOUTS`` whose reading passes every check, and with the first when none does.
+Documents are downloaded once
 into the gzipped ``--cache-dir`` on ``--download-workers`` threads, which
 share SEC's pace, and read with ``--workers`` processes.
 
@@ -26,18 +29,27 @@ What it writes under ``--package-root``:
 
 - ``member_10k_index.csv``: the reports read, one per row: company, CIK,
   accession, form, acceptance time in UTC, period of report, ``role``
-  (``member`` or ``prior``), ``prior_accession`` and the document's SHA-256.
+  (``member`` or ``prior``), ``prior_accession``, the filer's SIC code, the
+  layout read, whether its risks and its section are published, and the
+  document's SHA-256.
 - ``member_risk_factors.jsonl``: one risk factor per line, with ``company``.
+- ``member_item_1a.jsonl``: one report's whole Item 1A per line, its paragraphs
+  joined by blank lines, with its word count and ``risks_passed``: whether its
+  split into risks passed every check. Every report whose Item 1A holds at least
+  ``MIN_SECTION_WORDS`` words is here, so a measure of the whole section reaches
+  reports whose risks could not be split. A shorter Item 1A points to another
+  document (an exhibit or the annual report), which is not read.
 - ``member_extraction_report.csv`` and ``member_extraction_checks.csv``: counts
-  and the six checks' findings per report.
+  and the checks' findings per report.
 - ``member_left_out.csv``: each company of the release with no report read, and
-  why.
-- ``member_10k.meta.json``: provenance and counts, including member reports and
-  left-out companies per year.
+  why; with ``--leave-out-flagged``, also each report whose risks are left out,
+  with its year, SIC code and reason.
+- ``member_10k.meta.json``: provenance and counts, including member reports, and
+  member reports left out by year and by SIC division.
 
 A report that fails a check is kept and listed; ``--manifest-output`` is
-refused while any remain unless ``--leave-out-flagged`` moves their companies'
-reports to ``member_left_out.csv``.
+refused while any remain unless ``--leave-out-flagged`` leaves their risks out
+(their sections stay in ``member_item_1a.jsonl``).
 """
 
 from __future__ import annotations
@@ -56,10 +68,10 @@ import pandas as pd
 
 from mci_gru.data.input_manifest import InputFileSpec, write_input_manifest
 from mci_gru.filings.checks import check_extraction
-from mci_gru.filings.edgar import build_filing_index
+from mci_gru.filings.edgar import SUBMISSIONS_URL, build_filing_index
 from mci_gru.filings.filers import FILERS
 from mci_gru.filings.membership import Spell, member_filings
-from mci_gru.filings.risk_factors import RiskFactorExtractionError, read_item_1a
+from mci_gru.filings.risk_factors import LAYOUTS, RiskFactorExtractionError, read_item_1a
 from scripts.data.export_sec_risk_factors import (
     EdgarClient,
     Transport,
@@ -76,6 +88,30 @@ PROGRESS_EVERY = 250
 PRIOR_FROM = "2009-01-01"
 #: Layouts chosen for the hand-checked companies, by CIK.
 KNOWN_LAYOUTS = {cik: filer.layout for filer in FILERS.values() for cik in filer.ciks}
+#: An Item 1A shorter than this points to another document rather than holding
+#: the risks (Bank of New York Mellon's to its annual report).
+MIN_SECTION_WORDS = 400
+#: SEC's SIC divisions, by the first two digits' ranges.
+SIC_DIVISIONS = (
+    (1, 9, "Agriculture, Forestry and Fishing"),
+    (10, 14, "Mining"),
+    (15, 17, "Construction"),
+    (20, 39, "Manufacturing"),
+    (40, 49, "Transportation, Communications and Utilities"),
+    (50, 51, "Wholesale Trade"),
+    (52, 59, "Retail Trade"),
+    (60, 67, "Finance, Insurance and Real Estate"),
+    (70, 89, "Services"),
+    (91, 99, "Public Administration"),
+)
+
+
+def sic_division(sic: str) -> str:
+    """The SIC division of a four-digit SIC code, or ``unknown``."""
+    if not sic.isdigit():
+        return "unknown"
+    group = int(sic) // 100
+    return next((name for low, high, name in SIC_DIVISIONS if low <= group <= high), "unknown")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -108,28 +144,45 @@ def read_spells(value: str) -> list[Spell]:
     return spells
 
 
-def _read_report(task: tuple[str, str, str, str, int]) -> dict[str, Any]:
-    """Read one cached report: its risks, findings and counts (runs in a worker)."""
-    cache_dir, url, layout, accession, fiscal_year = task
+def _read_report(task: tuple[str, str, tuple[str, ...], str, int]) -> dict[str, Any]:
+    """Read one cached report: its section, risks, findings and counts (runs in a worker).
+
+    Each of ``layouts`` is tried in turn and the first whose reading passes every
+    check is kept; when none does, the first layout's reading is reported.
+    """
+    cache_dir, url, layouts, accession, fiscal_year = task
     document = EdgarClient("cache only", Path(cache_dir), _cache_only).get(url)
     text, encoding = decode_document(document)
-    result: dict[str, Any] = {
-        "sha256": hashlib.sha256(document).hexdigest(),
-        "encoding": encoding,
-        "risks": [],
-        "findings": [],
-        "error": "",
-    }
-    try:
-        reading = read_item_1a(text, layout=layout)
-        risks = reading.risk_factors(accession_number=accession, fiscal_year=fiscal_year)
-    except RiskFactorExtractionError as error:
-        result["error"] = str(error)
-        return result
-    result["risks"] = [risk.to_dict() for risk in risks]
-    result["categories"] = len({risk.category for risk in risks if risk.category})
-    result["findings"] = [finding.to_dict() for finding in check_extraction(reading, risks)]
-    return result
+    base = {"sha256": hashlib.sha256(document).hexdigest(), "encoding": encoding}
+    readings = []
+    for layout in layouts:
+        result: dict[str, Any] = {
+            **base,
+            "layout": layout,
+            "paragraphs": [],
+            "risks": [],
+            "findings": [],
+            "error": "",
+        }
+        try:
+            reading = read_item_1a(text, layout=layout)
+        except RiskFactorExtractionError as error:
+            # No Item 1A: the same under every layout.
+            result["error"] = str(error)
+            return result
+        result["paragraphs"] = list(reading.paragraphs)
+        try:
+            risks = reading.risk_factors(accession_number=accession, fiscal_year=fiscal_year)
+        except RiskFactorExtractionError as error:
+            result["error"] = str(error)
+        else:
+            result["risks"] = [risk.to_dict() for risk in risks]
+            result["categories"] = len({risk.category for risk in risks if risk.category})
+            result["findings"] = [finding.to_dict() for finding in check_extraction(reading, risks)]
+            if not result["findings"]:
+                return result
+        readings.append(result)
+    return readings[0]
 
 
 def _cache_only(url: str, headers: dict[str, str]) -> bytes:
@@ -166,6 +219,10 @@ def select_reports(
         [spell for spell in in_window if spell.end is None or spell.start < spell.end],
     )
     by_accession = {record.accession_number: record for record in reports}
+    # Submissions were just fetched, so these come from the cache.
+    sic = {
+        cik: str(client.get_json(SUBMISSIONS_URL.format(cik=cik)).get("sic") or "") for cik in ciks
+    }
     previous = {
         later.accession_number: earlier.accession_number
         for earlier, later in zip(reports, reports[1:], strict=False)
@@ -176,9 +233,38 @@ def select_reports(
             **by_accession[accession].to_dict(),
             "role": role,
             "prior_accession": previous.get(accession, "") if role == "member" else "",
+            "sic": sic.get(by_accession[accession].cik, ""),
         }
         for accession, role in chosen
     ]
+
+
+LEFT_OUT_COLUMNS = [
+    "company",
+    "name",
+    "spells",
+    "accession_number",
+    "role",
+    "year",
+    "sic",
+    "section_published",
+    "reason",
+]
+
+
+def _share_by(
+    rows: list[dict[str, Any]], left: list[dict[str, Any]], key: Any
+) -> dict[str, dict[str, float]]:
+    """Per group: member reports, those whose risks are left out, and the share."""
+    totals, gone = Counter(key(row) for row in rows), Counter(key(row) for row in left)
+    return {
+        group: {
+            "reports": totals[group],
+            "left_out": gone[group],
+            "share": round(gone[group] / totals[group], 3),
+        }
+        for group in sorted(totals)
+    }
 
 
 def _earlier(left: pd.Timestamp | None, right: pd.Timestamp | None) -> pd.Timestamp | None:
@@ -213,9 +299,7 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
                 }
             )
             continue
-        for report in reports:
-            report["layout"] = KNOWN_LAYOUTS.get(report["cik"], "blocks")
-            rows.append(report)
+        rows.extend(reports)
 
     # Documents download on several threads under the client's one pace.
     with ThreadPoolExecutor(max_workers=args.download_workers) as pool:
@@ -227,7 +311,7 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
         (
             str(args.cache_dir),
             row["document_url"],
-            row["layout"],
+            (KNOWN_LAYOUTS[row["cik"]],) if row["cik"] in KNOWN_LAYOUTS else LAYOUTS,
             row["accession_number"],
             row["fiscal_year"],
         )
@@ -239,39 +323,32 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
     else:
         results = [_read_report(task) for task in tasks]
 
-    flagged = {
-        row["company"]
-        for row, result in zip(rows, results, strict=True)
-        if result["error"] or result["findings"]
-    }
-    if args.leave_out_flagged:
-        for key in sorted(flagged):
-            company = companies[companies["key"] == key].iloc[0]
-            left_out.append(
+    names = dict(zip(companies["key"], companies["name"], strict=True))
+    index_rows, report_rows, check_rows = [], [], []
+    risks_file = (out / "member_risk_factors.jsonl").open("w", encoding="utf-8")
+    sections_file = (out / "member_item_1a.jsonl").open("w", encoding="utf-8")
+    with risks_file, sections_file:
+        for row, result in zip(rows, results, strict=True):
+            passed = not (result["error"] or result["findings"])
+            words = sum(len(paragraph.split()) for paragraph in result["paragraphs"])
+            section = words >= MIN_SECTION_WORDS
+            risks_published = passed or not args.leave_out_flagged
+            index_rows.append(
                 {
-                    "company": key,
-                    "name": company["name"],
-                    "spells": company["spells"],
-                    "reason": "a report failed the extraction checks",
+                    **row,
+                    "layout": result["layout"],
+                    "risks_published": risks_published,
+                    "section_published": section,
+                    "document_sha256": result["sha256"],
                 }
             )
-        kept = [
-            (row, result)
-            for row, result in zip(rows, results, strict=True)
-            if row["company"] not in flagged
-        ]
-    else:
-        kept = list(zip(rows, results, strict=True))
-
-    index_rows, report_rows, check_rows = [], [], []
-    with (out / "member_risk_factors.jsonl").open("w", encoding="utf-8") as handle:
-        for row, result in kept:
-            index_rows.append({**row, "document_sha256": result["sha256"]})
             report_rows.append(
                 {
                     "company": row["company"],
                     "accession_number": row["accession_number"],
+                    "layout": result["layout"],
                     "encoding": result["encoding"],
+                    "section_words": words,
                     "risks": len(result["risks"]),
                     "categories": result.get("categories", 0),
                     "check_findings": len(result["findings"]),
@@ -286,8 +363,41 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
                         **finding,
                     }
                 )
+            if section:
+                sections_file.write(
+                    json.dumps(
+                        {
+                            "company": row["company"],
+                            "accession_number": row["accession_number"],
+                            "accepted_utc": row["accepted_utc"],
+                            "role": row["role"],
+                            "prior_accession": row["prior_accession"],
+                            "section_words": words,
+                            "risks_passed": passed,
+                            "text": "\n\n".join(result["paragraphs"]),
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+            if not risks_published:
+                left_out.append(
+                    {
+                        "company": row["company"],
+                        "name": names[row["company"]],
+                        "accession_number": row["accession_number"],
+                        "role": row["role"],
+                        "year": row["accepted_utc"][:4],
+                        "sic": row["sic"],
+                        "section_published": section,
+                        "reason": result["error"]
+                        or "failed the checks: "
+                        + ", ".join(sorted({finding["check"] for finding in result["findings"]})),
+                    }
+                )
+                continue
             for risk in result["risks"]:
-                handle.write(
+                risks_file.write(
                     json.dumps({"company": row["company"], **risk}, ensure_ascii=False) + "\n"
                 )
 
@@ -296,12 +406,14 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
     pd.DataFrame(
         check_rows, columns=["company", "accession_number", "check", "risk_id", "detail"]
     ).to_csv(out / "member_extraction_checks.csv", index=False)
-    pd.DataFrame(left_out, columns=["company", "name", "spells", "reason"]).to_csv(
+    pd.DataFrame(left_out, columns=LEFT_OUT_COLUMNS).to_csv(
         out / "member_left_out.csv", index=False
     )
 
     members = [row for row in index_rows if row["role"] == "member"]
     failing = [row for row in report_rows if row["error"] or row["check_findings"]]
+    blocking = [] if args.leave_out_flagged else failing
+    left_members = [row for row in members if not row["risks_published"]]
     meta = {
         "source": "SEC EDGAR submissions and primary documents",
         "companies_table": str(args.companies),
@@ -325,20 +437,32 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
         "companies_failing_checks": len({row["company"] for row in failing}),
         "findings_by_check": dict(Counter(row["check"] for row in check_rows)),
         "read_errors": sum(1 for row in report_rows if row["error"]),
+        "reports_by_layout": dict(Counter(row["layout"] for row in report_rows)),
+        "sections_published": sum(1 for row in index_rows if row["section_published"]),
+        "member_sections_published": sum(1 for row in members if row["section_published"]),
+        "member_reports_risks_left_out": len(left_members),
+        "member_reports_risks_left_out_by_year": _share_by(
+            members, left_members, lambda row: row["accepted_utc"][:4]
+        ),
+        "member_reports_risks_left_out_by_sic_division": _share_by(
+            members, left_members, lambda row: sic_division(row["sic"])
+        ),
+        "sic_note": "SIC is each filer's code in its SEC submissions file today, not at filing.",
     }
     (out / "member_10k.meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(meta, indent=2))
-    if failing:
-        print(f"{len(failing)} reports failed the checks; no manifest published.")
+    if blocking:
+        print(f"{len(blocking)} reports failed the checks; no manifest published.")
         return 1
 
     if args.manifest_output is not None:
         files = [
             InputFileSpec("member_10k_index.csv", "10-K reports read, one per row"),
             InputFileSpec("member_risk_factors.jsonl", "Item 1A risk factors, one per line"),
+            InputFileSpec("member_item_1a.jsonl", "Whole Item 1A sections, one per line"),
             InputFileSpec("member_extraction_report.csv", "Extraction counts per report"),
             InputFileSpec("member_extraction_checks.csv", "Extraction check findings"),
-            InputFileSpec("member_left_out.csv", "Companies with no report read, and why"),
+            InputFileSpec("member_left_out.csv", "Companies and reports left out, and why"),
             InputFileSpec("member_10k.meta.json", "Pull provenance and counts"),
         ]
         snapshot = write_input_manifest(

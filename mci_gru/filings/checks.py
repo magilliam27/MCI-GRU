@@ -38,6 +38,14 @@ layouts showed which parts were Alphabet's habits rather than rules:
   heading went unrecognised and the whole risk vanished. Flagged: any such
   paragraph. Introduction under a "Cautionary Statements" or "Summary" title,
   or under an Exxon Mobil category, is not text without a heading.
+- ``section_text_not_in_risks``: the risks hold less than ``MIN_RISK_SHARE`` of
+  the section's words, and at least ``MIN_LOST_WORDS`` are missing. The checks above look at what was read; this one counts
+  what was not. In the S&P 500 pull (#309) about one report in fifty passed
+  every other check while most of its section was lost: Marriott's fiscal 2018
+  risks run their headings into the text, the default reading found one
+  category over them, and its one risk held 441 of 9,335 words. Introduction
+  and summaries are dropped on purpose, which a clean reading's risks rarely
+  lose more than a tenth of the section to.
 
 A finding blocks the export's manifest, as an unreadable Item 1A does: fix the
 parser (or, for a false alarm, the check) and pull again.
@@ -59,7 +67,13 @@ CHECKS = (
     "heading_read_as_body",
     "heading_without_body",
     "text_without_heading",
+    "section_text_not_in_risks",
 )
+#: The risks of a clean reading hold at least this share of the section's words,
+#: unless fewer than ``MIN_LOST_WORDS`` are missing: an introduction of a few
+#: paragraphs is most of a short section.
+MIN_RISK_SHARE = 0.7
+MIN_LOST_WORDS = 300
 #: A dropped page number this close to a number in text makes it page furniture.
 PAGE_NUMBER_SLACK = 2
 
@@ -70,6 +84,13 @@ _TITLE_LIKE = re.compile(
 )
 #: A heading of more words than this that ends a sentence is a risk, not a title.
 MAX_TITLE_WORDS = 6
+#: Nor is one that ends a sentence with a verb ("Forward-looking statements may
+#: prove inaccurate.").
+_VERB = re.compile(
+    r"\b(may|might|could|can|cannot|will|would|should|must|is|are|was|were|has|have|had|"
+    r"be|been|being|do|does|did)\b",
+    re.I,
+)
 _SENTENCE_END = re.compile(r"[.?!][\"\u201d\u2019)]?$")
 #: A heading whose first word is all lower case continues a sentence ("being
 #: secure, ..."); a brand such as "iPhone" or "eBay" is not that.
@@ -123,7 +144,8 @@ def check_extraction(reading: SectionReading, risks: list[RiskFactor]) -> list[C
     findings: list[CheckFinding] = []
     for risk in risks:
         if _TITLE_LIKE.match(risk.heading) and not (
-            _SENTENCE_END.search(risk.heading) and len(risk.heading.split()) > MAX_TITLE_WORDS
+            _SENTENCE_END.search(risk.heading)
+            and (len(risk.heading.split()) > MAX_TITLE_WORDS or _VERB.search(risk.heading))
         ):
             findings.append(
                 CheckFinding(
@@ -176,6 +198,19 @@ def check_extraction(reading: SectionReading, risks: list[RiskFactor]) -> list[C
                 "text_without_heading",
                 "",
                 f"paragraph under no heading, dropped: {_excerpt(paragraph)!r}",
+            )
+        )
+    held = sum(len(risk.heading.split()) + len(risk.body.split()) for risk in risks)
+    if (
+        held < MIN_RISK_SHARE * reading.section_words
+        and reading.section_words - held >= MIN_LOST_WORDS
+    ):
+        findings.append(
+            CheckFinding(
+                "section_text_not_in_risks",
+                "",
+                f"risks hold {held:,} of the section's {reading.section_words:,} words "
+                f"({held / reading.section_words:.0%})",
             )
         )
     return findings
