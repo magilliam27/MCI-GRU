@@ -328,3 +328,17 @@ def test_e11_collects_the_rating_alone_when_only_the_rating_was_asked(tmp_path, 
     assert "rating_score" in scores.columns and "size_choice" not in scores.columns
     meta = json.loads((tmp_path / "e10" / "scores.meta.json").read_text(encoding="utf-8"))
     assert meta["distinct_calls"] == {"rating": 3}
+
+
+def test_e11_several_workers_ask_each_event_once_and_keep_the_events_order(tmp_path, monkeypatch):
+    client = FakeClient()
+    extra = ("--score", "--question", "rating", "--workers", "2")
+    assert _run(tmp_path, monkeypatch, *extra, client=client) == 0
+    assert len(client.calls) == 3
+    assert _run(tmp_path, monkeypatch, *extra, client=client) == 0
+    assert len(client.calls) == 3  # every answer cached, none asked again
+    answers = (tmp_path / "e10" / "answers" / "rating.jsonl").read_text(encoding="utf-8")
+    assert len(answers.splitlines()) == 3
+    assert _run(tmp_path, monkeypatch, "--collect", "--question", "rating") == 0
+    scores = pd.read_csv(tmp_path / "e10" / "scores.csv")
+    assert scores["event_id"].tolist() == ["e3", "e1", "e2"]

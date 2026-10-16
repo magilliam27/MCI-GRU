@@ -40,6 +40,8 @@ import argparse
 import json
 import os
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -97,6 +99,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     step.add_argument("--collect", action="store_true", help="Write scores.csv from the caches")
     parser.add_argument("--question", choices=sorted(QUESTIONS), default=None)
     parser.add_argument("--limit", type=int, default=None, help="Score only the first N events")
+    parser.add_argument("--workers", type=int, default=1, help="Calls in flight at once")
     return parser.parse_args(argv)
 
 
@@ -112,6 +115,18 @@ def sampled_events(events: list, sample: pd.DataFrame | None) -> list:
     if missing:
         raise EventDataError(f"{len(missing)} sampled events are not in the events file")
     return [by_id[event_id] for event_id in ids]
+
+
+class SharedAnswerCache(AnswerCache):
+    """One answer cache that several scoring threads append to, one line at a time."""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(path)
+        self._lock = threading.Lock()
+
+    def put(self, record: dict[str, Any]) -> None:
+        with self._lock:
+            super().put(record)
 
 
 def baselines(events: list, negative: frozenset[str], positive: frozenset[str]) -> pd.DataFrame:
@@ -203,7 +218,7 @@ def main(argv: list[str] | None = None, *, client: Any = None, sdk_question_for:
         if not os.environ.get("TYPESAFE_API_KEY"):
             print("Scoring needs TYPESAFE_API_KEY in the environment.")
             return 1
-        client = TypeSafeClient(model=question_set.model)
+        client = None  # one client per worker, made below
     chosen = events if args.limit is None else events[: args.limit]
     items = [(event.event_id, event_state(event)) for event in chosen]
     # E11 asks the rating only, so --question also limits what --collect gathers.
@@ -218,15 +233,32 @@ def main(argv: list[str] | None = None, *, client: Any = None, sdk_question_for:
                     return sdk_question_for(criteria)
                 return Choice(instructions=question.instructions, criteria=criteria)
 
-            scored[name] = score_states(
-                items,
-                question,
-                sdk_question_for=sdk_question,
-                client=client,
-                cache=AnswerCache(out / "answers" / f"{name}.jsonl"),
-                model=question_set.model,
+            cache = SharedAnswerCache(out / "answers" / f"{name}.jsonl")
+            workers = 1 if args.collect else max(1, args.workers)
+            # Contiguous slices, so the answers come back in the events' order.
+            size = -(-len(items) // workers) if items else 1
+            slices = [items[i : i + size] for i in range(0, len(items), size)]
+
+            def ask(
+                part: list,
+                question=question,
+                sdk_question=sdk_question,
+                cache=cache,
                 labels=QUESTIONS[name],
-            )
+            ) -> list:
+                return score_states(
+                    part,
+                    question,
+                    sdk_question_for=sdk_question,
+                    client=client or TypeSafeClient(model=question_set.model),
+                    cache=cache,
+                    model=question_set.model,
+                    labels=labels,
+                )
+
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                parts = list(pool.map(ask, slices))
+            scored[name] = [item for part in parts for item in part]
     except ChangeGradingError as error:
         print(f"Cannot collect: {error}")
         return 1
