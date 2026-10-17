@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import gzip
+import hashlib
 import json
 import urllib.error
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,6 +17,7 @@ import scripts.data.export_sec_risk_factors as export
 import scripts.data.score_risk_factor_pairs as score
 from mci_gru.data.input_manifest import read_input_manifest
 from mci_gru.filings.edgar import ALPHABET_CIK, GOOGLE_INC_CIK
+from mci_gru.filings.filers import FILERS, Filer
 
 FIXTURE = Path(__file__).parent / "fixtures" / "filings" / "tenk_item1a_sample.htm"
 AGENT = "MCI-GRU tests tests@example.com"
@@ -118,7 +122,9 @@ def _no_throttle(monkeypatch):
     monkeypatch.setattr(export, "MIN_INTERVAL_SECONDS", 0.0)
 
 
-def _export(tmp_path: Path, transport: Transport, manifest: bool = True) -> int:
+def _export(
+    tmp_path: Path, transport: Transport, manifest: bool = True, extra: list[str] | None = None
+) -> int:
     argv = [
         "--user-agent",
         AGENT,
@@ -129,7 +135,7 @@ def _export(tmp_path: Path, transport: Transport, manifest: bool = True) -> int:
     ]
     if manifest:
         argv += ["--manifest-output", str(tmp_path / "manifest.json")]
-    return export.main(argv, transport=transport)
+    return export.main(argv + (extra or []), transport=transport)
 
 
 def test_export_reads_both_filers_and_older_files_and_publishes_a_manifest(tmp_path):
@@ -182,6 +188,23 @@ def test_a_second_pull_rereads_only_the_filers_main_submissions_files(tmp_path):
     assert sorted(url for url, _ in again.seen) == sorted(
         f"https://data.sec.gov/submissions/CIK{cik}.json" for cik in (GOOGLE_INC_CIK, ALPHABET_CIK)
     )
+
+
+def test_the_cache_holds_documents_gzipped(tmp_path):
+    _export(tmp_path, Transport(_edgar()), manifest=False)
+    url = "https://www.sec.gov/Archives/edgar/data/1652044/000165204416000012/a15.htm"
+    name = hashlib.sha256(url.encode("utf-8")).hexdigest()[:24] + ".htm.gz"
+    assert gzip.decompress((tmp_path / "cache" / name).read_bytes()) == _edgar()[url]
+
+
+def test_an_uncompressed_entry_from_an_older_cache_is_still_read(tmp_path):
+    first = export.EdgarClient(AGENT, tmp_path, Transport({"https://x/a.htm": b"<html>a</html>"}))
+    first.get("https://x/a.htm")
+    (packed,) = tmp_path.glob("*.gz")
+    packed.with_suffix("").write_bytes(gzip.decompress(packed.read_bytes()))
+    packed.unlink()
+    again = export.EdgarClient(AGENT, tmp_path, Transport({}))
+    assert again.get("https://x/a.htm") == b"<html>a</html>" and again.cache_hits == 1
 
 
 class Flaky(Transport):
@@ -282,6 +305,145 @@ def test_a_failed_check_is_reported_and_blocks_the_manifest(tmp_path, capsys):
     report = pd.read_csv(out / "alphabet_extraction_report.csv").set_index("fiscal_year")
     assert report["check_findings"].to_dict() == {2013: 0, 2014: 1, 2015: 0}
     assert "BLOCKING 0001288776-15-000008: page_furniture_in_text" in capsys.readouterr().out
+
+
+ACME_CIK = "0000000042"
+ACME = Filer("acme", "Acme Corp.", (ACME_CIK,), layout="run_in")
+ACME_DOCUMENT = (
+    "<html><body><div>ITEM 1A. RISK FACTORS</div>"
+    "<div><b>Supply and Demand</b></div>"
+    "<div><i>Economic conditions.</i> The demand for energy follows growth.</div>"
+    "<div><i>Competition.</i> Rivals are many.</div>"
+    "<div>ITEM 1B. UNRESOLVED STAFF COMMENTS</div></body></html>"
+)
+
+
+def _acme() -> dict[str, bytes]:
+    main = {
+        "filings": {
+            "recent": _block(
+                [
+                    (
+                        "0000000042-25-000001",
+                        "10-K",
+                        "2024-12-31",
+                        "2025-02-20T21:10:00.000Z",
+                        "x.htm",
+                    )
+                ]
+            )
+        }
+    }
+    return {
+        f"https://data.sec.gov/submissions/CIK{ACME_CIK}.json": json.dumps(main).encode(),
+        "https://www.sec.gov/Archives/edgar/data/42/000000004225000001/x.htm": (
+            ACME_DOCUMENT.encode()
+        ),
+    }
+
+
+@pytest.fixture
+def acme(monkeypatch):
+    monkeypatch.setitem(FILERS, "acme", ACME)
+
+
+def test_a_named_filer_is_read_with_its_own_layout_under_its_own_key(tmp_path, acme):
+    argv = ["--filer", "acme", "--manifest-output", str(tmp_path / "manifest.json")]
+    assert _export(tmp_path, Transport(_acme()), manifest=False, extra=argv) == 0
+    out = tmp_path / "package" / "filings"
+    risks = [
+        json.loads(line) for line in (out / "acme_risk_factors.jsonl").read_text().splitlines()
+    ]
+    assert [risk["heading"] for risk in risks] == ["Economic conditions.", "Competition."]
+    meta = json.loads((out / "acme_risk_factors.meta.json").read_text())
+    assert (meta["filer"], meta["layout"], meta["filers"]) == ("acme", "run_in", [ACME_CIK])
+    assert meta["network_requests"] == 2
+    manifest = read_input_manifest(tmp_path / "manifest.json")
+    assert manifest.manifest.package_id == "acme_10k_risk_factors"
+    assert not (out / "alphabet_risk_factors.jsonl").exists()
+
+
+def test_the_fiscal_year_rule_and_each_years_period_are_recorded(tmp_path, acme):
+    argv = ["--filer", "acme"]
+    assert _export(tmp_path, Transport(_acme()), extra=argv) == 0
+    meta = json.loads(
+        (tmp_path / "package" / "filings" / "acme_risk_factors.meta.json").read_text()
+    )
+    assert meta["period_of_report_by_fiscal_year"] == {"2024": "2024-12-31"}
+    manifest = json.loads((tmp_path / "manifest.json").read_text())
+    assert manifest["metadata"]["fiscal_year_rule"] == export.FISCAL_YEAR_RULE
+
+
+def test_two_reports_in_one_fiscal_year_block_the_manifest(tmp_path, acme, capsys):
+    # A changed year end would give one fiscal year two reports, and pairing
+    # takes the previous fiscal year as the prior filing.
+    responses = _acme()
+    main = json.loads(responses[f"https://data.sec.gov/submissions/CIK{ACME_CIK}.json"])
+    main["filings"]["recent"] = _block(
+        [
+            ("0000000042-25-000001", "10-K", "2024-12-31", "2025-02-20T21:10:00.000Z", "x.htm"),
+            ("0000000042-24-000001", "10-K", "2024-06-30", "2024-08-20T21:10:00.000Z", "y.htm"),
+        ]
+    )
+    responses[f"https://data.sec.gov/submissions/CIK{ACME_CIK}.json"] = json.dumps(main).encode()
+    responses["https://www.sec.gov/Archives/edgar/data/42/000000004224000001/y.htm"] = (
+        ACME_DOCUMENT.encode()
+    )
+    assert _export(tmp_path, Transport(responses), extra=["--filer", "acme"]) == 1
+    assert not (tmp_path / "manifest.json").exists()
+    assert "BLOCKING acme: fiscal 2024 has 2 reports" in capsys.readouterr().out
+
+
+def test_a_filers_first_fiscal_year_leaves_out_its_earlier_reports(tmp_path, monkeypatch):
+    # Johnson & Johnson's fiscal 2013-2015 risk factors sit only in Exhibit 99.
+    note = "Earlier reports keep their risk factors in an exhibit"
+    monkeypatch.setitem(FILERS, "acme", replace(ACME, first_fiscal_year=2024, note=note))
+    responses = _acme()
+    main = json.loads(responses[f"https://data.sec.gov/submissions/CIK{ACME_CIK}.json"])
+    main["filings"]["recent"] = _block(
+        [
+            ("0000000042-25-000001", "10-K", "2024-12-31", "2025-02-20T21:10:00.000Z", "x.htm"),
+            ("0000000042-24-000001", "10-K", "2023-12-31", "2024-02-20T21:10:00.000Z", "y.htm"),
+        ]
+    )
+    responses[f"https://data.sec.gov/submissions/CIK{ACME_CIK}.json"] = json.dumps(main).encode()
+    transport = Transport(responses)
+    assert _export(tmp_path, transport, extra=["--filer", "acme"]) == 0
+    meta = json.loads(
+        (tmp_path / "package" / "filings" / "acme_risk_factors.meta.json").read_text()
+    )
+    assert meta["period_of_report_by_fiscal_year"] == {"2024": "2024-12-31"}
+    assert (meta["filer_first_fiscal_year"], meta["note"]) == (2024, note)
+    assert not any(url.endswith("y.htm") for url, _ in transport.seen)
+
+
+def test_several_filers_share_one_manifest_named_by_package_id(tmp_path, acme):
+    responses = {**_edgar(), **_acme()}
+    argv = ["--filer", "alphabet", "--filer", "acme", "--package-id", "ten_companies"]
+    assert _export(tmp_path, Transport(responses), extra=argv) == 0
+    manifest = read_input_manifest(tmp_path / "manifest.json")
+    assert manifest.manifest.package_id == "ten_companies"
+    paths = {record.path for record in manifest.manifest.files}
+    assert {"filings/alphabet_risk_factors.jsonl", "filings/acme_risk_factors.jsonl"} <= paths
+    assert len(paths) == 12
+    acme_meta = json.loads(
+        (tmp_path / "package" / "filings" / "acme_risk_factors.meta.json").read_text()
+    )
+    assert acme_meta["network_requests"] == 2
+
+
+def test_several_filers_without_a_package_id_are_refused(tmp_path, acme):
+    with pytest.raises(SystemExit):
+        _export(tmp_path, Transport({}), extra=["--filer", "alphabet", "--filer", "acme"])
+
+
+def test_only_filings_in_the_fiscal_year_range_are_read(tmp_path):
+    transport = Transport(_edgar())
+    argv = ["--first-fiscal-year", "2014", "--last-fiscal-year", "2014"]
+    assert _export(tmp_path, transport, manifest=False, extra=argv) == 0
+    index = pd.read_csv(tmp_path / "package" / "filings" / "alphabet_10k_index.csv")
+    assert index["fiscal_year"].tolist() == [2014]
+    assert not any(url.endswith(("g13.htm", "a15.htm")) for url, _ in transport.seen)
 
 
 class FakeJev:

@@ -40,10 +40,12 @@ def test_findings_are_named_by_the_published_check_list(html):
     assert {check for check, _ in _checks(html)} <= set(CHECKS)
 
 
-@pytest.mark.parametrize("title", ["Risk Factors", "General Risks", "Risks Related to Taxes"])
+@pytest.mark.parametrize("title", ["Risk Factors Overview", "Summary of Company Contributions"])
 def test_a_title_read_as_a_risk_heading_is_flagged(html, title):
     # A title with text under it reads as a risk: Alphabet's fiscal 2014-2019
-    # "RISK FACTORS" did, over the section's introduction.
+    # "RISK FACTORS" did, over the section's introduction, before the parser
+    # learned that title. (A category title such as "General Risks" with text
+    # under it introduces its category.)
     html = html.replace(
         COMPETITION,
         f"<div><b>{title}</b></div><div><span>The risks below apply to any company.</span></div>"
@@ -52,9 +54,44 @@ def test_a_title_read_as_a_risk_heading_is_flagged(html, title):
     assert _checks(html) == [("title_read_as_risk", "a#002")]
 
 
-def test_a_heading_of_fewer_than_four_words_is_flagged(html):
-    html = html.replace("We face intense competition.", "Competition.")
-    assert _checks(html) == [("title_read_as_risk", "a#002")]
+@pytest.mark.parametrize(("sentences", "flagged"), [(25, False), (60, True)])
+def test_a_reading_whose_risks_lose_most_of_the_section_is_flagged(html, sentences, flagged):
+    # Marriott's fiscal 2018 risks ran into their paragraphs; one category was
+    # read over them and every paragraph dropped, with no other finding. Here a
+    # cautionary title drops what follows it: 250 words lost is under the
+    # floor, 600 is not.
+    lost = " ".join(["Our results may differ from our plans and estimates today."] * sentences)
+    html = html.replace(
+        COMPETITION,
+        f"<div><b>Cautionary Statements</b></div><div><span>{lost}</span></div>" + COMPETITION,
+    )
+    checks = [check for check, _ in _checks(html)]
+    assert checks == (["section_text_not_in_risks"] if flagged else [])
+
+
+def test_a_short_sentence_with_a_verb_that_starts_like_a_title_is_not_a_title(html):
+    # Five words, but a risk: "Forward-looking statements may prove inaccurate."
+    html = html.replace(
+        COMPETITION,
+        "<div><b>Forward-looking statements may prove inaccurate.</b></div>"
+        "<div><span>Our plans can change.</span></div>" + COMPETITION,
+    )
+    assert _checks(html) == []
+
+
+def test_a_sentence_that_starts_like_a_title_is_not_a_title(html):
+    # Honeywell's "Risks related to our defined benefit pension plans may
+    # adversely impact our results of operations and cash flow."
+    html = html.replace(
+        "We face intense competition.", "Risks related to competition may harm our business."
+    )
+    assert _checks(html) == []
+
+
+def test_a_short_topic_heading_is_not_a_title(html):
+    # Pfizer heads its risks with topic titles such as "Outsourcing".
+    html = html.replace("We face intense competition.", "Competition")
+    assert _checks(html) == []
 
 
 def test_a_heading_starting_mid_sentence_is_flagged(html):
@@ -70,22 +107,24 @@ def test_a_brand_name_in_lower_case_is_not_a_split_heading(html):
     assert _checks(html) == []
 
 
-def test_a_category_as_long_as_a_sentence_is_flagged(html):
-    # The first half of a split heading read as a category.
+def test_a_heading_over_a_heading_too_long_for_a_category_is_flagged(html):
+    # The first half of a heading split by a page, when the second half does
+    # not start in lower case: too long to be a category, so it is dropped.
     sentence = (
         "If our security measures are breached, or if our services are subject to attacks "
         "that degrade or deny the ability of users to access our products and services"
     )
     html = html.replace("Risks Related to Laws and Regulations", sentence)
-    assert _checks(html) == [("heading_split_across_page", "a#003")]
+    assert _checks(html) == [("heading_without_body", "")]
 
 
 @pytest.mark.parametrize(
     "furniture",
-    ["competitive. Table of Contents", "competitive. 14. Customers", "competitive. 12"],
+    ["competitive. Table of Contents", "competitive. 13. Customers", "competitive. 12"],
 )
 def test_page_furniture_left_in_a_body_is_flagged(html, furniture):
-    # Alphabet's "11." page numbers from fiscal 2023, when the parser misses them.
+    # Alphabet's "11." page numbers from fiscal 2023, when the parser misses them:
+    # numbers within two of the page the fixture drops (11).
     html = html.replace("intensely competitive.</span>", f"intensely {furniture}</span>")
     assert _checks(html) == [("page_furniture_in_text", "a#002")]
 
@@ -98,6 +137,9 @@ def test_page_furniture_left_in_a_body_is_flagged(html, furniture):
         "competitive. 10 of our largest customers left.",
         "competitive under Section 230. Courts may change that.",
         "competitive. 5G networks change how users reach us.",
+        "competitive. 14. Customers",
+        "competitive. 737 MAX deliveries resumed.",
+        "competitive with deliveries through 2017: 12 Airbus aircraft.",
     ],
 )
 def test_numbers_that_are_text_are_not_page_furniture(html, text):
@@ -123,3 +165,46 @@ def test_a_heading_with_nothing_under_it_is_flagged(html):
         '<div><span style="font-weight:700">We may not pay dividends.</span></div><div id="i1b">',
     )
     assert _checks(html) == [("heading_without_body", "")]
+
+
+def test_any_number_between_sentences_is_flagged_when_no_page_number_was_dropped(html):
+    html = html.replace("<div><span>11</span></div>", "").replace(
+        "intensely competitive.</span>", "intensely competitive. 737 MAX deliveries resumed.</span>"
+    )
+    assert _checks(html) == [("page_furniture_in_text", "a#002")]
+
+
+def _sentences_checks(paragraph: str) -> list[tuple[str, str]]:
+    html = (
+        "<html><body><div>ITEM 1A. RISK FACTORS</div>"
+        "<div>MARKET RISKS</div>"
+        "<div><b>Demand may fall.</b></div><div><span>Customers can leave.</span></div>"
+        f"<div>GENERAL RISKS</div>{paragraph}"
+        "<div><b>Costs may rise.</b></div><div><span>Suppliers raise prices.</span></div>"
+        "<div>ITEM 1B. UNRESOLVED STAFF COMMENTS</div></body></html>"
+    )
+    reading = read_item_1a(html, layout="sentences")
+    risks = reading.risk_factors(accession_number="a", fiscal_year=2025)
+    return [(finding.check, finding.risk_id) for finding in check_extraction(reading, risks)]
+
+
+def test_text_under_no_heading_after_the_first_risk_is_flagged():
+    # Microsoft's fiscal 2021-2025 shape, had the reputation risk's heading
+    # carried no full stop at all: the whole risk was dropped without a word.
+    paragraph = "<div><b>Our brands may be damaged</b><span> Our brands matter.</span></div>"
+    assert _sentences_checks(paragraph) == [("text_without_heading", "")]
+
+
+def test_a_risk_read_from_its_lead_leaves_no_text_without_heading():
+    paragraph = "<div><b>Our brands may be damaged</b><span>. Our brands matter.</span></div>"
+    assert _sentences_checks(paragraph) == []
+
+
+def test_introduction_under_a_cautionary_title_is_not_text_without_heading(html):
+    # UnitedHealth's "Cautionary Statements" introduce the section mid-way.
+    html = html.replace(
+        COMPETITION,
+        "<div><b>Cautionary Statements</b></div>"
+        "<div><span>Forward-looking statements involve risks.</span></div>" + COMPETITION,
+    )
+    assert _checks(html) == []

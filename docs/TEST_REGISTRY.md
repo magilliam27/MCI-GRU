@@ -605,7 +605,7 @@ Every feature group must accept the regime overrides that launchers pass, withou
 
 Milestone 2 of #289: how each risk factor changed, the word baseline and the grade.
 
-**Exercises:** `mci_gru.filings.change`, `mci_gru.filings.jev`, `mci_gru.filings.pairing`, `mci_gru.filings.risk_factors`, `scripts.data.score_risk_change_flags`, `scripts.data.score_risk_change_noul`, `scripts.data.score_risk_changes`
+**Exercises:** `mci_gru.filings.change`, `mci_gru.filings.jev`, `mci_gru.filings.pairing`, `mci_gru.filings.risk_factors`, `scripts.data.score_change_direction`, `scripts.data.score_company_risk_changes`, `scripts.data.score_risk_change_flags`, `scripts.data.score_risk_change_noul`, `scripts.data.score_risk_changes`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -648,6 +648,18 @@ Milestone 2 of #289: how each risk factor changed, the word baseline and the gra
 | `test_e6_a_pair_id_the_risk_file_does_not_produce_stops_it` |  |  |
 | `test_e6_a_mean_of_exactly_the_cut_counts_as_changed` |  |  |
 | `test_e6_sends_jev_the_frozen_wording_and_both_criteria` |  |  |
+| `test_e5_pairs_each_company_only_with_its_own_risks` |  |  |
+| `test_e5_baselines_are_frozen_for_every_pair_without_calling_jev` |  |  |
+| `test_e5_stops_when_the_pairs_do_not_reproduce_the_leads_list` |  |  |
+| `test_e5_test_call_then_side_by_side_companies_then_collect` |  |  |
+| `test_e5_collect_never_calls_jev` |  |  |
+| `test_e8_questions_offer_the_cards_option_sets_each_described` |  |  |
+| `test_lm_negative_list_keeps_only_words_currently_on_it` |  |  |
+| `test_negative_share_counts_every_occurrence` |  |  |
+| `test_e8_baselines_follow_the_list_with_both_signs_right` |  |  |
+| `test_e8_refuses_any_dictionary_but_the_frozen_one` |  |  |
+| `test_e8_a_repeated_or_unknown_listed_pair_stops_it` |  | parametrize |
+| `test_e8_test_call_then_each_question_on_its_own_then_collect` |  |  |
 
 ## `tests/test_filings_checks.py`
 
@@ -660,14 +672,21 @@ Automatic checks on one filing's Item 1A extraction (#292).
 | `test_a_clean_filing_raises_no_finding` |  |  |
 | `test_findings_are_named_by_the_published_check_list` |  |  |
 | `test_a_title_read_as_a_risk_heading_is_flagged` |  | parametrize |
-| `test_a_heading_of_fewer_than_four_words_is_flagged` |  |  |
+| `test_a_reading_whose_risks_lose_most_of_the_section_is_flagged` |  | parametrize |
+| `test_a_short_sentence_with_a_verb_that_starts_like_a_title_is_not_a_title` |  |  |
+| `test_a_sentence_that_starts_like_a_title_is_not_a_title` |  |  |
+| `test_a_short_topic_heading_is_not_a_title` |  |  |
 | `test_a_heading_starting_mid_sentence_is_flagged` |  |  |
 | `test_a_brand_name_in_lower_case_is_not_a_split_heading` |  |  |
-| `test_a_category_as_long_as_a_sentence_is_flagged` |  |  |
+| `test_a_heading_over_a_heading_too_long_for_a_category_is_flagged` |  |  |
 | `test_page_furniture_left_in_a_body_is_flagged` |  | parametrize |
 | `test_numbers_that_are_text_are_not_page_furniture` |  | parametrize |
 | `test_an_emphasised_paragraph_read_as_body_is_flagged` |  |  |
 | `test_a_heading_with_nothing_under_it_is_flagged` |  |  |
+| `test_any_number_between_sentences_is_flagged_when_no_page_number_was_dropped` |  |  |
+| `test_text_under_no_heading_after_the_first_risk_is_flagged` |  |  |
+| `test_a_risk_read_from_its_lead_leaves_no_text_without_heading` |  |  |
+| `test_introduction_under_a_cautionary_title_is_not_text_without_heading` |  |  |
 
 ## `tests/test_filings_edgar.py`
 
@@ -690,6 +709,39 @@ The EDGAR filing index and when each filing was knowable (#289).
 | `test_older_submission_files_are_listed_for_reading` |  |  |
 | `test_ragged_submissions_block_is_refused` |  |  |
 | `test_document_url_uses_unpadded_cik_and_bare_accession` |  |  |
+| `test_a_year_ending_in_the_first_week_of_january_belongs_to_the_year_before` |  | parametrize |
+
+## `tests/test_filings_eight_k.py`
+
+8-K events, their item sections and their filing-time context (#308, #311).
+
+**Exercises:** `mci_gru.data.input_manifest`, `mci_gru.filings.eight_k`, `mci_gru.filings.filers`, `scripts.data.export_sec_8k_events`, `scripts.data.export_sec_member_8k`, `scripts.data.export_sec_risk_factors`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_listed_items_keep_their_order_without_blanks` |  |  |
+| `test_an_event_is_an_original_8k_with_an_event_item` |  | parametrize |
+| `test_item_sections_run_from_their_heading_to_the_next_item_or_the_signature` |  |  |
+| `test_a_signature_without_a_title_still_ends_the_last_section` |  |  |
+| `test_which_lines_open_an_item_section` |  | parametrize |
+| `test_one_item_may_have_several_sections` |  |  |
+| `test_a_heading_followed_straight_by_another_items_shares_its_text` |  |  |
+| `test_edgars_wrapper_header_is_not_text` |  |  |
+| `test_the_press_release_is_exhibit_99_1_or_a_lone_unnumbered_99` |  | parametrize |
+| `test_event_text_leaves_out_the_exhibit_list_and_adds_the_press_release` |  |  |
+| `test_event_text_is_cut_at_the_limit_and_says_so` |  |  |
+| `test_prior_items_are_the_other_8ks_of_the_90_days_before_oldest_first` |  |  |
+| `test_revenue_is_the_10ks_own_full_year_not_a_comparative_or_a_quarter` |  |  |
+| `test_revenue_falls_back_through_the_concepts_a_filing_tags` |  |  |
+| `test_a_year_ending_in_january_is_that_years_fiscal_year` |  |  |
+| `test_an_event_carries_its_text_and_only_what_was_public_when_it_was_filed` |  |  |
+| `test_an_item_with_no_text_blocks_the_manifest` |  |  |
+| `test_an_item_heading_stacked_on_the_next_items_passes_the_checks` |  |  |
+| `test_a_listed_item_with_no_section_blocks_the_manifest` |  |  |
+| `test_the_index_page_gives_the_acceptance_time_in_eastern_time` |  | parametrize |
+| `test_an_index_page_without_an_acceptance_time_gives_none` |  |  |
+| `test_a_members_events_are_those_accepted_while_a_member_by_their_index_page` |  |  |
+| `test_a_flagged_event_is_left_out_or_stops_the_manifest` |  |  |
 
 ## `tests/test_filings_grading.py`
 
@@ -786,6 +838,39 @@ The Labelling desk (#291): label sets, blind sheets, AI reviewers, agreement.
 | `test_the_desk_runs_end_to_end_on_the_practice_sheet` |  |  |
 | `test_a_changed_label_set_stops_the_later_steps` |  |  |
 
+## `tests/test_filings_membership.py`
+
+S&P 500 membership spells, name checks and the 10-Ks a membership calls for (#309).
+
+**Exercises:** `mci_gru.filings.membership`, `scripts.data.build_sp500_members`, `scripts.data.export_sec_member_10k`, `scripts.data.export_sec_risk_factors`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_a_spell_runs_from_the_first_list_to_the_first_list_without_the_ticker` |  |  |
+| `test_a_spell_holds_from_its_start_to_the_day_before_its_end` |  |  |
+| `test_changes_after_the_last_list_extend_it_and_earlier_ones_are_ignored` |  |  |
+| `test_names_match_once_legal_words_are_dropped` |  | parametrize |
+| `test_name_key_drops_case_punctuation_and_legal_words` |  |  |
+| `test_a_membership_calls_for_its_reports_and_the_one_before_each_entry` |  |  |
+| `test_two_reports_in_one_year_are_both_kept_in_filing_order` |  |  |
+| `test_a_member_from_its_first_report_has_no_prior` |  |  |
+| `test_names_on_a_day_are_the_dated_names_then_the_current_one` |  |  |
+| `test_a_rename_into_the_name_is_dated_and_a_name_held_all_along_is_not` |  |  |
+| `test_a_new_holding_company_follows_its_predecessor` |  |  |
+| `test_no_other_company_follows` |  | parametrize |
+| `test_wikipedia_tables_are_read_with_spans_filled_and_no_html_library` |  | usefixtures |
+| `test_every_run_is_named_and_a_reused_ticker_is_not_taken` |  |  |
+| `test_a_manual_cik_whose_reports_carry_another_name_is_refused` |  | usefixtures |
+| `test_a_ticker_passed_to_another_company_hands_over_its_part_of_the_run` |  |  |
+| `test_a_handover_ends_on_the_day_it_is_dated` |  |  |
+| `test_a_company_renamed_into_a_ticker_later_takes_it_from_that_day` |  |  |
+| `test_only_a_company_that_filed_before_its_rename_takes_a_ticker_by_it` |  |  |
+| `test_without_a_rename_a_ticker_passes_after_the_earlier_companys_last_own_filing` |  |  |
+| `test_a_company_that_took_a_ticker_holds_only_its_own_part_of_the_run` |  | usefixtures |
+| `test_a_members_reports_are_those_filed_while_in_the_index_and_the_one_before` |  | usefixtures |
+| `test_a_report_that_fails_the_checks_stops_the_manifest_unless_its_risks_are_left_out` |  | usefixtures |
+| `test_other_layouts_are_tried_and_whole_sections_kept_where_risks_fail` |  | usefixtures |
+
 ## `tests/test_filings_pairing.py`
 
 Each risk factor paired with its most similar prior-year risks (#289).
@@ -822,19 +907,45 @@ Item 1A of a 10-K, cut into individual risk factors (#289).
 | `test_a_heading_of_two_long_sentences_is_still_a_heading` |  |  |
 | `test_a_line_break_inside_a_heading_is_a_wrap_not_a_category` |  |  |
 | `test_a_running_page_header_is_dropped_whether_bold_or_not` |  | parametrize |
-| `test_a_section_title_on_its_own_line_is_not_a_risk` |  |  |
+| `test_a_section_title_on_its_own_line_is_not_a_risk` |  | parametrize |
+| `test_the_section_title_repeated_inside_the_section_is_not_a_risk` |  | parametrize |
 | `test_a_page_number_with_a_full_stop_is_not_body_text` |  |  |
 | `test_a_heading_broken_across_a_page_is_one_heading_not_a_category` |  |  |
 | `test_a_lower_case_heading_after_body_text_starts_a_new_risk` |  |  |
 | `test_a_bullet_in_its_own_table_cell_is_kept_before_its_item` |  |  |
 | `test_a_bullet_run_into_its_item_is_followed_by_one_space` |  |  |
 | `test_an_emphasised_bullet_is_not_a_heading` |  |  |
+| `test_a_plain_span_inside_a_bold_paragraph_is_plain` |  |  |
+| `test_a_full_stop_left_plain_does_not_make_a_heading_body_text` |  |  |
+| `test_a_footer_with_its_page_number_is_dropped` |  | parametrize |
+| `test_a_part_line_is_page_furniture` |  |  |
+| `test_a_list_item_repeated_across_risks_is_text_not_a_header` |  | parametrize |
+| `test_an_introduction_title_drops_the_text_under_it` |  | parametrize |
+| `test_a_risk_about_forward_looking_statements_is_not_introduction` |  |  |
+| `test_a_long_emphasised_preamble_before_the_first_risk_is_introduction` |  |  |
+| `test_run_in_headings_open_their_paragraphs` |  |  |
+| `test_sentence_headings_keep_their_titled_sub_headings_as_text` |  |  |
+| `test_an_unknown_layout_is_refused` |  |  |
+| `test_a_category_title_with_text_under_it_introduces_the_category` |  |  |
+| `test_a_category_title_may_be_long` |  | parametrize |
+| `test_a_topic_title_about_risks_affecting_something_is_a_risk` |  |  |
+| `test_a_category_title_ending_in_a_full_stop_is_a_risk` |  |  |
+| `test_a_sentence_that_starts_like_a_category_title_is_a_risk` |  |  |
+| `test_a_long_title_case_heading_over_a_heading_is_a_category` |  |  |
+| `test_topic_headings_over_a_summarys_bullets_stay_in_the_summary` |  |  |
+| `test_a_category_in_plain_capitals_closes_the_risk_before_it` |  |  |
+| `test_an_emphasised_continuation_of_an_unfinished_sentence_is_body_text` |  |  |
+| `test_an_item_split_by_markup_still_ends_the_section` |  |  |
+| `test_a_section_found_by_its_title_when_item_1a_is_only_an_index` |  |  |
+| `test_a_run_in_lead_without_punctuation_opens_its_paragraph` |  |  |
+| `test_a_run_in_heading_on_its_own_line_too_long_for_a_category_is_a_risk` |  |  |
+| `test_the_body_ends_a_head_that_is_never_closed` |  |  |
 
 ## `tests/test_filings_scripts.py`
 
 The filings pull and the pair scoring, end to end with canned EDGAR and Jev (#289).
 
-**Exercises:** `mci_gru.data.input_manifest`, `mci_gru.filings.edgar`, `scripts.data.export_sec_risk_factors`, `scripts.data.score_risk_factor_pairs`
+**Exercises:** `mci_gru.data.input_manifest`, `mci_gru.filings.edgar`, `mci_gru.filings.filers`, `scripts.data.export_sec_risk_factors`, `scripts.data.score_risk_factor_pairs`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -842,12 +953,21 @@ The filings pull and the pair scoring, end to end with canned EDGAR and Jev (#28
 | `test_every_request_names_the_client_as_sec_asks` |  |  |
 | `test_user_agent_without_contact_email_is_refused` |  |  |
 | `test_a_second_pull_rereads_only_the_filers_main_submissions_files` |  |  |
+| `test_the_cache_holds_documents_gzipped` |  |  |
+| `test_an_uncompressed_entry_from_an_older_cache_is_still_read` |  |  |
 | `test_rate_limits_server_errors_and_dropped_connections_are_retried_after_a_wait` |  | parametrize |
 | `test_a_request_refused_outright_is_not_retried` |  |  |
 | `test_a_document_that_is_not_utf8_is_read_as_cp1252_and_reported` |  |  |
 | `test_an_unreadable_item_1a_blocks_the_manifest` |  |  |
 | `test_every_filing_is_checked_and_a_clean_pull_lists_no_finding` |  |  |
 | `test_a_failed_check_is_reported_and_blocks_the_manifest` |  |  |
+| `test_a_named_filer_is_read_with_its_own_layout_under_its_own_key` |  |  |
+| `test_the_fiscal_year_rule_and_each_years_period_are_recorded` |  |  |
+| `test_two_reports_in_one_fiscal_year_block_the_manifest` |  |  |
+| `test_a_filers_first_fiscal_year_leaves_out_its_earlier_reports` |  |  |
+| `test_several_filers_share_one_manifest_named_by_package_id` |  |  |
+| `test_several_filers_without_a_package_id_are_refused` |  |  |
+| `test_only_filings_in_the_fiscal_year_range_are_read` |  |  |
 | `test_pairs_and_blind_sheet_are_written_without_calling_jev` |  |  |
 | `test_scoring_twice_calls_jev_once_per_distinct_pair` |  |  |
 | `test_an_existing_label_sheet_is_never_overwritten` |  |  |
