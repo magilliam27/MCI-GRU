@@ -7,6 +7,7 @@ tests can check what was asked and that cached answers are never asked again.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -330,11 +331,15 @@ def test_e11_collects_the_rating_alone_when_only_the_rating_was_asked(tmp_path, 
     assert meta["distinct_calls"] == {"rating": 3}
 
 
-def test_e11_several_workers_ask_each_event_once_and_keep_the_events_order(tmp_path, monkeypatch):
+def test_e11_several_workers_ask_each_event_once_and_keep_the_events_order(
+    tmp_path, monkeypatch, capsys
+):
     client = FakeClient()
     extra = ("--score", "--question", "rating", "--workers", "2")
-    assert _run(tmp_path, monkeypatch, *extra, client=client) == 0
+    assert _run(tmp_path, monkeypatch, *extra, "--limit", "3", client=client) == 0
     assert len(client.calls) == 3
+    # The workers' answers come back in the sample's order, not the order they finish.
+    assert re.findall(r'"event_id": "(e\d)"', capsys.readouterr().out) == ["e3", "e1", "e2"]
     assert _run(tmp_path, monkeypatch, *extra, client=client) == 0
     assert len(client.calls) == 3  # every answer cached, none asked again
     answers = (tmp_path / "e10" / "answers" / "rating.jsonl").read_text(encoding="utf-8")
