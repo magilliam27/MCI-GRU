@@ -5,7 +5,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
 <style>
 /* Layout: a reading desk. Two filing texts side by side (stacked on a phone),
-   the yes/no questions in a sticky column on wide screens, below on narrow. */
+   the questions in a sticky column on wide screens, below on narrow. */
 :root {
   --bg: #f2f4f7;
   --surface: #ffffff;
@@ -116,6 +116,10 @@ main {
 .yn button:hover:not(:disabled) { border-color: var(--accent); }
 .yn button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .yn button:disabled { cursor: default; opacity: .6; }
+.yn.choice { grid-template-columns: 1fr; }
+.yn.choice button { text-align: left; padding: 8px 12px; }
+.yn.choice button .opt { display: block; font-weight: 600; }
+.yn.choice button .def { display: block; font-weight: 400; font-size: .9em; }
 .extra { display: grid; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
 .flagrow { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .flagrow input { width: 18px; height: 18px; accent-color: var(--flag); }
@@ -144,7 +148,7 @@ main {
 <main id="main">
   <div class="notice" id="notice">
     <h2>Opening your label sheets</h2>
-    <p>Each sheet shows one risk factor from last year's 10-K beside this year's, in full, with a few yes or no questions. Every answer saves the moment you tap it, so you can stop on your phone and carry on at your PC.</p>
+    <p>Each sheet shows one risk factor from last year's 10-K beside this year's, in full, with a few short questions. Every answer saves the moment you tap it, so you can stop on your phone and carry on at your PC.</p>
   </div>
   <div id="work" hidden>
     <div class="banner" id="banner" hidden></div>
@@ -232,6 +236,9 @@ main {
     return JSON.stringify(out) === JSON.stringify(answers) ? out : prune(out);
   }
   function complete(answers) { return asked(answers).every((q) => answers[q.id]); }
+  // A question lists its own options to be a pick-one; otherwise it is yes/no.
+  function optionsOf(q) { return q.options && q.options.length ? q.options : [{ id: "yes" }, { id: "no" }]; }
+  function isChoice(q) { return optionsOf(q).map((o) => o.id).join() !== "yes,no"; }
   function labelOf(item) { return S.labels[item.item_id] || null; }
   function isDone(item) { const l = labelOf(item); return !!(l && l.complete); }
 
@@ -288,11 +295,17 @@ main {
       wrap.append(t);
       if (q.help) { const h = document.createElement("p"); h.className = "help"; h.textContent = q.help; wrap.append(h); }
       const yn = document.createElement("div");
-      yn.className = "yn"; yn.setAttribute("role", "group"); yn.setAttribute("aria-labelledby", t.id);
-      for (const value of ["yes", "no"]) {
+      const choice = isChoice(q);
+      yn.className = choice ? "yn choice" : "yn"; yn.setAttribute("role", "group"); yn.setAttribute("aria-labelledby", t.id);
+      for (const option of optionsOf(q)) {
+        const value = option.id;
         const b = document.createElement("button");
         b.type = "button"; b.id = `a-${q.id}-${value}`;
-        b.textContent = value === "yes" ? "Yes" : "No";
+        if (choice) {
+          const o = document.createElement("span"); o.className = "opt"; o.textContent = value.replace(/_/g, " ");
+          const d = document.createElement("span"); d.className = "def"; d.textContent = option.text || "";
+          b.append(o, d);
+        } else b.textContent = value === "yes" ? "Yes" : "No";
         b.setAttribute("aria-pressed", String(answers[q.id] === value));
         b.disabled = S.readOnly;
         b.onclick = () => answer(q.id, value);
@@ -493,7 +506,7 @@ main {
     else if (e.key === "y" || e.key === "n") {
       const l = labelOf(S.items[S.idx]) || {};
       const open = asked(l.answers || {}).find((q) => !(l.answers || {})[q.id]);
-      if (open) answer(open.id, e.key === "y" ? "yes" : "no");
+      if (open && !isChoice(open)) answer(open.id, e.key === "y" ? "yes" : "no");
     } else return;
     e.preventDefault();
   });

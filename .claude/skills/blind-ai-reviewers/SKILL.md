@@ -11,7 +11,12 @@ short, provided the reviewers are blind and their answers are checked against a
 blind spot-check of the owner's own.
 
 The instructions every reviewer reads are `configs/filings/labels/reviewer_v1.md`,
-filled in from the sheet's label set (`configs/filings/labels/*.yaml`). **Do not
+filled in from the sheet's label set (`configs/filings/labels/*.yaml`). A label
+set with a pick-one question (one that lists its own `options`) uses
+`reviewer_v2.md` instead, passed as `reviewers --prompt`; v1 tells reviewers
+every answer is yes or no. A label set for 8-K events (`items: event_8k`, such
+as `event_rating_v1.yaml`) uses `reviewer_events_v1.md`; event texts are long,
+so pass `--batch-size 20`. **Do not
 add to them in the subagent prompt.** A reviewer that is told what the
 experiment is, what Jev or a baseline answered, or what the owner thinks is no
 longer blind, and its labels cannot go in a key.
@@ -45,10 +50,11 @@ longer blind, and its labels cannot go in a key.
    python -m scripts.data.label_desk combine --labels-dir <labels>
    ```
 
-   It checks every answer file against the label set (yes/no only, skipped
-   questions left empty, every item answered once) and writes `ai_labels.csv`
-   (each reviewer's category, the majority, whether all three agreed) and
-   `ai_summary.json`. An item with no majority has an empty `ai_label`; it
+   It checks every answer file against the label set (each answer one of its
+   question's options, skipped questions left empty, every item answered once)
+   and writes `ai_labels.csv` (each reviewer's category, the majority, whether
+   all three agreed), `ai_answers.csv` (the same for each question on its own,
+   for a key that reads every question's majority) and `ai_summary.json`. An item with no majority has an empty `ai_label`; it
    goes to the owner, never to a fourth reviewer.
 
 4. When the owner has spot-checked part of the sheet on the labelling page,

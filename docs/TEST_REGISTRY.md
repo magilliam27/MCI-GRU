@@ -797,7 +797,7 @@ The frozen question set, the answer cache and the blind label sheet (#289).
 
 ## `tests/test_filings_labelling.py`
 
-The Labelling desk (#291): yes/no label sets, blind sheets, AI reviewers, agreement.
+The Labelling desk (#291): label sets, blind sheets, AI reviewers, agreement.
 
 **Exercises:** `mci_gru.filings.labelling`, `scripts.data.label_desk`
 
@@ -810,18 +810,31 @@ The Labelling desk (#291): yes/no label sets, blind sheets, AI reviewers, agreem
 | `test_an_unquoted_yes_in_yaml_is_refused` |  |  |
 | `test_a_category_no_answers_reach_is_refused` |  |  |
 | `test_the_last_rule_must_match_everything` |  |  |
+| `test_a_choice_question_takes_exactly_one_of_its_own_options` |  |  |
+| `test_a_category_reached_only_through_a_choice_option_loads` |  |  |
+| `test_a_condition_naming_an_option_a_question_lacks_is_refused` |  |  |
+| `test_the_change_direction_set_keeps_the_e8_card_options` |  |  |
+| `test_the_e9_set_asks_the_e5_and_e8_questions_word_for_word` |  |  |
+| `test_the_e10_set_rates_8k_events_on_a_scale` |  |  |
+| `test_a_split_rule_needs_a_scale_and_a_known_name` |  |  |
+| `test_an_event_sheet_reads_only_the_context_and_text` |  |  |
 | `test_a_sheet_never_reads_an_answer_column` |  |  |
 | `test_a_hand_over_missing_a_text_column_is_refused` |  |  |
 | `test_sheet_ids_are_fresh_and_the_order_is_shuffled_by_seed` |  |  |
 | `test_the_page_gets_questions_but_never_the_category_rules` |  |  |
 | `test_each_reviewer_sees_every_item_once_in_its_own_order` |  |  |
 | `test_the_reviewer_prompt_states_every_question_and_the_header` |  |  |
+| `test_the_reviewer_prompt_lists_a_choice_question_and_its_options` |  |  |
+| `test_reviewer_packets_name_their_files_by_the_path_given` |  |  |
 | `test_a_reviewer_answering_a_skipped_question_is_rejected` |  |  |
 | `test_combining_takes_the_majority_and_leaves_a_split_empty` |  |  |
+| `test_each_question_takes_its_own_majority` |  |  |
+| `test_a_three_way_rating_split_takes_the_middle_and_is_marked` |  |  |
 | `test_combining_refuses_a_reviewer_who_skipped_an_item` |  |  |
 | `test_page_labels_derive_a_category_only_when_finished` |  |  |
 | `test_agreement_counts_only_items_both_labelled` |  |  |
 | `test_cohen_kappa_matches_a_worked_example` |  |  |
+| `test_the_desk_runs_an_event_sheet_end_to_end` |  |  |
 | `test_the_desk_runs_end_to_end_on_the_practice_sheet` |  |  |
 | `test_a_changed_label_set_stops_the_later_steps` |  |  |
 

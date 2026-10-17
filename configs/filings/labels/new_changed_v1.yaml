@@ -1,0 +1,35 @@
+# Two yes/no questions, both answered on every item: is the risk new, and did
+# it materially change? The answer key of experiment E5 (filings/experiments/
+# E5-ten-companies). "new_risk" is the change question's "new" option, word for
+# word from configs/filings/questions_v2.yaml; "changed" is changed_v1's
+# question and help word for word, so E4 and E5 share one key. A new risk
+# counts as changed. The key reads each question's own majority; the category
+# below only names the combination. Do not edit a version once labels exist
+# against it.
+id: new_changed_v1
+title: Is this a new risk, and did it materially change?
+intro: >-
+  Each item is one risk factor from a company's 10-K this year, beside the most
+  similar risk factor in last year's 10-K. Read both and answer two questions:
+  whether this year's risk is a different risk from last year's, and whether
+  the risk materially changed. Nothing is highlighted and no one else's answer
+  is shown.
+questions:
+  - id: new_risk
+    text: Is this year's risk a different risk from last year's?
+    help: >-
+      Answer yes if it is a different risk: the prior-year risk factor does not
+      cover the risk the current one describes. Answer no if it is the same
+      underlying risk, however much it was reworded, broadened, narrowed or
+      rewritten.
+  - id: changed
+    text: Did this risk materially change from last year's version?
+    help: >-
+      Answer no only if it is the same risk, lightly reworded or with updated
+      figures or examples, with nothing material added or removed. Answer yes
+      for anything else, including when last year's text describes a different
+      risk.
+categories:
+  - {label: new, when: {new_risk: "yes"}}
+  - {label: changed, when: {changed: "yes"}}
+  - {label: unchanged, when: {}}
