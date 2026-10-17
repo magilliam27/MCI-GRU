@@ -34,6 +34,8 @@ if TYPE_CHECKING:
 
 GOOGLE_INC_CIK = "0001288776"
 ALPHABET_CIK = "0001652044"
+#: The last January day on which a 52- or 53-week fiscal year can end.
+LAST_DAY_OF_YEAR_END_WEEK = 7
 SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 SUBMISSIONS_FILE_URL = "https://data.sec.gov/submissions/{name}"
 DOCUMENT_URL = "https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/{document}"
@@ -75,7 +77,10 @@ class FilingRecord:
     @property
     def fiscal_year(self) -> int:
         """Year of the period of report; a calendar fiscal year for Alphabet."""
-        return int(self.report_date[:4])
+        year, month, day = (int(part) for part in self.report_date[:10].split("-"))
+        # A 52- or 53-week year that ends in the first week of January belongs
+        # to the year before (Johnson & Johnson's fiscal 2015 ended 3 January 2016).
+        return year - 1 if month == 1 and day <= LAST_DAY_OF_YEAR_END_WEEK else year
 
     def to_dict(self) -> dict[str, Any]:
         return {
