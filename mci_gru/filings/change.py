@@ -144,21 +144,32 @@ def change_flags(table: pd.DataFrame, choices: pd.DataFrame) -> pd.DataFrame:
     return flags[list(FLAG_COLUMNS)]
 
 
-def lm_negative_words(path: Path) -> frozenset[str]:
-    """The Loughran-McDonald negative list, lower-cased, from its master dictionary CSV.
+def lm_words(path: Path, column: str) -> frozenset[str]:
+    """One Loughran-McDonald sentiment list, lower-cased, from its master dictionary CSV.
 
-    The ``Negative`` column holds the year a word joined the list, or minus the
-    year it left, so only positive years are on the current list.
+    Each list's column (``Negative``, ``Positive``, ...) holds the year a word
+    joined the list, or minus the year it left, so only positive years are on the
+    current list.
     """
-    table = pd.read_csv(path, usecols=["Word", "Negative"], keep_default_na=False)
-    listed = table.loc[table["Negative"].astype(int) > 0, "Word"]
+    table = pd.read_csv(path, usecols=["Word", column], keep_default_na=False)
+    listed = table.loc[table[column].astype(int) > 0, "Word"]
     return frozenset(str(word).lower() for word in listed)
+
+
+def lm_negative_words(path: Path) -> frozenset[str]:
+    """The Loughran-McDonald negative list (E8's baseline)."""
+    return lm_words(path, "Negative")
 
 
 def negative_share(text: str, negative: frozenset[str]) -> float:
     """The share of a text's words (every occurrence) that are on the negative list."""
     words = _WORD.findall(text.lower())
     return sum(word in negative for word in words) / len(words) if words else 0.0
+
+
+def negative_count(text: str, negative: frozenset[str]) -> int:
+    """How many of a text's words (every occurrence) are on the negative list."""
+    return sum(word in negative for word in _WORD.findall(text.lower()))
 
 
 def pair_table(pairs: Sequence[RiskPair]) -> pd.DataFrame:
@@ -220,6 +231,32 @@ def score_choices(
     ``labels`` are the options the question must offer, exactly: E2's five change
     kinds unless another question set is being scored.
     """
+    return score_states(
+        [(pair.pair_id, pair_state(pair)) for pair in pairs],
+        question,
+        sdk_question_for=sdk_question_for,
+        client=client,
+        cache=cache,
+        model=model,
+        labels=labels,
+    )
+
+
+def score_states(
+    items: Sequence[tuple[str, dict[str, Any]]],
+    question: Question,
+    *,
+    sdk_question_for: Callable[[dict[str, str]], Any],
+    client: Any,
+    cache: AnswerCache,
+    model: str,
+    labels: Sequence[str],
+) -> list[ScoredChoice]:
+    """Ask the Choice of every (id, state), options shuffled per id, from the cache when held.
+
+    The id fills ``pair_id`` in each record and result, whatever it names (a risk
+    pair, or an 8-K event), so every cache keeps one shape.
+    """
     if question.kind != "choice":
         raise QuestionSetError(f"{question.question_id}: only Choice questions are scored here")
     if sorted(name for name, _ in question.options) != sorted(labels):
@@ -227,10 +264,9 @@ def score_choices(
             f"{question.question_id}: options must be exactly {', '.join(labels)}"
         )
     scored: list[ScoredChoice] = []
-    for pair in pairs:
-        order = option_order(question, pair.pair_id)
+    for item_id, state in items:
+        order = option_order(question, item_id)
         spec = {**question.spec(), "option_order": order}
-        state = pair_state(pair)
         key = cache_key(state, spec, model)
         cached = key in cache
         if not cached:
@@ -246,7 +282,7 @@ def score_choices(
             cache.put(
                 {
                     "key": key,
-                    "pair_id": pair.pair_id,
+                    "pair_id": item_id,
                     "question": spec,
                     "model": response.model,
                     "choice": str(answer.choice),
@@ -260,7 +296,7 @@ def score_choices(
         record = cache.get(key)
         scored.append(
             ScoredChoice(
-                pair_id=pair.pair_id,
+                pair_id=item_id,
                 question_id=question.question_id,
                 choice=record["choice"],
                 confidence=record["confidence"],

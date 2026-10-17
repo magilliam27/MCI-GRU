@@ -657,6 +657,7 @@ Milestone 2 of #289: how each risk factor changed, the word baseline and the gra
 | `test_lm_negative_list_keeps_only_words_currently_on_it` |  |  |
 | `test_negative_share_counts_every_occurrence` |  |  |
 | `test_e8_baselines_follow_the_list_with_both_signs_right` |  |  |
+| `test_e9_the_pairing_must_reproduce_the_leads_population` |  | parametrize |
 | `test_e8_refuses_any_dictionary_but_the_frozen_one` |  |  |
 | `test_e8_a_repeated_or_unknown_listed_pair_stops_it` |  | parametrize |
 | `test_e8_test_call_then_each_question_on_its_own_then_collect` |  |  |
@@ -742,6 +743,33 @@ The EDGAR filing index and when each filing was knowable (#289).
 | `test_an_index_page_without_an_acceptance_time_gives_none` |  |  |
 | `test_a_members_events_are_those_accepted_while_a_member_by_their_index_page` |  |  |
 | `test_a_flagged_event_is_left_out_or_stops_the_manifest` |  |  |
+
+## `tests/test_filings_events.py`
+
+E10 (#305): what Jev reads for an 8-K event, the baseline, the scores and the run.
+
+**Exercises:** `mci_gru.filings.change`, `mci_gru.filings.events`, `mci_gru.filings.jev`, `scripts.data.score_8k_events`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_v5_questions_offer_the_cards_option_sets_each_described` |  |  |
+| `test_item_lean_puts_negative_items_over_auditor_changes_over_the_rest` |  | parametrize |
+| `test_baseline_badness_orders_by_lean_first_then_net_tone` |  |  |
+| `test_tone_shares_count_every_occurrence_on_the_current_lists` |  |  |
+| `test_rating_score_weights_minus_two_to_plus_two_and_bad_score_sums_the_bad_side` |  |  |
+| `test_event_state_holds_only_context_known_at_filing_and_the_text` |  |  |
+| `test_event_state_says_when_context_is_missing` |  |  |
+| `test_revenue_words_scale_to_billions_or_millions` |  |  |
+| `test_events_breaking_the_contract_are_refused` |  | parametrize |
+| `test_e10_baselines_follow_the_sample_with_lean_first` |  |  |
+| `test_e10_baselines_cover_every_event_before_the_sample_exists` |  |  |
+| `test_e10_refuses_any_dictionary_but_the_frozen_one` |  |  |
+| `test_e10_a_listed_subset_must_name_each_published_event_once` |  | parametrize |
+| `test_e10_without_a_subset_every_published_event_is_scored` |  |  |
+| `test_e10_test_call_then_each_question_on_its_own_then_collect` |  |  |
+| `test_e11_collects_the_rating_alone_when_only_the_rating_was_asked` |  |  |
+| `test_e11_several_workers_ask_each_event_once_and_keep_the_events_order` |  |  |
+| `test_e11_estimates_only_the_question_it_will_ask` |  |  |
 
 ## `tests/test_filings_grading.py`
 
@@ -886,6 +914,24 @@ Each risk factor paired with its most similar prior-year risks (#289).
 | `test_pair_ids_are_stable` |  |  |
 | `test_consecutive_years_pair_each_year_with_the_one_before_only` |  |  |
 | `test_a_missing_prior_year_is_refused_rather_than_skipped` |  |  |
+
+## `tests/test_filings_report_signals.py`
+
+E7 (#310): each member 10-K's change signals against its pair partner, and the run.
+
+**Exercises:** `mci_gru.filings.report_signals`, `mci_gru.filings.risk_factors`, `scripts.data.score_e7_signals`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_section_change_is_one_minus_the_cosine_of_word_counts` |  |  |
+| `test_risk_pairs_flag_new_under_the_similarity_cut_and_changed_by_word_score_or_new` |  |  |
+| `test_a_risk_whose_word_score_is_exactly_the_cut_counts_as_changed` |  |  |
+| `test_worse_share_counts_unflagged_risks_as_zero` |  |  |
+| `test_e7_refuses_data_that_differs_from_its_manifest` |  |  |
+| `test_e7_signals_pair_each_member_report_with_its_partner` |  |  |
+| `test_e7_jev_is_asked_only_about_flagged_risks_then_signal_4_is_collected` |  |  |
+| `test_e7_stops_before_any_call_when_the_estimate_is_over_the_budget` |  |  |
+| `test_e7_a_left_out_report_gets_no_signal_4_and_needs_no_answers` |  |  |
 
 ## `tests/test_filings_risk_factors.py`
 

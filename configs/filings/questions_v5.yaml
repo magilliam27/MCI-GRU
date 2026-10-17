@@ -1,0 +1,59 @@
+# Frozen question set for E10 (#305): how good or bad is an 8-K event for
+# shareholders? Frozen before any E10 label existed. Do not edit a frozen
+# version: a changed question is a new file (questions_v6.yaml).
+#
+# The state is built in code (mci_gru.filings.events.event_state), from facts
+# known at filing time only: the company, the 8-K's item codes with their
+# titles, the company's revenue from its latest 10-K filed before the 8-K, the
+# item codes of its other 8-Ks in the previous 90 days, and the event text (item
+# sections plus press-release exhibit 99.1, cut at 20,000 characters). Each
+# question is its own call, and its options are shuffled per event
+# (mci_gru.filings.change.option_order).
+#
+# The option sets and the rating rubric are the research lead's card's.
+version: 5
+model: jev-1.13.0
+questions:
+  rating:
+    kind: choice
+    instructions: >-
+      This 8-K reports an event at the company. From a shareholder's point of
+      view, how good or bad is the event for the company? Judge the event the
+      text describes, using the context: the item codes, the company's prior
+      annual revenue for scale, and its other 8-Ks in the previous 90 days.
+    options:
+      very_bad: >-
+        An event that threatens the business or the trust in it, such as a
+        restatement, a bankruptcy, a delisting notice, or a CEO or CFO leaving
+        immediately with no successor or in connection with an investigation.
+      bad: >-
+        A clearly negative event, such as a restructuring with job cuts, an
+        impairment, a lost or ended major contract, or an unplanned senior
+        departure.
+      neutral: >-
+        A routine event, such as a planned retirement with a named successor, a
+        director change, a compensation plan, or a routine financing agreement.
+      good: >-
+        A clearly positive event, such as a major new contract or a deal on
+        favourable terms.
+      very_good: >-
+        A transformative and favourable event, such as a large acquisition or
+        sale at a strong price.
+  size:
+    kind: choice
+    instructions: >-
+      This 8-K reports an event at the company. How large is the dollar amount
+      involved in the event, as a share of the company's prior annual revenue
+      given in the context?
+    options:
+      under_1_percent: >-
+        The filing states an amount for the event that is under 1% of the
+        company's prior annual revenue.
+      between_1_and_5_percent: >-
+        The filing states an amount for the event that is between 1% and 5% of
+        the company's prior annual revenue.
+      over_5_percent: >-
+        The filing states an amount for the event that is over 5% of the
+        company's prior annual revenue.
+      no_amount_stated: >-
+        The filing states no dollar amount for the event.
