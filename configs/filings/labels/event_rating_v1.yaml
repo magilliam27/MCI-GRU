@@ -1,0 +1,79 @@
+# Two choice questions on an 8-K event, both answered on every item: how good
+# or bad is the event for shareholders, and how large is the amount involved?
+# The answer key of experiment E10 (filings/experiments/E10-8k-events). Each
+# question's text (with its help), and every option id and definition, is the
+# Questions lane's frozen configs/filings/questions_v5.yaml at commit 3a1be7f,
+# word for word, so the reviewers and Jev read the same rubric: the question
+# text is the first sentences of its instructions and the help the rest. The
+# rating's options are listed as a scale, worst to best, and the E10 card
+# settles a three-way split on the middle one (on_split). The key reads each
+# question's own majority; the category below only groups the rating. Do not
+# edit a version once labels exist against it.
+id: event_rating_v1
+items: event_8k
+title: How good or bad is this 8-K event for shareholders, and how large is it?
+intro: >-
+  Each item is one 8-K a company filed, with the context known when it was
+  filed: the company, the 8-K's item codes, the company's revenue from its
+  latest annual report before the 8-K, and the item codes of its other 8-Ks in
+  the previous 90 days. Read the context and the event text and answer two
+  questions. Nothing is highlighted and no one else's answer is shown.
+questions:
+  - id: rating
+    text: >-
+      This 8-K reports an event at the company. From a shareholder's point of
+      view, how good or bad is the event for the company?
+    help: >-
+      Judge the event the text describes, using the context: the item codes, the
+      company's prior annual revenue for scale, and its other 8-Ks in the
+      previous 90 days.
+    on_split: middle
+    options:
+      - id: very_bad
+        text: >-
+          An event that threatens the business or the trust in it, such as a
+          restatement, a bankruptcy, a delisting notice, or a CEO or CFO leaving
+          immediately with no successor or in connection with an investigation.
+      - id: bad
+        text: >-
+          A clearly negative event, such as a restructuring with job cuts, an
+          impairment, a lost or ended major contract, or an unplanned senior
+          departure.
+      - id: neutral
+        text: >-
+          A routine event, such as a planned retirement with a named successor, a
+          director change, a compensation plan, or a routine financing agreement.
+      - id: good
+        text: >-
+          A clearly positive event, such as a major new contract or a deal on
+          favourable terms.
+      - id: very_good
+        text: >-
+          A transformative and favourable event, such as a large acquisition or
+          sale at a strong price.
+  - id: size
+    text: >-
+      This 8-K reports an event at the company. How large is the dollar amount
+      involved in the event, as a share of the company's prior annual revenue
+      given in the context?
+    options:
+      - id: under_1_percent
+        text: >-
+          The filing states an amount for the event that is under 1% of the
+          company's prior annual revenue.
+      - id: between_1_and_5_percent
+        text: >-
+          The filing states an amount for the event that is between 1% and 5% of
+          the company's prior annual revenue.
+      - id: over_5_percent
+        text: >-
+          The filing states an amount for the event that is over 5% of the
+          company's prior annual revenue.
+      - id: no_amount_stated
+        text: The filing states no dollar amount for the event.
+categories:
+  - {label: bad, when: {rating: very_bad}}
+  - {label: bad, when: {rating: bad}}
+  - {label: good, when: {rating: good}}
+  - {label: good, when: {rating: very_good}}
+  - {label: neutral, when: {}}
