@@ -866,6 +866,30 @@ The Labelling desk (#291): label sets, blind sheets, AI reviewers, agreement.
 | `test_the_desk_runs_end_to_end_on_the_practice_sheet` |  |  |
 | `test_a_changed_label_set_stops_the_later_steps` |  |  |
 
+## `tests/test_filings_masking.py`
+
+E13: what the name mask and the deep mask hide, and the leak check's options.
+
+**Exercises:** `mci_gru.filings.events`, `mci_gru.filings.masking`, `scripts.data.identify_8k_company`, `scripts.data.mask_8k_events`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_core_drops_suffixes_and_state_tags` |  |  |
+| `test_name_mask_hides_the_filer_and_withholds_the_company_field` |  |  |
+| `test_a_common_word_core_is_masked_only_when_capitalised` |  |  |
+| `test_a_short_name_is_masked_alone_only_when_few_others_capitalise_it` |  |  |
+| `test_a_short_name_is_masked_only_when_capitalised` |  |  |
+| `test_an_ordinary_word_former_name_is_left_alone` |  |  |
+| `test_a_former_name_is_masked_whole_but_never_by_its_first_word` |  |  |
+| `test_initials_of_a_long_name_are_masked_unless_an_ordinary_word` |  |  |
+| `test_a_ticker_that_is_an_ordinary_word_is_masked_only_after_an_exchange` |  |  |
+| `test_vocabulary_counts_filers_once_and_ignores_addresses` |  |  |
+| `test_deep_mask_hides_people_and_places_but_keeps_titles_and_terms` |  |  |
+| `test_revenue_keeps_one_significant_figure` |  |  |
+| `test_the_mask_script_writes_both_levels_and_records_hashes` |  |  |
+| `test_the_mask_script_refuses_when_a_name_survives` |  |  |
+| `test_leak_check_options_hold_the_filer_once_beside_same_industry_others` |  |  |
+
 ## `tests/test_filings_membership.py`
 
 S&P 500 membership spells, name checks and the 10-Ks a membership calls for (#309).

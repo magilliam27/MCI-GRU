@@ -114,8 +114,9 @@ def residuals(event: Event, identity: Identity) -> list[str]:
                 r"\b" + r"[\s,.]*".join(re.escape(t.lower()) for t in core) + r"(?![a-z0-9])",
                 lowered,
             )
-        elif core:
-            # A one-word core is always masked when capitalised or in capitals.
+        elif core and name in identity.names:
+            # A current one-word core is always masked when capitalised or in capitals; a
+            # former one ("HE Holdings") only when distinctive, so it is not checked here.
             spellings = {core[0].capitalize(), core[0].upper()}
             found = re.search(
                 r"\b(?:" + "|".join(map(re.escape, spellings)) + r")(?![A-Za-z0-9])", event.text
