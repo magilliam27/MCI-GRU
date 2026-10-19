@@ -7,7 +7,7 @@ the index exists, so membership comes from what the iShares Russell 2000 ETF
     python -m scripts.data.build_r2k_members \\
         --user-agent "Your Name you@example.com" \\
         --cache-dir /content/r2k_cache --output-dir /content/r2k_membership \\
-        --seed 314 --draw 500
+        --seed 314 --draw 1000 --first-release 500
 
 Steps, each read from ``--cache-dir`` when already there and fetched otherwise
 (EODHD calls send no ``api_token``: the cloud proxy adds the key, and
@@ -38,7 +38,9 @@ Steps, each read from ``--cache-dir`` when already there and fetched otherwise
    a company is a member from a report date to the next report date it is
    missing from. The frame is every company with a membership day from
    ``--frame-start``; the draw is ``random.Random(seed).sample`` of its sorted
-   CIKs.
+   CIKs. A larger draw with the same seed keeps a smaller one as its first
+   companies, so ``--first-release`` marks the first N drawn as release ``r1``
+   and the rest ``r2``: E14 drew 500, E15 adds the next 500.
 
 What it writes under ``--output-dir``: ``holdings_matched.csv.gz`` (every
 holding row with its candidates' best symbol, price error, symbol, CIK and how
@@ -108,6 +110,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--frame-start", default="2013-01-01")
     parser.add_argument("--seed", type=int, default=314)
     parser.add_argument("--draw", type=int, default=500)
+    parser.add_argument(
+        "--first-release", type=int, default=None, help="First N drawn are r1, the rest r2"
+    )
     parser.add_argument("--workers", type=int, default=8, help="Threads for EODHD calls")
     args = parser.parse_args(argv)
     if "@" not in args.user_agent:
@@ -525,10 +530,33 @@ def membership(out: pd.DataFrame, frame_start: str) -> pd.DataFrame:
     return frame[keep].sort_values("cik").reset_index(drop=True)
 
 
+def draw(ciks: list[str], seed: int, size: int, first_release: int | None = None) -> pd.DataFrame:
+    """``cik``, ``draw_order`` and ``release`` of ``size`` CIKs drawn from ``ciks``, by CIK.
+
+    ``random.sample`` picks one index at a time, so the first N of a draw are the
+    whole of a draw of N with the same seed and population. The first
+    ``first_release`` drawn (all, by default) are ``r1``; the rest are ``r2``.
+    """
+    picked = random.Random(seed).sample(sorted(ciks), size)
+    cut = size if first_release is None else first_release
+    table = pd.DataFrame(
+        {
+            "cik": picked,
+            "draw_order": range(len(picked)),
+            "release": ["r1" if i < cut else "r2" for i in range(len(picked))],
+        }
+    )
+    return table.sort_values("cik").reset_index(drop=True)
+
+
 def companies_table(sample: pd.DataFrame, cache: Path) -> pd.DataFrame:
-    """The draw in ``export_sec_member_8k``'s companies format, named as SEC names it."""
+    """The draw in ``export_sec_member_8k``'s companies format, named as SEC names it.
+
+    Keys are tickers; a second company with the same ticker gets its CIK appended.
+    Earlier releases take keys first, so adding a release never renames a company.
+    """
     rows, seen = [], set()
-    for row in sample.itertuples():
+    for row in sample.sort_values(["release", "cik"]).itertuples():
         symbols = [s for s in row.symbols.split(";") if s]
         ticker = symbols[-1].replace(".US", "").split("_")[0] if symbols else "NA"
         key = ticker.lower()
@@ -545,7 +573,7 @@ def companies_table(sample: pd.DataFrame, cache: Path) -> pd.DataFrame:
                 "ciks": row.cik,
                 "tickers": ticker,
                 "spells": ";".join(f"{ticker}:{s}" for s in row.spells.split(";")),
-                "release": "r1",
+                "release": row.release,
             }
         )
     return pd.DataFrame(rows)
@@ -567,8 +595,8 @@ def main(argv: list[str] | None = None) -> int:
     matched = price_match(holdings, cands, cache, args.workers)
     final = companies_for(matched, cache, sec, sec_by_key, args.workers)
     frame = membership(final, args.frame_start)
-    drawn = sorted(random.Random(args.seed).sample(sorted(frame["cik"]), args.draw))
-    sample = frame[frame["cik"].isin(drawn)].reset_index(drop=True)
+    drawn = draw(list(frame["cik"]), args.seed, args.draw, args.first_release)
+    sample = frame.merge(drawn, on="cik").sort_values("cik").reset_index(drop=True)
     final.to_csv(out_dir / "holdings_matched.csv.gz", index=False, compression="gzip")
     frame.to_csv(out_dir / "r2k_membership.csv", index=False)
     sample.to_csv(out_dir / "r2k_sample.csv", index=False)
@@ -587,6 +615,7 @@ def main(argv: list[str] | None = None) -> int:
         "frame_companies": int(len(frame)),
         "seed": args.seed,
         "drawn": int(len(sample)),
+        "drawn_by_release": sample["release"].value_counts().sort_index().to_dict(),
         "drawn_member_at_last_date": int((sample["last_snap"] == filings[-1]["period"]).sum()),
         "sec_requests": sec.requests,
     }

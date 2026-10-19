@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 import pytest
 
@@ -13,7 +15,7 @@ from mci_gru.filings.iwm_holdings import (
     price_error,
     split_factor,
 )
-from scripts.data.build_r2k_members import membership
+from scripts.data.build_r2k_members import companies_table, draw, membership
 
 
 def _row(*cells: str) -> str:
@@ -144,3 +146,31 @@ def test_membership_runs_from_a_report_date_to_the_day_before_the_next_date_it_i
     assert frame.at["2", "spells"] == "2013-06-30:"
     # Company 3 left (was missing on 30 June 2013) before the frame starts.
     assert "3" not in frame.index
+
+
+def test_larger_draw_keeps_the_smaller_draw_as_its_first_release():
+    ciks = [f"{i:010d}" for i in range(5000)]
+    first = draw(ciks, 314, 500)
+    both = draw(ciks, 314, 1000, first_release=500)
+    assert set(both.loc[both["release"] == "r1", "cik"]) == set(first["cik"])
+    assert (both["release"] == "r2").sum() == 500
+    assert set(both.loc[both["draw_order"] < 500, "cik"]) == set(first["cik"])
+    assert list(both["cik"]) == sorted(both["cik"])
+
+
+def test_a_later_release_never_takes_an_earlier_release_companys_key(tmp_path):
+    (tmp_path / "submissions").mkdir()
+    for cik in ("0000000001", "0000000002"):
+        (tmp_path / "submissions" / f"CIK{cik}.json").write_text(json.dumps({"name": cik}))
+    sample = pd.DataFrame(
+        {
+            "cik": ["0000000001", "0000000002"],
+            "name": ["Old Betr", "New Betr"],
+            "symbols": ["BETR_old.US", "BETR.US"],
+            "spells": ["2013-06-30:2015-06-29", "2021-06-30:2023-06-29"],
+            "release": ["r2", "r1"],
+        }
+    )
+    table = companies_table(sample, tmp_path).set_index("ciks")
+    assert table.loc["0000000002", "key"] == "betr"
+    assert table.loc["0000000001", "key"] == "betr_1"
