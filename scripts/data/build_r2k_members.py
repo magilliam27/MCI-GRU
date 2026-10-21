@@ -7,7 +7,7 @@ the index exists, so membership comes from what the iShares Russell 2000 ETF
     python -m scripts.data.build_r2k_members \\
         --user-agent "Your Name you@example.com" \\
         --cache-dir /content/r2k_cache --output-dir /content/r2k_membership \\
-        --seed 314 --draw 1000 --first-release 500
+        --seed 314 --draw 1000 --first-release 500 --rest-release
 
 Steps, each read from ``--cache-dir`` when already there and fetched otherwise
 (EODHD calls send no ``api_token``: the cloud proxy adds the key, and
@@ -40,7 +40,8 @@ Steps, each read from ``--cache-dir`` when already there and fetched otherwise
    ``--frame-start``; the draw is ``random.Random(seed).sample`` of its sorted
    CIKs. A larger draw with the same seed keeps a smaller one as its first
    companies, so ``--first-release`` marks the first N drawn as release ``r1``
-   and the rest ``r2``: E14 drew 500, E15 adds the next 500.
+   and the rest ``r2``: E14 drew 500, E15 adds the next 500. ``--rest-release``
+   adds every company not drawn as ``r3`` (E16, the whole frame).
 
 What it writes under ``--output-dir``: ``holdings_matched.csv.gz`` (every
 holding row with its candidates' best symbol, price error, symbol, CIK and how
@@ -112,6 +113,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--draw", type=int, default=500)
     parser.add_argument(
         "--first-release", type=int, default=None, help="First N drawn are r1, the rest r2"
+    )
+    parser.add_argument(
+        "--rest-release", action="store_true", help="Add every company not drawn as r3"
     )
     parser.add_argument("--workers", type=int, default=8, help="Threads for EODHD calls")
     args = parser.parse_args(argv)
@@ -530,22 +534,43 @@ def membership(out: pd.DataFrame, frame_start: str) -> pd.DataFrame:
     return frame[keep].sort_values("cik").reset_index(drop=True)
 
 
-def draw(ciks: list[str], seed: int, size: int, first_release: int | None = None) -> pd.DataFrame:
+def draw(
+    ciks: list[str],
+    seed: int,
+    size: int,
+    first_release: int | None = None,
+    rest_release: bool = False,
+) -> pd.DataFrame:
     """``cik``, ``draw_order`` and ``release`` of ``size`` CIKs drawn from ``ciks``, by CIK.
 
     ``random.sample`` picks one index at a time, so the first N of a draw are the
     whole of a draw of N with the same seed and population. The first
-    ``first_release`` drawn (all, by default) are ``r1``; the rest are ``r2``.
+    ``first_release`` drawn (all, by default) are ``r1``; the rest are ``r2``. With
+    ``rest_release`` every CIK not drawn is added as ``r3``, with no draw order.
     """
     picked = random.Random(seed).sample(sorted(ciks), size)
     cut = size if first_release is None else first_release
     table = pd.DataFrame(
         {
             "cik": picked,
-            "draw_order": range(len(picked)),
+            "draw_order": pd.array(range(len(picked)), dtype="Int64"),
             "release": ["r1" if i < cut else "r2" for i in range(len(picked))],
         }
     )
+    if rest_release:
+        rest = sorted(set(ciks) - set(picked))
+        table = pd.concat(
+            [
+                table,
+                pd.DataFrame(
+                    {
+                        "cik": rest,
+                        "draw_order": pd.array([pd.NA] * len(rest), dtype="Int64"),
+                        "release": "r3",
+                    }
+                ),
+            ]
+        )
     return table.sort_values("cik").reset_index(drop=True)
 
 
@@ -595,7 +620,7 @@ def main(argv: list[str] | None = None) -> int:
     matched = price_match(holdings, cands, cache, args.workers)
     final = companies_for(matched, cache, sec, sec_by_key, args.workers)
     frame = membership(final, args.frame_start)
-    drawn = draw(list(frame["cik"]), args.seed, args.draw, args.first_release)
+    drawn = draw(list(frame["cik"]), args.seed, args.draw, args.first_release, args.rest_release)
     sample = frame.merge(drawn, on="cik").sort_values("cik").reset_index(drop=True)
     final.to_csv(out_dir / "holdings_matched.csv.gz", index=False, compression="gzip")
     frame.to_csv(out_dir / "r2k_membership.csv", index=False)

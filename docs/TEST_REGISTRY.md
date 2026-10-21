@@ -809,6 +809,7 @@ Russell 2000 membership from IWM's SEC holdings filings (E14).
 | `test_membership_runs_from_a_report_date_to_the_day_before_the_next_date_it_is_missing` |  |  |
 | `test_larger_draw_keeps_the_smaller_draw_as_its_first_release` |  |  |
 | `test_a_later_release_never_takes_an_earlier_release_companys_key` |  |  |
+| `test_rest_release_adds_every_undrawn_company_and_keeps_the_draw` |  |  |
 
 ## `tests/test_filings_jev.py`
 

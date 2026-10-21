@@ -174,3 +174,13 @@ def test_a_later_release_never_takes_an_earlier_release_companys_key(tmp_path):
     table = companies_table(sample, tmp_path).set_index("ciks")
     assert table.loc["0000000002", "key"] == "betr"
     assert table.loc["0000000001", "key"] == "betr_1"
+
+
+def test_rest_release_adds_every_undrawn_company_and_keeps_the_draw():
+    ciks = [f"{i:010d}" for i in range(5000)]
+    drawn = draw(ciks, 314, 1000, first_release=500)
+    whole = draw(ciks, 314, 1000, first_release=500, rest_release=True)
+    assert len(whole) == 5000 and whole["cik"].is_unique
+    assert whole.loc[whole["release"] != "r3"].reset_index(drop=True).equals(drawn)
+    assert set(whole.loc[whole["release"] == "r3", "cik"]) == set(ciks) - set(drawn["cik"])
+    assert whole.loc[whole["release"] == "r3", "draw_order"].isna().all()
