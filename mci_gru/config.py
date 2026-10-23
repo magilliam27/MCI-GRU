@@ -645,6 +645,13 @@ class ModelConfig:
             32-wide layer then a 10-wide one. Defaults to ``"shared"`` for
             checkpoint compatibility; ``legacy`` and the transformer fast path
             do not read it.
+        gat_layer_form: Form of every graph block: the A2 correlation stream,
+            the sector stream and the final head (issue #320). ``"legacy"``
+            keeps the shipped GAT v1 layers, in which a linked stock's own
+            features enter only as one more neighbour, so stocks with the same
+            neighbourhood score alike. ``"residual"`` adds a learned own-feature
+            path to each layer (``GATConv(residual=True)``). Defaults to
+            ``"legacy"`` for checkpoint compatibility.
     """
 
     his_t: int = 10
@@ -674,12 +681,14 @@ class ModelConfig:
     cross_section_block: str = "legacy"
     market_latent_mode: str = "static"
     gru_attn_layer_widths: str = "shared"
+    gat_layer_form: str = "legacy"
 
     _VALID_OUTPUT_ACTIVATIONS = ("none", "elu", "relu", "sigmoid")
     _VALID_TEMPORAL_ENCODERS = ("legacy", "gru_attn", "transformer")
     _VALID_CROSS_SECTION_BLOCKS = ("legacy", "residual")
     _VALID_MARKET_LATENT_MODES = ("static", "data_dependent")
     _VALID_GRU_ATTN_LAYER_WIDTHS = ("shared", "per_layer")
+    _VALID_GAT_LAYER_FORMS = ("legacy", "residual")
 
     def __post_init__(self):
         if self.label_t < 2:
@@ -717,6 +726,11 @@ class ModelConfig:
             raise ValueError(
                 f"gru_attn_layer_widths must be one of {self._VALID_GRU_ATTN_LAYER_WIDTHS}, "
                 f"got {self.gru_attn_layer_widths!r}"
+            )
+        if self.gat_layer_form not in self._VALID_GAT_LAYER_FORMS:
+            raise ValueError(
+                f"gat_layer_form must be one of {self._VALID_GAT_LAYER_FORMS}, "
+                f"got {self.gat_layer_form!r}"
             )
         if self.market_latent_mode == "data_dependent" and not self.use_nn_multihead_attention:
             # Per-date latents need per-date keys, which the legacy 8-Linear
@@ -763,6 +777,7 @@ class ModelConfig:
             "cross_section_block": self.cross_section_block,
             "market_latent_mode": self.market_latent_mode,
             "gru_attn_layer_widths": self.gru_attn_layer_widths,
+            "gat_layer_form": self.gat_layer_form,
         }
 
 
