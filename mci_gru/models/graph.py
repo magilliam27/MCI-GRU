@@ -19,6 +19,15 @@ class GATBlock(nn.Module):
 
     When ``inter_layer_dropout > 0`` and training, dropout is applied on node
     features between the two GAT convolutions.
+
+    With ``residual=False`` (the legacy form) a node's own features reach its
+    output only as a self-loop neighbour, and GAT v1's attention ranks a node's
+    sources the same way whatever the node is, so nodes with the same closed
+    neighbourhood get (near) identical outputs whatever their own inputs.
+    ``residual=True`` adds a learned linear map of each node's own input to both
+    layers' outputs (``GATConv(residual=True)``), so a linked node keeps its own
+    signal (issue #320). The two forms have different parameters, so a
+    checkpoint belongs to the form that produced it.
     """
 
     def __init__(
@@ -30,14 +39,25 @@ class GATBlock(nn.Module):
         activation: str = "elu",
         edge_feature_dim: int = 1,
         inter_layer_dropout: float = 0.0,
+        residual: bool = False,
     ):
         super().__init__()
         self.edge_feature_dim = edge_feature_dim
         self.gat1 = GATConv(
-            in_channels, hidden, heads=heads, concat=True, edge_dim=edge_feature_dim
+            in_channels,
+            hidden,
+            heads=heads,
+            concat=True,
+            edge_dim=edge_feature_dim,
+            residual=residual,
         )
         self.gat2 = GATConv(
-            hidden * heads, out_channels, heads=1, concat=False, edge_dim=edge_feature_dim
+            hidden * heads,
+            out_channels,
+            heads=1,
+            concat=False,
+            edge_dim=edge_feature_dim,
+            residual=residual,
         )
         self.act = _make_activation(activation)
         self.inter_layer_dropout = inter_layer_dropout
