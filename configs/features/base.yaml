@@ -6,6 +6,10 @@ base_features:
   - low
   - volume
   - turnover
+# Form of the six base inputs (#323): levels (legacy raw close/open/high/low/
+# volume/turnover, which a split-adjusted panel rescales for later splits) or
+# relative (per-stock returns, ranges and volume against its own 20-session mean).
+base_inputs: levels
 include_momentum: false
 include_weekly_momentum: false
 momentum_encoding: binary

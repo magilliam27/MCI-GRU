@@ -241,6 +241,11 @@ def resolve_volatility_targeting_components(
     return resolved_components
 
 
+# features.base_inputs values; mci_gru.features.base.RELATIVE_BASE_FEATURES lists the
+# columns "relative" feeds (#323).
+BASE_INPUT_FORMS = ("levels", "relative")
+
+
 @dataclass
 class FeatureConfig:
     """
@@ -248,6 +253,11 @@ class FeatureConfig:
 
     Attributes:
         base_features: List of base OHLCV feature column names
+        base_inputs: Form of the six base inputs. "levels" (default, legacy) feeds the raw
+            close/open/high/low/volume/turnover levels, which a split-adjusted panel
+            rescales for splits after each row (#323). "relative" feeds per-stock ratios
+            instead: log return, overnight and intraday returns, high-low range over
+            close, and log volume and turnover against the stock's 20-session mean.
         include_momentum: Whether to add momentum features
         include_weekly_momentum: Whether to include weekly momentum features (5-day return/signal)
         momentum_encoding: Type of momentum encoding (binary, continuous, buffered)
@@ -305,6 +315,7 @@ class FeatureConfig:
     base_features: list[str] = field(
         default_factory=lambda: ["close", "open", "high", "low", "volume", "turnover"]
     )
+    base_inputs: str = "levels"  # levels, relative
     include_momentum: bool = True
     include_weekly_momentum: bool = True
     momentum_encoding: str = "binary"  # binary, continuous, buffered
@@ -355,6 +366,10 @@ class FeatureConfig:
     def __post_init__(self):
         valid_encodings = ["binary", "continuous", "buffered"]
         valid_blend_modes = ["static", "dynamic"]
+        if self.base_inputs not in BASE_INPUT_FORMS:
+            raise ValueError(
+                f"base_inputs must be one of {list(BASE_INPUT_FORMS)}, got {self.base_inputs!r}"
+            )
         if self.momentum_encoding not in valid_encodings:
             raise ValueError(f"momentum_encoding must be one of {valid_encodings}")
         if self.momentum_blend_mode not in valid_blend_modes:

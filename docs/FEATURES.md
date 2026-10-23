@@ -30,12 +30,38 @@ the guard surfaces for the no-lookahead invariant.
 
 ## Base (always on)
 
-`mci_gru/features/base.py`. `FeatureConfig.base_features`.
+`mci_gru/features/base.py`. `FeatureConfig.base_inputs` picks one of two forms of the six
+base columns (#323).
+
+`levels` (base default, legacy):
 
 | Column | Definition | Window |
 | --- | --- | --- |
 | `open`, `high`, `low`, `close`, `volume` | as loaded from the panel | `D` |
 | `turnover` | `close × volume`, added when the panel does not carry it | `D` |
+
+These levels break the timing rule on a split-adjusted panel. The EODHD panel is adjusted
+as of its last date, so every price and volume before a split is already rescaled for
+it: a row dated `D` carries a split that happens after `D`.
+
+`relative`: per-stock ratios, unchanged when a later split rescales every earlier row by
+one factor. `tests/test_no_split_lookahead.py` guards that.
+
+| Column | Definition | Window |
+| --- | --- | --- |
+| `log_return` | `ln(close / previous close)`; the #245 gap policy applies | `D − 1` to `D` |
+| `overnight_return` | `open / previous close − 1` | `D − 1` to `D` |
+| `intraday_return` | `close / open − 1` | `D` |
+| `daily_range` | `(high − low) / close` | `D` |
+| `log_volume_rel` | `ln(volume / trailing mean volume)`; zero volume is missing | 20 sessions to `D` |
+| `log_turnover_rel` | `ln(turnover / trailing mean turnover)`; zero is missing | 20 sessions to `D` |
+
+A stock's first row and a zero-volume row are left missing for the pipeline's per-day
+imputation. Three columns share names with `include_price_features`; with both on, they
+appear once and use the definitions above.
+
+`relative` fixes only these six columns. `volume_ma20` (`include_volume_features`, on in
+`features=full`) is still a raw share-volume level and still carries a later split.
 
 ## Momentum (`include_momentum`, default on)
 

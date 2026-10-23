@@ -1634,6 +1634,27 @@ Admissible range for `model.label_t` (issue 107).
 | `test_dynamic_estimator_activates_after_sufficient_history` |  |  |
 | `test_feature_config_validates_dynamic_controls_and_yaml_merge` |  |  |
 
+## `tests/test_no_split_lookahead.py`
+
+Stock inputs on a date never reflect a split that happens after it (#323, PRD #319 D8).
+
+**Exercises:** `mci_gru.config`, `mci_gru.features`, `mci_gru.features.base`, `mci_gru.pipeline`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_relative_inputs_before_a_split_ignore_the_later_split` |  | parametrize |
+| `test_legacy_level_inputs_carry_the_later_split` | The guard's control: the base default still shows the bug it exists for. |  |
+| `test_relative_inputs_replace_the_six_levels` |  |  |
+| `test_relative_inputs_do_not_repeat_when_price_features_are_also_on` |  |  |
+| `test_relative_definitions_win_over_the_price_features_for_shared_names` | With both on, the shared columns follow the relative definitions. |  |
+| `test_relative_inputs_ignore_a_later_split_across_gaps_in_the_history` | A missing session and an all-missing row before the split change nothing. |  |
+| `test_relative_inputs_are_ratios_of_the_stock_s_own_prices` |  |  |
+| `test_relative_inputs_leave_zero_volume_missing_rather_than_infinite` |  |  |
+| `test_unknown_base_inputs_value_is_rejected` |  |  |
+| `test_base_default_keeps_the_legacy_levels` |  |  |
+| `test_normaliser_fits_the_relative_inputs_on_train_rows_only` |  |  |
+| `test_normaliser_statistics_ignore_rows_after_train_end` |  |  |
+
 ## `tests/test_notebook_eodhd_staging.py`
 
 EODHD S&P 500 staging in the regime-enabled Colab notebooks (#278).
