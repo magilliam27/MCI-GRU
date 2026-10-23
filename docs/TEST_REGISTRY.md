@@ -689,6 +689,36 @@ Automatic checks on one filing's Item 1A extraction (#292).
 | `test_a_risk_read_from_its_lead_leaves_no_text_without_heading` |  |  |
 | `test_introduction_under_a_cautionary_title_is_not_text_without_heading` |  |  |
 
+## `tests/test_filings_earnings.py`
+
+E17: earnings releases read against the previous one, from the pairing rule to the run.
+
+**Exercises:** `mci_gru.filings.earnings`, `mci_gru.filings.jev`, `mci_gru.filings.labelling`, `scripts.data.export_sec_member_10k`, `scripts.data.export_sec_member_earnings`, `scripts.data.score_earnings_releases`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_the_previous_release_is_the_latest_earlier_earnings_8k` |  |  |
+| `test_a_pair_counts_only_one_quarter_apart` |  | parametrize |
+| `test_a_company_with_no_earlier_release_has_no_pair` |  |  |
+| `test_a_draw_never_depends_on_the_order_of_the_candidates` |  |  |
+| `test_later_draws_never_repeat_an_earlier_one_and_minus_one_takes_the_rest` |  |  |
+| `test_a_bigger_pool_keeps_the_events_a_smaller_one_drew` |  |  |
+| `test_a_repeated_candidate_stops_the_draw` |  |  |
+| `test_the_frozen_questions_offer_the_scouted_options_each_described` |  |  |
+| `test_each_question_has_its_own_shuffle_the_same_on_every_run` |  |  |
+| `test_setup_score_weights_much_worse_minus_two_to_much_better_plus_two` |  |  |
+| `test_the_state_holds_the_company_both_days_and_both_texts_only` |  |  |
+| `test_candidates_are_members_earnings_8ks_with_a_previous_release` |  |  |
+| `test_a_drawn_event_is_checked_again_on_its_index_page_times` |  |  |
+| `test_a_release_too_short_to_compare_is_left_out` |  |  |
+| `test_the_baseline_is_the_tone_change_of_the_draws_events` |  |  |
+| `test_three_questions_in_one_call_each_event_once_then_collect` |  |  |
+| `test_collect_refuses_while_an_event_has_no_answer` |  |  |
+| `test_an_answer_from_another_model_stops_the_run` |  |  |
+| `test_a_text_over_the_limit_is_refused` |  |  |
+| `test_the_reading_check_asks_jevs_setup_question_word_for_word` |  |  |
+| `test_an_earnings_sheet_shows_the_previous_release_then_the_current` |  |  |
+
 ## `tests/test_filings_edgar.py`
 
 The EDGAR filing index and when each filing was knowable (#289).
