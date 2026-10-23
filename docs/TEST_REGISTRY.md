@@ -457,6 +457,21 @@ EODHD daily prices for the point-in-time universe (#281).
 | `test_the_eodhd_package_carries_the_lseg_membership_byte_for_byte` |  |  |
 | `test_the_eodhd_config_binds_both_selected_files_to_its_package` |  |  |
 
+## `tests/test_eval_precision.py`
+
+Scoring precision: training may use AMP, validation and prediction do not.
+
+**Exercises:** `mci_gru.config`, `mci_gru.training.trainer`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_default_config_scores_in_full_precision` |  |  |
+| `test_training_keeps_amp_while_validation_runs_in_full_precision` |  |  |
+| `test_prediction_runs_in_full_precision` |  |  |
+| `test_eval_amp_opts_scoring_back_into_autocast` | The control: the recorder does see autocast when scoring asks for it. |  |
+| `test_eval_amp_needs_a_cuda_device` |  |  |
+| `test_cuda_prediction_matches_fp32_to_1e6` |  | skipif |
+
 ## `tests/test_evaluation_portfolio.py`
 
 **Exercises:** `mci_gru.evaluation.portfolio`
