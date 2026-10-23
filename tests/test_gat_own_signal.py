@@ -190,15 +190,9 @@ def _recipe_overrides() -> list[str]:
     return [line.strip() for line in block.group(1).splitlines() if line.strip()]
 
 
-def _recipe_model(gat_layer_form: str | None, **extra) -> torch.nn.Module:
-    """The recipe's model, built the way run_experiment.py builds it.
-
-    ``gat_layer_form=None`` adds no override, so the form is whatever the
-    recipe and the base config give.
-    """
-    overrides = _recipe_overrides()
-    if gat_layer_form is not None:
-        overrides.append(f"model.gat_layer_form={gat_layer_form}")
+def _recipe_model(gat_layer_form: str, **extra) -> torch.nn.Module:
+    """The recipe's model with the given graph-layer form, built as run_experiment.py builds it."""
+    overrides = [*_recipe_overrides(), f"model.gat_layer_form={gat_layer_form}"]
     with initialize_config_dir(config_dir=str(CONFIG_DIR), version_base=None):
         cfg = compose(config_name="config", overrides=overrides)
     config = create_config_from_dict(OmegaConf.to_container(cfg, resolve=True))
