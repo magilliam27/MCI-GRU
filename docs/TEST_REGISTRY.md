@@ -1603,6 +1603,8 @@ Stock inputs on a date never reflect a split that happens after it (#323, PRD #3
 | `test_legacy_level_inputs_carry_the_later_split` | The guard's control: the base default still shows the bug it exists for. |  |
 | `test_relative_inputs_replace_the_six_levels` |  |  |
 | `test_relative_inputs_do_not_repeat_when_price_features_are_also_on` |  |  |
+| `test_relative_definitions_win_over_the_price_features_for_shared_names` | With both on, the shared columns follow the relative definitions. |  |
+| `test_relative_inputs_ignore_a_later_split_across_gaps_in_the_history` | A missing session and an all-missing row before the split change nothing. |  |
 | `test_relative_inputs_are_ratios_of_the_stock_s_own_prices` |  |  |
 | `test_relative_inputs_leave_zero_volume_missing_rather_than_infinite` |  |  |
 | `test_unknown_base_inputs_value_is_rejected` |  |  |

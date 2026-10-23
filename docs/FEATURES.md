@@ -60,6 +60,9 @@ A stock's first row and a zero-volume row are left missing for the pipeline's pe
 imputation. Three columns share names with `include_price_features`; with both on, they
 appear once and use the definitions above.
 
+`relative` fixes only these six columns. `volume_ma20` (`include_volume_features`, on in
+`features=full`) is still a raw share-volume level and still carries a later split.
+
 ## Momentum (`include_momentum`, default on)
 
 `mci_gru/features/momentum.py`, after Goulding, Harvey and Mazzoleni, *Momentum Turning

@@ -157,6 +157,51 @@ def test_relative_inputs_do_not_repeat_when_price_features_are_also_on() -> None
     assert {"overnight_return", "intraday_return", "daily_range"} <= set(cols)
 
 
+def test_relative_definitions_win_over_the_price_features_for_shared_names() -> None:
+    """With both on, the shared columns follow the relative definitions.
+
+    ``add_price_features`` fills a stock's first ``overnight_return`` with 0 and does
+    not carry the previous close over a gap; the relative step leaves the first row
+    missing and spans the gap. A gap day is where the two disagree.
+    """
+    seen, _ = _split_views(4.0)
+    gap_day = _dates()[20]
+    seen.loc[(seen["kdcode"] == "PEER") & (seen["dt"] == gap_day), ["close", "open"]] = np.nan
+    engineer = _engineer(
+        "relative",
+        include_momentum=False,
+        include_weekly_momentum=False,
+        include_price_features=True,
+    )
+    out = engineer.transform(seen.copy())
+    stock = out[out["kdcode"] == "PEER"].sort_values("dt").reset_index(drop=True)
+
+    assert np.isnan(stock.loc[0, "overnight_return"])
+    assert stock.loc[21, "overnight_return"] == pytest.approx(
+        stock.loc[21, "open"] / stock.loc[19, "close"] - 1, rel=1e-12
+    )
+
+
+def test_relative_inputs_ignore_a_later_split_across_gaps_in_the_history() -> None:
+    """A missing session and an all-missing row before the split change nothing."""
+    seen, adjusted = _split_views(10.0)
+    dates = _dates()
+    dropped, blank = dates[25], dates[40]
+    price_cols = ["close", "open", "high", "low", "volume"]
+    views = []
+    for df in (seen, adjusted):
+        df = df[~((df["kdcode"] == "SPLT") & (df["dt"] == dropped))].copy()
+        df.loc[(df["kdcode"] == "SPLT") & (df["dt"] == blank), price_cols] = np.nan
+        views.append(df)
+    engineer = _engineer("relative")
+
+    before_seen = _inputs_before_split(views[0], engineer)
+    before_adjusted = _inputs_before_split(views[1], engineer)
+
+    assert len(before_seen) == SPLIT_DAY - 1
+    pd.testing.assert_frame_equal(before_seen, before_adjusted, check_exact=False, rtol=1e-12)
+
+
 def test_relative_inputs_are_ratios_of_the_stock_s_own_prices() -> None:
     seen, _ = _split_views(4.0)
     engineer = _engineer("relative", include_momentum=False, include_weekly_momentum=False)
