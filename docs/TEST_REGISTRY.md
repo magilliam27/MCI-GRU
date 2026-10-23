@@ -1147,6 +1147,34 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_a_run_refuses_to_reuse_a_folder` |  |  |
 | `test_a_run_records_itself_without_the_key` |  |  |
 
+## `tests/test_gat_own_signal.py`
+
+Graph layers must let a linked stock be scored on its own inputs.
+
+**Exercises:** `mci_gru.config`, `mci_gru.graph.utils`, `mci_gru.models`, `mci_gru.models.graph`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_legacy_block_ties_a_linked_pair_whatever_their_inputs` | Guard: the fixture reproduces the bug, so the tests below can fail. | parametrize |
+| `test_residual_block_scores_a_linked_pair_on_its_own_inputs` |  | parametrize |
+| `test_legacy_block_ties_every_node_of_a_linked_triangle` | Guard: ties are not only a two-node effect. | parametrize |
+| `test_residual_block_separates_every_node_of_a_linked_triangle` |  | parametrize |
+| `test_legacy_recipe_model_ties_a_linked_pair` | Guard: the recipe's model reproduces the first run's pair ties. |  |
+| `test_residual_recipe_model_scores_a_linked_pair_on_its_own_inputs` | User story 1 and 2 of #319, through ``create_model`` with the recipe's settings. |  |
+| `test_graph_stream_carries_each_stocks_own_graph_features` | The A2 graph stream, not only the head, must keep a linked stock's own signal. | parametrize |
+| `test_every_graph_block_the_model_builds_keeps_own_signal` | Final head, A2 graph stream and sector stream all get the chosen form. | parametrize |
+| `test_default_config_keeps_the_pre_change_checkpoint_shape` | First-run checkpoints must keep loading, so the default may not move. |  |
+| `test_explicit_legacy_form_keeps_the_pre_change_checkpoint_shape` |  |  |
+| `test_residual_form_adds_an_own_feature_map_to_every_graph_layer` | The residual form is a different parameter set, so it is a different checkpoint. |  |
+| `test_a_legacy_checkpoint_does_not_load_into_the_residual_form` | A silent partial load would leave the own-feature maps at their random init. |  |
+| `test_a_residual_checkpoint_does_not_load_into_the_legacy_form` |  |  |
+| `test_create_model_rejects_an_unknown_gat_layer_form` | ``create_model`` also takes a checkpoint's plain ``config.yaml`` dict, |  |
+| `test_model_config_rejects_an_unknown_gat_layer_form` |  |  |
+| `test_model_config_round_trips_the_gat_layer_form` |  |  |
+| `test_base_config_yaml_ships_the_legacy_graph_layers` | Real runs take the default from ``configs/config.yaml``, not from ``ModelConfig``. |  |
+| `test_residual_form_reaches_the_built_model_from_hydra` | The override must survive Hydra, ``ExperimentConfig`` and the factory. |  |
+| `test_dependency_floor_has_gatconv_residual` | ``GATConv(residual=...)`` first shipped in torch-geometric 2.6.0. |  |
+
 ## `tests/test_generate_test_registry.py`
 
 Contract tests for scripts/generate_test_registry.py.
