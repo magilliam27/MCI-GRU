@@ -71,6 +71,7 @@ model:
   cross_section_block: legacy  # legacy | residual (issue #197; legacy replaces z, residual corrects it)
   market_latent_mode: static  # static | data_dependent (issue #198; static latents cannot see the date)
   gru_attn_layer_widths: shared  # shared | per_layer (issue #131; shared builds [32, 10] as two width-10 layers)
+  gat_layer_form: legacy  # legacy | residual (issue #320; legacy lets linked stocks with the same neighbours tie, residual adds an own-feature path to every graph layer)
 
 # Graph configuration
 graph:
