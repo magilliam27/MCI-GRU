@@ -704,6 +704,31 @@ Automatic checks on one filing's Item 1A extraction (#292).
 | `test_a_risk_read_from_its_lead_leaves_no_text_without_heading` |  |  |
 | `test_introduction_under_a_cautionary_title_is_not_text_without_heading` |  |  |
 
+## `tests/test_filings_context.py`
+
+E18: an 8-K rated with the company's latest earnings release, from the rule to the run.
+
+**Exercises:** `mci_gru.filings.change`, `mci_gru.filings.context`, `mci_gru.filings.events`, `mci_gru.filings.jev`, `scripts.data.export_sec_context_releases`, `scripts.data.score_8k_with_context`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_the_latest_release_is_the_last_earnings_8k_accepted_before_the_event` |  |  |
+| `test_a_release_counts_up_to_120_days_before` |  | parametrize |
+| `test_an_event_with_no_earlier_release_has_no_context` |  |  |
+| `test_a_draw_takes_only_its_stratum_and_never_depends_on_the_frames_order` |  |  |
+| `test_later_draws_never_repeat_an_earlier_one_and_minus_one_takes_the_rest` |  |  |
+| `test_a_repeated_event_or_an_unknown_stratum_stops_the_draw` |  |  |
+| `test_the_release_goes_just_before_the_event_text_and_nothing_else_changes` |  |  |
+| `test_the_context_question_is_e16s_with_only_the_instructions_changed` |  |  |
+| `test_a_draw_number_asks_again_and_leaves_the_undrawn_key_as_it_was` |  |  |
+| `test_each_frame_event_gets_its_latest_release_or_the_reason_it_has_none` |  |  |
+| `test_a_drawn_release_is_checked_again_on_its_index_page_time_and_text` |  | parametrize |
+| `test_the_baselines_are_the_tone_of_the_8k_the_release_and_both` |  |  |
+| `test_the_context_arm_asks_once_per_event_with_the_release_then_collects` |  |  |
+| `test_the_plain_arm_asks_e16s_exact_question_and_state_as_a_new_draw` |  |  |
+| `test_collect_refuses_while_an_event_has_no_answer` |  |  |
+| `test_events_and_releases_must_name_the_same_8ks` |  |  |
+
 ## `tests/test_filings_earnings.py`
 
 E17: earnings releases read against the previous one, from the pairing rule to the run.
