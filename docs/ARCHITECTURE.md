@@ -406,7 +406,9 @@ other. Coverage is logged, as is any disagreement between snapshots.
 linear warmup followed by cosine decay (`training.lr_scheduler`,
 `training.warmup_steps`), CUDA autocast and gradient scaling when
 `training.use_amp` is set and the device is CUDA, gradient clipping, and
-optional first-N-batch step profiling.
+optional first-N-batch step profiling. Validation and `predict` run in full
+precision unless `training.eval_amp` is also set, so scores do not sit on an
+fp16 grid.
 
 Validation returns a `ValidationObservation` carrying loss, Pearson IC, Spearman
 rank IC, and the number of eligible rows behind each IC. **Checkpoint selection

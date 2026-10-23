@@ -291,6 +291,7 @@ class Trainer:
         scheduler = _build_lr_scheduler(optimizer, training_cfg, steps_per_epoch)
 
         use_amp = training_cfg.use_amp and self.device.type == "cuda"
+        eval_amp = self._eval_amp_enabled()
         scaler = GradScaler("cuda", enabled=use_amp)
 
         output_path = self.output_path
@@ -331,7 +332,7 @@ class Trainer:
         logger.info(f"  Loss: {loss_label}")
         logger.info(f"  Selection metric: {training_cfg.selection_metric}")
         logger.info(f"  LR scheduler: {training_cfg.lr_scheduler}")
-        logger.info(f"  AMP (CUDA): {use_amp}")
+        logger.info(f"  AMP (CUDA): {use_amp} (validation and prediction: {eval_amp})")
         logger.info(f"  Max epochs: {training_cfg.num_epochs}")
         logger.info(f"  Early stopping patience: {training_cfg.early_stopping_patience}")
 
@@ -343,7 +344,7 @@ class Trainer:
             )
             final_train_loss = train_loss
 
-            validation = self._validate(val_loader, criterion, use_amp)
+            validation = self._validate(val_loader, criterion, eval_amp)
             val_loss = validation.loss
             val_ic = validation.ic if validation.ic is not None else float("nan")
             val_rank_ic = validation.rank_ic if validation.rank_ic is not None else float("nan")
@@ -428,6 +429,14 @@ class Trainer:
             epochs_trained=epoch + 1,
             best_model_path=best_model_path,
         )
+
+    def _eval_amp_enabled(self) -> bool:
+        """Whether validation and prediction run under CUDA autocast.
+
+        Training AMP does not carry over: under autocast a member's scores sit on
+        an fp16 grid, so unrelated names tie (#321).
+        """
+        return self.config.training.eval_amp and self.device.type == "cuda"
 
     def _sync_cuda_if_needed(self, profiling_active: bool) -> None:
         if profiling_active and self.device.type == "cuda":
@@ -608,7 +617,7 @@ class Trainer:
         Returns:
             Predictions array of shape (n_dates, n_stocks)
         """
-        use_amp = self.config.training.use_amp and self.device.type == "cuda"
+        use_amp = self._eval_amp_enabled()
         self.model.eval()
         all_predictions = []
 
