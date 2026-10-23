@@ -11,6 +11,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+import numpy as np
 import pytest
 import torch
 import torch.nn as nn
@@ -46,7 +47,7 @@ class AutocastRecorder:
 class PhaseRecordingModel(nn.Module):
     """Records (training?, autocast enabled?) for every forward pass."""
 
-    def __init__(self, recorder: AutocastRecorder):
+    def __init__(self, recorder: AutocastRecorder) -> None:
         super().__init__()
         self.linear = nn.Linear(2, 1)
         self.recorder = recorder
@@ -103,7 +104,7 @@ def _config(output_path: Path, use_amp: bool, eval_amp: bool | None) -> Experime
 
 
 @pytest.fixture
-def fake_cuda(monkeypatch) -> AutocastRecorder:
+def fake_cuda(monkeypatch: pytest.MonkeyPatch) -> AutocastRecorder:
     """Route autocast to a recorder and keep batches on the CPU."""
     recorder = AutocastRecorder()
     unpack = trainer_module._unpack_loader_batch
@@ -186,11 +187,19 @@ def test_eval_amp_needs_a_cuda_device(tmp_path: Path, fake_cuda: AutocastRecorde
 class SmallNet(nn.Module):
     """Enough matmuls that fp16 rounding is visible in the scores."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.net = nn.Sequential(nn.Linear(16, 64), nn.Tanh(), nn.Linear(64, 1))
 
-    def forward(self, time_series, graph_features, edge_index, edge_weight, n_stocks, **_kwargs):
+    def forward(
+        self,
+        time_series: torch.Tensor,
+        graph_features: torch.Tensor,
+        edge_index: torch.Tensor,
+        edge_weight: torch.Tensor,
+        n_stocks: int,
+        **_kwargs: object,
+    ) -> torch.Tensor:
         return self.net(graph_features).squeeze(-1)
 
 
@@ -211,9 +220,13 @@ def test_cuda_prediction_matches_fp32_to_1e6(tmp_path: Path) -> None:
     )
     device = torch.device("cuda")
 
-    def predict(use_amp: bool, eval_amp: bool | None):
+    def fresh_net() -> SmallNet:
         net = SmallNet()
         net.load_state_dict(reference_state)
+        return net
+
+    def predict(use_amp: bool, eval_amp: bool | None) -> np.ndarray:
+        net = fresh_net()
         trainer = Trainer(
             model=net,
             config=_config(tmp_path, use_amp, eval_amp),
@@ -222,7 +235,14 @@ def test_cuda_prediction_matches_fp32_to_1e6(tmp_path: Path) -> None:
         )
         return trainer.predict([batch], ["A"] * n_stocks, ["2025-01-03"])
 
-    fp32 = predict(use_amp=False, eval_amp=None)
+    # The fp32 reference comes from the bare network, not from Trainer.predict.
+    reference = fresh_net().to(device).eval()
+    with torch.no_grad():
+        time_series, _labels, graph_features, edge_index, edge_weight = (
+            t.to(device) for t in batch[:5]
+        )
+        fp32 = reference(time_series, graph_features, edge_index, edge_weight, n_stocks)
+        fp32 = fp32.cpu().numpy()
     amp_training_run = predict(use_amp=True, eval_amp=None)
     half_precision_scoring = predict(use_amp=True, eval_amp=True)
 
