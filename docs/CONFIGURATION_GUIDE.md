@@ -276,6 +276,7 @@ Values below reflect **`configs/config.yaml`** merged with **`configs/data/gics_
 | Training | minimum_selection_rows | `1` (eligible validation dates the selection metric needs; a run whose `selection_metric` has fewer raises instead of selecting a checkpoint from an empty metric) |
 | Training | lr_scheduler | `cosine` (linear warmup `warmup_steps` then cosine decay; `none` disables) |
 | Training | use_amp | `true` on CUDA (no-op on CPU) |
+| Training | eval_amp | `false` (validation and prediction run in full precision even when `use_amp` trains under autocast; `true` scores under autocast too, so a member's scores sit on an fp16 grid and can tie) |
 | Tracking | enabled | `true` (local `./mlruns`; set `tracking.enabled=false` to disable) |
 
 Because the base default sets `use_pit_universe: true` against a PIT CSV that is not committed, any run supplying its own panel must pass `data.use_pit_universe=false`. `scripts/ci_smoke.py` does this.

@@ -802,7 +802,10 @@ class TrainingConfig:
                      do not introduce look-ahead bias.
         warmup_steps: Linear LR warmup steps (optimizer steps) before cosine decay
         lr_scheduler: "cosine" (warmup + cosine) or "none" (constant LR)
-        use_amp: Enable CUDA autocast + GradScaler when device is CUDA
+        use_amp: Enable CUDA autocast + GradScaler for training when device is CUDA
+        eval_amp: Also run validation and prediction under CUDA autocast. ``False``
+                  scores in full precision, so a member's scores do not sit on an
+                  fp16 grid and tie (#321); training keeps ``use_amp`` either way.
         selection_metric: "val_ic", "val_rank_ic", or "val_loss" for early stopping / checkpointing
         shuffle_train: Optional override for training DataLoader shuffling. ``None`` keeps
                        the historical behavior: shuffled for static graphs, sequential for
@@ -833,6 +836,7 @@ class TrainingConfig:
     warmup_steps: int = 1000
     lr_scheduler: str = "cosine"
     use_amp: bool = True
+    eval_amp: bool = False
     selection_metric: str = "val_ic"
     minimum_selection_rows: int = 1
     shuffle_train: bool | None = None
@@ -1126,6 +1130,8 @@ class ExperimentConfig:
                 self.training.lambdarank_ic_max_pairs_per_day
             ),
             "training.lambdarank_ic_temperature": self.training.lambdarank_ic_temperature,
+            "training.use_amp": self.training.use_amp,
+            "training.eval_amp": self.training.eval_amp,
             "training.shuffle_train": self.training.shuffle_train,
             "training.dataloader_num_workers": self.training.dataloader_num_workers,
             "training.dataloader_pin_memory": self.training.dataloader_pin_memory,
