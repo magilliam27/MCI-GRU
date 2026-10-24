@@ -14,9 +14,9 @@
   "excess_cumulative_return": 0.013315675372189029,
   "excess_inference": {
     "lags": 0,
-    "method": "hansen_hodrick_uniform_v1"
+    "method": "hansen_hodrick_t_v1"
   },
-  "excess_p_value": 0.17641308898047559,
+  "excess_p_value": 0.18132444111506832,
   "excess_return": 0.014759972847932623,
   "excess_t_stat": 1.3518819301312337,
   "exit_session": 2,
