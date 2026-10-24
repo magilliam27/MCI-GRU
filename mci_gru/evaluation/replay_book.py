@@ -51,15 +51,24 @@ CLOSE_TRANCHES = "close_tranches"
 OPEN_TO_OPEN = "open_to_open"
 STRATEGIES = (CLOSE_TRANCHES, OPEN_TO_OPEN)
 
-# Ticker roots of the S&P 500 issuers that list more than one share class. A kdcode's
-# root is the text before its exchange suffix (``GOOGL.OQ`` -> ``GOOGL``).
+# Ticker roots of the S&P 500 issuers that have listed more than one share class since
+# 2016. A kdcode's root is the text before its exchange suffix (``GOOGL.OQ`` ->
+# ``GOOGL``). Pass ``issuers`` (the CLI's ``--issuer_map``) for any other pair.
 SHARE_CLASS_ISSUERS: dict[str, str] = {
     "GOOG": "Alphabet",
     "GOOGL": "Alphabet",
-    "FOX": "Fox Corporation",
-    "FOXA": "Fox Corporation",
+    "FOX": "Fox",
+    "FOXA": "Fox",
     "NWS": "News Corp",
     "NWSA": "News Corp",
+    "DISCA": "Discovery",
+    "DISCB": "Discovery",
+    "DISCK": "Discovery",
+    "UA": "Under Armour",
+    "UAA": "Under Armour",
+    "LBTYA": "Liberty Global",
+    "LBTYB": "Liberty Global",
+    "LBTYK": "Liberty Global",
 }
 
 
@@ -395,11 +404,13 @@ def build_replay_book(
     panel = panel.assign(kdcode=panel["kdcode"].astype(str), dt=panel["dt"].astype(str))
     traded_panel = panel[["kdcode", "dt", strategy.price]].rename(columns={strategy.price: "close"})
     realized = realized_returns(traded_panel, dates, strategy.legs, kdcodes=kdcodes)
+    priced = price_matrix(traded_panel, kdcodes, "close")
     closes = price_matrix(panel, kdcodes, "close")
-    printed = closes.reindex(dates).notna().to_numpy()
+    # Scored at close D, and holdable as the core sees it: a price in the traded column
+    # on D (the open, for the open-to-open variant).
+    printed = (closes.reindex(dates).notna() & priced.reindex(dates).notna()).to_numpy()
     rankable = member & printed & np.isfinite(scores)
 
-    priced = price_matrix(traded_panel, kdcodes, "close")
     sessions = priced.index.tolist()
     position = {session: t for t, session in enumerate(sessions)}
     prices = priced.to_numpy(dtype=np.float64)
@@ -438,7 +449,9 @@ def build_replay_book(
                 for j in state[0]
                 if j in ranks and j in state[1] and ranks[j] - state[1][j] >= min_rank_drop
             )
-        sleeve_state[sleeve] = (picks.tolist(), ranks)
+        # The gate compares against what the sleeve holds; an empty or unbooked tranche
+        # leaves it in cash.
+        sleeve_state[sleeve] = None
         universe = np.flatnonzero(rankable[i])
         if universe.size:
             w = issuer_weights(universe, keys)
@@ -450,6 +463,7 @@ def build_replay_book(
             continue
         weights = np.full(picks.size, 1.0 / picks.size)
         book[sleeve].append(_tranche(i, sleeve, a, b, picks, weights, prices))
+        sleeve_state[sleeve] = (picks.tolist(), ranks)
         signal_rows.append(i)
         period.append(float(weights @ realized.returns[i, picks]))
         bench_period.append(

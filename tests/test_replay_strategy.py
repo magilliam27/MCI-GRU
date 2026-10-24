@@ -198,6 +198,58 @@ def test_costs_are_booked_on_the_sessions_trades_happen() -> None:
     assert book.costs[book.sessions.index(SESSIONS[1])] == pytest.approx(0.0010)
 
 
+def test_a_name_carried_into_the_next_tranche_trades_only_its_drift() -> None:
+    """A rises 10% in the first hold, B is flat; both are picked again at the rollover.
+
+    Back to equal weight trades 0.025 of each side per unit invested, so the rollover
+    costs c x 0.05 / 1.05 of the book, not a sale and re-purchase of both names."""
+    a = [100.0, 100.0, 110.0] + [110.0] * 13
+    b = [100.0] * 16
+    panel = _panel({"A": a, "B": b})
+    dates = SESSIONS[:5]
+    c = 0.0010
+    costs = CostModel(bid_ask_spread=2 * c, slippage=0.0)
+
+    book = _book(
+        panel,
+        _scores(["A", "B"], ["A", "B"], dates),
+        dates,
+        ["A", "B"],
+        strategy=ReplayStrategy.close_tranches(label_t=5, tranches=1),
+        top_k=2,
+        costs=costs,
+    )
+
+    charged = dict(zip(book.sessions, book.costs, strict=True))
+    assert charged[SESSIONS[1]] == pytest.approx(c)
+    assert charged[SESSIONS[5]] == pytest.approx(c * 0.05 / 1.05)
+
+
+def test_a_missing_exit_is_charged_when_it_is_sold() -> None:
+    """B has no close after session 2: it is sold at that close, and charged there."""
+    a = [100.0] * 16
+    b = [100.0, 100.0, 100.0] + [np.nan] * 13
+    panel = _panel({"A": a, "B": b})
+    dates = SESSIONS[:1]
+    c = 0.0010
+    costs = CostModel(bid_ask_spread=2 * c, slippage=0.0)
+
+    book = _book(
+        panel,
+        _scores(["B", "A"], ["A", "B"], dates),
+        dates,
+        ["A", "B"],
+        strategy=ReplayStrategy.close_tranches(label_t=5, tranches=1),
+        top_k=2,
+        costs=costs,
+    )
+
+    charged = dict(zip(book.sessions, book.costs, strict=True))
+    assert charged[SESSIONS[2]] == pytest.approx(c * 0.5)
+    assert charged[SESSIONS[3]] == 0.0 and charged[SESSIONS[4]] == 0.0
+    assert charged[SESSIONS[5]] == pytest.approx(c * 0.5 / (1.0 - 0.5 * c))
+
+
 # -- One share class per issuer ------------------------------------------------------
 
 
@@ -281,6 +333,23 @@ def test_the_rank_drop_gate_keeps_a_holding_until_its_rank_falls_far_enough() ->
     assert [h["kdcode"] for h in kept.holdings] == ["S0", "S0", "S0"]
     assert [h["kdcode"] for h in dropped.holdings] == ["S0", "S1", "S1"]
     assert dropped.rank_gate["gate_exits"] == 1
+
+
+def test_the_rank_drop_gate_compares_each_sleeve_with_its_own_last_tranche() -> None:
+    """Four sleeves: signal 4 rolls over sleeve 0, opened on signal 0."""
+    kdcodes = [f"S{i}" for i in range(6)]
+    panel = _panel({k: [100.0] * 16 for k in kdcodes})
+    dates = SESSIONS[:5]
+    first = [6, 5, 4, 3, 2, 1]  # S0 rank 1
+    other = [1, 6, 5, 4, 3, 2]  # S0 rank 6 on the dates in between
+    later = [3, 6, 5, 4, 2, 1]  # S0 rank 4 on signal 4: a drop of 3 from sleeve 0's
+    scores = np.array([first, other, other, other, later], dtype=np.float64)
+
+    kept = _book(panel, scores, dates, kdcodes, min_rank_drop=4)
+    dropped = _book(panel, scores, dates, kdcodes, min_rank_drop=3)
+
+    assert [h["kdcode"] for h in kept.holdings] == ["S0", "S1", "S1", "S1", "S0"]
+    assert [h["kdcode"] for h in dropped.holdings] == ["S0", "S1", "S1", "S1", "S1"]
 
 
 # -- Metrics on one daily series -----------------------------------------------------
@@ -406,6 +475,35 @@ def test_outputs_record_input_hashes(tmp_path: Path) -> None:
     files = metrics["inputs"]["prediction_files"]
     assert len(files) == len(list((FIXTURE_ROOT / "run" / "averaged_predictions").glob("*.csv")))
     assert all(len(digest) == 64 for digest in files.values())
+    # The one-row CSV, the only file an --output run writes, carries them too.
+    row = pd.read_csv(out / "backtest_results.csv").iloc[0]
+    assert row["data_file_sha256"] == data_sha
+    assert (
+        isinstance(row["prediction_files_sha256"], str)
+        and len(row["prediction_files_sha256"]) == 64
+    )
+
+
+def test_an_issuer_map_joins_share_classes_the_built_in_map_lacks(tmp_path: Path) -> None:
+    issuer_map = tmp_path / "issuers.csv"
+    pd.DataFrame({"kdcode": ["STK01", "STK02"], "issuer": ["Pair", "Pair"]}).to_csv(
+        issuer_map, index=False
+    )
+    out = _cli(tmp_path, "--issuer_map", str(issuer_map))
+
+    holdings = pd.read_csv(out / "holdings.csv")
+    pair = holdings[holdings["kdcode"].isin(["STK01", "STK02"])]
+    assert len(pair) > 0
+    assert pair.groupby(["signal_date"])["kdcode"].nunique().max() == 1
+    assert set(pair["issuer"]) == {"Pair"}
+    metrics = json.loads((out / "backtest_metrics.json").read_text(encoding="utf-8"))
+    assert metrics["inputs"]["issuer_map_sha256"] == backtest_engine.sha256_file(issuer_map)
+
+
+def test_bhy_without_a_ledger_is_refused_before_the_replay_runs(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        _cli(tmp_path, "--adjustment_method", "bhy")
+    assert not (tmp_path / "run" / "backtest").exists()
 
 
 def test_multi_model_is_gone(tmp_path: Path) -> None:

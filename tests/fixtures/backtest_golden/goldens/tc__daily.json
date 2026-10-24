@@ -104,6 +104,7 @@
   "net_ARR": 0.44810329848769404,
   "net_total_return": 0.09859591323471362,
   "num_trading_days": 64,
+  "period_return_basis": "gross",
   "price": "open",
   "rank_gate_enabled": false,
   "rank_gate_exits": 0,

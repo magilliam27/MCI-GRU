@@ -98,6 +98,7 @@
     "missing_exit": 0
   },
   "num_trading_days": 67,
+  "period_return_basis": "gross",
   "price": "close",
   "rank_gate_enabled": false,
   "rank_gate_exits": 0,

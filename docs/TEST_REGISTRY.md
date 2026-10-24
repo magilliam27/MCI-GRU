@@ -2308,10 +2308,13 @@ The replay trades the trained return and reports one consistent set of metrics (
 | `test_a_missing_exit_books_the_last_close_then_cash_and_is_recorded` | D delists after session 3: its loss is booked, and it is not dropped from the |  |
 | `test_weights_drift_with_prices_inside_a_tranche` | A doubles then doubles again; B is flat. Buy and hold: the second day returns |  |
 | `test_costs_are_booked_on_the_sessions_trades_happen` |  |  |
+| `test_a_name_carried_into_the_next_tranche_trades_only_its_drift` | A rises 10% in the first hold, B is flat; both are picked again at the rollover. |  |
+| `test_a_missing_exit_is_charged_when_it_is_sold` | B has no close after session 2: it is sold at that close, and charged there. |  |
 | `test_the_portfolio_holds_one_share_class_per_issuer` |  |  |
 | `test_the_benchmark_weights_the_issuer_once` |  |  |
 | `test_the_open_to_open_variant_buys_open_d_plus_1_and_sells_open_d_plus_2` |  |  |
 | `test_the_rank_drop_gate_keeps_a_holding_until_its_rank_falls_far_enough` |  |  |
+| `test_the_rank_drop_gate_compares_each_sleeve_with_its_own_last_tranche` | Four sleeves: signal 4 rolls over sleeve 0, opened on signal 0. |  |
 | `test_drawdown_starts_from_one` |  |  |
 | `test_information_ratio_is_annualised` |  |  |
 | `test_standard_sharpe_sits_beside_the_papers_asr` |  |  |
@@ -2319,6 +2322,8 @@ The replay trades the trained return and reports one consistent set of metrics (
 | `test_holm_for_one_strategy_and_bhy_only_with_the_trial_ledger` |  |  |
 | `test_every_metric_and_file_reads_one_daily_series` |  |  |
 | `test_outputs_record_input_hashes` |  |  |
+| `test_an_issuer_map_joins_share_classes_the_built_in_map_lacks` |  |  |
+| `test_bhy_without_a_ledger_is_refused_before_the_replay_runs` |  |  |
 | `test_multi_model_is_gone` | It averaged member metrics (not the ensemble the run reports) and found no folders. |  |
 | `test_the_replay_top_k_excess_equals_the_in_run_summary` | Against the summary the run wrote, and the one #337 re-scores from its inputs. | parametrize, parametrize |
 

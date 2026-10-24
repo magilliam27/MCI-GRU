@@ -25,9 +25,9 @@ tranche schedule. Not the published S&P 500 (cap-weighted).
 Metrics, all on one daily series (the book's sessions from first entry to last exit):
 - ARR (geometric), AVoL, ``sharpe`` (mean / sd x sqrt 252), ``ASR`` (the paper's
   ARR / AVoL), MDD (from a starting value of 1.0), CR, IR (annualised).
-- ``top_k_excess_period_return``: mean per signal date of the top-k hold return over
-  the universe's, with a Hansen-Hodrick t-stat; the in-run summary reports the same
-  number for the same legs.
+- ``top_k_excess_period_return``: mean over booked tranches of the top-k hold return
+  over the universe's, gross of costs, with a Hansen-Hodrick t-stat; with one tranche
+  per held session (the default) it is the in-run summary's number for the same legs.
 - Multiple testing: Holm or Bonferroni for one strategy; BHY only with a trial ledger
   holding every other trial's p-value.
 - No MSE or MAE: they measure the scale of IC-loss scores, not accuracy (E7).
@@ -54,6 +54,7 @@ Usage:
 """
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -127,12 +128,12 @@ BENCHMARK = "equal_weight_pit_universe_issuer_once"
 # ============================================================================
 
 
-def _finite(values) -> np.ndarray:
+def _finite(values: Any) -> np.ndarray:
     arr = np.asarray(values, dtype=np.float64)
     return arr[np.isfinite(arr)]
 
 
-def calculate_arr(daily_returns, trading_days=252):
+def calculate_arr(daily_returns: Any, trading_days: int = 252) -> float:
     """Annualised rate of return, geometric: ``prod(1 + r) ** (252 / T) - 1``."""
     r = _finite(daily_returns)
     if r.size == 0:
@@ -140,7 +141,7 @@ def calculate_arr(daily_returns, trading_days=252):
     return float(np.prod(1.0 + r) ** (trading_days / r.size) - 1.0)
 
 
-def calculate_avol(daily_returns, trading_days=252):
+def calculate_avol(daily_returns: Any, trading_days: int = 252) -> float:
     """Annualised volatility: ``std(r, ddof=1) * sqrt(252)``."""
     r = _finite(daily_returns)
     if r.size < 2:
@@ -148,7 +149,7 @@ def calculate_avol(daily_returns, trading_days=252):
     return float(np.std(r, ddof=1) * np.sqrt(trading_days))
 
 
-def calculate_sharpe(daily_returns, trading_days=252):
+def calculate_sharpe(daily_returns: Any, trading_days: int = 252) -> float:
     """Standard annualised Sharpe, no risk-free rate: ``mean / std(ddof=1) * sqrt(252)``."""
     r = _finite(daily_returns)
     if r.size < 2:
@@ -159,7 +160,7 @@ def calculate_sharpe(daily_returns, trading_days=252):
     return float(np.mean(r) / sd * np.sqrt(trading_days))
 
 
-def calculate_mdd(daily_returns):
+def calculate_mdd(daily_returns: Any) -> float:
     """Maximum drawdown of the wealth path that starts at 1.0, as a negative number.
 
     The starting value counts as a peak, so a loss on the first session is a drawdown.
@@ -172,28 +173,28 @@ def calculate_mdd(daily_returns):
     return -float(np.max((peaks - values) / peaks))
 
 
-def drawdown_path(daily_returns) -> np.ndarray:
+def drawdown_path(daily_returns: Any) -> np.ndarray:
     """Drawdown after each session, from a starting value of 1.0 (<= 0)."""
     values = np.concatenate([[1.0], np.cumprod(1.0 + np.asarray(daily_returns, dtype=float))])
     peaks = np.maximum.accumulate(values)
     return (values / peaks - 1.0)[1:]
 
 
-def calculate_asr(arr, avol):
+def calculate_asr(arr: float, avol: float) -> float:
     """The paper's ASR: geometric ARR over AVoL. Not a standard Sharpe; see ``sharpe``."""
     if avol == 0 or np.isnan(avol):
         return 0.0
     return arr / avol
 
 
-def calculate_cr(arr, mdd):
+def calculate_cr(arr: float, mdd: float) -> float:
     """Calmar ratio: ARR / |MDD|."""
     if mdd == 0 or np.isnan(mdd):
         return 0.0
     return arr / abs(mdd)
 
 
-def calculate_ir(portfolio_returns, benchmark_returns, trading_days=252):
+def calculate_ir(portfolio_returns: Any, benchmark_returns: Any, trading_days: int = 252) -> float:
     """Annualised information ratio: ``mean(r - b) / std(r - b) * sqrt(252)``.
 
     The two series must share sessions; they are never truncated to align.
@@ -205,7 +206,9 @@ def calculate_ir(portfolio_returns, benchmark_returns, trading_days=252):
     return calculate_sharpe(r - b, trading_days)
 
 
-def portfolio_metrics(daily_returns, benchmark_returns, trading_days=252) -> dict[str, float]:
+def portfolio_metrics(
+    daily_returns: Any, benchmark_returns: Any, trading_days: int = 252
+) -> dict[str, float]:
     """The paper's metrics and a standard Sharpe, all on one daily series."""
     r = np.asarray(daily_returns, dtype=np.float64)
     b = np.asarray(benchmark_returns, dtype=np.float64)
@@ -231,7 +234,9 @@ def portfolio_metrics(daily_returns, benchmark_returns, trading_days=252) -> dic
     }
 
 
-def monthly_performance(sessions, portfolio_returns, benchmark_returns) -> pd.DataFrame:
+def monthly_performance(
+    sessions: list[str], portfolio_returns: Any, benchmark_returns: Any
+) -> pd.DataFrame:
     """Calendar-month returns, compounded from the daily series."""
     frame = pd.DataFrame(
         {
@@ -261,7 +266,7 @@ def monthly_performance(sessions, portfolio_returns, benchmark_returns) -> pd.Da
 # procedure over every trial's p-value, so it is applied only with a trial ledger.
 
 
-def calculate_t_statistic(sharpe_ratio, num_years):
+def calculate_t_statistic(sharpe_ratio: float, num_years: float) -> float:
     """
     Convert Sharpe Ratio to t-statistic.
 
@@ -283,7 +288,7 @@ def calculate_t_statistic(sharpe_ratio, num_years):
     return sharpe_ratio * np.sqrt(num_years)
 
 
-def t_stat_to_p_value(t_stat):
+def t_stat_to_p_value(t_stat: float) -> float:
     """
     Convert t-statistic to two-tailed p-value.
 
@@ -297,7 +302,7 @@ def t_stat_to_p_value(t_stat):
     return 2 * (1 - stats.norm.cdf(abs(t_stat)))
 
 
-def p_value_to_t_stat(p_value):
+def p_value_to_t_stat(p_value: float) -> float:
     """
     Convert p-value to t-statistic.
 
@@ -314,7 +319,7 @@ def p_value_to_t_stat(p_value):
     return stats.norm.ppf(1 - p_value / 2)
 
 
-def adjust_p_value_bonferroni(p_value, num_tests):
+def adjust_p_value_bonferroni(p_value: float, num_tests: int) -> float:
     """
     Bonferroni p-value adjustment (most stringent FWER method).
 
@@ -343,7 +348,7 @@ def adjust_p_value_bonferroni(p_value, num_tests):
     return adjusted_p
 
 
-def adjust_p_value_holm(p_value, rank, num_tests):
+def adjust_p_value_holm(p_value: float, rank: int, num_tests: int) -> float:
     """
     Holm p-value adjustment (step-down FWER method).
 
@@ -458,7 +463,7 @@ def multiple_testing(
 # ============================================================================
 
 
-def resolve_data_file(filename):
+def resolve_data_file(filename: str) -> str:
     """Resolve the named data file, as given or relative to the project root.
 
     A same-named file elsewhere is never substituted (#339, the #223 class).
@@ -466,7 +471,9 @@ def resolve_data_file(filename):
     return str(resolve_project_data_path(filename, allow_basename_fallback=False))
 
 
-def load_stock_data(filename, start_date=None, end_date=None):
+def load_stock_data(
+    filename: str, start_date: str | None = None, end_date: str | None = None
+) -> pd.DataFrame:
     """
     Load stock data from CSV file.
 
@@ -549,35 +556,6 @@ def replay_universe(config: dict, predictions_df: pd.DataFrame) -> pd.DataFrame 
     )
 
 
-def _pit_active_rows(
-    stock_data_df: pd.DataFrame, pit_universe_df: pd.DataFrame | None
-) -> pd.DataFrame:
-    """Rows at session t whose stock was a member on the session before t.
-
-    A trade entering on t was ranked on t-1, so its candidates were admitted on
-    t-1's membership; the benchmark uses the same date, which keeps out names that
-    join on t. The panel's first session has no ranking date and no benchmark row.
-    """
-    if pit_universe_df is None:
-        return stock_data_df
-    sessions = sorted(stock_data_df["dt"].unique())
-    ranked_on = dict(zip(sessions[1:], sessions[:-1], strict=True))
-    frame = stock_data_df.assign(
-        _membership_dt=stock_data_df["dt"].map(ranked_on),
-        _kdcode=stock_data_df["kdcode"].astype(str),
-    )
-    pit = pit_universe_df[["kdcode", "valid_from", "valid_to"]].rename(
-        columns={"kdcode": "_kdcode"}
-    )
-    merged = frame.merge(pit.assign(_kdcode=pit["_kdcode"].astype(str)), on="_kdcode")
-    mask = (
-        merged["_membership_dt"].notna()
-        & (merged["_membership_dt"] >= merged["valid_from"])
-        & (merged["_membership_dt"] <= merged["valid_to"])
-    )
-    return merged.loc[mask, stock_data_df.columns].drop_duplicates(subset=["kdcode", "dt"])
-
-
 def _pit_active_kdcodes_on_date(pit_universe_df: pd.DataFrame | None, date: str) -> set[str] | None:
     if pit_universe_df is None:
         return None
@@ -585,7 +563,7 @@ def _pit_active_kdcodes_on_date(pit_universe_df: pd.DataFrame | None, date: str)
     return set(pit_universe_df.loc[mask, "kdcode"].astype(str))
 
 
-def load_predictions(predictions_dir):
+def load_predictions(predictions_dir: str) -> pd.DataFrame:
     """
     Load model predictions from CSV files.
 
@@ -619,16 +597,26 @@ def load_predictions(predictions_dir):
     return predictions_df
 
 
-def prediction_file_digests(predictions_dir) -> dict[str, str]:
+def read_issuer_map(path: str) -> dict[str, str]:
+    """kdcode -> issuer from a CSV with ``kdcode`` and ``issuer`` columns."""
+    frame = pd.read_csv(path, dtype=str)
+    missing = {"kdcode", "issuer"} - set(frame.columns)
+    if missing:
+        raise ValueError(f"issuer map {path} lacks column(s) {sorted(missing)}")
+    return dict(zip(frame["kdcode"].str.strip(), frame["issuer"].str.strip(), strict=True))
+
+
+def prediction_file_digests(predictions_dir: str) -> dict[str, str]:
     """SHA-256 of every prediction CSV, by file name."""
     return {
         Path(f).name: sha256_file(f) for f in sorted(glob(os.path.join(predictions_dir, "*.csv")))
     }
 
 
-def input_record(predictions_dir, config: dict) -> dict[str, Any]:
+def input_record(predictions_dir: str, config: dict) -> dict[str, Any]:
     """What the replay read, by path and SHA-256, for every output it writes."""
     pit = config.get("pit_universe_csv")
+    issuer_map = config.get("issuer_map")
     return {
         "run_dir": config.get("run_dir"),
         "data_file": str(config["data_file"]),
@@ -636,6 +624,8 @@ def input_record(predictions_dir, config: dict) -> dict[str, Any]:
         "pit_universe_csv": str(pit) if pit else None,
         "pit_universe_sha256": sha256_file(pit) if pit else None,
         "pit_export_cutoff": config.get("pit_export_cutoff"),
+        "issuer_map": str(issuer_map) if issuer_map else None,
+        "issuer_map_sha256": sha256_file(issuer_map) if issuer_map else None,
         "predictions_dir": str(predictions_dir),
         "prediction_files": prediction_file_digests(predictions_dir),
     }
@@ -683,7 +673,7 @@ def _min_rank_drop(config: dict) -> int | None:
     return int(gate.get("min_rank_drop", 10)) if gate.get("enabled", False) else None
 
 
-def replay(predictions_dir, config: dict) -> tuple[dict[str, Any], ReplayBook]:
+def replay(predictions_dir: str, config: dict) -> tuple[dict[str, Any], ReplayBook]:
     """Trade the saved predictions under ``config`` and score the book.
 
     Returns the metrics and the book every output file is written from.
@@ -731,14 +721,14 @@ def replay(predictions_dir, config: dict) -> tuple[dict[str, Any], ReplayBook]:
         members=members,
         costs=_cost_model(config),
         min_rank_drop=_min_rank_drop(config),
-        issuers=config.get("issuers"),
+        issuers=read_issuer_map(config["issuer_map"]) if config.get("issuer_map") else None,
     )
     results = replay_metrics(book, config)
     results["inputs"] = input_record(predictions_dir, config)
     return results, book
 
 
-def evaluate(predictions_dir, config=None):
+def evaluate(predictions_dir: str, config: dict | None = None) -> dict[str, Any]:
     """The replay's metrics (see :func:`replay` for the book as well)."""
     results, _ = replay(predictions_dir, config)
     return results
@@ -767,6 +757,8 @@ def replay_metrics(book: ReplayBook, config: dict) -> dict[str, Any]:
         events[event["kind"]] += 1
     results.update(
         {
+            # Per-hold returns are gross of costs; the daily metrics above are net.
+            "period_return_basis": "gross",
             "top_k_abs_period_return": _mean(book.period_returns),
             "benchmark_period_return": _mean(book.benchmark_period_returns),
             "top_k_excess_period_return": _mean(excess),
@@ -808,14 +800,18 @@ def replay_metrics(book: ReplayBook, config: dict) -> dict[str, Any]:
     return results
 
 
-def _mean(values) -> float:
+def _mean(values: Any) -> float:
     finite = _finite(values)
     return float(np.mean(finite)) if finite.size else float("nan")
 
 
 def print_results(
-    results, model_name="MCI-GRU", num_tests=1, adjustment_method="holm", trial_ledger=None
-):
+    results: dict[str, Any],
+    model_name: str = "MCI-GRU",
+    num_tests: int = 1,
+    adjustment_method: str = "holm",
+    trial_ledger: str | None = None,
+) -> None:
     """Print the replay's metrics."""
     line = "  " + "-" * 66
     print("\n" + "=" * 70)
@@ -878,7 +874,12 @@ def print_results(
     print("=" * 70 + "\n")
 
 
-def significance_fields(results, num_tests=1, adjustment_method="holm", trial_ledger=None):
+def significance_fields(
+    results: dict[str, Any],
+    num_tests: int = 1,
+    adjustment_method: str = "holm",
+    trial_ledger: str | None = None,
+) -> dict[str, Any]:
     """The multiple-testing columns saved beside the metrics."""
     s = multiple_testing(
         results["sharpe"],
@@ -899,10 +900,29 @@ def significance_fields(results, num_tests=1, adjustment_method="holm", trial_le
     }
 
 
-def save_results(results, output_path, num_tests=1, adjustment_method="holm", trial_ledger=None):
+def save_results(
+    results: dict[str, Any],
+    output_path: str,
+    num_tests: int = 1,
+    adjustment_method: str = "holm",
+    trial_ledger: str | None = None,
+) -> None:
     """Save the metrics and their significance as a one-row CSV."""
     flat = {k: v for k, v in results.items() if not isinstance(v, dict)}
     flat.update(results["missing_close_events"])
+    inputs = results.get("inputs") or {}
+    flat.update(
+        {
+            "data_file_sha256": inputs.get("data_file_sha256"),
+            "pit_universe_sha256": inputs.get("pit_universe_sha256"),
+            "issuer_map_sha256": inputs.get("issuer_map_sha256"),
+            # One digest over every prediction file's name and SHA-256 (listed in full
+            # in backtest_metrics.json).
+            "prediction_files_sha256": hashlib.sha256(
+                json.dumps(inputs.get("prediction_files") or {}, sort_keys=True).encode()
+            ).hexdigest(),
+        }
+    )
     flat.update(significance_fields(results, num_tests, adjustment_method, trial_ledger))
     pd.DataFrame([flat]).to_csv(output_path, index=False)
     print(f"Results saved to {output_path}")
@@ -1048,7 +1068,9 @@ def save_backtest_results(
     return backtest_dir
 
 
-def plot_equity_curve(book: ReplayBook, output_path=None, title_suffix=""):
+def plot_equity_curve(
+    book: ReplayBook, output_path: str | None = None, title_suffix: str = ""
+) -> None:
     """Portfolio, benchmark and relative wealth from the book's one daily series."""
     if output_path:
         matplotlib.use("Agg", force=True)
@@ -1331,6 +1353,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="open_to_open with --holding_period > 1: 'staggered' = one sleeve per held "
         "session; 'block' = one sleeve rebalanced every holding_period signal dates.",
     )
+    parser.add_argument(
+        "--issuer_map",
+        type=str,
+        default=None,
+        help="CSV of kdcode,issuer for share-class pairs beyond the built-in map "
+        "(Alphabet, Fox, News Corp, Discovery, Under Armour, Liberty Global)",
+    )
     parser.add_argument("--output", type=str, default=None, help="Output path for results CSV")
     parser.add_argument("--plot", action="store_true", help="Generate equity curve plot")
     parser.add_argument(
@@ -1429,14 +1458,14 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None):
+def main(argv: list[str] | None = None) -> dict[str, Any]:
     parser = build_parser()
     args = parser.parse_args(argv)
 
     if args.strategy is None and (args.holding_period is not None or args.rebalance_style):
         args.strategy = OPEN_TO_OPEN
         print("NOTE: --holding_period/--rebalance_style select the open_to_open variant.")
-    if args.adjustment_method == "bhy" and not args.trial_ledger and args.num_tests > 1:
+    if args.adjustment_method == "bhy" and not args.trial_ledger:
         parser.error(
             "--adjustment_method bhy adjusts a family of p-values: pass --trial_ledger with "
             "every other trial's p-value, or use holm/bonferroni for one strategy"
@@ -1498,6 +1527,7 @@ def main(argv: list[str] | None = None):
         "tranches": args.tranches,
         "holding_period": args.holding_period,
         "rebalance_style": args.rebalance_style,
+        "issuer_map": args.issuer_map,
         "transaction_costs": {
             "enabled": args.transaction_costs,
             "bid_ask_spread": args.spread / 10000.0,  # Convert bps to decimal

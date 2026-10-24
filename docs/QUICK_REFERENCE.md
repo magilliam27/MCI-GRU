@@ -36,7 +36,7 @@ sell at close `D+label_t`, in staggered tranches (four for `label_t=5`), with
 buy-and-hold weights inside a tranche, against the equal-weight PIT universe with
 each issuer counted once. Price returns only. A held name with no exit close is
 sold at its last close, the tranche holds cash, and the event is logged. At most
-one share class per issuer is held (#340).
+one share class per issuer is held (#340); `--issuer_map` (a kdcode,issuer CSV) adds pairs the built-in map lacks.
 
 ```bash
 # Default: close D+1 to close D+5 in four tranches
