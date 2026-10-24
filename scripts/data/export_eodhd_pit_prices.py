@@ -23,7 +23,9 @@ What it writes under ``--package-root``, as a package beside the LSEG one:
   received, and the pull's provenance and findings.
 
 Prices are split-adjusted from EODHD's split records, plus the corporate actions
-the reviewed symbol map declares. A name with an LSEG delisted code (``^``)
+the reviewed symbol map declares. Volume arrives already split-adjusted, up to
+the day the vendor served it, so only splits after the panel end are taken back
+out of it (#347). A name with an LSEG delisted code (``^``)
 stops at its last trade: a final run of rows that repeat the previous close at
 zero volume is dropped and listed per name as ``carried_tail_dropped``.
 
@@ -46,6 +48,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -57,6 +60,7 @@ from mci_gru.data.eodhd_prices import (
     SymbolPlan,
     SymbolSegment,
     adjustment_basis_summary,
+    adjustments_on_split_dates,
     agreement_passes,
     apply_adjustments,
     assemble_panel,
@@ -101,6 +105,8 @@ class EodhdClient:
         self._cache = cache_dir
         self._raw = raw_log
         self.calls = 0
+        #: When the vendor served the last response read, cached or fresh (ISO UTC).
+        self.last_retrieved_at: str | None = None
 
     def _get(self, kind: str, name: str, path: str, params: dict[str, str]) -> Any:
         """One request, served from the cache when the same path and parameters were read.
@@ -115,6 +121,7 @@ class EodhdClient:
             envelope = json.loads(cache_path.read_text(encoding="utf-8"))
             record.update(envelope, from_cache=True)
             self._raw.append(record)
+            self.last_retrieved_at = envelope.get("retrieved_at")
             return envelope["body"]
         query = urllib.parse.urlencode({**params, "api_token": self._key, "fmt": "json"})
         url = f"{API_ROOT}/{urllib.parse.quote(path, safe='/.-_')}?{query}"
@@ -158,6 +165,7 @@ class EodhdClient:
         cache_path.write_text(json.dumps(envelope), encoding="utf-8")
         record.update(envelope, from_cache=False)
         self._raw.append(record)
+        self.last_retrieved_at = envelope["retrieved_at"]
         return body
 
     def eod(self, symbol: str, start: str, end: str) -> list[dict[str, Any]]:
@@ -261,23 +269,80 @@ def _git_commit() -> str | None:
     return result.stdout.strip() or None
 
 
+@dataclass(frozen=True)
+class VendorBasis:
+    """What one symbol's rows were adjusted with, kept for the symbol a segment chooses."""
+
+    splits: pd.DataFrame
+    later: pd.DataFrame
+    served: str
+
+    def later_dict(self) -> dict[str, float]:
+        return {
+            str(d): float(r) for d, r in zip(self.later["dt"], self.later["ratio"], strict=True)
+        }
+
+
 def read_symbol(
     client: EodhdClient, kdcode: str, symbol: str, args: argparse.Namespace
-) -> tuple[pd.DataFrame, list[Finding]]:
-    """One symbol's split-adjusted rows over the pull span.
+) -> tuple[pd.DataFrame, list[Finding], VendorBasis | None]:
+    """One symbol's split-adjusted rows over the pull span, and the basis they were put on.
 
-    Vendor rows that cannot be read become a blocking finding and no rows.
+    The vendor's volume carries every split it had recorded when it served the
+    rows, so the splits between the panel end and that day are read too and
+    taken back out of volume. A response with no serving time cannot be put on
+    a known basis, so it blocks, as do vendor rows that cannot be read; both
+    come back with no rows.
     """
     try:
         eod = eod_rows_frame(client.eod(symbol, args.start, args.end))
+        retrieved_at = client.last_retrieved_at
         eod = eod[(eod["dt"] >= args.start) & (eod["dt"] <= args.end)]
         if eod.empty:
-            return eod.reset_index(drop=True), []
+            return eod.reset_index(drop=True), [], None
+        if not retrieved_at:
+            detail = f"{symbol}: the vendor response records no serving time, so its volume basis is unknown"
+            return (
+                eod_rows_frame([]),
+                [Finding(kdcode, "vendor_serve_time_unknown", True, detail)],
+                None,
+            )
+        served = str(retrieved_at)[:10]
         splits = splits_frame(client.splits(symbol, args.start, args.end), as_of=args.end)
+        later = splits_frame([], as_of=args.end)
+        if served > args.end:
+            later = splits_frame(
+                client.splits(symbol, args.end, served), as_of=served, after=args.end
+            )
     except (ValueError, KeyError, TypeError) as error:
         detail = f"{symbol}: vendor rows could not be read ({error})"
-        return eod_rows_frame([]), [Finding(kdcode, "vendor_rows_invalid", True, detail)]
-    return split_adjust(eod, splits).reset_index(drop=True), []
+        return eod_rows_frame([]), [Finding(kdcode, "vendor_rows_invalid", True, detail)], None
+    basis = VendorBasis(splits, later, served)
+    return split_adjust(eod, splits, later).reset_index(drop=True), [], basis
+
+
+def basis_findings(
+    plan: SymbolPlan, symbol: str, basis: VendorBasis, segment: SymbolSegment
+) -> list[Finding]:
+    """Findings about the symbol a segment chose: a declared event the vendor now records, and later splits."""
+    findings = adjustments_on_split_dates(plan.kdcode, symbol, basis.splits, plan.adjustments)
+    if len(basis.later):
+        findings.append(
+            Finding(
+                plan.kdcode,
+                "volume_rebased_for_later_split",
+                False,
+                f"{symbol}: the vendor's volume carries splits after the panel end; "
+                "volume is divided by their ratios to sit on the panel end's basis",
+                {
+                    "symbol": symbol,
+                    "segment": _segment_dict(segment),
+                    "served": basis.served,
+                    "splits": basis.later_dict(),
+                },
+            )
+        )
+    return findings
 
 
 def resolve_segment(
@@ -303,7 +368,7 @@ def resolve_segment(
         window = check_window(need, reference, segment)
     tried: list[dict[str, Any]] = []
     findings: list[Finding] = []
-    fallback: tuple[pd.DataFrame, str, int] | None = None
+    fallback: tuple[pd.DataFrame, str, int, VendorBasis] | None = None
 
     def candidates():
         yield from segment.candidates
@@ -320,7 +385,7 @@ def resolve_segment(
         if symbol in seen:
             continue
         seen.add(symbol)
-        rows, symbol_findings = read_symbol(client, plan.kdcode, symbol, args)
+        rows, symbol_findings, basis = read_symbol(client, plan.kdcode, symbol, args)
         rows = clip_segment(rows, segment).reset_index(drop=True)
         entry: dict[str, Any] = {"symbol": symbol, "rows": len(rows)}
         if rows.empty:
@@ -328,21 +393,24 @@ def resolve_segment(
             findings.extend(symbol_findings)
             continue
         symbol_findings += split_basis_findings(plan.kdcode, symbol, rows, exempt)
+        symbol_findings += basis_findings(plan, symbol, basis, segment)
         rows, blanked = clean_values(rows)
         if fallback is None:
-            fallback = (rows, symbol, blanked)
+            fallback = (rows, symbol, blanked, basis)
             fallback_findings = symbol_findings
         if window is None:
             tried.append(entry)
             findings.extend(symbol_findings)
-            return rows, _chosen(segment, symbol, tried, blanked, "first_with_rows"), findings
+            choice = _chosen(segment, symbol, tried, blanked, "first_with_rows", basis)
+            return rows, choice, findings
         proof, _, _ = apply_adjustments(plan.kdcode, rows, plan.adjustments)
         stats = return_agreement(proof, reference, *window, accepted=plan.accepted_differences)
         entry.update(stats)
         tried.append(entry)
         if agreement_passes(stats):
             findings.extend(symbol_findings)
-            return rows, _chosen(segment, symbol, tried, blanked, "reference_match"), findings
+            choice = _chosen(segment, symbol, tried, blanked, "reference_match", basis)
+            return rows, choice, findings
     if fallback is None:
         findings.append(
             Finding(
@@ -354,7 +422,7 @@ def resolve_segment(
             )
         )
         return pd.DataFrame(), _chosen(segment, None, tried, 0, "none"), findings
-    rows, symbol, blanked = fallback
+    rows, symbol, blanked, basis = fallback
     findings.extend(fallback_findings)
     findings.append(
         Finding(
@@ -366,7 +434,7 @@ def resolve_segment(
             {"segment": _segment_dict(segment), "window": list(window), "tried": tried},
         )
     )
-    return rows, _chosen(segment, symbol, tried, blanked, "unmatched_fallback"), findings
+    return rows, _chosen(segment, symbol, tried, blanked, "unmatched_fallback", basis), findings
 
 
 def _segment_dict(segment: SymbolSegment) -> dict[str, Any]:
@@ -378,13 +446,16 @@ def _segment_dict(segment: SymbolSegment) -> dict[str, Any]:
     }
 
 
-def _chosen(segment, symbol, tried, blanked, how) -> dict[str, Any]:
+def _chosen(segment, symbol, tried, blanked, how, basis=None) -> dict[str, Any]:
     return {
         **_segment_dict(segment),
         "symbol": symbol,
         "chosen_by": how,
         "values_blanked": blanked,
         "tried": tried,
+        # When the vendor served the rows, and the later splits taken out of their volume.
+        "served": basis.served if basis else None,
+        "volume_later_splits": basis.later_dict() if basis else {},
     }
 
 
@@ -525,8 +596,9 @@ def main(argv: list[str] | None = None) -> int:
     meta = {
         "created_at_utc": acquired_at,
         "source": "eodhd.com /api/eod, /api/splits, /api/exchange-symbol-list",
-        "adjustment": "split-adjusted from EODHD split records as of the panel end; "
-        "dividends not applied",
+        "adjustment": "prices split-adjusted from EODHD split records as of the panel end; "
+        "volume as the vendor delivers it (already split-adjusted), less splits after the "
+        "panel end; dividends not applied",
         "repository_commit": _git_commit(),
         "start": args.start,
         "end": args.end,

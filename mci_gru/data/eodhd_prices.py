@@ -13,12 +13,16 @@ What this module decides:
   reviewed symbol map overrides the rest. These are renamed, reused or
   predecessor tickers, given as dated segments with candidate symbols and an
   optional company-name hint.
-- **The adjustment basis.** EODHD's daily open, high, low, close and volume are
-  raw. They are split-adjusted here from EODHD's own split records, as of the
-  panel end: prices before a split are divided by its ratio and volumes are
-  multiplied by it. EODHD's ``adjusted_close`` (splits and dividends) is kept
-  only to check the split handling. A wrong split would show as a jump in the
-  ratio between the two.
+- **The adjustment basis.** EODHD's daily open, high, low and close are raw, but
+  its volume is not: the vendor delivers volume already split-adjusted for every
+  split in its records when the response is served, including splits after the
+  panel end (#347). Prices are split-adjusted here from EODHD's own split
+  records, as of the panel end: prices before a split are divided by its ratio.
+  Volume is left as delivered for those splits, and is divided by the ratio of
+  any split after the panel end, so both sit on the panel end's share basis.
+  EODHD's ``adjusted_close`` (splits and dividends) is kept only to check the
+  split handling. A wrong split would show as a jump in the ratio between the
+  two.
 - **Corporate actions the split records miss.** A spin-off changes the price
   basis without a split. The map can declare one per identifier: prices before
   its date are multiplied by a stated factor, or by the step EODHD's
@@ -110,7 +114,10 @@ class PriceAdjustment:
     date. That close is split-adjusted to the end of the pull, so ``cash`` must be
     stated on the same basis: divide the nominal amount by any later split ratio.
     ``share_conversion`` marks a change in share count, such as a merger
-    exchange ratio, so volume before the date is divided by the factor too.
+    exchange ratio, so volume before the date is divided by the factor too. That
+    is right only because the vendor's volume does not carry an event its split
+    records lack: an adjustment dated on one of the symbol's split records
+    blocks (see ``adjustments_on_split_dates``).
     """
 
     date: str
@@ -426,12 +433,14 @@ def eod_rows_frame(rows: Iterable[Mapping[str, Any]]) -> pd.DataFrame:
     return frame.sort_values("dt").reset_index(drop=True)
 
 
-def splits_frame(rows: Iterable[Mapping[str, Any]], *, as_of: str) -> pd.DataFrame:
-    """EODHD ``/splits`` rows on or before ``as_of`` as ``dt, ratio``."""
+def splits_frame(
+    rows: Iterable[Mapping[str, Any]], *, as_of: str, after: str | None = None
+) -> pd.DataFrame:
+    """EODHD ``/splits`` rows on or before ``as_of`` (and after ``after``) as ``dt, ratio``."""
     records = [
         {"dt": str(row["date"]), "ratio": parse_split_ratio(row["split"])}
         for row in rows
-        if str(row["date"]) <= as_of
+        if str(row["date"]) <= as_of and (after is None or str(row["date"]) > after)
     ]
     frame = pd.DataFrame(records, columns=["dt", "ratio"])
     if frame["dt"].duplicated().any():
@@ -439,21 +448,65 @@ def splits_frame(rows: Iterable[Mapping[str, Any]], *, as_of: str) -> pd.DataFra
     return frame.sort_values("dt").reset_index(drop=True)
 
 
-def split_adjust(eod: pd.DataFrame, splits: pd.DataFrame) -> pd.DataFrame:
-    """Split-adjust raw OHLCV as of the last split given.
-
-    A split dated D (its first session on the new basis) divides every price
-    before D by its ratio and multiplies every volume before D by it.
-    """
-    out = eod.copy()
-    factor = np.ones(len(out))
-    dates = out["dt"].to_numpy()
+def _split_factor(dates: np.ndarray, splits: pd.DataFrame | None) -> np.ndarray:
+    """Per row, the product of the ratios of every split dated after the row."""
+    factor = np.ones(len(dates))
+    if splits is None:
+        return factor
     for split_dt, ratio in zip(splits["dt"], splits["ratio"], strict=True):
         factor[dates < split_dt] *= ratio
+    return factor
+
+
+def split_adjust(
+    eod: pd.DataFrame, splits: pd.DataFrame, later_splits: pd.DataFrame | None = None
+) -> pd.DataFrame:
+    """Put EODHD's raw prices and its split-adjusted volume on the panel end's basis.
+
+    ``splits`` are the split records up to the panel end. A split dated D (its
+    first session on the new basis) divides every price before D by its ratio.
+    Volume already carries it: the vendor delivers volume adjusted for every
+    split in its records (AAPL's 2020-08-28 volume is about four times the shares
+    traded that day), so it is left as delivered. Multiplying it again applied
+    each split twice (#347).
+
+    ``later_splits`` are the records after the panel end, up to when the vendor
+    served the rows. The vendor's volume carries those too while the prices do
+    not, so volume before each is divided by its ratio.
+    """
+    out = eod.copy()
+    dates = out["dt"].to_numpy()
+    factor = _split_factor(dates, splits)
     for column in PRICE_FIELDS:
         out[column] = out[column] / factor
-    out["volume"] = out["volume"] * factor
+    out["volume"] = out["volume"] / _split_factor(dates, later_splits)
     return out
+
+
+def adjustments_on_split_dates(
+    kdcode: str, symbol: str, splits: pd.DataFrame, adjustments: Iterable[PriceAdjustment]
+) -> list[Finding]:
+    """Declared adjustments dated on one of the symbol's own split records; these block.
+
+    The map declares an event because the split records miss it. Once the vendor
+    records it as a split, prices would be restated twice, and a share conversion
+    would rescale volume the vendor may already have rescaled.
+    """
+    split_dates = set(splits["dt"])
+    clashes = sorted({a.date for a in adjustments if a.date in split_dates})
+    if not clashes:
+        return []
+    ratios = {str(d): float(r) for d, r in zip(splits["dt"], splits["ratio"], strict=True)}
+    return [
+        Finding(
+            kdcode,
+            "adjustment_on_split_date",
+            True,
+            f"{symbol}: the map declares an adjustment on a date the vendor's split records "
+            "now carry; review the map entry before this pull is used",
+            {"symbol": symbol, "dates": clashes, "split_ratios": {d: ratios[d] for d in clashes}},
+        )
+    ]
 
 
 def adjustment_steps(adjusted: pd.DataFrame) -> pd.DataFrame:
