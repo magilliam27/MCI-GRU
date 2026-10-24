@@ -25,6 +25,7 @@ from mci_gru.config import create_config_from_dict
 from mci_gru.data.eodhd_prices import (
     PriceAdjustment,
     SymbolMapError,
+    adjustments_on_split_dates,
     agreement_passes,
     apply_adjustments,
     build_symbol_plans,
@@ -60,6 +61,7 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 import gen_eodhd_price_pull_nb as generator  # noqa: E402
 
 COMMITTED_MAP = REPO_ROOT / "data" / "mappings" / "eodhd_symbols_gics_top10_110_2016.json"
+AAPL_2020_SPLIT = REPO_ROOT / "tests" / "fixtures" / "eodhd" / "aapl_2020_split.json"
 
 
 def _sessions(start: str, periods: int) -> list[str]:
@@ -125,7 +127,7 @@ def test_committed_symbol_map_parses_and_names_only_ric_shaped_identifiers():
     # Corporate actions the first pull (2026-10-08) showed EODHD's split records miss.
     (charter,) = plans["CHTR.OQ"].adjustments
     assert (charter.date, charter.share_conversion) == ("2016-05-18", True)
-    assert charter.factor == pytest.approx(1 / 0.9)
+    assert charter.factor == pytest.approx(5000 / 4521)  # 0.9042 new shares per legacy share
     (baker,) = plans["BKR.OQ"].adjustments
     assert (baker.date, baker.cash, baker.factor) == ("2017-07-05", 17.5, None)
     # Only Ford's supplemental is restated; the vendor step would take the regular too.
@@ -189,7 +191,8 @@ def test_parse_split_ratio_reads_new_over_old():
         parse_split_ratio("0/1")
 
 
-def test_split_adjust_divides_prices_and_multiplies_volume_before_the_split():
+def test_split_adjust_divides_prices_and_leaves_volume_as_delivered():
+    """Issue 347: EODHD's volume is already split-adjusted; multiplying it applied the split twice."""
     dates = _sessions("2020-08-26", 6)
     raw = [400.0, 404.0, 408.0, 102.5, 103.0, 104.0]  # 4-for-1 on the fourth session
     eod = eod_rows_frame(
@@ -200,10 +203,91 @@ def test_split_adjust_divides_prices_and_multiplies_volume_before_the_split():
     adjusted = split_adjust(eod, splits)
 
     assert adjusted["close"].tolist() == pytest.approx([100.0, 101.0, 102.0, 102.5, 103.0, 104.0])
-    assert adjusted["volume"].tolist() == [4000.0] * 3 + [1000.0] * 3
+    assert adjusted["volume"].tolist() == eod["volume"].tolist()
     # The return across the split is the economic one, not -75%.
     assert adjusted["close"].pct_change().iloc[3] == pytest.approx(102.5 / 102.0 - 1)
     assert split_basis_findings("AAPL.OQ", "AAPL.US", adjusted) == []
+
+
+def _median_volume_step(frame: pd.DataFrame, split_dt: str) -> float:
+    """Median volume over the sessions from the split on, over the sessions before it."""
+    after = frame.loc[frame["dt"] >= split_dt, "volume"]
+    before = frame.loc[frame["dt"] < split_dt, "volume"]
+    return float(after.median() / before.median())
+
+
+def test_volume_is_continuous_across_a_real_vendor_split():
+    """Issue 347: the vendor's own AAPL rows around 2020-08-31 (4-for-1), as served.
+
+    Real volume does not step at a split once both sides are counted in the same
+    shares. Applied twice, the 20 sessions before read four times too high and the
+    step is about 1/4.
+    """
+    vendor = json.loads(AAPL_2020_SPLIT.read_text(encoding="utf-8"))
+    eod = eod_rows_frame(vendor["eod"])
+    splits = splits_frame(vendor["splits"], as_of=eod["dt"].iloc[-1])
+    assert splits["dt"].tolist() == ["2020-08-31"] and len(eod) == 40
+
+    adjusted = split_adjust(eod, splits)
+
+    assert 0.5 < _median_volume_step(adjusted, "2020-08-31") < 2.0
+    assert adjusted["volume"].tolist() == eod["volume"].tolist()
+    # The shares traded on 2020-08-28 were about 46.9M; the vendor serves 187.63M, four times that.
+    assert adjusted.loc[adjusted["dt"] == "2020-08-28", "volume"].item() == 187_630_000
+    assert np.abs(np.diff(np.log(adjusted["close"].to_numpy()))).max() < 0.1
+    assert split_basis_findings("AAPL.OQ", "AAPL.US", adjusted) == []
+
+
+def test_splits_after_the_panel_end_come_out_of_volume_only():
+    """Issue 347: the vendor's volume carries splits after the panel end; the prices do not.
+
+    MNST split 2-for-1 on 2026-08-11, after the 2026-07-31 panel end, and the vendor's
+    July volume already counts post-split shares. The panel's volume is put back on
+    the panel end's basis so it matches the prices beside it.
+    """
+    dates = _sessions("2026-07-27", 5)
+    eod = eod_rows_frame(_raw_rows(dates, [94.0, 95.0, 96.0, 95.0, 94.5], volume=12_000.0))
+    splits = splits_frame([], as_of=dates[-1])
+    vendor_splits = [{"date": "2026-08-11", "split": "2.000000/1.000000"}]
+    later = splits_frame(vendor_splits, as_of="2026-10-08", after=dates[-1])
+
+    adjusted = split_adjust(eod, splits, later)
+
+    assert adjusted["close"].tolist() == eod["close"].tolist()
+    assert adjusted["volume"].tolist() == [6_000.0] * 5
+    assert splits_frame(vendor_splits, as_of=dates[-1]).empty
+
+
+def test_splits_frame_keeps_only_the_dates_between_after_and_as_of():
+    rows = [
+        {"date": "2020-01-02", "split": "2/1"},
+        {"date": "2026-08-11", "split": "2/1"},
+        {"date": "2026-10-01", "split": "1333/200"},
+        {"date": "2027-01-04", "split": "10/1"},
+    ]
+    later = splits_frame(rows, as_of="2026-10-08", after="2026-07-31")
+    assert later["dt"].tolist() == ["2026-08-11", "2026-10-01"]
+    assert later["ratio"].tolist() == pytest.approx([2.0, 6.665])
+
+
+def test_an_adjustment_the_vendor_now_records_as_a_split_blocks():
+    """A declared conversion on a vendor split date would restate prices (and volume) twice.
+
+    EODHD added a 4521/5000 record for CHTR on 2016-05-18 after the map declared the
+    Time Warner Cable conversion on that date.
+    """
+    splits = splits_frame(
+        [{"date": "2016-05-18", "split": "4521.000000/5000.000000"}], as_of="2026-07-31"
+    )
+    conversion = PriceAdjustment("2016-05-18", "merger", factor=5000 / 4521, share_conversion=True)
+    elsewhere = PriceAdjustment("2017-06-01", "spin-off", factor=0.9)
+
+    (finding,) = adjustments_on_split_dates("CHTR.OQ", "CHTR.US", splits, [conversion, elsewhere])
+
+    assert (finding.code, finding.blocking) == ("adjustment_on_split_date", True)
+    assert finding.evidence["dates"] == ["2016-05-18"]
+    assert finding.evidence["split_ratios"] == {"2016-05-18": pytest.approx(0.9042)}
+    assert adjustments_on_split_dates("CHTR.OQ", "CHTR.US", splits, [elsewhere]) == []
 
 
 def test_splits_after_the_panel_end_are_not_applied():
@@ -573,19 +657,28 @@ class FakeClient:
     eod_rows: dict[str, list[dict]] = {}
     split_rows: dict[str, list[dict]] = {}
     listings: dict[bool, list[dict]] = {}
+    #: When the canned vendor "served" its rows.
+    served_at = "2016-10-03T12:00:00+00:00"
+    #: Every client the export made, so a test can read what was asked of it.
+    instances: list[FakeClient] = []
 
     def __init__(self, api_key, cache_dir, raw_log):
+        FakeClient.instances.append(self)
         self.calls = 0
         self._raw = raw_log
+        self.split_requests: list[tuple[str, str, str]] = []
+        self.last_retrieved_at = None
 
     def eod(self, symbol, start, end):
         self.calls += 1
+        self.last_retrieved_at = self.served_at
         self._raw.append({"endpoint": f"eod/{symbol}", "body": self.eod_rows.get(symbol, [])})
         return self.eod_rows.get(symbol, [])
 
     def splits(self, symbol, start, end):
         self.calls += 1
-        return self.split_rows.get(symbol, [])
+        self.split_requests.append((symbol, start, end))
+        return [r for r in self.split_rows.get(symbol, []) if start <= r["date"] <= end]
 
     def listing(self, delisted):
         self.calls += 1
@@ -706,6 +799,37 @@ def test_export_proves_each_mapping_and_publishes_a_verifiable_package(vendor):
     validate_input_package(snapshot, root, expected_paths=paths)
     pit_copy = root / "constituents" / vendor["pit"].name
     assert pit_copy.read_bytes() == vendor["pit"].read_bytes()
+
+
+def test_export_takes_splits_after_the_panel_end_out_of_volume_only(vendor):
+    """Issue 347: volume comes through as delivered, less splits from the panel end to serving.
+
+    GOOD's vendor volume (1000 a day) already counts the session-100 split, so it is
+    unchanged across it. A 3-for-1 dated after the 2016-07-29 panel end, before the
+    vendor served the rows, is in that volume too and is divided back out; one dated
+    after serving is not in it and is left alone.
+    """
+    FakeClient.split_rows["GOOD.US"] = [
+        *FakeClient.split_rows["GOOD.US"],
+        {"date": "2016-09-01", "split": "3.000000/1.000000"},
+        {"date": "2017-03-01", "split": "5.000000/1.000000"},
+    ]
+    FakeClient.instances = []
+
+    assert export.main(_argv(vendor)) == 0
+
+    root = vendor["tmp"] / "package" / "market"
+    panel = pd.read_csv(next(root.glob("*_20160729.csv")), dtype={"dt": str})
+    good = panel[panel["kdcode"] == "GOOD.OQ"]
+    assert good["volume"].to_numpy() == pytest.approx(1000.0 / 3)
+    old = panel[panel["kdcode"] == "OLD.N^A16"]
+    assert (old["volume"] == 1000.0).all()
+    (client,) = FakeClient.instances
+    assert ("GOOD.US", "2016-07-29", "2016-10-03") in client.split_requests
+    meta = json.loads(next(root.glob("*.meta.json")).read_text())
+    (rebased,) = [f for f in meta["findings"] if f["code"] == "volume_rebased_for_later_split"]
+    assert rebased["kdcode"] == "GOOD.OQ" and not rebased["blocking"]
+    assert rebased["evidence"]["splits"] == {"2016-09-01": 3.0}
 
 
 def test_export_stops_without_a_manifest_when_no_candidate_matches(vendor):

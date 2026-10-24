@@ -414,7 +414,11 @@ EODHD daily prices for the point-in-time universe (#281).
 | `test_plans_reject_overrides_for_names_outside_the_universe` |  |  |
 | `test_name_hint_matches_common_stock_names_case_insensitively` |  |  |
 | `test_parse_split_ratio_reads_new_over_old` |  |  |
-| `test_split_adjust_divides_prices_and_multiplies_volume_before_the_split` |  |  |
+| `test_split_adjust_divides_prices_and_leaves_volume_as_delivered` | Issue 347: EODHD's volume is already split-adjusted; multiplying it applied the split twice. |  |
+| `test_volume_is_continuous_across_a_real_vendor_split` | Issue 347: the vendor's own AAPL rows around 2020-08-31 (4-for-1), as served. |  |
+| `test_splits_after_the_panel_end_come_out_of_volume_only` | Issue 347: the vendor's volume carries splits after the panel end; the prices do not. |  |
+| `test_splits_frame_keeps_only_the_dates_between_after_and_as_of` |  |  |
+| `test_an_adjustment_the_vendor_now_records_as_a_split_blocks` | A declared conversion on a vendor split date would restate prices (and volume) twice. |  |
 | `test_splits_after_the_panel_end_are_not_applied` |  |  |
 | `test_a_split_the_raw_prices_already_carry_is_caught` |  |  |
 | `test_clean_values_blanks_nonpositive_prices_and_negative_volume` |  |  |
@@ -441,6 +445,7 @@ EODHD daily prices for the point-in-time universe (#281).
 | `test_reference_check_only_judges_the_span_the_universe_needs` |  |  |
 | `test_rows_for_a_name_declared_unavailable_block` |  |  |
 | `test_export_proves_each_mapping_and_publishes_a_verifiable_package` |  |  |
+| `test_export_takes_splits_after_the_panel_end_out_of_volume_only` | Issue 347: volume comes through as delivered, less splits from the panel end to serving. |  |
 | `test_export_stops_without_a_manifest_when_no_candidate_matches` |  |  |
 | `test_a_declared_unavailable_name_is_left_out_and_disclosed` |  |  |
 | `test_a_name_with_no_rows_still_blocks_unless_declared` |  |  |

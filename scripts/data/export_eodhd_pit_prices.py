@@ -23,7 +23,9 @@ What it writes under ``--package-root``, as a package beside the LSEG one:
   received, and the pull's provenance and findings.
 
 Prices are split-adjusted from EODHD's split records, plus the corporate actions
-the reviewed symbol map declares. A name with an LSEG delisted code (``^``)
+the reviewed symbol map declares. Volume arrives already split-adjusted, up to
+the day the vendor served it, so only splits after the panel end are taken back
+out of it (#347). A name with an LSEG delisted code (``^``)
 stops at its last trade: a final run of rows that repeat the previous close at
 zero volume is dropped and listed per name as ``carried_tail_dropped``.
 
@@ -54,9 +56,11 @@ import pandas as pd
 
 from mci_gru.data.eodhd_prices import (
     Finding,
+    PriceAdjustment,
     SymbolPlan,
     SymbolSegment,
     adjustment_basis_summary,
+    adjustments_on_split_dates,
     agreement_passes,
     apply_adjustments,
     assemble_panel,
@@ -101,6 +105,8 @@ class EodhdClient:
         self._cache = cache_dir
         self._raw = raw_log
         self.calls = 0
+        #: When the vendor served the last response read, cached or fresh (ISO UTC).
+        self.last_retrieved_at: str | None = None
 
     def _get(self, kind: str, name: str, path: str, params: dict[str, str]) -> Any:
         """One request, served from the cache when the same path and parameters were read.
@@ -115,6 +121,7 @@ class EodhdClient:
             envelope = json.loads(cache_path.read_text(encoding="utf-8"))
             record.update(envelope, from_cache=True)
             self._raw.append(record)
+            self.last_retrieved_at = envelope.get("retrieved_at")
             return envelope["body"]
         query = urllib.parse.urlencode({**params, "api_token": self._key, "fmt": "json"})
         url = f"{API_ROOT}/{urllib.parse.quote(path, safe='/.-_')}?{query}"
@@ -158,6 +165,7 @@ class EodhdClient:
         cache_path.write_text(json.dumps(envelope), encoding="utf-8")
         record.update(envelope, from_cache=False)
         self._raw.append(record)
+        self.last_retrieved_at = envelope["retrieved_at"]
         return body
 
     def eod(self, symbol: str, start: str, end: str) -> list[dict[str, Any]]:
@@ -262,22 +270,53 @@ def _git_commit() -> str | None:
 
 
 def read_symbol(
-    client: EodhdClient, kdcode: str, symbol: str, args: argparse.Namespace
+    client: EodhdClient,
+    kdcode: str,
+    symbol: str,
+    args: argparse.Namespace,
+    adjustments: tuple[PriceAdjustment, ...] = (),
 ) -> tuple[pd.DataFrame, list[Finding]]:
     """One symbol's split-adjusted rows over the pull span.
 
-    Vendor rows that cannot be read become a blocking finding and no rows.
+    The vendor's volume carries every split it had recorded when it served the
+    rows, so the splits between the panel end and that day are read too and
+    taken back out of volume; each one is reported. Vendor rows that cannot be
+    read become a blocking finding and no rows.
     """
     try:
         eod = eod_rows_frame(client.eod(symbol, args.start, args.end))
+        served = (client.last_retrieved_at or datetime.now(timezone.utc).isoformat())[:10]
         eod = eod[(eod["dt"] >= args.start) & (eod["dt"] <= args.end)]
         if eod.empty:
             return eod.reset_index(drop=True), []
         splits = splits_frame(client.splits(symbol, args.start, args.end), as_of=args.end)
+        later = splits_frame([], as_of=args.end)
+        if served > args.end:
+            later = splits_frame(
+                client.splits(symbol, args.end, served), as_of=served, after=args.end
+            )
     except (ValueError, KeyError, TypeError) as error:
         detail = f"{symbol}: vendor rows could not be read ({error})"
         return eod_rows_frame([]), [Finding(kdcode, "vendor_rows_invalid", True, detail)]
-    return split_adjust(eod, splits).reset_index(drop=True), []
+    findings = adjustments_on_split_dates(kdcode, symbol, splits, adjustments)
+    if len(later):
+        findings.append(
+            Finding(
+                kdcode,
+                "volume_rebased_for_later_split",
+                False,
+                f"{symbol}: the vendor's volume carries splits after the panel end; "
+                "volume is divided by their ratios to sit on the panel end's basis",
+                {
+                    "symbol": symbol,
+                    "served": served,
+                    "splits": {
+                        str(d): float(r) for d, r in zip(later["dt"], later["ratio"], strict=True)
+                    },
+                },
+            )
+        )
+    return split_adjust(eod, splits, later).reset_index(drop=True), findings
 
 
 def resolve_segment(
@@ -320,7 +359,7 @@ def resolve_segment(
         if symbol in seen:
             continue
         seen.add(symbol)
-        rows, symbol_findings = read_symbol(client, plan.kdcode, symbol, args)
+        rows, symbol_findings = read_symbol(client, plan.kdcode, symbol, args, plan.adjustments)
         rows = clip_segment(rows, segment).reset_index(drop=True)
         entry: dict[str, Any] = {"symbol": symbol, "rows": len(rows)}
         if rows.empty:
@@ -525,8 +564,9 @@ def main(argv: list[str] | None = None) -> int:
     meta = {
         "created_at_utc": acquired_at,
         "source": "eodhd.com /api/eod, /api/splits, /api/exchange-symbol-list",
-        "adjustment": "split-adjusted from EODHD split records as of the panel end; "
-        "dividends not applied",
+        "adjustment": "prices split-adjusted from EODHD split records as of the panel end; "
+        "volume as the vendor delivers it (already split-adjusted), less splits after the "
+        "panel end; dividends not applied",
         "repository_commit": _git_commit(),
         "start": args.start,
         "end": args.end,
