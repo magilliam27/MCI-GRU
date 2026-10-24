@@ -1,0 +1,46 @@
+# Frozen question for E18: E10's rating question (questions_v5.yaml) asked with
+# the company's latest earnings release beside the 8-K. Do not edit a frozen
+# version: a changed question is a new file (questions_context_v2.yaml).
+#
+# The state is E10's (mci_gru.filings.events.event_state) with one more entry,
+# placed just before the event text: the company's latest original 8-K listing
+# item 2.02 accepted before this 8-K, at most 120 days before, with its filing
+# day and its text (item sections plus press-release exhibit, cut at 20,000
+# characters) (mci_gru.filings.context.context_state).
+#
+# Only the instructions differ from v5's rating: the last context clause names
+# the release, and one sentence says the event, not the quarter, is rated. The
+# options are v5's, word for word, and are shuffled per event exactly as in E16
+# (mci_gru.filings.change.option_order), so each event shows the same order it
+# showed in E16.
+version: 1
+model: jev-1.13.0
+questions:
+  rating:
+    kind: choice
+    instructions: >-
+      This 8-K reports an event at the company. From a shareholder's point of
+      view, how good or bad is the event for the company? Judge the event the
+      text describes, using the context: the item codes, the company's prior
+      annual revenue for scale, its other 8-Ks in the previous 90 days, and its
+      latest earnings release before this 8-K, which shows how the business
+      stood when the event happened. Rate the event in this 8-K, not the
+      results in the release.
+    options:
+      very_bad: >-
+        An event that threatens the business or the trust in it, such as a
+        restatement, a bankruptcy, a delisting notice, or a CEO or CFO leaving
+        immediately with no successor or in connection with an investigation.
+      bad: >-
+        A clearly negative event, such as a restructuring with job cuts, an
+        impairment, a lost or ended major contract, or an unplanned senior
+        departure.
+      neutral: >-
+        A routine event, such as a planned retirement with a named successor, a
+        director change, a compensation plan, or a routine financing agreement.
+      good: >-
+        A clearly positive event, such as a major new contract or a deal on
+        favourable terms.
+      very_good: >-
+        A transformative and favourable event, such as a large acquisition or
+        sale at a strong price.
