@@ -2164,6 +2164,33 @@ Regime forward context is refused unless the matching excludes the current month
 | `test_a_stopped_market_file_is_recorded_as_read_but_never_used` |  | parametrize |
 | `test_a_market_file_captured_through_read_file_still_replays` |  |  |
 
+## `tests/test_replay_inputs.py`
+
+The replay reads its inputs from the run it replays (#339).
+
+**Exercises:** `mci_gru.evaluation`, `mci_gru.evaluation.backtest_engine`, `mci_gru.evaluation.replay_inputs`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_run_dir_supplies_data_pit_window_label_k_and_members` |  |  |
+| `test_refuses_a_data_file_whose_bytes_differ_from_what_the_run_consumed` |  |  |
+| `test_refuses_a_pit_file_whose_bytes_differ_from_what_the_run_consumed` |  |  |
+| `test_refuses_an_edited_resolved_config` |  |  |
+| `test_refuses_predictions_for_a_name_outside_the_run` |  |  |
+| `test_a_data_file_override_with_the_same_bytes_is_accepted` |  |  |
+| `test_overrides_outside_the_run_are_refused` |  | parametrize |
+| `test_overrides_inside_the_run_are_honoured` |  |  |
+| `test_a_pit_override_for_a_run_without_pit_is_refused` |  |  |
+| `test_the_bare_documented_command_is_refused` | ``--predictions_dir`` alone used to replay on paper-era defaults. |  |
+| `test_explicit_mode_without_a_run_names_every_missing_input` |  |  |
+| `test_a_same_named_file_elsewhere_is_not_substituted` |  |  |
+| `test_open_ended_pit_rows_keep_their_members_through_the_cutoff` |  |  |
+| `test_open_ended_pit_rows_without_a_cutoff_are_refused_not_dropped` |  |  |
+| `test_benchmark_uses_the_candidates_membership_date` | DDD joins on session 6: it is out of the benchmark for the trade entering then |  |
+| `test_benchmark_without_a_pit_file_is_the_runs_members` |  |  |
+| `test_explicit_mode_without_a_pit_file_benchmarks_the_scored_names` |  |  |
+| `test_cli_replays_a_run_from_its_directory_alone` |  |  |
+
 ## `tests/test_repository_retirement_guard.py`
 
 Prevent retired repository surfaces from being reintroduced.

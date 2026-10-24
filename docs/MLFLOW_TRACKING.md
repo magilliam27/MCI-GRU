@@ -69,7 +69,7 @@ A backtest can auto-link itself to the tracked training experiment:
 
 ```bash
 python scripts/backtest_sp500.py \
-  --predictions_dir results/baseline/20260310_010203/averaged_predictions \
+  --run_dir results/baseline/20260310_010203 \
   --auto_save
 ```
 
@@ -79,7 +79,7 @@ When that metadata file is present, the backtest creates a **linked child run** 
 
 ```bash
 python scripts/backtest_sp500.py \
-  --predictions_dir path/to/averaged_predictions \
+  --run_dir path/to/run \
   --auto_save \
   --enable_mlflow \
   --mlflow_experiment_name standalone-backtests

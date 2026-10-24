@@ -2,8 +2,10 @@
 
 The engine body lives in ``mci_gru/evaluation/backtest_engine.py`` (WS-N).
 This CLI exposes the historical daily subset of flags (20 shared flags from
-the pre-merge fork) and delegates to the engine with ``holding_period=1``,
-default ``rebalance_style``, and MLflow tracking disabled.
+the pre-merge fork, plus ``--run_dir`` and ``--pit_export_cutoff`` from #339) and
+delegates to the engine with ``holding_period=1``, default ``rebalance_style``, and
+MLflow tracking disabled. Inputs have no defaults: ``--run_dir`` supplies them from
+the run, or every one is named explicitly, exactly as in the engine CLI.
 
 Python importers may import public symbols re-exported from the engine module.
 """
@@ -29,41 +31,34 @@ def _build_daily_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        "--predictions_dir",
+        "--run_dir",
         type=str,
-        required=True,
-        help="Directory containing prediction CSV files",
+        default=None,
+        help="One window's run_experiment.py output; supplies and checks every input",
     )
     parser.add_argument(
-        "--data_file",
+        "--predictions_dir",
         type=str,
-        default="data/raw/market/sp500_data.csv",
-        help="Path to stock data CSV file",
+        default=None,
+        help="Directory containing prediction CSV files (required without --run_dir)",
     )
+    parser.add_argument("--data_file", type=str, default=None, help="Stock data CSV")
     parser.add_argument(
         "--pit_universe_csv",
         type=str,
         default=None,
-        help="Optional PIT kdcode/valid_from/valid_to CSV for candidate and benchmark filtering",
+        help="PIT kdcode/valid_from/valid_to CSV for candidate and benchmark membership",
     )
     parser.add_argument(
-        "--top_k", type=int, default=10, help="Number of top stocks to select (default: 10)"
-    )
-    parser.add_argument(
-        "--test_start",
+        "--pit_export_cutoff",
         type=str,
-        default="2025-01-01",
-        help="Test period start date (default: 2025-01-01)",
+        default=None,
+        help="Membership end for PIT rows with a blank valid_to",
     )
-    parser.add_argument(
-        "--test_end",
-        type=str,
-        default="2025-12-31",
-        help="Test period end date (default: 2025-12-31)",
-    )
-    parser.add_argument(
-        "--label_t", type=int, default=5, help="Forward return period in days (default: 5)"
-    )
+    parser.add_argument("--top_k", type=int, default=None, help="Number of top stocks to select")
+    parser.add_argument("--test_start", type=str, default=None, help="Test period start date")
+    parser.add_argument("--test_end", type=str, default=None, help="Test period end date")
+    parser.add_argument("--label_t", type=int, default=None, help="Forward return period in days")
     parser.add_argument("--output", type=str, default=None, help="Output path for results CSV")
     parser.add_argument("--plot", action="store_true", help="Generate equity curve plot")
     parser.add_argument(
@@ -143,19 +138,22 @@ def _build_daily_parser() -> argparse.ArgumentParser:
 
 def _namespace_to_engine_argv(args: argparse.Namespace) -> list[str]:
     """Translate daily CLI namespace to engine argv (omits engine-only flags)."""
-    argv: list[str] = [
-        "--predictions_dir",
-        args.predictions_dir,
-        "--data_file",
-        args.data_file,
-        "--top_k",
-        str(args.top_k),
-        "--test_start",
-        args.test_start,
-        "--test_end",
-        args.test_end,
-        "--label_t",
-        str(args.label_t),
+    argv: list[str] = []
+    for flag in (
+        "run_dir",
+        "predictions_dir",
+        "data_file",
+        "pit_universe_csv",
+        "pit_export_cutoff",
+        "top_k",
+        "test_start",
+        "test_end",
+        "label_t",
+    ):
+        value = getattr(args, flag)
+        if value is not None:
+            argv.extend([f"--{flag}", str(value)])
+    argv += [
         "--num_models",
         str(args.num_models),
         "--num_tests",
@@ -171,8 +169,6 @@ def _namespace_to_engine_argv(args: argparse.Namespace) -> list[str]:
         "--min_rank_drop",
         str(args.min_rank_drop),
     ]
-    if args.pit_universe_csv is not None:
-        argv.extend(["--pit_universe_csv", args.pit_universe_csv])
     if args.output is not None:
         argv.extend(["--output", args.output])
     if args.multi_model is not None:
