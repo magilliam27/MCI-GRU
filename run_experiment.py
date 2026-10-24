@@ -54,6 +54,8 @@ from mci_gru.evaluation.execution_provenance import (
 from mci_gru.evaluation.experiment_summary import (
     build_run_metadata,
     compute_evaluation_summary,
+    correlation_edges_for_date,
+    linked_score_tie_summary,
     select_training_objective_value,
     write_resolved_config,
 )
@@ -381,6 +383,13 @@ def main(cfg: DictConfig):
                     avg_predictions,
                     data["test_labels"],
                     cfg_w,
+                )
+                evaluation_summary["linked_score_ties"] = linked_score_tie_summary(
+                    avg_predictions,
+                    [result.predictions for result in results],
+                    data["test_dates"],
+                    correlation_edges_for_date(data),
+                    eval_autocast=any(result.eval_autocast for result in results),
                 )
                 timing_summary["phases"]["evaluation_summary_seconds"] = (
                     perf_counter() - phase_started
