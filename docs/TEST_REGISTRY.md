@@ -905,6 +905,26 @@ Jev's answers graded against the hand labels (#289).
 | `test_grading_script_writes_summary_calibration_and_disagreements_first` |  |  |
 | `test_grading_script_refuses_a_half_labelled_sheet` |  |  |
 
+## `tests/test_filings_iwm_holdings.py`
+
+Russell 2000 membership from IWM's SEC holdings filings (E14).
+
+**Exercises:** `mci_gru.filings.iwm_holdings`, `scripts.data.build_r2k_members`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_the_n_q_schedule_runs_from_the_first_page_header_to_the_net_assets_line` |  |  |
+| `test_another_funds_holding_of_iwm_is_not_a_page_header` |  |  |
+| `test_an_n_port_gives_its_series_date_and_holdings_with_isin` |  |  |
+| `test_holding_keys_ignore_punctuation_state_suffixes_and_legal_words` |  | parametrize |
+| `test_different_companies_keep_different_keys` |  |  |
+| `test_a_split_after_the_report_date_is_undone_before_comparing` |  |  |
+| `test_a_missing_or_zero_price_never_matches` |  |  |
+| `test_membership_runs_from_a_report_date_to_the_day_before_the_next_date_it_is_missing` |  |  |
+| `test_larger_draw_keeps_the_smaller_draw_as_its_first_release` |  |  |
+| `test_a_later_release_never_takes_an_earlier_release_companys_key` |  |  |
+| `test_rest_release_adds_every_undrawn_company_and_keeps_the_draw` |  |  |
+
 ## `tests/test_filings_jev.py`
 
 The frozen question set, the answer cache and the blind label sheet (#289).
