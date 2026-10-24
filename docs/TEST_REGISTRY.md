@@ -2297,7 +2297,7 @@ Prevent retired repository surfaces from being reintroduced.
 
 A saved run is re-scored from its own inputs, without retraining (#337).
 
-**Exercises:** `mci_gru.evaluation.metrics`, `mci_gru.evaluation.replay_inputs`, `run_experiment`, `scripts`, `scripts.rescore_run`
+**Exercises:** `mci_gru.evaluation.metrics`, `mci_gru.evaluation.replay_inputs`, `mci_gru.training`, `run_experiment`, `scripts`, `scripts.rescore_run`
 
 | Test | Description | Markers |
 |---|---|---|

@@ -36,6 +36,7 @@ from hydra import compose, initialize_config_dir
 import run_experiment
 from mci_gru.evaluation.metrics import SUMMARY_SCHEMA_VERSION
 from mci_gru.evaluation.replay_inputs import ReplayInputError
+from mci_gru.training import ensemble
 from scripts import rescore_run
 from scripts.rescore_run import (
     RESCORED_DAILY_IC_FILENAME,
@@ -147,7 +148,19 @@ def _restored_process_state(directory: Path):
         root.setLevel(level)
 
 
-def _run(base: Path, *, use_pit: bool, label_type: str = "returns") -> Path:
+def _unrounded_rows(predictions, kdcode_list, date, prediction_mask=None):
+    """``prediction_rows_for_date`` without its 5-decimal rounding."""
+    mask = np.ones(len(kdcode_list), bool) if prediction_mask is None else prediction_mask
+    return [
+        [kdcode, date, float(score)]
+        for kdcode, score, keep in zip(kdcode_list, predictions, mask, strict=True)
+        if keep and np.isfinite(score)
+    ]
+
+
+def _run(
+    base: Path, *, use_pit: bool, label_type: str = "returns", round_scores: bool = True
+) -> Path:
     base.mkdir(parents=True, exist_ok=True)
     panel = base / "panel.csv"
     _write_panel(panel)
@@ -175,6 +188,8 @@ def _run(base: Path, *, use_pit: bool, label_type: str = "returns") -> Path:
     out.mkdir()
     patch = pytest.MonkeyPatch()
     patch.setattr(torch.cuda, "is_available", lambda: False)
+    if not round_scores:
+        patch.setattr(ensemble, "prediction_rows_for_date", _unrounded_rows)
     try:
         with _restored_process_state(out):
             run_experiment.main.__wrapped__(cfg)
@@ -195,12 +210,26 @@ def plain_run(tmp_path_factory) -> Path:
 
 @pytest.fixture(scope="module")
 def pit_rank_run(tmp_path_factory) -> Path:
-    return _run(tmp_path_factory.mktemp("rescore") / "pit_rank", use_pit=True, label_type="rank")
+    # A one-epoch rank model scores names nearly alike, so 5-decimal rounding can tie
+    # names the run ranked apart, and that tie depends on the platform's arithmetic.
+    # These runs save full-precision scores to pin the rank-label rebuild itself; the
+    # returns runs above keep the real rounding.
+    return _run(
+        tmp_path_factory.mktemp("rescore") / "pit_rank",
+        use_pit=True,
+        label_type="rank",
+        round_scores=False,
+    )
 
 
 @pytest.fixture(scope="module")
 def plain_rank_run(tmp_path_factory) -> Path:
-    return _run(tmp_path_factory.mktemp("rescore") / "plain_rank", use_pit=False, label_type="rank")
+    return _run(
+        tmp_path_factory.mktemp("rescore") / "plain_rank",
+        use_pit=False,
+        label_type="rank",
+        round_scores=False,
+    )
 
 
 ALL_RUNS = ["pit_run", "plain_run", "pit_rank_run", "plain_rank_run"]
