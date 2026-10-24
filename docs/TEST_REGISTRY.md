@@ -485,6 +485,38 @@ Scoring precision: training may use AMP, validation and prediction do not.
 | `test_eval_amp_needs_a_cuda_device` |  |  |
 | `test_cuda_prediction_matches_fp32_to_1e6` |  | skipif |
 
+## `tests/test_evaluation_outcomes.py`
+
+The shared evaluation core: realized returns, the rankable set, exits and ties (#335).
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.pit`, `mci_gru.data.preprocessing`, `mci_gru.evaluation`, `mci_gru.evaluation.outcomes`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_default_legs_equal_the_training_label_exactly_on_a_panel_with_a_missing_bar` |  |  |
+| `test_custom_legs_read_closes_at_their_own_sessions` |  |  |
+| `test_missing_exit_books_the_last_available_close_and_records_the_event` |  |  |
+| `test_missing_exit_books_the_last_close_inside_the_hold_never_a_later_one` |  |  |
+| `test_the_session_axis_does_not_depend_on_which_columns_are_requested` |  |  |
+| `test_missing_entry_close_holds_cash_and_records_the_event` |  |  |
+| `test_a_name_with_no_close_on_the_signal_date_has_no_outcome_and_no_event` |  |  |
+| `test_a_hold_past_the_panel_end_is_unresolved_not_booked` |  |  |
+| `test_legs_reject_impossible_or_non_integer_sessions` |  | parametrize |
+| `test_rankable_is_the_tradable_mask_and_keeps_a_name_with_no_future_price` |  |  |
+| `test_a_top_pick_that_stops_trading_keeps_its_slot_and_books_its_loss` |  |  |
+| `test_ties_order_by_score_then_kdcode` |  |  |
+| `test_tie_order_does_not_depend_on_column_order` |  |  |
+| `test_unscored_names_order_last` |  |  |
+| `test_unscored_and_unrankable_names_are_never_selected` |  |  |
+| `test_portfolio_top_k_uses_the_core_tie_rule` |  |  |
+| `test_evaluation_legs_and_tranches_default_to_the_training_label` |  |  |
+| `test_evaluation_rejects_unknown_or_invalid_legs_and_tranches` |  | parametrize |
+| `test_tranches_must_divide_the_hold_the_label_implies` |  |  |
+| `test_legs_may_not_exit_past_the_embargoed_label_horizon` |  |  |
+| `test_legs_and_tranches_survive_the_hydra_construction_paths` |  |  |
+| `test_unknown_evaluation_key_is_rejected` |  |  |
+| `test_shipped_config_declares_legs_and_tranches_following_the_label` |  |  |
+
 ## `tests/test_evaluation_portfolio.py`
 
 **Exercises:** `mci_gru.evaluation.portfolio`
@@ -1607,6 +1639,25 @@ Public exact-observation snapshot preservation and offline replay contracts.
 | `test_trainer_validation_rank_ic_averages_only_rankable_rows` |  |  |
 | `test_trainer_rejects_checkpoint_selection_without_eligible_rank_rows` |  |  |
 | `test_select_training_objective_respects_selection_metric` |  |  |
+
+## `tests/test_linked_score_ties.py`
+
+Run summaries count ties among graph-linked names (#324).
+
+**Exercises:** `mci_gru.evaluation.experiment_summary`, `run_experiment`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_linked_pairs_drop_direction_duplicates_and_self_loops` |  |  |
+| `test_an_empty_or_missing_graph_links_nothing` |  |  |
+| `test_an_edge_list_laid_out_as_rows_is_refused` |  |  |
+| `test_ties_are_counted_only_between_linked_finite_scores_within_tolerance` |  |  |
+| `test_the_summary_reports_ensemble_and_each_member_per_date_and_in_total` |  |  |
+| `test_each_date_is_counted_against_its_own_graph_snapshot` |  |  |
+| `test_a_dynamic_run_counts_against_the_schedule_snapshot_not_the_initial_graph` |  |  |
+| `test_a_static_run_counts_against_its_one_graph` |  |  |
+| `test_the_runner_counts_each_members_own_scores_on_the_graph_it_used` |  |  |
+| `test_the_runner_writes_the_counts_into_the_evaluation_summary` |  |  |
 
 ## `tests/test_long_history_issue23.py`
 
