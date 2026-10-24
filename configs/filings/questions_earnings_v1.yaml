@@ -1,0 +1,91 @@
+# Frozen question set for E17: an earnings release (8-K item 2.02) read
+# against the company's previous release. Frozen 23 Oct 2026, before any
+# test-set event was scored. Do not edit a frozen version: a changed question
+# is a new file (questions_earnings_v2.yaml).
+#
+# The state is built in code (mci_gru.filings.earnings.release_state): the
+# company, the filing day, this release's text and the previous release's text
+# with its filing day (each the item sections plus press-release exhibit, cut
+# at 20,000 characters). The three questions are asked in one call, each with
+# its options shuffled per event (mci_gru.filings.earnings.question_order).
+#
+# setup is the scouting probes' v7 wording (swap check: v6 flipped 13 of 39
+# pairs' signs when the releases were swapped, v7 28 of 38); guidance and
+# promise are v6's, unchanged. Probe files: filings/research_direction/
+# earnings_scout/ in the project folder.
+version: 1
+model: jev-1.13.0
+questions:
+  setup:
+    kind: choice
+    instructions: >-
+      This 8-K reports the company's quarterly or annual results. The
+      state gives this results release (current_results_release) and the
+      company's previous results release (previous_results_release),
+      filed about one quarter earlier. Judge the CHANGE between the two
+      releases, not how good the current release looks on its own. First
+      work out what the previous release told investors: its trend in
+      revenue, margins and earnings, any outlook or guidance for the
+      coming period, and any targets. Then decide whether the current
+      release came in better or worse than that. Strong-looking results
+      are worse if growth slowed, margins fell, or the company missed or
+      cut its own outlook. Weak-looking results, such as a loss, are
+      better if they beat what the previous release set up. Releases are
+      written to sound positive, so judge the numbers, not the wording.
+    options:
+      much_worse: >-
+        Clearly below what the previous release set up: a large miss
+        on its own outlook, guidance cut or withdrawn, a sharp
+        reversal in growth or profit, or a new problem that dominates
+        the release.
+      worse: >-
+        Somewhat below: growth slowing, margins slipping, a soft
+        quarter against the prior trend, or guidance trimmed.
+      in_line: >-
+        Broadly what the previous release set up; nothing in this
+        release changes the picture.
+      better: >-
+        Somewhat above: growth or margins improving against the prior
+        trend, a stated target met early, or guidance nudged up.
+      much_better: >-
+        Clearly above: a large beat on the company's own outlook,
+        guidance raised materially, or a step change in growth or
+        profitability.
+  guidance:
+    kind: choice
+    instructions: >-
+      What does this results release do with the company's forward
+      guidance (revenue, earnings or other financial outlook), compared
+      with the previous results release?
+    options:
+      raised: >-
+        Guidance is raised.
+      reaffirmed: >-
+        Guidance is kept the same.
+      lowered: >-
+        Guidance is lowered.
+      withdrawn: >-
+        Guidance is withdrawn or suspended.
+      introduced: >-
+        Guidance is given for the first time, or for a new period,
+        with no earlier figure to compare against.
+      none: >-
+        The release gives no forward financial guidance.
+  promise:
+    kind: choice
+    instructions: >-
+      Did the previous results release state specific expectations for
+      this period (targets, outlook, timelines), and did this release
+      deliver on them?
+    options:
+      kept: >-
+        Specific expectations were stated and this release meets or
+        beats them.
+      mixed: >-
+        Some were met and some were not.
+      missed: >-
+        Specific expectations were stated and this release falls short
+        of them.
+      none_set: >-
+        The previous release stated no specific expectations for this
+        period.

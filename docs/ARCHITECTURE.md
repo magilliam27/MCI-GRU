@@ -235,6 +235,15 @@ The executable base config selects multi-scale `gru_attn`.
 `GATConv`. The primary A2 branch consumes the correlation graph over the sample
 date's node features.
 
+`model.gat_layer_form` selects the form of every `GATBlock` the model builds:
+this A2 branch, the sector branch below and the final head. `legacy` (the base
+default) is plain GAT v1, in which a node's own features enter only as a
+self-loop neighbour and the target's attention term cancels in the softmax, so
+nodes with the same neighbourhood get (near) identical outputs whatever their
+own inputs. `residual` passes `residual=True` to both `GATConv` layers, adding a
+learned map of each node's own input to its output (issue #320). The forms hold
+different parameters, so a checkpoint belongs to the form that produced it.
+
 When `graph.use_sector_relation=true`, a second `GATBlock` consumes the sector
 edges with a scalar edge dimension and a `nn.Linear` fuses the two branch
 outputs. This is dual GAT plus fusion; there is no `RGATConv` and no true
@@ -397,7 +406,9 @@ other. Coverage is logged, as is any disagreement between snapshots.
 linear warmup followed by cosine decay (`training.lr_scheduler`,
 `training.warmup_steps`), CUDA autocast and gradient scaling when
 `training.use_amp` is set and the device is CUDA, gradient clipping, and
-optional first-N-batch step profiling.
+optional first-N-batch step profiling. Validation and `predict` run in full
+precision unless `training.eval_amp` is also set, so scores do not sit on an
+fp16 grid.
 
 Validation returns a `ValidationObservation` carrying loss, Pearson IC, Spearman
 rank IC, and the number of eligible rows behind each IC. **Checkpoint selection

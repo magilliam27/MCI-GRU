@@ -71,6 +71,7 @@ model:
   cross_section_block: legacy  # legacy | residual (issue #197; legacy replaces z, residual corrects it)
   market_latent_mode: static  # static | data_dependent (issue #198; static latents cannot see the date)
   gru_attn_layer_widths: shared  # shared | per_layer (issue #131; shared builds [32, 10] as two width-10 layers)
+  gat_layer_form: legacy  # legacy | residual (issue #320; legacy lets linked stocks with the same neighbours tie, residual adds an own-feature path to every graph layer)
 
 # Graph configuration
 graph:
@@ -109,7 +110,8 @@ training:
   label_type: returns          # returns (raw) or rank (cross-sectional percentile)
   warmup_steps: 1000           # Linear LR warmup (optimizer steps) before cosine
   lr_scheduler: cosine         # cosine | none
-  use_amp: true                # CUDA autocast + GradScaler (no-op on CPU)
+  use_amp: true                # CUDA autocast + GradScaler for training (no-op on CPU)
+  eval_amp: false              # validation + prediction under autocast too; false = fp32 scores
   selection_metric: val_ic     # val_ic | val_rank_ic | val_loss — early stopping / checkpoint
   minimum_selection_rows: 1    # Minimum eligible cross-sectional dates for IC-based selection
   shuffle_train: null          # null = legacy default (static shuffles, dynamic sequential); true/false overrides

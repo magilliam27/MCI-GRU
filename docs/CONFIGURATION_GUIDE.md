@@ -266,6 +266,7 @@ Values below reflect **`configs/config.yaml`** merged with **`configs/data/gics_
 | Model | cross_section_block | `legacy` — how the cross-stock attention is applied. `legacy` replaces `z` with the attention output; `residual` applies it as `z + Attn(LayerNorm(z))` so it corrects `z` instead (issue #197). The two forms have disjoint parameter names, so a checkpoint belongs to the form that produced it. |
 | Model | market_latent_mode | `static` — what the B1/B2 latent states are. `static` keeps `R1`/`R2` as frozen parameters, so the streams cannot observe the date's market (issue #198). `data_dependent` lets the latents read the date's active cross-section first. The two modes hold different parameters, so a checkpoint belongs to the mode that produced it. |
 | Model | gru_attn_layer_widths | `shared` — how `gru_attn` reads `gru_hidden_sizes` (issue #131). `shared` uses the list length as the layer count and the last entry as every layer's width, so `[32, 10]` is two width-10 layers; `per_layer` builds one layer per entry at its own width, so `[32, 10]` is 32 then 10. The two forms hold different parameters, so a checkpoint belongs to the form that produced it. |
+| Model | gat_layer_form | `legacy` — the form of every graph block: the A2 correlation stream, the sector stream and the final head (issue #320). `legacy` is plain GAT v1, in which a linked stock's own features count only as one more neighbour, so stocks with the same neighbourhood score alike; `residual` adds a learned own-feature path to each layer (`GATConv(residual=True)`, torch-geometric 2.6 or later). The two forms hold different parameters, so a checkpoint belongs to the form that produced it. |
 | Graph | use_multi_feature_edges | `true` (4-D edge features; `paper_faithful` preset pins `false`) |
 | Training | batch_size | 32 |
 | Training | learning_rate | 5e-5 |
@@ -276,6 +277,7 @@ Values below reflect **`configs/config.yaml`** merged with **`configs/data/gics_
 | Training | minimum_selection_rows | `1` (eligible validation dates the selection metric needs; a run whose `selection_metric` has fewer raises instead of selecting a checkpoint from an empty metric) |
 | Training | lr_scheduler | `cosine` (linear warmup `warmup_steps` then cosine decay; `none` disables) |
 | Training | use_amp | `true` on CUDA (no-op on CPU) |
+| Training | eval_amp | `false` (validation and prediction run in full precision even when `use_amp` trains under autocast; `true` scores under autocast too, so a member's scores sit on an fp16 grid and can tie) |
 | Tracking | enabled | `true` (local `./mlruns`; set `tracking.enabled=false` to disable) |
 
 Because the base default sets `use_pit_universe: true` against a PIT CSV that is not committed, any run supplying its own panel must pass `data.use_pit_universe=false`. `scripts/ci_smoke.py` does this.

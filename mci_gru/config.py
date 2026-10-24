@@ -241,6 +241,11 @@ def resolve_volatility_targeting_components(
     return resolved_components
 
 
+# features.base_inputs values; mci_gru.features.base.RELATIVE_BASE_FEATURES lists the
+# columns "relative" feeds (#323).
+BASE_INPUT_FORMS = ("levels", "relative")
+
+
 @dataclass
 class FeatureConfig:
     """
@@ -248,6 +253,11 @@ class FeatureConfig:
 
     Attributes:
         base_features: List of base OHLCV feature column names
+        base_inputs: Form of the six base inputs. "levels" (default, legacy) feeds the raw
+            close/open/high/low/volume/turnover levels, which a split-adjusted panel
+            rescales for splits after each row (#323). "relative" feeds per-stock ratios
+            instead: log return, overnight and intraday returns, high-low range over
+            close, and log volume and turnover against the stock's 20-session mean.
         include_momentum: Whether to add momentum features
         include_weekly_momentum: Whether to include weekly momentum features (5-day return/signal)
         momentum_encoding: Type of momentum encoding (binary, continuous, buffered)
@@ -305,6 +315,7 @@ class FeatureConfig:
     base_features: list[str] = field(
         default_factory=lambda: ["close", "open", "high", "low", "volume", "turnover"]
     )
+    base_inputs: str = "levels"  # levels, relative
     include_momentum: bool = True
     include_weekly_momentum: bool = True
     momentum_encoding: str = "binary"  # binary, continuous, buffered
@@ -355,6 +366,10 @@ class FeatureConfig:
     def __post_init__(self):
         valid_encodings = ["binary", "continuous", "buffered"]
         valid_blend_modes = ["static", "dynamic"]
+        if self.base_inputs not in BASE_INPUT_FORMS:
+            raise ValueError(
+                f"base_inputs must be one of {list(BASE_INPUT_FORMS)}, got {self.base_inputs!r}"
+            )
         if self.momentum_encoding not in valid_encodings:
             raise ValueError(f"momentum_encoding must be one of {valid_encodings}")
         if self.momentum_blend_mode not in valid_blend_modes:
@@ -630,6 +645,13 @@ class ModelConfig:
             32-wide layer then a 10-wide one. Defaults to ``"shared"`` for
             checkpoint compatibility; ``legacy`` and the transformer fast path
             do not read it.
+        gat_layer_form: Form of every graph block: the A2 correlation stream,
+            the sector stream and the final head (issue #320). ``"legacy"``
+            keeps the shipped GAT v1 layers, in which a linked stock's own
+            features enter only as one more neighbour, so stocks with the same
+            neighbourhood score alike. ``"residual"`` adds a learned own-feature
+            path to each layer (``GATConv(residual=True)``). Defaults to
+            ``"legacy"`` for checkpoint compatibility.
     """
 
     his_t: int = 10
@@ -659,12 +681,14 @@ class ModelConfig:
     cross_section_block: str = "legacy"
     market_latent_mode: str = "static"
     gru_attn_layer_widths: str = "shared"
+    gat_layer_form: str = "legacy"
 
     _VALID_OUTPUT_ACTIVATIONS = ("none", "elu", "relu", "sigmoid")
     _VALID_TEMPORAL_ENCODERS = ("legacy", "gru_attn", "transformer")
     _VALID_CROSS_SECTION_BLOCKS = ("legacy", "residual")
     _VALID_MARKET_LATENT_MODES = ("static", "data_dependent")
     _VALID_GRU_ATTN_LAYER_WIDTHS = ("shared", "per_layer")
+    _VALID_GAT_LAYER_FORMS = ("legacy", "residual")
 
     def __post_init__(self):
         if self.label_t < 2:
@@ -702,6 +726,11 @@ class ModelConfig:
             raise ValueError(
                 f"gru_attn_layer_widths must be one of {self._VALID_GRU_ATTN_LAYER_WIDTHS}, "
                 f"got {self.gru_attn_layer_widths!r}"
+            )
+        if self.gat_layer_form not in self._VALID_GAT_LAYER_FORMS:
+            raise ValueError(
+                f"gat_layer_form must be one of {self._VALID_GAT_LAYER_FORMS}, "
+                f"got {self.gat_layer_form!r}"
             )
         if self.market_latent_mode == "data_dependent" and not self.use_nn_multihead_attention:
             # Per-date latents need per-date keys, which the legacy 8-Linear
@@ -748,6 +777,7 @@ class ModelConfig:
             "cross_section_block": self.cross_section_block,
             "market_latent_mode": self.market_latent_mode,
             "gru_attn_layer_widths": self.gru_attn_layer_widths,
+            "gat_layer_form": self.gat_layer_form,
         }
 
 
@@ -802,7 +832,10 @@ class TrainingConfig:
                      do not introduce look-ahead bias.
         warmup_steps: Linear LR warmup steps (optimizer steps) before cosine decay
         lr_scheduler: "cosine" (warmup + cosine) or "none" (constant LR)
-        use_amp: Enable CUDA autocast + GradScaler when device is CUDA
+        use_amp: Enable CUDA autocast + GradScaler for training when device is CUDA
+        eval_amp: Also run validation and prediction under CUDA autocast. ``False``
+                  scores in full precision, so a member's scores do not sit on an
+                  fp16 grid and tie (#321); training keeps ``use_amp`` either way.
         selection_metric: "val_ic", "val_rank_ic", or "val_loss" for early stopping / checkpointing
         shuffle_train: Optional override for training DataLoader shuffling. ``None`` keeps
                        the historical behavior: shuffled for static graphs, sequential for
@@ -833,6 +866,7 @@ class TrainingConfig:
     warmup_steps: int = 1000
     lr_scheduler: str = "cosine"
     use_amp: bool = True
+    eval_amp: bool = False
     selection_metric: str = "val_ic"
     minimum_selection_rows: int = 1
     shuffle_train: bool | None = None
@@ -1126,6 +1160,8 @@ class ExperimentConfig:
                 self.training.lambdarank_ic_max_pairs_per_day
             ),
             "training.lambdarank_ic_temperature": self.training.lambdarank_ic_temperature,
+            "training.use_amp": self.training.use_amp,
+            "training.eval_amp": self.training.eval_amp,
             "training.shuffle_train": self.training.shuffle_train,
             "training.dataloader_num_workers": self.training.dataloader_num_workers,
             "training.dataloader_pin_memory": self.training.dataloader_pin_memory,

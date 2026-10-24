@@ -59,8 +59,20 @@ EVENT_COLUMNS = (
     "other_8k_item_codes_in_prior_90_days",
     "event_text",
 )
+#: An earnings release with the company's previous one: what E17's state shows.
+EARNINGS_COLUMNS = (
+    "company",
+    "current_filed",
+    "current_release",
+    "previous_filed",
+    "previous_release",
+)
 #: The columns a sheet reads for each kind of item a label set can label.
-ITEM_COLUMNS = {"risk_pair": SHEET_COLUMNS, "event_8k": EVENT_COLUMNS}
+ITEM_COLUMNS = {
+    "risk_pair": SHEET_COLUMNS,
+    "event_8k": EVENT_COLUMNS,
+    "earnings_pair": EARNINGS_COLUMNS,
+}
 #: How a question's three-way (or wider) split may still be settled.
 SPLIT_RULES = ("", "middle")
 NOTE_COLUMN = "note"
@@ -446,6 +458,8 @@ def items_markdown(items: pd.DataFrame, kind: str = "risk_pair") -> str:
     """Items in full, plain text, nothing marked up between the two years."""
     if kind == "event_8k":
         return events_markdown(items)
+    if kind == "earnings_pair":
+        return earnings_markdown(items)
     blocks = []
     for row in items.itertuples(index=False):
         blocks.append(
@@ -489,6 +503,31 @@ def events_markdown(items: pd.DataFrame) -> str:
                     "### Event text",
                     "",
                     row.event_text.strip(),
+                    "",
+                ]
+            )
+        )
+    return "\n".join(blocks)
+
+
+def earnings_markdown(items: pd.DataFrame) -> str:
+    """Earnings releases in full: the previous release, then the current one."""
+    blocks = []
+    for row in items.itertuples(index=False):
+        blocks.append(
+            "\n".join(
+                [
+                    f"## Item {row.item_id}",
+                    "",
+                    f"- Company: {row.company.strip()}",
+                    "",
+                    f"### Previous results release (filed {row.previous_filed.strip()})",
+                    "",
+                    row.previous_release.strip(),
+                    "",
+                    f"### Current results release (filed {row.current_filed.strip()})",
+                    "",
+                    row.current_release.strip(),
                     "",
                 ]
             )

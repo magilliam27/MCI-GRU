@@ -457,6 +457,21 @@ EODHD daily prices for the point-in-time universe (#281).
 | `test_the_eodhd_package_carries_the_lseg_membership_byte_for_byte` |  |  |
 | `test_the_eodhd_config_binds_both_selected_files_to_its_package` |  |  |
 
+## `tests/test_eval_precision.py`
+
+Scoring precision: training may use AMP, validation and prediction do not.
+
+**Exercises:** `mci_gru.config`, `mci_gru.training.trainer`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_default_config_scores_in_full_precision` |  |  |
+| `test_training_keeps_amp_while_validation_runs_in_full_precision` |  |  |
+| `test_prediction_runs_in_full_precision` |  |  |
+| `test_eval_amp_opts_scoring_back_into_autocast` | The control: the recorder does see autocast when scoring asks for it. |  |
+| `test_eval_amp_needs_a_cuda_device` |  |  |
+| `test_cuda_prediction_matches_fp32_to_1e6` |  | skipif |
+
 ## `tests/test_evaluation_portfolio.py`
 
 **Exercises:** `mci_gru.evaluation.portfolio`
@@ -688,6 +703,61 @@ Automatic checks on one filing's Item 1A extraction (#292).
 | `test_text_under_no_heading_after_the_first_risk_is_flagged` |  |  |
 | `test_a_risk_read_from_its_lead_leaves_no_text_without_heading` |  |  |
 | `test_introduction_under_a_cautionary_title_is_not_text_without_heading` |  |  |
+
+## `tests/test_filings_context.py`
+
+E18: an 8-K rated with the company's latest earnings release, from the rule to the run.
+
+**Exercises:** `mci_gru.filings.change`, `mci_gru.filings.context`, `mci_gru.filings.events`, `mci_gru.filings.jev`, `scripts.data.export_sec_context_releases`, `scripts.data.score_8k_with_context`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_the_latest_release_is_the_last_earnings_8k_accepted_before_the_event` |  |  |
+| `test_a_release_counts_up_to_120_days_before` |  | parametrize |
+| `test_an_event_with_no_earlier_release_has_no_context` |  |  |
+| `test_a_draw_takes_only_its_stratum_and_never_depends_on_the_frames_order` |  |  |
+| `test_later_draws_never_repeat_an_earlier_one_and_minus_one_takes_the_rest` |  |  |
+| `test_a_repeated_event_or_an_unknown_stratum_stops_the_draw` |  |  |
+| `test_the_release_goes_just_before_the_event_text_and_nothing_else_changes` |  |  |
+| `test_the_context_question_is_e16s_with_only_the_instructions_changed` |  |  |
+| `test_a_draw_number_asks_again_and_leaves_the_undrawn_key_as_it_was` |  |  |
+| `test_each_frame_event_gets_its_latest_release_or_the_reason_it_has_none` |  |  |
+| `test_a_drawn_release_is_checked_again_on_its_index_page_time_and_text` |  | parametrize |
+| `test_the_baselines_are_the_tone_of_the_8k_the_release_and_both` |  |  |
+| `test_the_context_arm_asks_once_per_event_with_the_release_then_collects` |  |  |
+| `test_the_plain_arm_asks_e16s_exact_question_and_state_as_a_new_draw` |  |  |
+| `test_collect_refuses_while_an_event_has_no_answer` |  |  |
+| `test_events_and_releases_must_name_the_same_8ks` |  |  |
+
+## `tests/test_filings_earnings.py`
+
+E17: earnings releases read against the previous one, from the pairing rule to the run.
+
+**Exercises:** `mci_gru.filings.earnings`, `mci_gru.filings.jev`, `mci_gru.filings.labelling`, `scripts.data.export_sec_member_10k`, `scripts.data.export_sec_member_earnings`, `scripts.data.score_earnings_releases`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_the_previous_release_is_the_latest_earlier_earnings_8k` |  |  |
+| `test_a_pair_counts_only_one_quarter_apart` |  | parametrize |
+| `test_a_company_with_no_earlier_release_has_no_pair` |  |  |
+| `test_a_draw_never_depends_on_the_order_of_the_candidates` |  |  |
+| `test_later_draws_never_repeat_an_earlier_one_and_minus_one_takes_the_rest` |  |  |
+| `test_a_bigger_pool_keeps_the_events_a_smaller_one_drew` |  |  |
+| `test_a_repeated_candidate_stops_the_draw` |  |  |
+| `test_the_frozen_questions_offer_the_scouted_options_each_described` |  |  |
+| `test_each_question_has_its_own_shuffle_the_same_on_every_run` |  |  |
+| `test_setup_score_weights_much_worse_minus_two_to_much_better_plus_two` |  |  |
+| `test_the_state_holds_the_company_both_days_and_both_texts_only` |  |  |
+| `test_candidates_are_members_earnings_8ks_with_a_previous_release` |  |  |
+| `test_a_drawn_event_is_checked_again_on_its_index_page_times` |  |  |
+| `test_a_release_too_short_to_compare_is_left_out` |  |  |
+| `test_the_baseline_is_the_tone_change_of_the_draws_events` |  |  |
+| `test_three_questions_in_one_call_each_event_once_then_collect` |  |  |
+| `test_collect_refuses_while_an_event_has_no_answer` |  |  |
+| `test_an_answer_from_another_model_stops_the_run` |  |  |
+| `test_a_text_over_the_limit_is_refused` |  |  |
+| `test_the_reading_check_asks_jevs_setup_question_word_for_word` |  |  |
+| `test_an_earnings_sheet_shows_the_previous_release_then_the_current` |  |  |
 
 ## `tests/test_filings_edgar.py`
 
@@ -1131,6 +1201,34 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_a_full_run_refuses_source_changes_including_untracked_files` |  |  |
 | `test_a_run_refuses_to_reuse_a_folder` |  |  |
 | `test_a_run_records_itself_without_the_key` |  |  |
+
+## `tests/test_gat_own_signal.py`
+
+Graph layers must let a linked stock be scored on its own inputs.
+
+**Exercises:** `mci_gru.config`, `mci_gru.graph.utils`, `mci_gru.models`, `mci_gru.models.graph`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_legacy_block_ties_a_linked_pair_whatever_their_inputs` | Guard: the fixture reproduces the bug, so the tests below can fail. | parametrize |
+| `test_residual_block_scores_a_linked_pair_on_its_own_inputs` |  | parametrize |
+| `test_legacy_block_ties_every_node_of_a_linked_triangle` | Guard: ties are not only a two-node effect. | parametrize |
+| `test_residual_block_separates_every_node_of_a_linked_triangle` |  | parametrize |
+| `test_legacy_recipe_model_ties_a_linked_pair` | Guard: the recipe's model reproduces the first run's pair ties. |  |
+| `test_residual_recipe_model_scores_a_linked_pair_on_its_own_inputs` | User story 1 and 2 of #319, through ``create_model`` with the recipe's settings. |  |
+| `test_graph_stream_carries_each_stocks_own_graph_features` | The A2 graph stream, not only the head, must keep a linked stock's own signal. | parametrize |
+| `test_every_graph_block_the_model_builds_keeps_own_signal` | Final head, A2 graph stream and sector stream all get the chosen form. | parametrize |
+| `test_default_config_keeps_the_pre_change_checkpoint_shape` | First-run checkpoints must keep loading, so the default may not move. |  |
+| `test_explicit_legacy_form_keeps_the_pre_change_checkpoint_shape` |  |  |
+| `test_residual_form_adds_an_own_feature_map_to_every_graph_layer` | The residual form is a different parameter set, so it is a different checkpoint. |  |
+| `test_a_legacy_checkpoint_does_not_load_into_the_residual_form` | A silent partial load would leave the own-feature maps at their random init. |  |
+| `test_a_residual_checkpoint_does_not_load_into_the_legacy_form` |  |  |
+| `test_create_model_rejects_an_unknown_gat_layer_form` | ``create_model`` also takes a checkpoint's plain ``config.yaml`` dict, |  |
+| `test_model_config_rejects_an_unknown_gat_layer_form` |  |  |
+| `test_model_config_round_trips_the_gat_layer_form` |  |  |
+| `test_base_config_yaml_ships_the_legacy_graph_layers` | Real runs take the default from ``configs/config.yaml``, not from ``ModelConfig``. |  |
+| `test_residual_form_reaches_the_built_model_from_hydra` | The override must survive Hydra, ``ExperimentConfig`` and the factory. |  |
+| `test_dependency_floor_has_gatconv_residual` | ``GATConv(residual=...)`` first shipped in torch-geometric 2.6.0. |  |
 
 ## `tests/test_generate_test_registry.py`
 
@@ -1590,6 +1688,27 @@ Admissible range for `model.label_t` (issue 107).
 | `test_dynamic_estimator_uses_only_prior_observations` |  |  |
 | `test_dynamic_estimator_activates_after_sufficient_history` |  |  |
 | `test_feature_config_validates_dynamic_controls_and_yaml_merge` |  |  |
+
+## `tests/test_no_split_lookahead.py`
+
+Stock inputs on a date never reflect a split that happens after it (#323, PRD #319 D8).
+
+**Exercises:** `mci_gru.config`, `mci_gru.features`, `mci_gru.features.base`, `mci_gru.pipeline`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_relative_inputs_before_a_split_ignore_the_later_split` |  | parametrize |
+| `test_legacy_level_inputs_carry_the_later_split` | The guard's control: the base default still shows the bug it exists for. |  |
+| `test_relative_inputs_replace_the_six_levels` |  |  |
+| `test_relative_inputs_do_not_repeat_when_price_features_are_also_on` |  |  |
+| `test_relative_definitions_win_over_the_price_features_for_shared_names` | With both on, the shared columns follow the relative definitions. |  |
+| `test_relative_inputs_ignore_a_later_split_across_gaps_in_the_history` | A missing session and an all-missing row before the split change nothing. |  |
+| `test_relative_inputs_are_ratios_of_the_stock_s_own_prices` |  |  |
+| `test_relative_inputs_leave_zero_volume_missing_rather_than_infinite` |  |  |
+| `test_unknown_base_inputs_value_is_rejected` |  |  |
+| `test_base_default_keeps_the_legacy_levels` |  |  |
+| `test_normaliser_fits_the_relative_inputs_on_train_rows_only` |  |  |
+| `test_normaliser_statistics_ignore_rows_after_train_end` |  |  |
 
 ## `tests/test_notebook_eodhd_staging.py`
 
