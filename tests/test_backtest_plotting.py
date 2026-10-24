@@ -1,9 +1,9 @@
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 
 from mci_gru.evaluation import backtest_engine
+from mci_gru.evaluation.replay_book import ReplayBook, ReplayStrategy
 
 
 def test_plot_equity_curve_uses_agg_backend_when_saving(monkeypatch, tmp_path: Path) -> None:
@@ -15,49 +15,23 @@ def test_plot_equity_curve_uses_agg_backend_when_saving(monkeypatch, tmp_path: P
         original_use(backend, *args, **kwargs)
 
     monkeypatch.setattr(backtest_engine.matplotlib, "use", record_backend_use)
-    monkeypatch.setattr(backtest_engine, "load_predictions", lambda _path: pd.DataFrame())
-    monkeypatch.setattr(
-        backtest_engine,
-        "calculate_forward_returns",
-        lambda stock_data, label_t: stock_data,
+    empty = np.asarray([], dtype=float)
+    book = ReplayBook(
+        strategy=ReplayStrategy.open_to_open(),
+        top_k=1,
+        sessions=["2026-01-02", "2026-01-05"],
+        gross_returns=np.array([0.01, -0.005]),
+        net_returns=np.array([0.01, -0.005]),
+        benchmark_returns=np.array([0.002, 0.003]),
+        costs=np.zeros(2),
+        turnover=np.zeros(2),
+        signal_dates=[],
+        period_returns=empty,
+        benchmark_period_returns=empty,
     )
-    monkeypatch.setattr(backtest_engine, "replay_universe", lambda _config, _predictions: None)
-    monkeypatch.setattr(
-        backtest_engine,
-        "simulate_trading_strategy",
-        lambda **_kwargs: {
-            "dates": ["2026-01-02", "2026-01-03"],
-            "portfolio_returns": np.array([0.01, -0.005]),
-            "benchmark_returns": np.array([0.002, 0.003]),
-            "transaction_costs_enabled": False,
-        },
-    )
-    monkeypatch.setattr(
-        backtest_engine,
-        "calendar_returns_for_evaluation_window",
-        lambda *_args, **_kwargs: (
-            ["2026-01-02", "2026-01-03"],
-            np.array([0.01, -0.005]),
-            np.array([0.002, 0.003]),
-        ),
-    )
-
     output_path = tmp_path / "equity_curve.png"
 
-    backtest_engine.plot_equity_curve(
-        predictions_dir=tmp_path,
-        stock_data=pd.DataFrame({"dt": pd.to_datetime(["2026-01-02"])}),
-        config={
-            "label_t": 1,
-            "pit_universe_csv": None,
-            "transaction_costs": {"enabled": False},
-            "rank_drop_gate": {"enabled": False, "min_rank_drop": 10},
-            "holding_period": 1,
-            "rebalance_style": "staggered",
-            "top_k": 1,
-        },
-        output_path=output_path,
-    )
+    backtest_engine.plot_equity_curve(book, output_path=output_path)
 
     assert ("Agg", True) in backend_calls
     assert output_path.exists()

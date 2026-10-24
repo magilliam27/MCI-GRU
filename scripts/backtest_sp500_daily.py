@@ -1,11 +1,14 @@
-"""Thin CLI wrapper for daily-only backtest (holding_period=1).
+"""Thin CLI wrapper for the replay's daily open-to-open variant.
 
 The engine body lives in ``mci_gru/evaluation/backtest_engine.py`` (WS-N).
-This CLI exposes the historical daily subset of flags (20 shared flags from
-the pre-merge fork, plus ``--run_dir`` and ``--pit_export_cutoff`` from #339) and
-delegates to the engine with ``holding_period=1``, default ``rebalance_style``, and
-MLflow tracking disabled. Inputs have no defaults: ``--run_dir`` supplies them from
-the run, or every one is named explicitly, exactly as in the engine CLI.
+This CLI exposes the historical daily subset of flags (plus ``--run_dir`` and
+``--pit_export_cutoff`` from #339, ``--trial_ledger`` from #340) and delegates to the
+engine with ``--strategy open_to_open --holding_period 1`` (buy at open D+1, sell at
+open D+2: the paper's hold, a labelled variant since #340; the default replay trades
+the training label close to close) and MLflow off, auto-link included. Inputs have no
+defaults: ``--run_dir`` supplies them from the run, or every one is named explicitly,
+exactly as in the engine CLI. ``--multi_model`` is gone: it averaged member metrics
+rather than scoring the ensemble the run reports.
 
 Python importers may import public symbols re-exported from the engine module.
 """
@@ -62,18 +65,6 @@ def _build_daily_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=str, default=None, help="Output path for results CSV")
     parser.add_argument("--plot", action="store_true", help="Generate equity curve plot")
     parser.add_argument(
-        "--multi_model",
-        type=str,
-        default=None,
-        help="Base path for multi-model evaluation (10 runs)",
-    )
-    parser.add_argument(
-        "--num_models",
-        type=int,
-        default=10,
-        help="Number of model runs for multi-model evaluation (default: 10)",
-    )
-    parser.add_argument(
         "--num_tests",
         type=int,
         default=1,
@@ -84,12 +75,16 @@ def _build_daily_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--adjustment_method",
         type=str,
-        default="bhy",
-        choices=["bhy", "bonferroni", "holm"],
-        help="Multiple testing adjustment method (default: bhy). "
-        "bhy = Benjamini-Hochberg-Yekutieli (recommended for trading), "
-        "bonferroni = most stringent (FWER), "
-        "holm = step-down FWER method",
+        default="holm",
+        choices=["holm", "bonferroni", "bhy"],
+        help="Multiple testing adjustment method (default: holm). holm and bonferroni "
+        "need only --num_tests; bhy adjusts a family of p-values and needs --trial_ledger.",
+    )
+    parser.add_argument(
+        "--trial_ledger",
+        type=str,
+        default=None,
+        help="CSV with one row per OTHER trial in the family and its p_value (for bhy)",
     )
     parser.add_argument(
         "--transaction_costs",
@@ -154,8 +149,11 @@ def _namespace_to_engine_argv(args: argparse.Namespace) -> list[str]:
         if value is not None:
             argv.extend([f"--{flag}", str(value)])
     argv += [
-        "--num_models",
-        str(args.num_models),
+        "--strategy",
+        "open_to_open",
+        "--holding_period",
+        "1",
+        "--disable_mlflow_autolink",
         "--num_tests",
         str(args.num_tests),
         "--adjustment_method",
@@ -171,8 +169,8 @@ def _namespace_to_engine_argv(args: argparse.Namespace) -> list[str]:
     ]
     if args.output is not None:
         argv.extend(["--output", args.output])
-    if args.multi_model is not None:
-        argv.extend(["--multi_model", args.multi_model])
+    if args.trial_ledger is not None:
+        argv.extend(["--trial_ledger", args.trial_ledger])
     if args.plot:
         argv.append("--plot")
     if args.transaction_costs:
@@ -185,7 +183,7 @@ def _namespace_to_engine_argv(args: argparse.Namespace) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Run daily backtest via engine with holding_period=1 and MLflow off."""
+    """Run the open-to-open daily variant via the engine, MLflow off."""
     daily_argv = sys.argv[1:] if argv is None else argv
     args = _build_daily_parser().parse_args(daily_argv)
     _engine_main(_namespace_to_engine_argv(args))
