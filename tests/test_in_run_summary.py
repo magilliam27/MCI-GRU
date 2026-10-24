@@ -40,7 +40,6 @@ from mci_gru.evaluation.outcomes import realized_returns, top_k_tranche_returns
 from mci_gru.evaluation.statistics import (
     hansen_hodrick_mean_inference,
     hansen_hodrick_std,
-    moving_block_bootstrap_ci,
 )
 from mci_gru.evaluation.tranche_book import tranche_book
 
@@ -377,6 +376,7 @@ def test_the_summary_labels_its_basis_and_drops_metrics_an_ic_loss_leaves_arbitr
     assert summary["legs"] == {"entry_session": 1, "exit_session": 5}
     assert summary["label_t"] == 5 and summary["label_sessions"] == 4
     assert summary["excess_inference"] == {"method": "hansen_hodrick_uniform_v1", "lags": 3}
+    assert summary["ic_inference"] == {"method": "hansen_hodrick_t_v1", "lags": 3}
     removed = {
         "mse",
         "rmse",
@@ -396,7 +396,7 @@ def test_the_summary_labels_its_basis_and_drops_metrics_an_ic_loss_leaves_arbitr
 
 
 def test_ic_and_rank_ic_are_unchanged_by_the_new_summary():
-    """Control: the per-date IC means and their bootstrap CIs, recomputed independently."""
+    """Control: the per-date IC means, recomputed independently, and their overlap CIs (#356)."""
     rng = np.random.default_rng(15)
     closes, _ = _market(70, 10, seed=16, idio_vol=0.02)
     labels = rng.normal(size=(60, 10))
@@ -426,9 +426,10 @@ def test_ic_and_rank_ic_are_unchanged_by_the_new_summary():
     assert metrics["avg_ic"] == pytest.approx(ic.mean(), abs=1e-12)
     assert metrics["avg_rank_ic"] == pytest.approx(rank_ic.mean(), abs=1e-12)
     assert metrics["median_rank_ic"] == pytest.approx(np.median(rank_ic), abs=1e-12)
-    ci = moving_block_bootstrap_ci(ic, np.mean, 5, 50, 1729, 0.95)
-    assert metrics["avg_ic_ci_lower"] == pytest.approx(ci["lower"], abs=1e-12)
-    assert metrics["avg_ic_ci_upper"] == pytest.approx(ci["upper"], abs=1e-12)
+    # label_t=5: 60 dates, 3 uniform HAC lags, t on 60 / 7 - 1 degrees of freedom.
+    half = stats.t.ppf(0.975, 60 / 7 - 1) * hansen_hodrick_std(ic, lags=3) / np.sqrt(60)
+    assert metrics["avg_ic_ci_lower"] == pytest.approx(ic.mean() - half, abs=1e-12)
+    assert metrics["avg_ic_ci_upper"] == pytest.approx(ic.mean() + half, abs=1e-12)
 
 
 def test_ic_date_coverage_counts_dates_that_could_not_be_scored():

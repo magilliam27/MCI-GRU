@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
+from scipy import stats
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -32,6 +33,19 @@ class HACMeanInference:
     standard_error: float | None
     t_stat: float | None
     p_value: float | None
+
+
+@dataclass(frozen=True)
+class HACMeanInterval:
+    """Serializable uniform-weight HAC interval for the mean of a dated series."""
+
+    method: str
+    n_obs: int
+    lags: int
+    df: float | None
+    ci_level: float
+    lower: float | None
+    upper: float | None
 
 
 @dataclass(frozen=True)
@@ -304,6 +318,66 @@ def hansen_hodrick_mean_inference(
         standard_error=float(standard_error),
         t_stat=t_stat,
         p_value=float(math.erfc(abs(t_stat) / math.sqrt(2.0))),
+    )
+
+
+def overlap_hac_lags(label_horizon: int) -> int:
+    """Uniform HAC lags for close ``D+1`` to close ``D+label_horizon`` outcomes.
+
+    The outcome spans ``label_horizon - 1`` sessions, so consecutive days share
+    ``label_horizon - 2`` of them and autocovariances vanish beyond that lag.
+    """
+    if label_horizon <= 0:
+        raise ValueError("label_horizon must be > 0")
+    return max(0, label_horizon - 2)
+
+
+def hansen_hodrick_mean_ci(
+    values: np.ndarray,
+    *,
+    lags: int,
+    ci_level: float,
+) -> HACMeanInterval:
+    """Interval for the mean of a dated series whose autocovariances end at ``lags``.
+
+    The standard error is the uniform-weight (Hansen-Hodrick) long-run one, exact for
+    overlapping outcomes when ``lags`` is their overlap (#342). The critical value is
+    Student-t on ``n / (2 * lags + 1) - 1`` degrees of freedom: the equivalent degrees
+    of freedom of a truncated-kernel long-run variance at frequency zero, less one for
+    the estimated mean. With no lags that is the t interval on ``n - 1``. A normal
+    critical value leaves the interval short on a few hundred dates, since the
+    long-run variance is itself estimated from few effective observations (#356).
+
+    Non-finite values are dropped. Bounds are None when fewer than two values remain
+    or the estimated variance is not positive.
+    """
+    if lags < 0:
+        raise ValueError("lags must be >= 0")
+    if not 0 < ci_level < 1:
+        raise ValueError("ci_level must be in (0, 1)")
+    x = np.asarray(values, dtype=np.float64)
+    if x.ndim != 1:
+        raise ValueError("values must be 1-D")
+    x = x[np.isfinite(x)]
+    method = "hansen_hodrick_t_v1"
+    n = int(x.size)
+    if n < 2:
+        return HACMeanInterval(method, n, lags, None, ci_level, None, None)
+
+    df = max(1.0, n / (2 * lags + 1) - 1.0)
+    standard_error = hansen_hodrick_std(x, lags=lags) / math.sqrt(n)
+    if standard_error <= 0.0 or not np.isfinite(standard_error):
+        return HACMeanInterval(method, n, lags, df, ci_level, None, None)
+    mean_value = float(np.mean(x))
+    half_width = float(stats.t.ppf(0.5 + ci_level / 2.0, df)) * standard_error
+    return HACMeanInterval(
+        method=method,
+        n_obs=n,
+        lags=lags,
+        df=df,
+        ci_level=ci_level,
+        lower=mean_value - half_width,
+        upper=mean_value + half_width,
     )
 
 

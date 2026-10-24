@@ -125,11 +125,12 @@ def test_paired_mean_inference_under_the_null_brackets_zero() -> None:
 
 def test_paired_mean_inference_uses_overlap_aware_defaults() -> None:
     delta = _dated(np.linspace(-0.01, 0.01, 30).tolist())
-    result = _inference(delta)
+    result = _inference(delta, block_size=None, n_resamples=None, seed=None)
     # A close D+1 to close D+5 outcome spans 4 sessions, so uniform HAC lags default
-    # to label_horizon - 2 (#342); the block is label_horizon.
+    # to label_horizon - 2 (#342), and the interval is the HAC one on those lags (#356).
     assert result.hac_lags == 3
-    assert result.block_size == 5
+    assert result.ci_method == "hansen_hodrick_t_v1"
+    assert result.block_size is None
 
 
 def test_paired_mean_inference_drops_non_finite_days_and_reports_the_count() -> None:
