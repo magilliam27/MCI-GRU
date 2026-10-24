@@ -996,6 +996,9 @@ class EvaluationConfig:
     """Evaluation and statistical confidence configuration."""
 
     top_k_values: list[int] = field(default_factory=lambda: [10, 20, 50, 100])
+    # Turns on the in-run intervals, which are uniform-weight HAC intervals with no
+    # resampling (#356). The resample count, seed and block size below reach only the
+    # legacy matrix-only evaluate_predictions path.
     bootstrap_enabled: bool = True
     bootstrap_resamples: int = 1000
     bootstrap_seed: int = 1729

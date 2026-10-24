@@ -149,10 +149,7 @@ def resolved_evaluation_kwargs(config: ExperimentConfig) -> dict[str, Any]:
         "tranches": eval_cfg.resolved_tranches(label_t),
         "sharpe_method": eval_cfg.sharpe_method,
         "bootstrap_enabled": eval_cfg.bootstrap_enabled,
-        "bootstrap_resamples": eval_cfg.bootstrap_resamples,
-        "bootstrap_seed": eval_cfg.bootstrap_seed,
         "ci_level": eval_cfg.ci_level,
-        "block_size": eval_cfg.block_size or max(1, label_t),
         # Lags for the Sharpe of the daily book. The label spans hold_sessions
         # close-to-close intervals (label_t - 1), not label_t.
         "newey_west_lags": eval_cfg.newey_west_lags

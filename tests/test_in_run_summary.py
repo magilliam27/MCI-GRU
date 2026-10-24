@@ -38,10 +38,11 @@ from mci_gru.evaluation.metrics import (
 )
 from mci_gru.evaluation.outcomes import realized_returns, top_k_tranche_returns
 from mci_gru.evaluation.statistics import (
+    hansen_hodrick_mean_ci,
     hansen_hodrick_mean_inference,
     hansen_hodrick_std,
 )
-from mci_gru.evaluation.tranche_book import tranche_book
+from mci_gru.evaluation.tranche_book import period_returns, signal_date_closes, tranche_book
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 LEGS = Legs(entry_session=1, exit_session=5)
@@ -137,7 +138,7 @@ def test_hansen_hodrick_inference_takes_its_lags_from_the_outcome_span():
     result = hansen_hodrick_mean_inference(x, label_horizon=4)
 
     se = hansen_hodrick_std(x, lags=3) / math.sqrt(x.size)
-    assert result.method == "hansen_hodrick_uniform_v1"
+    assert result.method == "hansen_hodrick_t_v1"
     assert result.lags == 3
     assert result.n_obs == x.size
     assert result.standard_error == pytest.approx(se)
@@ -375,7 +376,7 @@ def test_the_summary_labels_its_basis_and_drops_metrics_an_ic_loss_leaves_arbitr
     assert summary["benchmark"] == "equal_weight_rankable_universe"
     assert summary["legs"] == {"entry_session": 1, "exit_session": 5}
     assert summary["label_t"] == 5 and summary["label_sessions"] == 4
-    assert summary["excess_inference"] == {"method": "hansen_hodrick_uniform_v1", "lags": 3}
+    assert summary["excess_inference"] == {"method": "hansen_hodrick_t_v1", "lags": 3}
     assert summary["ic_inference"] == {"method": "hansen_hodrick_t_v1", "lags": 3}
     removed = {
         "mse",
@@ -409,9 +410,6 @@ def test_ic_and_rank_ic_are_unchanged_by_the_new_summary():
         top_k_values=[3],
         labels=labels,
         bootstrap_enabled=True,
-        bootstrap_resamples=50,
-        bootstrap_seed=1729,
-        block_size=5,
     )["metrics"]
 
     def series(stat):
@@ -430,6 +428,47 @@ def test_ic_and_rank_ic_are_unchanged_by_the_new_summary():
     half = stats.t.ppf(0.975, 60 / 7 - 1) * hansen_hodrick_std(ic, lags=3) / np.sqrt(60)
     assert metrics["avg_ic_ci_lower"] == pytest.approx(ic.mean() - half, abs=1e-12)
     assert metrics["avg_ic_ci_upper"] == pytest.approx(ic.mean() + half, abs=1e-12)
+
+
+def test_the_excess_interval_and_its_p_value_agree():
+    """#356: the excess CI is the HAC-t interval its p-value tests, so the two agree."""
+    closes, _ = _market(90, 12, seed=21, idio_vol=0.02)
+    future = np.log(closes[5:85] / closes[1:81])
+    outcomes = []
+    for i, weight in enumerate(np.linspace(0.0, 0.6, 8)):
+        noise = np.random.default_rng(i).normal(size=future.shape) * 0.02
+        metrics = _run(closes, future * weight + noise, top_k_values=[4], bootstrap_enabled=True)[
+            "metrics"
+        ]
+        lower = metrics["top_4_excess_period_return_ci_lower"]
+        upper = metrics["top_4_excess_period_return_ci_upper"]
+        assert lower <= metrics["top_4_excess_period_return"] <= upper
+        excludes_zero = lower > 0.0 or upper < 0.0
+        assert excludes_zero == (metrics["top_4_excess_p_value"] < 0.05), weight
+        outcomes.append(excludes_zero)
+    assert any(outcomes) and not all(outcomes), "both outcomes must be exercised"
+
+
+def test_the_excess_interval_is_the_hac_interval_over_the_hold_overlap():
+    """#356: the excess CI is recomputed from the per-date excess, hold - 1 = 3 lags."""
+    closes, _ = _market(90, 12, seed=22, idio_vol=0.02)
+    future = np.log(closes[5:85] / closes[1:81])
+    scores = future * 0.05 + np.random.default_rng(23).normal(size=future.shape) * 0.02
+    metrics = _run(closes, scores, top_k_values=[4], bootstrap_enabled=True, ci_level=0.9)[
+        "metrics"
+    ]
+
+    kdcodes = [f"S{j:03d}" for j in range(closes.shape[1])]
+    panel = _panel(closes, kdcodes)
+    dates = sorted(panel["dt"].unique())[: len(scores)]
+    realized = realized_returns(panel, dates, LEGS, kdcodes=kdcodes)
+    rankable = signal_date_closes(panel, realized)
+    excess = period_returns(scores, rankable, realized, top_k=4) - period_returns(
+        scores, rankable, realized, top_k=None
+    )
+    expected = hansen_hodrick_mean_ci(excess[np.isfinite(excess)], lags=3, ci_level=0.9)
+    assert metrics["top_4_excess_period_return_ci_lower"] == pytest.approx(expected.lower)
+    assert metrics["top_4_excess_period_return_ci_upper"] == pytest.approx(expected.upper)
 
 
 def test_ic_date_coverage_counts_dates_that_could_not_be_scored():

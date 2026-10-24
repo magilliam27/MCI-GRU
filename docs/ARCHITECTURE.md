@@ -546,7 +546,9 @@ critical value on `n / (2 * lags + 1) - 1` degrees of freedom
 (`statistics.hansen_hodrick_mean_ci`). It reaches nominal coverage on a year of
 overlapping dates, where the block bootstrap at `block_size = label_t` it
 replaced covered about 89% for a nominal 95% (#356). `paired_inference` uses the
-same interval for arm-versus-control differences.
+same interval for arm-versus-control differences. The interval takes
+autocovariance past the overlap as zero, so persistence in the IC beyond the
+label (a lasting signal or regime) is not covered.
 Portfolio numbers read realized returns from the evaluation core
 (`mci_gru/evaluation/outcomes.py`) on the panel's session axis, with the PIT
 tradable mask as the rankable set, and book them in the staggered tranche book of
@@ -560,8 +562,10 @@ t-stat with `hold - 1` lags, where the hold is the legs' session span
 (`label_t - 1` under the default legs, so 3 lags for the recipe).
 Long-only numbers are kept as `top_<k>_abs_*`. `resolved_evaluation_kwargs()`
 derives the defaults: legs and tranches from `label_t`, Newey-West lags for the
-daily Sharpe `hold - 1`, and the block `max(1, label_t)` the excess-return
-bootstrap interval floors at the hold. The book ramps in
+daily Sharpe `hold - 1`. The excess interval, when
+`evaluation.bootstrap_enabled`, is the same HAC-t interval as the IC one, over
+the `hold - 1` lags its t-stat uses; that t-stat's p-value uses the same t
+reference, so a p-value under 5% and a 95% interval excluding zero agree (#356). The book ramps in
 and out over its first and last `hold - 1` sessions, which dilutes absolute
 numbers on short windows; excess numbers net the ramp.
 `evaluate_predictions` is the older matrix-only path that

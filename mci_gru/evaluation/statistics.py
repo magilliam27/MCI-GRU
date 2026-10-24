@@ -289,8 +289,12 @@ def hansen_hodrick_mean_inference(
 ) -> HACMeanInference:
     """Mean of a dated series of overlapping ``label_horizon``-session outcomes, HH t-stat.
 
-    Lags are ``label_horizon - 1``, the overlap the outcomes really have. The standard
-    error, t-stat and p-value are None when the estimated variance is not positive.
+    Lags are ``label_horizon - 1``, the overlap the outcomes really have. The two-sided
+    p-value is Student-t on ``hac_equivalent_df`` degrees of freedom, the reference
+    ``hansen_hodrick_mean_ci`` uses, so a p-value under ``1 - ci_level`` and an interval
+    excluding zero agree; a normal reference over-rejects on a few hundred dates
+    (#356). The standard error, t-stat and p-value are None when the estimated
+    variance is not positive.
     """
     if label_horizon <= 0:
         raise ValueError("label_horizon must be > 0")
@@ -301,7 +305,7 @@ def hansen_hodrick_mean_inference(
         raise ValueError("values must contain only finite observations")
 
     lags = label_horizon - 1
-    method = "hansen_hodrick_uniform_v1"
+    method = "hansen_hodrick_t_v1"
     if x.size == 0:
         return HACMeanInference(method, 0, None, lags, None, None, None)
 
@@ -317,8 +321,18 @@ def hansen_hodrick_mean_inference(
         lags=lags,
         standard_error=float(standard_error),
         t_stat=t_stat,
-        p_value=float(math.erfc(abs(t_stat) / math.sqrt(2.0))),
+        p_value=float(2.0 * stats.t.sf(abs(t_stat), hac_equivalent_df(int(x.size), lags))),
     )
+
+
+def hac_equivalent_df(n_obs: int, lags: int) -> float:
+    """Degrees of freedom for a t reference on a uniform-weight HAC standard error.
+
+    ``n / (2 * lags + 1)`` is the equivalent degrees of freedom of a truncated-kernel
+    long-run variance at frequency zero; one more is lost to the estimated mean. With
+    no lags it is ``n - 1``. Floored at one.
+    """
+    return max(1.0, n_obs / (2 * lags + 1) - 1.0)
 
 
 def overlap_hac_lags(label_horizon: int) -> int:
@@ -342,14 +356,16 @@ def hansen_hodrick_mean_ci(
 
     The standard error is the uniform-weight (Hansen-Hodrick) long-run one, exact for
     overlapping outcomes when ``lags`` is their overlap (#342). The critical value is
-    Student-t on ``n / (2 * lags + 1) - 1`` degrees of freedom: the equivalent degrees
-    of freedom of a truncated-kernel long-run variance at frequency zero, less one for
-    the estimated mean. With no lags that is the t interval on ``n - 1``. A normal
+    Student-t on ``hac_equivalent_df``: ``n / (2 * lags + 1) - 1``, the equivalent
+    degrees of freedom of a truncated-kernel long-run variance at frequency zero, less
+    one for the estimated mean. With no lags that is the t interval on ``n - 1``. A normal
     critical value leaves the interval short on a few hundred dates, since the
     long-run variance is itself estimated from few effective observations (#356).
 
-    Non-finite values are dropped. Bounds are None when fewer than two values remain
-    or the estimated variance is not positive.
+    Autocovariances past ``lags`` are taken as zero: right for the overlap itself, but
+    persistence in the series beyond it (a signal or regime that lasts) is not
+    covered. Non-finite values are dropped. Bounds are None when fewer than two values
+    remain or the estimated variance is not positive.
     """
     if lags < 0:
         raise ValueError("lags must be >= 0")
@@ -364,7 +380,7 @@ def hansen_hodrick_mean_ci(
     if n < 2:
         return HACMeanInterval(method, n, lags, None, ci_level, None, None)
 
-    df = max(1.0, n / (2 * lags + 1) - 1.0)
+    df = hac_equivalent_df(n, lags)
     standard_error = hansen_hodrick_std(x, lags=lags) / math.sqrt(n)
     if standard_error <= 0.0 or not np.isfinite(standard_error):
         return HACMeanInterval(method, n, lags, df, ci_level, None, None)

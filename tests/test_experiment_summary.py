@@ -131,15 +131,14 @@ def test_resolved_evaluation_kwargs_derives_defaults_from_label_t():
     kwargs = resolved_evaluation_kwargs(config)
 
     assert kwargs["label_t"] == 5
-    assert kwargs["block_size"] == 5  # eval block_size unset -> max(1, label_t)
     assert kwargs["newey_west_lags"] == 3  # unset -> hold sessions - 1 (label_t - 2)
     assert kwargs["legs"] == Legs(entry_session=1, exit_session=5)
     assert kwargs["tranches"] == 4
     assert kwargs["sharpe_method"] == config.evaluation.sharpe_method
     assert kwargs["top_k_values"] == config.evaluation.top_k_values
     assert kwargs["bootstrap_enabled"] == config.evaluation.bootstrap_enabled
-    assert kwargs["bootstrap_resamples"] == config.evaluation.bootstrap_resamples
-    assert kwargs["bootstrap_seed"] == config.evaluation.bootstrap_seed
+    # The in-run intervals draw no resamples (#356), so no resample settings pass.
+    assert not {"bootstrap_resamples", "bootstrap_seed", "block_size"} & set(kwargs)
     assert kwargs["ci_level"] == config.evaluation.ci_level
 
 
@@ -147,14 +146,13 @@ def test_resolved_evaluation_kwargs_at_the_smallest_admissible_label_t():
     """`ModelConfig` refuses label_t < 2 (issue 107), so 2 is the lowest horizon a run carries.
 
     The label_t=1 case this replaced can no longer be constructed. At the lowest
-    horizon the label holds one session, so the block is still label_t and the
-    daily book's Newey-West lags floor at zero.
+    horizon the label holds one session, so the daily book's Newey-West lags floor
+    at zero.
     """
     config = create_config_from_dict({"model": {"label_t": 2}})
 
     kwargs = resolved_evaluation_kwargs(config)
 
-    assert kwargs["block_size"] == 2
     assert kwargs["newey_west_lags"] == 0
     assert kwargs["tranches"] == 1
 
@@ -163,13 +161,12 @@ def test_resolved_evaluation_kwargs_explicit_values_win():
     config = create_config_from_dict(
         {
             "model": {"label_t": 5},
-            "evaluation": {"block_size": 7, "newey_west_lags": 2},
+            "evaluation": {"newey_west_lags": 2},
         }
     )
 
     kwargs = resolved_evaluation_kwargs(config)
 
-    assert kwargs["block_size"] == 7
     assert kwargs["newey_west_lags"] == 2
 
 

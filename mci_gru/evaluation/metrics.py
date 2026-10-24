@@ -411,10 +411,7 @@ def evaluate_run(
     sharpe_method: str = "newey_west",
     newey_west_lags: int | None = None,
     bootstrap_enabled: bool = False,
-    bootstrap_resamples: int = 1000,
-    bootstrap_seed: int = 42,
     ci_level: float = 0.95,
-    block_size: int | None = None,
 ) -> dict[str, Any]:
     """The in-run summary body: IC on ``labels``, portfolio numbers from the tranche book.
 
@@ -428,6 +425,10 @@ def evaluate_run(
     and tranche schedule. ``*_period_return`` is the mean per signal date of the
     ``legs.hold_sessions``-session return, with a Hansen-Hodrick t-stat for the excess;
     ``*_sharpe`` and ``*_cumulative_return`` come from the book's daily P&L.
+
+    ``bootstrap_enabled`` turns on the intervals: the IC ones and the excess-return
+    one, both uniform-weight HAC intervals over the outcome's overlap (#356). The name
+    is the config key's; no interval here resamples.
     """
     hold = legs.hold_sessions
     scores = np.asarray(predictions, dtype=np.float64)
@@ -442,10 +443,6 @@ def evaluate_run(
         rankable = np.asarray(rankable_mask, dtype=bool)
         benchmark = "equal_weight_pit_tradable_universe"
     nw_lags = max(0, hold - 1) if newey_west_lags is None else newey_west_lags
-    # The excess CI resamples overlapping hold-length returns, so a block never
-    # shorter than the hold.
-    excess_block = max(block_size or max(1, label_t), hold)
-
     metrics: dict[str, Any] = compute_ic_metrics(
         predictions,
         labels,
@@ -493,16 +490,10 @@ def evaluate_run(
         )
         metrics[f"top_{k}_unbooked_tranches"] = book.tranches_unbooked
         if bootstrap_enabled:
-            ci = moving_block_bootstrap_ci(
-                finite_excess,
-                statistic=np.mean,
-                block_size=excess_block,
-                n_resamples=bootstrap_resamples,
-                seed=bootstrap_seed + k,
-                ci_level=ci_level,
-            )
-            metrics[f"top_{k}_excess_period_return_ci_lower"] = ci["lower"]
-            metrics[f"top_{k}_excess_period_return_ci_upper"] = ci["upper"]
+            # Hold-length returns sampled every session overlap for hold - 1 lags.
+            ci = hansen_hodrick_mean_ci(finite_excess, lags=hold - 1, ci_level=ci_level)
+            metrics[f"top_{k}_excess_period_return_ci_lower"] = _or_nan(ci.lower)
+            metrics[f"top_{k}_excess_period_return_ci_upper"] = _or_nan(ci.upper)
 
     metrics.update(quintile_period_returns(scores, rankable, realized.returns, kdcodes))
 
@@ -526,12 +517,8 @@ def evaluate_run(
         "periods_per_year": PERIODS_PER_YEAR,
         "sharpe_method": sharpe_method,
         "newey_west_lags": nw_lags,
-        "excess_inference": {"method": "hansen_hodrick_uniform_v1", "lags": hold - 1},
-        "ic_inference": {
-            "method": "hansen_hodrick_t_v1",
-            "lags": overlap_hac_lags(label_t),
-        },
-        "excess_ci_block_size": excess_block,
+        "excess_inference": {"method": "hansen_hodrick_t_v1", "lags": hold - 1},
+        "ic_inference": {"method": "hansen_hodrick_t_v1", "lags": overlap_hac_lags(label_t)},
         "missing_close_events": events,
         "metrics": metrics,
     }

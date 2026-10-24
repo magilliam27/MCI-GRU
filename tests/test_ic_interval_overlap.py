@@ -192,3 +192,32 @@ def test_a_block_bootstrap_needs_its_resamples_and_seed():
             ci_level=0.95,
             block_size=5,
         )
+
+
+def test_the_t_reference_holds_coverage_on_a_short_test_span():
+    """At 60 dates a normal critical value covers about 91%; the t reference keeps 95%."""
+    draws = _overlapping_ic_draws(REPS, 60, seed=359)
+
+    def interval(values):
+        ci = ic_confidence_interval(values, label_t=LABEL_T, ci_level=0.95)
+        return ci["lower"], ci["upper"]
+
+    coverage = _coverage(draws, interval)
+    assert abs(coverage - 0.95) <= COVERAGE_TOLERANCE, coverage
+
+
+def test_the_hac_p_value_and_interval_agree():
+    """A p-value under 5% exactly when the 95% interval excludes zero, as one reference."""
+    rng = np.random.default_rng(360)
+    disagreements = 0
+    significant = 0
+    for _ in range(300):
+        values = _overlapping_ic_draws(1, 80, seed=int(rng.integers(1 << 31)))[0] + 0.8
+        result = paired_mean_inference(
+            values, arm="a", control="b", label_horizon=LABEL_T, ci_level=0.95
+        )
+        excludes_zero = result.ci_lower > 0.0 or result.ci_upper < 0.0
+        disagreements += excludes_zero != (result.hac_p < 0.05)
+        significant += excludes_zero
+    assert disagreements == 0
+    assert 0 < significant < 300, "both outcomes must be exercised"
