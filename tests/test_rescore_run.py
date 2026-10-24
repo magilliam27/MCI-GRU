@@ -7,10 +7,10 @@ from the run's recorded inputs and writes a new summary beside the old one.
 
 These tests run ``run_experiment.py`` in-process on small synthetic panels (one with a
 PIT universe, a missing bar, a joiner, a leaver and a dated cessation; one without
-PIT) and pin that:
+PIT; each with returns and rank labels) and pin that:
 
-* re-scoring reproduces the stored IC and rank IC within 1e-4 (saved scores are
-  rounded to 5 decimals), and a re-score whose IC does not reproduce writes nothing;
+* re-scoring reproduces the stored IC, rank IC and every other stored metric, and a
+  re-score whose IC does not reproduce writes nothing;
 * the result is a new file carrying the code commit and the current schema, the old
   summary and daily IC are untouched, and an earlier re-score is not overwritten
   unless forced;
@@ -158,9 +158,17 @@ def _unrounded_rows(predictions, kdcode_list, date, prediction_mask=None):
     ]
 
 
-def _run(
-    base: Path, *, use_pit: bool, label_type: str = "returns", round_scores: bool = True
-) -> Path:
+def _run(base: Path, *, use_pit: bool, label_type: str = "returns") -> Path:
+    """One in-process run, its averaged scores saved at full precision.
+
+    The runner rounds saved scores to 5 decimals. A one-epoch model on six names scores
+    some of them nearly alike, so rounding can tie names the run ranked apart and move
+    rank IC well past the script's 1e-4 tolerance; whether it does depends on the
+    platform's arithmetic (CI's two jobs disagreed with this machine). Saving full
+    precision pins the rebuild itself, exactly. The tolerance exists for real runs,
+    where an ensemble over ~110 names makes such ties rare; #338 applies it to the
+    first run.
+    """
     base.mkdir(parents=True, exist_ok=True)
     panel = base / "panel.csv"
     _write_panel(panel)
@@ -188,8 +196,7 @@ def _run(
     out.mkdir()
     patch = pytest.MonkeyPatch()
     patch.setattr(torch.cuda, "is_available", lambda: False)
-    if not round_scores:
-        patch.setattr(ensemble, "prediction_rows_for_date", _unrounded_rows)
+    patch.setattr(ensemble, "prediction_rows_for_date", _unrounded_rows)
     try:
         with _restored_process_state(out):
             run_experiment.main.__wrapped__(cfg)
@@ -210,26 +217,12 @@ def plain_run(tmp_path_factory) -> Path:
 
 @pytest.fixture(scope="module")
 def pit_rank_run(tmp_path_factory) -> Path:
-    # A one-epoch rank model scores names nearly alike, so 5-decimal rounding can tie
-    # names the run ranked apart, and that tie depends on the platform's arithmetic.
-    # These runs save full-precision scores to pin the rank-label rebuild itself; the
-    # returns runs above keep the real rounding.
-    return _run(
-        tmp_path_factory.mktemp("rescore") / "pit_rank",
-        use_pit=True,
-        label_type="rank",
-        round_scores=False,
-    )
+    return _run(tmp_path_factory.mktemp("rescore") / "pit_rank", use_pit=True, label_type="rank")
 
 
 @pytest.fixture(scope="module")
 def plain_rank_run(tmp_path_factory) -> Path:
-    return _run(
-        tmp_path_factory.mktemp("rescore") / "plain_rank",
-        use_pit=False,
-        label_type="rank",
-        round_scores=False,
-    )
+    return _run(tmp_path_factory.mktemp("rescore") / "plain_rank", use_pit=False, label_type="rank")
 
 
 ALL_RUNS = ["pit_run", "plain_run", "pit_rank_run", "plain_rank_run"]
@@ -261,8 +254,8 @@ def test_rescoring_reproduces_the_stored_ic_and_rank_ic(fixture, request, tmp_pa
     path = rescore_run.rescore_run(run)
 
     stored, rescored = _metrics(run / "evaluation_summary.json"), _metrics(path)
-    assert rescored["avg_ic"] == pytest.approx(stored["avg_ic"], abs=1e-4)
-    assert rescored["avg_rank_ic"] == pytest.approx(stored["avg_rank_ic"], abs=1e-4)
+    assert rescored["avg_ic"] == pytest.approx(stored["avg_ic"], abs=1e-12)
+    assert rescored["avg_rank_ic"] == pytest.approx(stored["avg_rank_ic"], abs=1e-12)
     assert rescored["test_dates"] == stored["test_dates"]
     assert rescored["ic_valid_dates"] == stored["ic_valid_dates"]
 
@@ -271,9 +264,7 @@ def test_rescoring_reproduces_the_stored_ic_and_rank_ic(fixture, request, tmp_pa
 def test_every_stored_metric_comes_back_when_the_code_has_not_changed(fixture, request, tmp_path):
     """The run was scored by this code, so the portfolio numbers must come back too.
 
-    That pins the rebuilt panel, dates and rankable mask, not only the labels. IC is
-    within the rounding of the saved scores; everything decided by ranks is exact on
-    these fixtures, where rounding to 5 decimals creates no new tie.
+    That pins the rebuilt panel, dates and rankable mask, not only the labels.
     """
     run = Path(shutil.copytree(request.getfixturevalue(fixture), tmp_path / "run"))
 
@@ -284,9 +275,7 @@ def test_every_stored_metric_comes_back_when_the_code_has_not_changed(fixture, r
 
     assert set(rescored) == set(stored)
     for key, value in stored.items():
-        # IC means move within the rounding of the saved scores; counts never do.
-        tolerance = 1e-4 if key.startswith(("avg_", "median_", "ic_ir", "rank_ic_ir")) else 1e-12
-        assert rescored[key] == pytest.approx(value, abs=tolerance, nan_ok=True), key
+        assert rescored[key] == pytest.approx(value, abs=1e-12, nan_ok=True), key
 
 
 def test_the_pit_run_is_scored_on_its_rebuilt_tradable_mask(run_copy):
