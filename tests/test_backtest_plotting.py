@@ -21,7 +21,7 @@ def test_plot_equity_curve_uses_agg_backend_when_saving(monkeypatch, tmp_path: P
         "calculate_forward_returns",
         lambda stock_data, label_t: stock_data,
     )
-    monkeypatch.setattr(backtest_engine, "load_pit_universe_for_backtest", lambda _path: None)
+    monkeypatch.setattr(backtest_engine, "replay_universe", lambda _config, _predictions: None)
     monkeypatch.setattr(
         backtest_engine,
         "simulate_trading_strategy",
