@@ -1088,6 +1088,9 @@ def _ties(summary: dict[str, Any]) -> dict[str, Any] | None:
     tied = ties["ensemble"]["total"]
     return {
         "tolerance": ties.get("tolerance"),
+        "scores_dtype": ties.get("scores_dtype"),
+        # True only if a member actually predicted under CUDA autocast (#346).
+        "eval_autocast": ties.get("eval_autocast"),
         "linked_pairs_total": pairs,
         "ensemble_tied_total": tied,
         "ensemble_tied_share": tied / pairs if pairs else None,

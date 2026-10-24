@@ -1211,6 +1211,8 @@ def _fake_arm_run(
 def _ties(per_date_tied, per_date_pairs):
     return {
         "tolerance": 1e-6,
+        "scores_dtype": "float32",
+        "eval_autocast": False,
         "linked_pairs": {"per_date": per_date_pairs, "total": sum(per_date_pairs.values())},
         "ensemble": {"per_date": per_date_tied, "total": sum(per_date_tied.values())},
         "members": [{"model_id": 0, "per_date": per_date_tied, "total": 7}],
@@ -1246,6 +1248,7 @@ def test_compare_pairs_the_reference_against_each_arm_on_common_dates(tmp_path):
     assert recipe["linked_score_ties"]["ensemble_tied_total"] == 1
     assert recipe["linked_score_ties"]["ensemble_tied_share"] == pytest.approx(1 / 50)
     assert recipe["linked_score_ties"]["dates_with_an_ensemble_tie"] == 1
+    assert recipe["linked_score_ties"]["eval_autocast"] is False
     assert comparison["arms"][1]["linked_score_ties"]["ensemble_tied_share"] is None
     assert comparison["arms"][2]["linked_score_ties"] is None
 
