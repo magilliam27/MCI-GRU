@@ -1267,7 +1267,7 @@ def test_compare_pairs_the_reference_against_each_arm_on_common_dates(tmp_path):
     assert paired[("rank_ic", "graph_zeroed")]["mean_delta"] == pytest.approx(
         float(np.mean((recipe_ic[keep] - base[keep]) / 2)), abs=1e-12
     )
-    assert vs_zeroed["hac_lags"] == 4
+    assert vs_zeroed["hac_lags"] == 3  # uniform weights, label_t - 2 lags (#342)
     assert (out / "daily_ic_by_arm.csv").exists()
 
 

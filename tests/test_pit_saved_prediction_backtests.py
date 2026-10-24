@@ -1,11 +1,15 @@
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+import pytest
 
 from scripts.run_pit_saved_prediction_backtests import (
     BacktestJob,
     BacktestOptions,
+    _build_combined_summary_df,
     build_backtest_command,
+    resolve_pit_export_cutoff,
     resolve_year_jobs,
     write_summary_outputs,
 )
@@ -154,8 +158,123 @@ def test_write_summary_outputs_compares_cost_aware_rows_to_reviewed_artifact(
     assert total_return["cost_rank_gate"] == 0.12
     assert total_return["delta"] == -0.06
 
-    assert combined_df.loc[0, "cost_rank_gate_compounded_total_return"] == 0.12
-    assert combined_df.loc[0, "reviewed_compounded_total_return"] == 0.18
+    # No year carries its daily series, so nothing is combined from yearly summaries (#342).
+    assert np.isnan(combined_df.loc[0, "cost_rank_gate_total_return"])
+    assert combined_df.loc[0, "cost_rank_gate_combined_from"] == "MISSING_DAILY_RETURNS:2022"
+    assert np.isnan(combined_df.loc[0, "reviewed_total_return"])
+    assert combined_df.loc[0, "cost_rank_gate_avg_daily_turnover"] == pytest.approx(0.35)
     assert combined_df.loc[0, "total_trading_days"] == 237
     assert "transaction costs enabled" in summary_md
     assert "rank-drop gate enabled" in summary_md
+
+
+def _year_with_daily_returns(tmp_path: Path, year: int, portfolio, benchmark) -> dict:
+    dates = pd.bdate_range(f"{year}-01-03", periods=len(portfolio))
+    path = tmp_path / f"{year}_daily_returns.csv"
+    pd.DataFrame(
+        {
+            "date": dates.strftime("%Y-%m-%d"),
+            "portfolio_return": portfolio,
+            "benchmark_return": benchmark,
+            "excess_return": np.asarray(portfolio) - np.asarray(benchmark),
+        }
+    ).to_csv(path, index=False)
+    values = np.cumprod(1 + np.asarray(portfolio))
+    total = values[-1] - 1
+    bench = np.prod(1 + np.asarray(benchmark)) - 1
+    return {
+        "year": year,
+        "status": "OK",
+        "daily_returns_csv": str(path),
+        "backtest.total_return": total,
+        "backtest.benchmark_return": bench,
+        "backtest.excess_return": total - bench,
+        "backtest.MDD": float(np.min(values / np.maximum.accumulate(values) - 1)),
+        "backtest.avg_daily_turnover": 0.2 if year == 2022 else 0.4,
+        "backtest.num_trading_days": len(portfolio),
+    }
+
+
+def test_multi_year_combine_reads_the_concatenated_daily_series(tmp_path: Path) -> None:
+    """r7: a drawdown straddling the year end; yearly combine gave -0.148 against -0.274."""
+    p1 = np.r_[np.full(200, 0.002), np.full(40, -0.004)]
+    p2 = np.r_[np.full(40, -0.004), np.full(200, 0.0005)]
+    b1, b2 = np.full(240, 0.0012), np.full(240, -0.0008)
+    rows = [
+        _year_with_daily_returns(tmp_path, 2022, p1, b1),
+        _year_with_daily_returns(tmp_path, 2023, p2, b2),
+    ]
+    combined = _build_combined_summary_df(pd.DataFrame(rows), pd.DataFrame()).iloc[0]
+
+    portfolio, benchmark = np.r_[p1, p2], np.r_[b1, b2]
+    total = np.prod(1 + portfolio) - 1
+    values = np.cumprod(1 + portfolio)
+    true_mdd = float(np.min(values / np.maximum.accumulate(values) - 1))
+    arr = (1 + total) ** (252 / portfolio.size) - 1
+
+    assert combined["cost_rank_gate_combined_from"] == "CONCATENATED_DAILY_RETURNS"
+    assert combined["cost_rank_gate_total_return"] == pytest.approx(total)
+    assert combined["cost_rank_gate_excess_return"] == pytest.approx(
+        total - (np.prod(1 + benchmark) - 1)
+    )
+    assert combined["cost_rank_gate_MDD"] == pytest.approx(true_mdd)
+    assert true_mdd < min(row["backtest.MDD"] for row in rows) - 0.1  # straddles the year end
+    assert combined["cost_rank_gate_ARR"] == pytest.approx(arr)
+    assert combined["cost_rank_gate_ASR"] == pytest.approx(
+        arr / (np.std(portfolio, ddof=1) * np.sqrt(252))
+    )
+    assert combined["cost_rank_gate_avg_daily_turnover"] == pytest.approx(0.3)
+
+
+def test_multi_year_benchmark_covers_the_days_the_simulator_skipped(tmp_path: Path) -> None:
+    """A skipped day is missing from daily_returns.csv but the benchmark still moved."""
+    p1, p2 = np.full(200, 0.001), np.full(200, 0.001)
+    rows = [
+        _year_with_daily_returns(tmp_path, 2022, p1, np.full(200, 0.0005)),
+        _year_with_daily_returns(tmp_path, 2023, p2, np.full(200, 0.0005)),
+    ]
+    # The engine's calendar benchmark for 2023 includes ten skipped days at -1% each.
+    calendar_2023 = np.r_[np.full(200, 0.0005), np.full(10, -0.01)]
+    rows[1]["backtest.benchmark_return"] = np.prod(1 + calendar_2023) - 1
+    combined = _build_combined_summary_df(pd.DataFrame(rows), pd.DataFrame()).iloc[0]
+
+    total = np.prod(1 + np.r_[p1, p2]) - 1
+    bench = (1 + rows[0]["backtest.benchmark_return"]) * (1 + rows[1]["backtest.benchmark_return"])
+    assert combined["cost_rank_gate_benchmark_return"] == pytest.approx(bench - 1)
+    assert combined["cost_rank_gate_excess_return"] == pytest.approx(total - (bench - 1))
+
+
+def test_replay_command_carries_the_pit_export_cutoff(tmp_path: Path) -> None:
+    """#339's replay refuses open-ended PIT rows without the export's cutoff."""
+    pit = tmp_path / "sp500_pit_x_20160101_20260513_pit_universe.csv"
+    pit.write_text("kdcode,valid_from,valid_to\nAAA,2016-01-01,\n", encoding="utf-8")
+    (tmp_path / "sp500_pit_x_20160101_20260513_meta.json").write_text(
+        '{"end": "2026-05-13"}', encoding="utf-8"
+    )
+    assert resolve_pit_export_cutoff(None, None, pit) == "2026-05-13"  # the export's sidecar
+    assert resolve_pit_export_cutoff(None, "2026-04-30", pit) == "2026-04-30"  # run manifest
+    assert resolve_pit_export_cutoff("2026-03-31", "2026-04-30", pit) == "2026-03-31"  # flag
+    assert resolve_pit_export_cutoff(None, None, tmp_path / "other.csv") is None
+
+    job = BacktestJob(
+        year=2024,
+        run_dir=tmp_path,
+        predictions_dir=tmp_path / "averaged_predictions",
+        backtest_dir=tmp_path / "backtest",
+        test_start="2024-01-22",
+        test_end="2024-12-31",
+    )
+    options = BacktestOptions(
+        repo_dir=tmp_path,
+        python_executable="python",
+        backtest_script=tmp_path / "backtest_sp500_daily.py",
+        data_file=tmp_path / "market.csv",
+        pit_universe_csv=pit,
+        pit_export_cutoff="2026-05-13",
+    )
+    cmd = build_backtest_command(job, options)
+    assert cmd[cmd.index("--pit_export_cutoff") + 1] == "2026-05-13"
+    no_cutoff = build_backtest_command(
+        job, BacktestOptions(**{**options.__dict__, "pit_export_cutoff": None})
+    )
+    assert "--pit_export_cutoff" not in no_cutoff
