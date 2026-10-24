@@ -485,6 +485,7 @@ output/
 ├── averaged_predictions/<date>.csv
 ├── training_summary.json
 ├── evaluation_summary.json
+├── daily_ic.csv                            # each test date's IC and rank IC; means equal the summary's (#326)
 ├── timing_summary.json
 └── training_step_profile_model_<id>.jsonl  # when training.profile_batches > 0
 ```

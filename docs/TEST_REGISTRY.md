@@ -283,6 +283,19 @@ Input admission at the confirmed #223 seams: native read, preparation, runner.
 | `test_the_runner_reports_malformed_rows_with_the_identity_of_the_read` |  | slow |
 | `test_the_runner_control_passes_admission_and_reaches_the_guarded_trainer_path` | Proves the guards are live: a valid panel gets past preparation to them. | slow |
 
+## `tests/test_dated_ic.py`
+
+Dated daily IC: each test date keeps its own IC, and the means equal the summary's (#326).
+
+**Exercises:** `mci_gru.evaluation.dated_ic`, `mci_gru.evaluation.metrics`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_unscored_days_keep_their_date_and_later_days_do_not_shift` |  |  |
+| `test_means_equal_the_evaluation_summary` |  |  |
+| `test_the_csv_round_trips_at_full_precision` |  |  |
+| `test_dates_that_do_not_match_the_rows_are_refused` |  |  |
+
 ## `tests/test_default_experiment_recipe.py`
 
 Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
@@ -1233,6 +1246,27 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_a_full_run_refuses_source_changes_including_untracked_files` |  |  |
 | `test_a_run_refuses_to_reuse_a_folder` |  |  |
 | `test_a_run_records_itself_without_the_key` |  |  |
+| `test_the_recipe_arm_is_the_recipe` |  |  |
+| `test_each_control_arm_differs_from_the_recipe_only_by_its_change` |  |  |
+| `test_an_arm_that_would_change_nothing_is_refused` |  |  |
+| `test_every_arm_composes_into_the_typed_config` | Each arm goes through Hydra the way run_experiment.py takes it. | parametrize |
+| `test_a_control_arm_records_itself_and_is_never_an_admitted_run_candidate` |  |  |
+| `test_an_arm_the_recipe_cannot_take_is_refused_before_anything_is_written` |  |  |
+| `test_junit_outcome_reads_the_cuda_test` |  | parametrize |
+| `test_the_gpu_check_passes_only_when_the_cuda_test_ran_and_passed` |  | parametrize |
+| `test_the_gpu_check_fails_when_pytest_writes_no_report` |  |  |
+| `test_compare_pairs_the_reference_against_each_arm_on_common_dates` |  |  |
+| `test_compare_refuses_a_dated_series_its_summary_does_not_average` |  |  |
+| `test_compare_refuses_arms_from_different_commits` |  |  |
+| `test_compare_refuses_a_folder_labelled_as_another_arm` |  |  |
+| `test_the_notebook_runs_one_recipe_arm_unless_told_otherwise` |  |  |
+| `test_compare_refuses_a_control_that_differs_by_more_than_its_arm` |  | parametrize |
+| `test_compare_accepts_the_same_package_bytes_however_they_were_staged` |  |  |
+| `test_compare_refuses_an_arm_given_twice_or_a_reference_other_than_the_recipe` |  |  |
+| `test_compare_flags_auxiliary_inputs_that_differ_from_the_recipe_arms` |  |  |
+| `test_compare_writes_strict_json_and_never_writes_over_a_folder` |  |  |
+| `test_check_arms_refuses_before_training_an_arm_the_recipe_cannot_take` |  |  |
+| `test_the_notebook_checks_every_arm_before_any_trains` |  |  |
 
 ## `tests/test_gat_own_signal.py`
 

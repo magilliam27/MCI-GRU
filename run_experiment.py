@@ -44,6 +44,7 @@ from mci_gru.config import create_config_from_dict
 from mci_gru.data.data_manager import create_data_loaders
 from mci_gru.data.input_observations import InputObservationError
 from mci_gru.data.quality_contract import AdmissionError, write_run_failure
+from mci_gru.evaluation.dated_ic import DAILY_IC_FILENAME, write_dated_ic
 from mci_gru.evaluation.execution_provenance import (
     EVIDENCE_DIR,
     capture_execution_start,
@@ -398,6 +399,10 @@ def main(cfg: DictConfig):
                 with open(evaluation_summary_path, "w") as f:
                     json.dump(evaluation_summary, f, indent=2)
                 logger.info(f"Evaluation summary saved to: {evaluation_summary_path}")
+                daily_ic_path = write_dated_ic(
+                    avg_predictions, data["test_labels"], data["test_dates"], wpath
+                )
+                logger.info(f"Dated daily IC saved to: {daily_ic_path}")
                 training_summary["evaluation"] = evaluation_summary["metrics"]
                 wf_summaries.append(training_summary)
 
@@ -476,6 +481,7 @@ def main(cfg: DictConfig):
                     "averaged_predictions",
                     "training_summary.json",
                     "evaluation_summary.json",
+                    DAILY_IC_FILENAME,
                     "timing_summary.json",
                 ],
             )
