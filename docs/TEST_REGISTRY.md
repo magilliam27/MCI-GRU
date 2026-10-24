@@ -2177,9 +2177,16 @@ The replay reads its inputs from the run it replays (#339).
 | `test_refuses_a_pit_file_whose_bytes_differ_from_what_the_run_consumed` |  |  |
 | `test_refuses_an_edited_resolved_config` |  |  |
 | `test_refuses_predictions_for_a_name_outside_the_run` |  |  |
+| `test_k_is_required_when_the_run_reported_several` | metrics.top_k is the summary function's default (50), not a choice the run made. |  |
+| `test_refuses_a_prediction_file_the_receipt_did_not_bind` |  |  |
+| `test_refuses_another_runs_predictions` |  |  |
+| `test_legacy_fingerprint_is_used_only_for_csv_runs_without_data_inputs` |  |  |
+| `test_the_recorded_resolved_path_is_tried_when_the_configured_one_differs` |  |  |
 | `test_a_data_file_override_with_the_same_bytes_is_accepted` |  |  |
 | `test_overrides_outside_the_run_are_refused` |  | parametrize |
 | `test_overrides_inside_the_run_are_honoured` |  |  |
+| `test_window_overrides_are_compared_as_dates_not_text` | '2025-3-5' sorts after '2025-03-17' as text; as a date it is 2025-03-05. |  |
+| `test_multi_model_with_a_run_dir_is_refused` |  |  |
 | `test_a_pit_override_for_a_run_without_pit_is_refused` |  |  |
 | `test_the_bare_documented_command_is_refused` | ``--predictions_dir`` alone used to replay on paper-era defaults. |  |
 | `test_explicit_mode_without_a_run_names_every_missing_input` |  |  |
@@ -2188,6 +2195,7 @@ The replay reads its inputs from the run it replays (#339).
 | `test_open_ended_pit_rows_without_a_cutoff_are_refused_not_dropped` |  |  |
 | `test_benchmark_uses_the_candidates_membership_date` | DDD joins on session 6: it is out of the benchmark for the trade entering then |  |
 | `test_benchmark_without_a_pit_file_is_the_runs_members` |  |  |
+| `test_numeric_kdcodes_match_a_string_universe` |  |  |
 | `test_explicit_mode_without_a_pit_file_benchmarks_the_scored_names` |  |  |
 | `test_cli_replays_a_run_from_its_directory_alone` |  |  |
 

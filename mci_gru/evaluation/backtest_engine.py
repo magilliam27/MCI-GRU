@@ -105,6 +105,7 @@ from mci_gru.evaluation.portfolio import (  # noqa: E402
 )
 from mci_gru.evaluation.replay_inputs import (  # noqa: E402
     ReplayInputError,
+    iso_date,
     resolve_replay_inputs,
 )
 from mci_gru.tracking import (  # noqa: E402
@@ -827,8 +828,14 @@ def _pit_active_rows(
         return stock_data_df
     sessions = sorted(stock_data_df["dt"].unique())
     ranked_on = dict(zip(sessions[1:], sessions[:-1], strict=True))
-    frame = stock_data_df.assign(_membership_dt=stock_data_df["dt"].map(ranked_on))
-    merged = frame.merge(pit_universe_df[["kdcode", "valid_from", "valid_to"]], on="kdcode")
+    frame = stock_data_df.assign(
+        _membership_dt=stock_data_df["dt"].map(ranked_on),
+        _kdcode=stock_data_df["kdcode"].astype(str),
+    )
+    pit = pit_universe_df[["kdcode", "valid_from", "valid_to"]].rename(
+        columns={"kdcode": "_kdcode"}
+    )
+    merged = frame.merge(pit.assign(_kdcode=pit["_kdcode"].astype(str)), on="_kdcode")
     mask = (
         merged["_membership_dt"].notna()
         & (merged["_membership_dt"] >= merged["valid_from"])
@@ -3261,7 +3268,7 @@ def evaluate_multiple_models(save_path, num_models=10, config=None):
         Dictionary with individual and averaged results
     """
     if config is None:
-        config = DEFAULT_CONFIG
+        raise ValueError("evaluate_multiple_models() needs a config naming its inputs (#339)")
 
     print("\n" + "=" * 70)
     print(f"MULTI-MODEL EVALUATION ({num_models} runs)")
@@ -3521,6 +3528,11 @@ def main(argv: list[str] | None = None):
 
     args = parser.parse_args(argv)
 
+    if args.run_dir and args.multi_model:
+        parser.error(
+            "--multi_model replays other directories, which --run_dir cannot check; "
+            "pass one run's --run_dir (and --predictions_dir inside it) instead"
+        )
     if args.run_dir:
         try:
             replay_inputs = resolve_replay_inputs(
@@ -3553,6 +3565,10 @@ def main(argv: list[str] | None = None):
                 "pass --run_dir to replay a run from its own records, or name every input: "
                 f"missing {' '.join(missing)}"
             )
+        try:
+            args.test_start, args.test_end = iso_date(args.test_start), iso_date(args.test_end)
+        except ReplayInputError as error:
+            parser.error(str(error))
         print(
             "WARNING: no --run_dir, so the inputs below are not checked against any run's records."
         )

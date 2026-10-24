@@ -6,7 +6,8 @@ dropped every PIT membership with no end date, and averaged a benchmark over nam
 joined the universe after the candidates were ranked. These tests pin the fixes:
 
 * ``--run_dir`` supplies the data file, PIT file and export cutoff, window, label, k and
-  members, and refuses when a file's bytes differ from what the run consumed.
+  members, and refuses when a file's bytes differ from what the run consumed or a
+  prediction file differs from what the run's receipt bound.
 * Flags that remain are checked overrides; the bare documented command is refused.
 * An open-ended PIT row keeps its member through the run's export cutoff.
 * The benchmark is the PIT universe on the candidates' membership date, so a later
@@ -46,7 +47,8 @@ OUTSIDER = "XXX"
 TEST_START, TEST_END = SESSIONS[1], SESSIONS[-3]
 LABEL_T = 3
 TOP_K_VALUES = [1, 2]
-HEADLINE_K = 2
+K = 2
+ATTEMPT = "a" * 32
 CUTOFF = SESSIONS[-1]
 
 
@@ -159,9 +161,30 @@ def _build_run(root: Path, *, use_pit: bool = True) -> Path:
         "data_inputs": data_inputs,
     }
     (run / "run_metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-    summary = {"label_t": LABEL_T, "metrics": {"top_k": HEADLINE_K}}
+    # As written by metrics.py's default, not chosen by the run: never a headline k.
+    summary = {"label_t": LABEL_T, "metrics": {"top_k": 50}}
     (run / "evaluation_summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    start = run / "execution_provenance" / f"{ATTEMPT}.json"
+    start.parent.mkdir()
+    start.write_text('{"attempt_id": "' + ATTEMPT + '"}', encoding="utf-8")
+    metadata["execution_start"] = {
+        "path": f"execution_provenance/{ATTEMPT}.json",
+        "sha256": _sha256(start),
+    }
+    (run / "run_metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    _bind_receipt(run)
     return run
+
+
+def _bind_receipt(run: Path) -> None:
+    """The window's terminal receipt, binding every saved prediction file by digest."""
+    start = run / "execution_provenance" / f"{ATTEMPT}.json"
+    artifacts = {
+        f"averaged_predictions/{f.name}": _sha256(f)
+        for f in sorted((run / "averaged_predictions").glob("*.csv"))
+    }
+    receipt = {"start": {"path": start.name, "sha256": _sha256(start)}, "artifacts": artifacts}
+    (start.parent / f"{ATTEMPT}.receipt.json").write_text(json.dumps(receipt), encoding="utf-8")
 
 
 @pytest.fixture
@@ -173,7 +196,7 @@ def run_dir(tmp_path: Path) -> Path:
 
 
 def test_run_dir_supplies_data_pit_window_label_k_and_members(run_dir: Path) -> None:
-    inputs = resolve_replay_inputs(run_dir)
+    inputs = resolve_replay_inputs(run_dir, top_k=K)
 
     data_dir = run_dir.parent / "data"
     assert inputs.data_file == (data_dir / "panel.csv").resolve()
@@ -181,7 +204,7 @@ def test_run_dir_supplies_data_pit_window_label_k_and_members(run_dir: Path) -> 
     assert inputs.pit_export_cutoff == CUTOFF
     assert (inputs.test_start, inputs.test_end) == (TEST_START, TEST_END)
     assert inputs.label_t == LABEL_T
-    assert inputs.top_k == HEADLINE_K
+    assert inputs.top_k == K
     assert inputs.members == tuple(MEMBERS)
     assert inputs.predictions_dir == run_dir / "averaged_predictions"
 
@@ -200,7 +223,7 @@ def test_refuses_a_data_file_whose_bytes_differ_from_what_the_run_consumed(
     panel.write_text(panel.read_text(encoding="utf-8") + "\n", encoding="utf-8")
 
     with pytest.raises(ReplayInputError, match="data.filename"):
-        resolve_replay_inputs(run_dir)
+        resolve_replay_inputs(run_dir, top_k=K)
 
 
 def test_refuses_a_pit_file_whose_bytes_differ_from_what_the_run_consumed(
@@ -210,7 +233,7 @@ def test_refuses_a_pit_file_whose_bytes_differ_from_what_the_run_consumed(
     pit.write_text(pit.read_text(encoding="utf-8").replace(SESSIONS[5], SESSIONS[4]))
 
     with pytest.raises(ReplayInputError, match="data.pit_universe_csv"):
-        resolve_replay_inputs(run_dir)
+        resolve_replay_inputs(run_dir, top_k=K)
 
 
 def test_refuses_an_edited_resolved_config(run_dir: Path) -> None:
@@ -220,7 +243,7 @@ def test_refuses_an_edited_resolved_config(run_dir: Path) -> None:
     path.write_text(json.dumps(config, indent=2), encoding="utf-8")
 
     with pytest.raises(ReplayInputError, match="resolved_config"):
-        resolve_replay_inputs(run_dir)
+        resolve_replay_inputs(run_dir, top_k=K)
 
 
 def test_refuses_predictions_for_a_name_outside_the_run(run_dir: Path) -> None:
@@ -228,9 +251,64 @@ def test_refuses_predictions_for_a_name_outside_the_run(run_dir: Path) -> None:
     frame = pd.read_csv(day)
     frame.loc[len(frame)] = [OUTSIDER, TEST_START, 9.9]
     frame.to_csv(day, index=False)
+    _bind_receipt(run_dir)
 
     with pytest.raises(ReplayInputError, match=OUTSIDER):
+        resolve_replay_inputs(run_dir, top_k=K)
+
+
+def test_k_is_required_when_the_run_reported_several(run_dir: Path) -> None:
+    """metrics.top_k is the summary function's default (50), not a choice the run made."""
+    with pytest.raises(ReplayInputError, match="--top_k"):
         resolve_replay_inputs(run_dir)
+
+
+def test_refuses_a_prediction_file_the_receipt_did_not_bind(run_dir: Path) -> None:
+    day = run_dir / "averaged_predictions" / f"{TEST_START}.csv"
+    frame = pd.read_csv(day)
+    frame["score"] = frame["score"][::-1].to_numpy()
+    frame.to_csv(day, index=False)
+
+    with pytest.raises(ReplayInputError, match="receipt"):
+        resolve_replay_inputs(run_dir, top_k=K)
+
+
+def test_refuses_another_runs_predictions(run_dir: Path, tmp_path: Path) -> None:
+    other = _build_run(tmp_path / "other")
+
+    with pytest.raises(ReplayInputError, match="not inside the run"):
+        resolve_replay_inputs(run_dir, top_k=K, predictions_dir=str(other / "averaged_predictions"))
+
+
+def test_legacy_fingerprint_is_used_only_for_csv_runs_without_data_inputs(
+    run_dir: Path,
+) -> None:
+    path = run_dir / "run_metadata.json"
+    metadata = json.loads(path.read_text(encoding="utf-8"))
+    recorded = metadata["data_inputs"]["data.filename"]
+    metadata["data_file"] = recorded["configured_path"]
+    metadata["data_file_sha256"] = recorded["sha256"]
+    # Another role is still recorded, so data_inputs exists and simply lacks this one.
+    del metadata["data_inputs"]["data.filename"]
+    path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+
+    with pytest.raises(ReplayInputError, match="no sha256 for data.filename"):
+        resolve_replay_inputs(run_dir, top_k=K)
+
+
+def test_the_recorded_resolved_path_is_tried_when_the_configured_one_differs(
+    run_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = run_dir / "run_metadata.json"
+    metadata = json.loads(path.read_text(encoding="utf-8"))
+    metadata["data_inputs"]["data.filename"]["configured_path"] = "panel.csv"
+    path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "panel.csv").write_text("kdcode,dt\n", encoding="utf-8")
+
+    inputs = resolve_replay_inputs(run_dir, top_k=K)
+
+    assert inputs.data_file == (run_dir.parent / "data" / "panel.csv").resolve()
 
 
 # -- Flags remain only as checked overrides ------------------------------------------
@@ -243,7 +321,7 @@ def test_a_data_file_override_with_the_same_bytes_is_accepted(
     copy.parent.mkdir()
     copy.write_bytes((run_dir.parent / "data" / "panel.csv").read_bytes())
 
-    inputs = resolve_replay_inputs(run_dir, data_file=str(copy))
+    inputs = resolve_replay_inputs(run_dir, top_k=K, data_file=str(copy))
 
     assert inputs.data_file == copy.resolve()
 
@@ -262,7 +340,7 @@ def test_overrides_outside_the_run_are_refused(
     run_dir: Path, override: dict[str, object], match: str
 ) -> None:
     with pytest.raises(ReplayInputError, match=match):
-        resolve_replay_inputs(run_dir, **override)
+        resolve_replay_inputs(run_dir, **{"top_k": K, **override})
 
 
 def test_overrides_inside_the_run_are_honoured(run_dir: Path) -> None:
@@ -271,11 +349,29 @@ def test_overrides_inside_the_run_are_honoured(run_dir: Path) -> None:
     assert (inputs.top_k, inputs.test_start, inputs.test_end) == (1, SESSIONS[3], SESSIONS[7])
 
 
+def test_window_overrides_are_compared_as_dates_not_text(run_dir: Path) -> None:
+    """'2025-3-5' sorts after '2025-03-17' as text; as a date it is 2025-03-05."""
+    unpadded = SESSIONS[2].replace("-03-0", "-3-")
+
+    inputs = resolve_replay_inputs(run_dir, top_k=K, test_start=unpadded)
+
+    assert inputs.test_start == SESSIONS[2]
+
+
+def test_multi_model_with_a_run_dir_is_refused(run_dir: Path) -> None:
+    with pytest.raises(SystemExit):
+        backtest_engine.main(
+            ["--run_dir", str(run_dir), "--top_k", str(K), "--multi_model", str(run_dir)]
+        )
+
+
 def test_a_pit_override_for_a_run_without_pit_is_refused(tmp_path: Path) -> None:
     run = _build_run(tmp_path, use_pit=False)
 
     with pytest.raises(ReplayInputError, match="PIT"):
-        resolve_replay_inputs(run, pit_universe_csv=str(tmp_path / "data" / "pit_universe.csv"))
+        resolve_replay_inputs(
+            run, top_k=K, pit_universe_csv=str(tmp_path / "data" / "pit_universe.csv")
+        )
 
 
 def test_the_bare_documented_command_is_refused(run_dir: Path) -> None:
@@ -358,7 +454,7 @@ def test_benchmark_uses_the_candidates_membership_date(run_dir: Path) -> None:
     (ranked on session 5) and in from the next one. CCC leaves after session 5: it is
     in for the trade entering on session 6."""
     panel = _panel_with_returns(run_dir)
-    inputs = resolve_replay_inputs(run_dir)
+    inputs = resolve_replay_inputs(run_dir, top_k=K)
     config = inputs.backtest_config()
     predictions = backtest_engine.load_predictions(str(inputs.predictions_dir))
 
@@ -376,7 +472,7 @@ def test_benchmark_uses_the_candidates_membership_date(run_dir: Path) -> None:
 def test_benchmark_without_a_pit_file_is_the_runs_members(tmp_path: Path) -> None:
     run = _build_run(tmp_path, use_pit=False)
     panel = _panel_with_returns(run)
-    inputs = resolve_replay_inputs(run)
+    inputs = resolve_replay_inputs(run, top_k=K)
     config = inputs.backtest_config()
     predictions = backtest_engine.load_predictions(str(inputs.predictions_dir))
 
@@ -386,6 +482,20 @@ def test_benchmark_without_a_pit_file_is_the_runs_members(tmp_path: Path) -> Non
     pd.testing.assert_series_equal(
         benchmark.dropna(), expected, check_names=False, check_index_type=False
     )
+    assert np.all(benchmark.dropna() < 0.05), "the +10%/session outsider leaked in"
+
+
+def test_numeric_kdcodes_match_a_string_universe(run_dir: Path) -> None:
+    panel = _panel_with_returns(run_dir)
+    codes = {k: i + 1 for i, k in enumerate([*MEMBERS, OUTSIDER])}
+    panel["kdcode"] = panel["kdcode"].map(codes)
+    universe = pd.DataFrame(
+        {"kdcode": [str(codes[k]) for k in MEMBERS], "valid_from": SESSIONS[0], "valid_to": CUTOFF}
+    )
+
+    benchmark = equal_weight_benchmark_daily_series(panel, universe)
+
+    assert benchmark.notna().any()
     assert np.all(benchmark.dropna() < 0.05), "the +10%/session outsider leaked in"
 
 
@@ -404,7 +514,9 @@ def test_explicit_mode_without_a_pit_file_benchmarks_the_scored_names(run_dir: P
 
 
 def test_cli_replays_a_run_from_its_directory_alone(run_dir: Path) -> None:
-    backtest_engine.main(["--run_dir", str(run_dir), "--auto_save", "--disable_mlflow_autolink"])
+    backtest_engine.main(
+        ["--run_dir", str(run_dir), "--top_k", str(K), "--auto_save", "--disable_mlflow_autolink"]
+    )
 
     backtest_dirs = list((run_dir / "averaged_predictions").parent.glob("backtest*"))
     assert backtest_dirs, "no backtest output written"

@@ -4,20 +4,24 @@ A run directory (one walk-forward window of ``run_experiment.py`` output) alread
 records everything the replay needs: ``resolved_config.json`` for the window, label,
 reported k values and PIT export cutoff; ``run_metadata.json`` for the stock axis
 (``kdcode_list``) and the identity of every data file the run consumed
-(``data_inputs``); ``evaluation_summary.json`` for the headline k. The replay used to
-take all of these from paper-era flag defaults instead.
+(``data_inputs``); the window's terminal receipt under ``execution_provenance/`` for
+the digest of every saved prediction file. The replay used to take all of these from
+paper-era flag defaults instead.
 
-Every file is checked against the SHA-256 the run recorded when it consumed it, so a
-replay cannot silently price a run on different data or a different universe. Flags
-remain only as overrides, and each is checked against the run: a file override must
-carry the same bytes, a window override must lie inside the run's test window, and a
-k override must be one the run reported.
+Every file is checked against the SHA-256 the run recorded, so a replay cannot
+silently price a run on different data, a different universe or another run's
+predictions. Flags remain only as overrides, and each is checked against the run: a
+file override must carry the same bytes, a window override must lie inside the run's
+test window, and k must be one the run reported. The run records no chosen headline
+k (``metrics.top_k`` is a function default), so k is required unless the run
+reported exactly one.
 """
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -103,9 +107,9 @@ def resolve_replay_inputs(
     if label_t is not None and int(label_t) != run_label_t:
         raise ReplayInputError(f"label_t override {label_t} differs from the run's {run_label_t}")
 
-    run_start, run_end = str(data_cfg["test_start"]), str(data_cfg["test_end"])
-    start = run_start if test_start is None else str(test_start)
-    end = run_end if test_end is None else str(test_end)
+    run_start, run_end = iso_date(data_cfg["test_start"]), iso_date(data_cfg["test_end"])
+    start = run_start if test_start is None else iso_date(test_start)
+    end = run_end if test_end is None else iso_date(test_end)
     if start < run_start:
         raise ReplayInputError(f"test_start override {start} precedes the run's {run_start}")
     if end > run_end:
@@ -114,12 +118,12 @@ def resolve_replay_inputs(
         raise ReplayInputError(f"test_start {start} is after test_end {end}")
 
     top_k_values = tuple(int(k) for k in resolved.get("evaluation", {}).get("top_k_values", ()))
-    k = _headline_k(run) if top_k is None else int(top_k)
-    if k is None:
+    if top_k is None and len(top_k_values) != 1:
         raise ReplayInputError(
-            "the run's evaluation_summary.json records no headline top_k; pass --top_k, "
-            f"one of the run's top_k_values {list(top_k_values)}"
+            "the run records no chosen headline k; pass --top_k, one of the run's "
+            f"top_k_values {list(top_k_values)}"
         )
+    k = top_k_values[0] if top_k is None else int(top_k)
     if k not in top_k_values:
         raise ReplayInputError(
             f"top_k {k} is not one the run reported (top_k_values {list(top_k_values)})"
@@ -131,13 +135,14 @@ def resolve_replay_inputs(
     if k > len(members):
         raise ReplayInputError(f"top_k {k} exceeds the run's {len(members)} members")
 
-    data_path, data_sha = _verified_input(
-        DATA_ROLE,
-        data_inputs.get(DATA_ROLE),
-        data_file,
-        legacy_sha256=metadata.get("data_file_sha256"),
-        legacy_path=metadata.get("data_file"),
-    )
+    recorded_data = data_inputs.get(DATA_ROLE)
+    if recorded_data is None and not data_inputs and data_cfg.get("source") == "csv":
+        # Runs before data_inputs existed fingerprinted the configured CSV directly.
+        recorded_data = {
+            "sha256": metadata.get("data_file_sha256"),
+            "configured_path": metadata.get("data_file"),
+        }
+    data_path, data_sha = _verified_input(DATA_ROLE, recorded_data, data_file)
 
     run_cutoff = data_cfg.get("pit_export_cutoff")
     if data_cfg.get("use_pit_universe"):
@@ -157,6 +162,7 @@ def resolve_replay_inputs(
         pit_path, pit_sha, cutoff = None, None, None
 
     preds_dir = Path(predictions_dir) if predictions_dir else run / PREDICTIONS_DIRNAME
+    _check_predictions_recorded(run, metadata, preds_dir)
     _check_predictions(preds_dir, members, run_start, run_end)
 
     return ReplayInputs(
@@ -174,6 +180,15 @@ def resolve_replay_inputs(
         top_k_values=top_k_values,
         members=members,
     )
+
+
+def iso_date(value: Any) -> str:
+    """``YYYY-MM-DD`` for a date given as text; the replay compares dates as text."""
+    text = str(value)
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").strftime("%Y-%m-%d")
+    except ValueError as error:
+        raise ReplayInputError(f"date {text!r} is not YYYY-MM-DD") from error
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -202,45 +217,76 @@ def _read_resolved_config(run: Path, metadata: dict[str, Any]) -> dict[str, Any]
     return resolved
 
 
-def _headline_k(run: Path) -> int | None:
-    path = run / "evaluation_summary.json"
-    if not path.is_file():
-        return None
-    with path.open(encoding="utf-8") as handle:
-        summary = json.load(handle)
-    k = summary.get("metrics", {}).get("top_k", summary.get("top_k"))
-    return None if k is None else int(k)
-
-
 def _verified_input(
-    role: str,
-    recorded: dict[str, Any] | None,
-    override: str | None,
-    *,
-    legacy_sha256: str | None = None,
-    legacy_path: str | None = None,
+    role: str, recorded: dict[str, Any] | None, override: str | None
 ) -> tuple[Path, str]:
-    """Locate ``role``'s file and prove it carries the bytes the run consumed."""
-    expected = (recorded or {}).get("sha256") or legacy_sha256
-    configured = (recorded or {}).get("configured_path") or legacy_path
+    """Locate ``role``'s file and prove it carries the bytes the run consumed.
+
+    Without an override, the configured path is tried first, then the path the run
+    resolved it to; the first that carries the recorded bytes is used.
+    """
+    recorded = recorded or {}
+    expected = recorded.get("sha256")
     if not expected:
         raise ReplayInputError(
             f"run_metadata.json records no sha256 for {role}; the replay cannot check the "
             "file it would read"
         )
-    candidate = override if override is not None else configured
-    if not candidate:
+    if override is not None:
+        candidates = [override]
+    else:
+        candidates = [
+            c for c in (recorded.get("configured_path"), recorded.get("resolved_path")) if c
+        ]
+    if not candidates:
         raise ReplayInputError(f"run_metadata.json records no path for {role}; pass an override")
-    try:
-        path = resolve_project_data_path(str(candidate), allow_basename_fallback=False)
-    except FileNotFoundError as error:
-        raise ReplayInputError(f"{role}: {error}") from error
-    actual = sha256_file(path)
-    if actual != expected:
+    problems = []
+    for candidate in dict.fromkeys(str(c) for c in candidates):
+        try:
+            path = resolve_project_data_path(candidate, allow_basename_fallback=False)
+        except FileNotFoundError as error:
+            problems.append(str(error))
+            continue
+        actual = sha256_file(path)
+        if actual == expected:
+            return path, actual
+        problems.append(f"{path} has sha256 {actual}")
+    raise ReplayInputError(
+        f"{role}: no file carries the bytes the run consumed (sha256 {expected}): "
+        + "; ".join(problems)
+    )
+
+
+def _check_predictions_recorded(run: Path, metadata: dict[str, Any], directory: Path) -> None:
+    """Every prediction file must be one the run's terminal receipt bound by digest."""
+    start = (metadata.get("execution_start") or {}).get("path")
+    if not start:
         raise ReplayInputError(
-            f"{role} at {path} has sha256 {actual}, but the run consumed {expected}"
+            "run_metadata.json records no execution_start, so no receipt binds the predictions"
         )
-    return path, actual
+    receipt_path = run / Path(start).with_name(f"{Path(start).stem}.receipt.json")
+    receipt = _read_json(receipt_path)
+    if (receipt.get("start") or {}).get("sha256") != metadata["execution_start"].get("sha256"):
+        raise ReplayInputError(f"{receipt_path.name} does not belong to this run's start")
+    artifacts: dict[str, str] = receipt.get("artifacts") or {}
+    try:
+        prefix = directory.resolve().relative_to(run.resolve()).as_posix()
+    except ValueError as error:
+        raise ReplayInputError(
+            f"predictions directory {directory} is not inside the run {run}"
+        ) from error
+    bound = {k: v for k, v in artifacts.items() if k.startswith(f"{prefix}/")}
+    present = {f"{prefix}/{f.name}": f for f in directory.glob("*.csv")}
+    if not bound:
+        raise ReplayInputError(f"the run's receipt binds no files under {prefix}/")
+    if set(present) != set(bound):
+        raise ReplayInputError(
+            f"prediction files differ from the run's receipt: missing "
+            f"{sorted(set(bound) - set(present))}, unexpected {sorted(set(present) - set(bound))}"
+        )
+    changed = sorted(name for name, f in present.items() if sha256_file(f) != bound[name])
+    if changed:
+        raise ReplayInputError(f"prediction files differ from the run's receipt: {changed}")
 
 
 def _check_predictions(directory: Path, members: tuple[str, ...], start: str, end: str) -> None:
