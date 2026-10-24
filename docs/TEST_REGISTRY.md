@@ -2042,6 +2042,7 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 | `test_repeated_seed_training_rows_are_not_collapsed_by_year` |  |  |
 | `test_build_backtest_command_uses_scenario_cost_and_label_settings` |  |  |
 | `test_write_sensitivity_outputs_emits_cross_tabs_and_baseline_deltas` |  |  |
+| `test_replay_command_carries_the_pit_export_cutoff` | #339's replay refuses open-ended PIT rows without the export's cutoff. |  |
 
 ## `tests/test_pit_repeated_seed_replication_notebook.py`
 
@@ -2069,6 +2070,7 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 | `test_write_summary_outputs_compares_cost_aware_rows_to_reviewed_artifact` |  |  |
 | `test_multi_year_combine_reads_the_concatenated_daily_series` | r7: a drawdown straddling the year end; yearly combine gave -0.148 against -0.274. |  |
 | `test_multi_year_benchmark_covers_the_days_the_simulator_skipped` | A skipped day is missing from daily_returns.csv but the benchmark still moved. |  |
+| `test_replay_command_carries_the_pit_export_cutoff` | #339's replay refuses open-ended PIT rows without the export's cutoff. |  |
 
 ## `tests/test_pit_universe_mode_config.py`
 
@@ -2254,6 +2256,15 @@ Regime forward context is refused unless the matching excludes the current month
 | `test_the_market_verdict_names_the_read_it_was_ruled_on` |  | parametrize |
 | `test_a_stopped_market_file_is_recorded_as_read_but_never_used` |  | parametrize |
 | `test_a_market_file_captured_through_read_file_still_replays` |  |  |
+
+## `tests/test_replay_callers_pass_pit_cutoff.py`
+
+Every notebook that replays on a PIT file names the export's cutoff (#342).
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_the_scan_finds_the_pit_replay_notebooks` |  |  |
+| `test_pit_replay_and_training_carry_the_export_cutoff` |  | parametrize |
 
 ## `tests/test_replay_inputs.py`
 

@@ -9,6 +9,7 @@ from scripts.run_pit_saved_prediction_backtests import (
     BacktestOptions,
     _build_combined_summary_df,
     build_backtest_command,
+    resolve_pit_export_cutoff,
     resolve_year_jobs,
     write_summary_outputs,
 )
@@ -241,3 +242,39 @@ def test_multi_year_benchmark_covers_the_days_the_simulator_skipped(tmp_path: Pa
     bench = (1 + rows[0]["backtest.benchmark_return"]) * (1 + rows[1]["backtest.benchmark_return"])
     assert combined["cost_rank_gate_benchmark_return"] == pytest.approx(bench - 1)
     assert combined["cost_rank_gate_excess_return"] == pytest.approx(total - (bench - 1))
+
+
+def test_replay_command_carries_the_pit_export_cutoff(tmp_path: Path) -> None:
+    """#339's replay refuses open-ended PIT rows without the export's cutoff."""
+    pit = tmp_path / "sp500_pit_x_20160101_20260513_pit_universe.csv"
+    pit.write_text("kdcode,valid_from,valid_to\nAAA,2016-01-01,\n", encoding="utf-8")
+    (tmp_path / "sp500_pit_x_20160101_20260513_meta.json").write_text(
+        '{"end": "2026-05-13"}', encoding="utf-8"
+    )
+    assert resolve_pit_export_cutoff(None, None, pit) == "2026-05-13"  # the export's sidecar
+    assert resolve_pit_export_cutoff(None, "2026-04-30", pit) == "2026-04-30"  # run manifest
+    assert resolve_pit_export_cutoff("2026-03-31", "2026-04-30", pit) == "2026-03-31"  # flag
+    assert resolve_pit_export_cutoff(None, None, tmp_path / "other.csv") is None
+
+    job = BacktestJob(
+        year=2024,
+        run_dir=tmp_path,
+        predictions_dir=tmp_path / "averaged_predictions",
+        backtest_dir=tmp_path / "backtest",
+        test_start="2024-01-22",
+        test_end="2024-12-31",
+    )
+    options = BacktestOptions(
+        repo_dir=tmp_path,
+        python_executable="python",
+        backtest_script=tmp_path / "backtest_sp500_daily.py",
+        data_file=tmp_path / "market.csv",
+        pit_universe_csv=pit,
+        pit_export_cutoff="2026-05-13",
+    )
+    cmd = build_backtest_command(job, options)
+    assert cmd[cmd.index("--pit_export_cutoff") + 1] == "2026-05-13"
+    no_cutoff = build_backtest_command(
+        job, BacktestOptions(**{**options.__dict__, "pit_export_cutoff": None})
+    )
+    assert "--pit_export_cutoff" not in no_cutoff

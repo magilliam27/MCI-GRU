@@ -78,6 +78,7 @@ class BacktestOptions:
     backtest_script: Path
     data_file: Path
     pit_universe_csv: Path
+    pit_export_cutoff: str | None = None
     backtest_suffix: str = DEFAULT_BACKTEST_SUFFIX
     spread_bps: float = 10.0
     slippage_bps: float = 5.0
@@ -90,6 +91,7 @@ class BacktestOptions:
 
 def build_backtest_command(job: BacktestJob, options: BacktestOptions) -> list[str]:
     """Build the exact daily-backtest command for a saved yearly prediction folder."""
+    cutoff = ["--pit_export_cutoff", options.pit_export_cutoff] if options.pit_export_cutoff else []
     return [
         options.python_executable,
         "-X",
@@ -101,6 +103,7 @@ def build_backtest_command(job: BacktestJob, options: BacktestOptions) -> list[s
         str(options.data_file),
         "--pit_universe_csv",
         str(options.pit_universe_csv),
+        *cutoff,
         "--test_start",
         job.test_start,
         "--test_end",
@@ -284,6 +287,25 @@ def read_reviewed_rows(path: Path | None) -> list[dict[str, Any]]:
     return df.to_dict("records")
 
 
+def resolve_pit_export_cutoff(
+    explicit: str | None, manifest_value: str | None, pit_universe_csv: Path
+) -> str | None:
+    """The PIT export's cutoff: the flag, the run manifest, else its ``_meta.json`` ``end``.
+
+    The daily replay refuses open-ended PIT rows without it (#339), as training does.
+    """
+    for value in (explicit, manifest_value):
+        if value:
+            return str(value)
+    meta = pit_universe_csv.with_name(
+        pit_universe_csv.name.replace("_pit_universe.csv", "_meta.json")
+    )
+    if meta != pit_universe_csv and meta.is_file():
+        end = json.loads(meta.read_text(encoding="utf-8")).get("end")
+        return str(end) if end else None
+    return None
+
+
 def resolve_input_path(
     value: str | None,
     repo_dir: Path,
@@ -348,6 +370,9 @@ def main(argv: list[str] | None = None) -> int:
         else repo_dir / "scripts" / "backtest_sp500_daily.py",
         data_file=data_file,
         pit_universe_csv=pit_universe_csv,
+        pit_export_cutoff=resolve_pit_export_cutoff(
+            args.pit_export_cutoff, manifest.get("pit_export_cutoff"), pit_universe_csv
+        ),
         backtest_suffix=args.backtest_suffix,
         spread_bps=args.spread,
         slippage_bps=args.slippage,
@@ -423,6 +448,12 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--backtest-script", type=Path, default=None)
     parser.add_argument("--data-file", default=None)
     parser.add_argument("--pit-universe-csv", default=None)
+    parser.add_argument(
+        "--pit-export-cutoff",
+        default=None,
+        help="The PIT export's cutoff (blank valid_to means through it). Defaults to the "
+        "run manifest's, else the PIT file's _meta.json end.",
+    )
     parser.add_argument("--years", nargs="+", type=int, default=[2022, 2023, 2024, 2025])
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--label-t", type=int, default=5)
