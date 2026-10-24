@@ -11,6 +11,14 @@ one) or `[Inferred]` (reasoning on top of those figures). Section 10 is entirely
 interpretation and is labelled as such. Nothing from the mechanics smoke appears in any
 table in this document; see section 3.
 
+> **Statistics superseded, 2026-10-24.** The evaluation PRD #334 found that the in-run summary's portfolio statistics did not measure what their names say. Section 7 reads those statistics from `evaluation_summary.json`, and #336 (pull request #351, `83a40dc`) replaced them. Nothing was re-run for this note (#334 decision E10).
+>
+> - **Newey–West Sharpe by K** (section 7.2, and the Sharpe orderings in summary finding 4). Each test date's top-K return is a 4-session return (close `t+1` to close `t+5`), so consecutive dates overlap by three sessions. The code annualised these as daily returns with a lag-4 Bartlett correction, which overstates the Sharpe. On the first run (`20261010T044328Z-full-ec77f4b7`) the audit found the reported Sharpe about 1.13 to 1.16 times too high, 1.42 against about 1.25. The schema-2 summary computes Sharpe from the daily P&L of the staggered tranche book instead.
+> - **April's composite** (section 7.1, summary finding 6) weights `sharpe_top_20_newey_west` at 0.25, so its scores inherit that bias. The schema-2 summary no longer carries that key.
+> - **Hit rate and test MSE** (section 7.3). Under the IC loss the level and scale of the scores are arbitrary, so these measure nothing about forecast quality. #336 removed them (#334 decision E7). The same table's long–short spread used uneven quintiles, and schema 2 replaced it too.
+> - **Not corrected yet, tracked as #356: the arbiter's block-bootstrap CI.** Its block length is the label's 5, which weights the lags much as a Bartlett lag-4 HAC does. `[Inferred]` A Monte Carlo run while reviewing this note used MA(3) series of 238 days. In it, that bootstrap put the standard error at 0.85 times the truth, and its 95% interval covered the true mean 89% of the time. Read the intervals in sections 1 and 4 as roughly 15% too narrow. Every one of them already contains zero, so widening them cannot change the verdict.
+> - **What stands:** the arbiter's point estimates and ranking (sections 1 and 4), the mean and median rank IC, the mean top-K returns read as absolute 4-session returns (no universe benchmark is netted), and the per-year table (section 5), with the label caveat in the paired re-analysis's section 3. The section 7.4 point that the verdict is metric-dependent rests partly on the Sharpe orderings, so it should be re-read once the arms are re-scored on the schema-2 summary.
+
 ---
 
 ## 1. Summary

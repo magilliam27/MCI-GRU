@@ -11,7 +11,8 @@ joined the universe after the candidates were ranked. These tests pin the fixes:
 * Flags that remain are checked overrides; the bare documented command is refused.
 * An open-ended PIT row keeps its member through the run's export cutoff.
 * The benchmark is the PIT universe on the candidates' membership date, so a later
-  joiner is out and a name the run never scored is out even with no PIT file.
+  joiner is out and a name the run never scored is out even with no PIT file (#340
+  moved it onto the replay's tranche book).
 """
 
 from __future__ import annotations
@@ -26,12 +27,11 @@ import pytest
 
 from mci_gru.evaluation import backtest_engine
 from mci_gru.evaluation.backtest_engine import (
-    calculate_forward_returns,
-    equal_weight_benchmark_daily_series,
     load_pit_universe_for_backtest,
     replay_universe,
     resolve_data_file,
 )
+from mci_gru.evaluation.replay_book import ReplayStrategy, build_replay_book
 from mci_gru.evaluation.replay_inputs import (
     ReplayInputError,
     resolve_replay_inputs,
@@ -431,83 +431,90 @@ def test_open_ended_pit_rows_without_a_cutoff_are_refused_not_dropped(run_dir: P
 # -- The benchmark is the PIT universe on the candidates' membership date -----------
 
 
-def _panel_with_returns(run_dir: Path) -> pd.DataFrame:
+def _replay(predictions_dir: Path, config: dict):
+    return backtest_engine.replay(str(predictions_dir), config)[1]
+
+
+def _expected_benchmark(run_dir: Path, book, members_on) -> list[float]:
+    """Equal-weight hold return (close D+1 to close D+label_t) for each signal date,
+    over the members on that date: the date its candidates were ranked."""
     panel = pd.read_csv(run_dir.parent / "data" / "panel.csv")
-    return calculate_forward_returns(panel, label_t=LABEL_T)
-
-
-def _expected_benchmark(panel: pd.DataFrame, members_on) -> pd.Series:
-    """Equal-weight open-to-open return at each entry session, over members on the
-    session before it (the date the candidates entering then were ranked)."""
-    out = {}
-    for prev, entry in zip(SESSIONS[:-1], SESSIONS[1:], strict=True):
-        names = members_on(prev)
-        rows = panel[(panel["dt"] == entry) & panel["kdcode"].isin(names)]
-        values = rows["open_to_open_return"].dropna()
-        if len(values):
-            out[entry] = values.mean()
-    return pd.Series(out).sort_index()
+    close = panel.pivot(index="dt", columns="kdcode", values="close")
+    out = []
+    for date in book.signal_dates:
+        i = SESSIONS.index(date)
+        names = members_on(date)
+        out.append(
+            float(
+                (
+                    close.loc[SESSIONS[i + LABEL_T], names] / close.loc[SESSIONS[i + 1], names]
+                    - 1.0
+                ).mean()
+            )
+        )
+    return out
 
 
 def test_benchmark_uses_the_candidates_membership_date(run_dir: Path) -> None:
-    """DDD joins on session 6: it is out of the benchmark for the trade entering then
-    (ranked on session 5) and in from the next one. CCC leaves after session 5: it is
-    in for the trade entering on session 6."""
-    panel = _panel_with_returns(run_dir)
+    """DDD joins on session 6: it is out of the benchmark for the tranche ranked on
+    session 5 and in from session 6. CCC leaves after session 5: it is in for the
+    tranche ranked on session 5."""
     inputs = resolve_replay_inputs(run_dir, top_k=K)
-    config = inputs.backtest_config()
-    predictions = backtest_engine.load_predictions(str(inputs.predictions_dir))
 
-    benchmark = equal_weight_benchmark_daily_series(panel, replay_universe(config, predictions))
+    book = _replay(inputs.predictions_dir, inputs.backtest_config())
 
-    expected = _expected_benchmark(panel, lambda dt: [k for k in MEMBERS if _active(k, dt)])
-    pd.testing.assert_series_equal(
-        benchmark.dropna(), expected, check_names=False, check_index_type=False
-    )
-    joiner_entry = SESSIONS[6]
-    ranked_then = panel[(panel["dt"] == joiner_entry) & panel["kdcode"].isin(["AAA", "BBB", "CCC"])]
-    assert benchmark[joiner_entry] == pytest.approx(ranked_then["open_to_open_return"].mean())
+    expected = _expected_benchmark(run_dir, book, lambda dt: [k for k in MEMBERS if _active(k, dt)])
+    np.testing.assert_allclose(book.benchmark_period_returns, expected, rtol=1e-12)
+    assert SESSIONS[5] in book.signal_dates and SESSIONS[6] in book.signal_dates
+    ranked_on_5 = _expected_benchmark(run_dir, book, lambda _dt: ["AAA", "BBB", "CCC"])
+    position = book.signal_dates.index(SESSIONS[5])
+    assert book.benchmark_period_returns[position] == pytest.approx(ranked_on_5[position])
 
 
-def test_benchmark_without_a_pit_file_is_the_runs_members(tmp_path: Path) -> None:
+def test_benchmark_without_a_pit_file_is_the_runs_scored_members(tmp_path: Path) -> None:
     run = _build_run(tmp_path, use_pit=False)
-    panel = _panel_with_returns(run)
     inputs = resolve_replay_inputs(run, top_k=K)
-    config = inputs.backtest_config()
-    predictions = backtest_engine.load_predictions(str(inputs.predictions_dir))
 
-    benchmark = equal_weight_benchmark_daily_series(panel, replay_universe(config, predictions))
+    book = _replay(inputs.predictions_dir, inputs.backtest_config())
 
-    expected = _expected_benchmark(panel, lambda _dt: MEMBERS)
-    pd.testing.assert_series_equal(
-        benchmark.dropna(), expected, check_names=False, check_index_type=False
-    )
-    assert np.all(benchmark.dropna() < 0.05), "the +10%/session outsider leaked in"
+    # The run scored only the names its tradable mask admitted: those are its universe.
+    expected = _expected_benchmark(run, book, lambda dt: [k for k in MEMBERS if _active(k, dt)])
+    np.testing.assert_allclose(book.benchmark_period_returns, expected, rtol=1e-12)
+    assert np.all(book.benchmark_returns < 0.05), "the +10%/session outsider leaked in"
 
 
 def test_numeric_kdcodes_match_a_string_universe(run_dir: Path) -> None:
-    panel = _panel_with_returns(run_dir)
+    panel = pd.read_csv(run_dir.parent / "data" / "panel.csv")
     codes = {k: i + 1 for i, k in enumerate([*MEMBERS, OUTSIDER])}
     panel["kdcode"] = panel["kdcode"].map(codes)
-    universe = pd.DataFrame(
-        {"kdcode": [str(codes[k]) for k in MEMBERS], "valid_from": SESSIONS[0], "valid_to": CUTOFF}
+    kdcodes = [str(codes[k]) for k in MEMBERS]
+    dates = SESSIONS[1:9]
+    scores = np.tile(np.arange(len(kdcodes), dtype=float), (len(dates), 1))
+
+    book = build_replay_book(
+        panel, scores, dates, kdcodes, strategy=ReplayStrategy.close_tranches(LABEL_T), top_k=K
     )
 
-    benchmark = equal_weight_benchmark_daily_series(panel, universe)
-
-    assert benchmark.notna().any()
-    assert np.all(benchmark.dropna() < 0.05), "the +10%/session outsider leaked in"
+    assert book.benchmark_returns.size and np.all(np.isfinite(book.benchmark_returns))
+    assert np.all(book.benchmark_returns < 0.05), "the +10%/session outsider leaked in"
 
 
 def test_explicit_mode_without_a_pit_file_benchmarks_the_scored_names(run_dir: Path) -> None:
-    panel = _panel_with_returns(run_dir)
     predictions = backtest_engine.load_predictions(str(run_dir / "averaged_predictions"))
+    config = {
+        "data_file": str(run_dir.parent / "data" / "panel.csv"),
+        "pit_universe_csv": None,
+        "test_start": TEST_START,
+        "test_end": TEST_END,
+        "label_t": LABEL_T,
+        "top_k": K,
+    }
 
-    universe = replay_universe({"pit_universe_csv": None}, predictions)
+    universe = replay_universe(config, predictions)
+    book = _replay(run_dir / "averaged_predictions", config)
 
     assert set(universe["kdcode"]) == set(MEMBERS)
-    benchmark = equal_weight_benchmark_daily_series(panel, universe)
-    assert np.all(benchmark.dropna() < 0.05), "the +10%/session outsider leaked in"
+    assert np.all(book.benchmark_returns < 0.05), "the +10%/session outsider leaked in"
 
 
 # -- End to end through the CLI ------------------------------------------------------

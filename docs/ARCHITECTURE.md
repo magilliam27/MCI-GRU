@@ -562,10 +562,21 @@ overlapping returns as daily (#342).
 ### Economic saved-prediction replay
 
 `scripts/backtest_sp500.py` is a thin CLI over
-`mci_gru/evaluation/backtest_engine.py`. The engine consumes dated prediction
-files plus market data, models T-close scoring with T+1-open entry and
-open-to-open returns, supports daily, staggered, and block rebalancing, and can
-apply costs and a rank-drop gate.
+`mci_gru/evaluation/backtest_engine.py`, which reads its inputs from the run it
+replays (`replay_inputs.py`, #339) and trades one book,
+`mci_gru/evaluation/replay_book.py` (#340). The default strategy buys at close
+`D+1` and sells at close `D+label_t` in staggered tranches, one per held session,
+the same schedule as the in-run tranche book; the paper's open `D+1` to open `D+2`
+hold, with its staggered and block variants, is a labelled `open_to_open`
+strategy on the same book. Returns, exits and ties come from the evaluation core;
+a missing exit is sold at the last close and logged. Inside a tranche weights
+drift buy-and-hold, costs are charged on the trade session against the drifted
+holdings, and at most one share class per issuer is held. The benchmark is the
+equal-weight PIT universe with each issuer weighted once, on the same schedule.
+Every metric and output file reads the book's one daily series: Sharpe beside the
+paper's ASR, MDD from 1.0, annualised IR, compounded months, Holm by default and
+BHY only with a trial ledger. Outputs record the SHA-256 of every input. On a
+synthetic run the default replay's top-k excess equals the in-run summary's.
 
 ### Selection-research evidence
 
@@ -700,7 +711,8 @@ mci_gru/
 │   ├── metrics.py                ← prediction metrics
 │   ├── statistics.py             ← IC, Newey-West, bootstrap primitives
 │   ├── experiment_summary.py     ← in-run evaluation policy, resolved-config provenance
-│   ├── backtest_engine.py        ← economic saved-prediction replay
+│   ├── backtest_engine.py        ← economic saved-prediction replay (CLI, metrics, outputs)
+│   ├── replay_book.py            ← the replay's tranche book, issuers, costs
 │   ├── portfolio.py              ← ranking, top-K, turnover, rank-drop gate
 │   ├── capacity.py               ← capacity diagnostics
 │   ├── selection_audit.py        ← selection-evidence protocol and decisions

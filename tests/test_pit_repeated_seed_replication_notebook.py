@@ -287,7 +287,7 @@ def test_issue31_notebook_uses_cost_rank_gate_promotion_path() -> None:
         "--min_rank_drop",
         "--num_tests",
         "--adjustment_method",
-        "ADJUSTMENT_METHOD = 'bhy'",
+        "ADJUSTMENT_METHOD = 'holm'",
     ]
 
     for token in required_tokens:
