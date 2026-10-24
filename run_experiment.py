@@ -44,6 +44,7 @@ from mci_gru.config import create_config_from_dict
 from mci_gru.data.data_manager import create_data_loaders
 from mci_gru.data.input_observations import InputObservationError
 from mci_gru.data.quality_contract import AdmissionError, write_run_failure
+from mci_gru.evaluation.dated_ic import DAILY_IC_FILENAME, write_dated_ic
 from mci_gru.evaluation.execution_provenance import (
     EVIDENCE_DIR,
     capture_execution_start,
@@ -54,6 +55,8 @@ from mci_gru.evaluation.execution_provenance import (
 from mci_gru.evaluation.experiment_summary import (
     build_run_metadata,
     compute_evaluation_summary,
+    correlation_edges_for_date,
+    linked_score_tie_summary,
     select_training_objective_value,
     write_resolved_config,
 )
@@ -381,6 +384,17 @@ def main(cfg: DictConfig):
                     avg_predictions,
                     data["test_labels"],
                     cfg_w,
+                    panel=data["df"],
+                    dates=data["test_dates"],
+                    kdcodes=data["kdcode_list"],
+                    rankable_mask=data.get("test_tradable_mask"),
+                )
+                evaluation_summary["linked_score_ties"] = linked_score_tie_summary(
+                    avg_predictions,
+                    [result.predictions for result in results],
+                    data["test_dates"],
+                    correlation_edges_for_date(data),
+                    eval_autocast=any(result.eval_autocast for result in results),
                 )
                 timing_summary["phases"]["evaluation_summary_seconds"] = (
                     perf_counter() - phase_started
@@ -389,6 +403,10 @@ def main(cfg: DictConfig):
                 with open(evaluation_summary_path, "w") as f:
                     json.dump(evaluation_summary, f, indent=2)
                 logger.info(f"Evaluation summary saved to: {evaluation_summary_path}")
+                daily_ic_path = write_dated_ic(
+                    avg_predictions, data["test_labels"], data["test_dates"], wpath
+                )
+                logger.info(f"Dated daily IC saved to: {daily_ic_path}")
                 training_summary["evaluation"] = evaluation_summary["metrics"]
                 wf_summaries.append(training_summary)
 
@@ -467,6 +485,7 @@ def main(cfg: DictConfig):
                     "averaged_predictions",
                     "training_summary.json",
                     "evaluation_summary.json",
+                    DAILY_IC_FILENAME,
                     "timing_summary.json",
                 ],
             )

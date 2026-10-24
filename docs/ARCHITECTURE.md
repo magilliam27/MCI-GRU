@@ -485,6 +485,7 @@ output/
 ├── averaged_predictions/<date>.csv
 ├── training_summary.json
 ├── evaluation_summary.json
+├── daily_ic.csv                            # each test date's IC and rank IC; means equal the summary's (#326)
 ├── timing_summary.json
 └── training_step_profile_model_<id>.jsonl  # when training.profile_batches > 0
 ```
@@ -532,15 +533,29 @@ backtest.
 
 ### In-run prediction evaluation
 
-`mci_gru/evaluation/metrics.py` computes regression errors, Pearson and Spearman
-IC, hit rate, prediction quantiles, top-K returns, naive and Newey-West Sharpe,
-and optional moving-block bootstrap intervals
-(`mci_gru/evaluation/statistics.py`). The headline `sharpe_ratio` is the
-Newey-West value when `label_t > 1` and the naive value otherwise.
-`resolved_evaluation_kwargs()` derives defaults from `EvaluationConfig`:
-Newey-West lags default to `label_t - 1` and the bootstrap block size defaults to
-`max(1, label_t)`. `run_experiment.py` writes the result as
-`evaluation_summary.json`.
+`mci_gru/evaluation/metrics.py` (`evaluate_run`) writes `evaluation_summary.json`
+(schema `mci_gru.evaluation_summary.v2`, #336). Pearson and Spearman IC are
+scored against the training labels, with optional moving-block bootstrap
+intervals (`mci_gru/evaluation/statistics.py`) and their date coverage.
+Portfolio numbers read realized returns from the evaluation core
+(`mci_gru/evaluation/outcomes.py`) on the panel's session axis, with the PIT
+tradable mask as the rankable set, and book them in the staggered tranche book of
+`mci_gru/evaluation/tranche_book.py`: `evaluation.tranches` sleeves, each opening
+a buy-and-hold tranche at close `D+1` and closing it at close `D+label_t`, rolling
+its own capital. Sharpe (per `evaluation.sharpe_method`) and cumulative return
+come from that book's daily P&L. The headline for each k in
+`evaluation.top_k_values` is excess over the equal-weight universe book on the
+same mask and schedule; the mean per-period excess carries a Hansen-Hodrick
+t-stat with `hold - 1` lags, where the hold is the legs' session span
+(`label_t - 1` under the default legs, so 3 lags for the recipe).
+Long-only numbers are kept as `top_<k>_abs_*`. `resolved_evaluation_kwargs()`
+derives the defaults: legs and tranches from `label_t`, Newey-West lags for the
+daily Sharpe `hold - 1`, bootstrap block `max(1, label_t)`. The book ramps in
+and out over its first and last `hold - 1` sessions, which dilutes absolute
+numbers on short windows; excess numbers net the ramp.
+`evaluate_predictions` is the older matrix-only path that
+`prediction_report.py` still uses; its Sharpe and cumulative return treat
+overlapping returns as daily (#342).
 
 ### Economic saved-prediction replay
 
@@ -716,9 +731,6 @@ These are properties of the code as written, not intended guarantees:
 - `run_metadata.json` serializes z-score means and standard deviations but not a
   fitted rank-Gaussian reference, so frozen inference from `run_metadata.json`
   is not self-contained for a `rank_gauss` training run.
-- `EvaluationConfig.sharpe_method` is validated but is not passed by
-  `resolved_evaluation_kwargs()`; headline Sharpe selection follows `label_t` as
-  described above.
 - Index-level mode always uses z-score normalization regardless of
   `data.normalisation`, and builds labels from the normalized frame, whereas
   stock-level labels come from the raw engineered price frame.

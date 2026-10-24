@@ -1,25 +1,28 @@
 """Experiment-level evaluation summary helpers.
 
 Moved from ``run_experiment.py`` so the research policy they encode
-(Newey-West lag defaults derived from ``label_t``, the selection-metric
+(the evaluation defaults derived from ``label_t``, the selection-metric
 key mapping) lives in the package where it is importable and unit-testable.
 """
 
 import hashlib
 import logging
+from collections.abc import Callable, Sequence
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 import numpy as np
+import pandas as pd
 
 from mci_gru.config import ExperimentConfig
 from mci_gru.evaluation.artifacts import write_json_artifact
-from mci_gru.training import evaluate_predictions
+from mci_gru.evaluation.metrics import evaluate_run
 
 RESOLVED_CONFIG_FILENAME = "resolved_config.json"
 REDACTED_ABSOLUTE_PATH = "<ABSOLUTE_PATH>"
+LINKED_SCORE_TIE_TOLERANCE = 1e-6
 
 
 def _is_absolute_path_text(value: str) -> bool:
@@ -137,17 +140,24 @@ def build_run_metadata(
 
 def resolved_evaluation_kwargs(config: ExperimentConfig) -> dict[str, Any]:
     eval_cfg = config.evaluation
+    label_t = config.model.label_t
+    legs = eval_cfg.resolved_legs(label_t)
     return {
         "top_k_values": eval_cfg.top_k_values,
-        "label_t": config.model.label_t,
+        "label_t": label_t,
+        "legs": legs,
+        "tranches": eval_cfg.resolved_tranches(label_t),
+        "sharpe_method": eval_cfg.sharpe_method,
         "bootstrap_enabled": eval_cfg.bootstrap_enabled,
         "bootstrap_resamples": eval_cfg.bootstrap_resamples,
         "bootstrap_seed": eval_cfg.bootstrap_seed,
         "ci_level": eval_cfg.ci_level,
-        "block_size": eval_cfg.block_size or max(1, config.model.label_t),
+        "block_size": eval_cfg.block_size or max(1, label_t),
+        # Lags for the Sharpe of the daily book. The label spans hold_sessions
+        # close-to-close intervals (label_t - 1), not label_t.
         "newey_west_lags": eval_cfg.newey_west_lags
         if eval_cfg.newey_west_lags is not None
-        else max(0, config.model.label_t - 1),
+        else max(0, legs.hold_sessions - 1),
     }
 
 
@@ -155,16 +165,114 @@ def compute_evaluation_summary(
     predictions: np.ndarray,
     labels: np.ndarray,
     config: ExperimentConfig,
+    *,
+    panel: pd.DataFrame,
+    dates: list[str],
+    kdcodes: list[str],
+    rankable_mask: np.ndarray | None,
 ) -> dict[str, Any]:
-    metrics = evaluate_predictions(
+    """One window's ``evaluation_summary.json`` (schema v2, #336).
+
+    IC is scored against ``labels``, the training labels; every portfolio number is
+    the staggered tranche book on ``panel``'s closes. See ``evaluate_run``.
+    """
+    return evaluate_run(
         predictions,
         labels,
+        panel=panel,
+        dates=dates,
+        kdcodes=kdcodes,
+        rankable_mask=rankable_mask,
         **resolved_evaluation_kwargs(config),
     )
+
+
+def linked_pairs(edge_index: Any) -> np.ndarray:
+    """Unordered pairs of distinct stocks joined by an edge, as a sorted ``(P, 2)`` array.
+
+    Direction, duplicates and self-loops are dropped: a pair is linked once whatever
+    the edge list repeats.
+    """
+    if edge_index is None:
+        return np.empty((0, 2), dtype=np.int64)
+    edges = np.asarray(edge_index, dtype=np.int64)
+    if edges.ndim != 2 or edges.shape[0] != 2:
+        raise ValueError(f"edge_index must have shape (2, E), got {edges.shape}")
+    lo = np.minimum(edges[0], edges[1])
+    hi = np.maximum(edges[0], edges[1])
+    distinct = lo != hi
+    if not distinct.any():
+        return np.empty((0, 2), dtype=np.int64)
+    return np.unique(np.stack([lo[distinct], hi[distinct]], axis=1), axis=0)
+
+
+def correlation_edges_for_date(data: dict[str, Any]) -> Callable[[str], Any]:
+    """The correlation ``edge_index`` the test loader gives the model on each date.
+
+    A dynamic run reads its ``GraphSchedule`` snapshot, as the collate does; a
+    static run uses the one graph throughout.
+    """
+    schedule = data.get("graph_schedule")
+    if schedule is not None:
+        return lambda date: schedule.get_graph_for_date(date)[0]
+    edge_index = data["edge_index"]
+    return lambda date: edge_index
+
+
+def count_linked_score_ties(
+    scores: np.ndarray,
+    pairs_by_date: Sequence[np.ndarray],
+    tolerance: float = LINKED_SCORE_TIE_TOLERANCE,
+) -> tuple[list[int], list[int]]:
+    """Per date, the linked pairs with both scores finite, and those within ``tolerance``.
+
+    A non-finite score (a masked, non-tradable stock) takes its pairs out of both counts.
+    """
+    scores = np.asarray(scores, dtype=np.float64)
+    evaluated: list[int] = []
+    tied: list[int] = []
+    for row, pairs in zip(scores, pairs_by_date, strict=True):
+        a, b = row[pairs[:, 0]], row[pairs[:, 1]]
+        finite = np.isfinite(a) & np.isfinite(b)
+        evaluated.append(int(finite.sum()))
+        tied.append(int((finite & (np.abs(a - b) <= tolerance)).sum()))
+    return evaluated, tied
+
+
+def linked_score_tie_summary(
+    avg_predictions: np.ndarray,
+    member_predictions: Sequence[np.ndarray],
+    test_dates: Sequence[str],
+    edge_index_for_date: Callable[[str], Any],
+    *,
+    eval_autocast: bool,
+    tolerance: float = LINKED_SCORE_TIE_TOLERANCE,
+) -> dict[str, Any]:
+    """Count correlation-linked pairs whose test scores tie, for the ensemble and each member.
+
+    Linked names that share a neighbourhood scored identically through the GAT v1
+    layers (#319), and nothing reported it. ``eval_autocast`` records whether the
+    scores were produced under fp16 autocast, where unrelated names also collide.
+    """
+    dates = [str(d) for d in test_dates]
+    pairs_by_date = [linked_pairs(edge_index_for_date(d)) for d in dates]
+
+    def by_date(counts: list[int]) -> dict[str, Any]:
+        return {"per_date": dict(zip(dates, counts, strict=True)), "total": int(sum(counts))}
+
+    evaluated, ensemble_tied = count_linked_score_ties(avg_predictions, pairs_by_date, tolerance)
+    members = []
+    for model_id, scores in enumerate(member_predictions):
+        _, tied = count_linked_score_ties(scores, pairs_by_date, tolerance)
+        members.append({"model_id": model_id, **by_date(tied)})
     return {
-        "label_t": config.model.label_t,
-        "top_k_values": config.evaluation.top_k_values,
-        "metrics": metrics,
+        "graph": "correlation",
+        "tolerance": tolerance,
+        "scores_dtype": str(np.asarray(avg_predictions).dtype),
+        "eval_autocast": bool(eval_autocast),
+        "linked_pairs": by_date(evaluated),
+        "ensemble": by_date(ensemble_tied),
+        "members": members,
     }
 
 

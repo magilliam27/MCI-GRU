@@ -283,6 +283,19 @@ Input admission at the confirmed #223 seams: native read, preparation, runner.
 | `test_the_runner_reports_malformed_rows_with_the_identity_of_the_read` |  | slow |
 | `test_the_runner_control_passes_admission_and_reaches_the_guarded_trainer_path` | Proves the guards are live: a valid panel gets past preparation to them. | slow |
 
+## `tests/test_dated_ic.py`
+
+Dated daily IC: each test date keeps its own IC, and the means equal the summary's (#326).
+
+**Exercises:** `mci_gru.evaluation.dated_ic`, `mci_gru.evaluation.metrics`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_unscored_days_keep_their_date_and_later_days_do_not_shift` |  |  |
+| `test_means_equal_the_evaluation_summary` |  |  |
+| `test_the_csv_round_trips_at_full_precision` |  |  |
+| `test_dates_that_do_not_match_the_rows_are_refused` |  |  |
+
 ## `tests/test_default_experiment_recipe.py`
 
 Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
@@ -1233,6 +1246,27 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_a_full_run_refuses_source_changes_including_untracked_files` |  |  |
 | `test_a_run_refuses_to_reuse_a_folder` |  |  |
 | `test_a_run_records_itself_without_the_key` |  |  |
+| `test_the_recipe_arm_is_the_recipe` |  |  |
+| `test_each_control_arm_differs_from_the_recipe_only_by_its_change` |  |  |
+| `test_an_arm_that_would_change_nothing_is_refused` |  |  |
+| `test_every_arm_composes_into_the_typed_config` | Each arm goes through Hydra the way run_experiment.py takes it. | parametrize |
+| `test_a_control_arm_records_itself_and_is_never_an_admitted_run_candidate` |  |  |
+| `test_an_arm_the_recipe_cannot_take_is_refused_before_anything_is_written` |  |  |
+| `test_junit_outcome_reads_the_cuda_test` |  | parametrize |
+| `test_the_gpu_check_passes_only_when_the_cuda_test_ran_and_passed` |  | parametrize |
+| `test_the_gpu_check_fails_when_pytest_writes_no_report` |  |  |
+| `test_compare_pairs_the_reference_against_each_arm_on_common_dates` |  |  |
+| `test_compare_refuses_a_dated_series_its_summary_does_not_average` |  |  |
+| `test_compare_refuses_arms_from_different_commits` |  |  |
+| `test_compare_refuses_a_folder_labelled_as_another_arm` |  |  |
+| `test_the_notebook_runs_one_recipe_arm_unless_told_otherwise` |  |  |
+| `test_compare_refuses_a_control_that_differs_by_more_than_its_arm` |  | parametrize |
+| `test_compare_accepts_the_same_package_bytes_however_they_were_staged` |  |  |
+| `test_compare_refuses_an_arm_given_twice_or_a_reference_other_than_the_recipe` |  |  |
+| `test_compare_flags_auxiliary_inputs_that_differ_from_the_recipe_arms` |  |  |
+| `test_compare_writes_strict_json_and_never_writes_over_a_folder` |  |  |
+| `test_check_arms_refuses_before_training_an_arm_the_recipe_cannot_take` |  |  |
+| `test_the_notebook_checks_every_arm_before_any_trains` |  |  |
 
 ## `tests/test_gat_own_signal.py`
 
@@ -1474,6 +1508,38 @@ Issue 131: how ``gru_attn`` reads ``model.gru_hidden_sizes``.
 | `test_model_config_validates_and_serialises_the_setting` |  |  |
 | `test_encoder_rejects_an_unknown_layer_widths_value` |  |  |
 
+## `tests/test_in_run_summary.py`
+
+The in-run summary measures a tradable book and nets the universe (#336).
+
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation.experiment_summary`, `mci_gru.evaluation.metrics`, `mci_gru.evaluation.outcomes`, `mci_gru.evaluation.statistics`, `mci_gru.evaluation.tranche_book`, `run_experiment`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_hansen_hodrick_std_gives_every_lag_up_to_the_span_full_weight` |  |  |
+| `test_hansen_hodrick_std_floors_a_negative_variance_at_zero` |  |  |
+| `test_hansen_hodrick_inference_takes_its_lags_from_the_outcome_span` |  |  |
+| `test_the_hansen_hodrick_t_stat_holds_its_size_on_overlapping_returns` | Zero-mean 4-session returns sampled daily: |t| > 1.96 about 5% of the time. |  |
+| `test_the_book_rolls_each_sleeve_and_never_re_equalises_them` | One stock, two-session hold, two sleeves: worked out by hand. |  |
+| `test_a_tranche_that_loses_its_exit_books_the_last_close_as_the_core_does` | A pick that stops trading mid-hold is held at its last close, then cash (E3). |  |
+| `test_the_book_sharpe_matches_a_known_daily_sharpe_on_overlapping_labels` | Identical stocks: every book earns the market each session, so its Sharpe is known. |  |
+| `test_cumulative_return_compounds_the_daily_book` | One sleeve, fully invested from first entry to last exit: exactly the market. |  |
+| `test_random_scores_on_a_rising_market_have_no_excess` |  |  |
+| `test_scores_that_know_the_outcome_show_excess_with_a_large_t_stat` |  |  |
+| `test_every_k_comes_from_top_k_values_and_nets_the_universe_by_hand` | Six names, k of 2 and 3: the excess is the picks' mean minus all six. |  |
+| `test_a_name_outside_the_rankable_set_is_never_bought` |  |  |
+| `test_the_universe_benchmark_uses_the_same_mask_as_the_picks` | A soaring name outside the mask is in neither the picks nor the benchmark. |  |
+| `test_a_window_with_no_resolved_hold_reports_nan_not_zero` |  |  |
+| `test_missing_close_events_count_only_names_that_could_be_held` |  |  |
+| `test_the_summary_labels_its_basis_and_drops_metrics_an_ic_loss_leaves_arbitrary` |  |  |
+| `test_ic_and_rank_ic_are_unchanged_by_the_new_summary` | Control: the per-date IC means and their bootstrap CIs, recomputed independently. |  |
+| `test_ic_date_coverage_counts_dates_that_could_not_be_scored` |  |  |
+| `test_quintiles_split_the_cross_section_evenly` | Twelve names in five quintiles are 2, 2, 2, 3, 3 from the bottom, not 2, 2, 2, 2, 4. |  |
+| `test_sharpe_method_is_honoured_on_the_daily_book` |  |  |
+| `test_the_config_drives_legs_tranches_and_lags` |  |  |
+| `test_the_runner_scores_the_book_on_the_panel_it_trained_on` |  |  |
+| `test_the_runner_writes_the_v2_summary` |  |  |
+
 ## `tests/test_index_level_mode.py`
 
 Tests for index-level experiment mode (no stock-level survivorship bias).
@@ -1605,6 +1671,25 @@ Public exact-observation snapshot preservation and offline replay contracts.
 | `test_trainer_validation_rank_ic_averages_only_rankable_rows` |  |  |
 | `test_trainer_rejects_checkpoint_selection_without_eligible_rank_rows` |  |  |
 | `test_select_training_objective_respects_selection_metric` |  |  |
+
+## `tests/test_linked_score_ties.py`
+
+Run summaries count ties among graph-linked names (#324).
+
+**Exercises:** `mci_gru.evaluation.experiment_summary`, `run_experiment`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_linked_pairs_drop_direction_duplicates_and_self_loops` |  |  |
+| `test_an_empty_or_missing_graph_links_nothing` |  |  |
+| `test_an_edge_list_laid_out_as_rows_is_refused` |  |  |
+| `test_ties_are_counted_only_between_linked_finite_scores_within_tolerance` |  |  |
+| `test_the_summary_reports_ensemble_and_each_member_per_date_and_in_total` |  |  |
+| `test_each_date_is_counted_against_its_own_graph_snapshot` |  |  |
+| `test_a_dynamic_run_counts_against_the_schedule_snapshot_not_the_initial_graph` |  |  |
+| `test_a_static_run_counts_against_its_one_graph` |  |  |
+| `test_the_runner_counts_each_members_own_scores_on_the_graph_it_used` |  |  |
+| `test_the_runner_writes_the_counts_into_the_evaluation_summary` |  |  |
 
 ## `tests/test_long_history_issue23.py`
 
