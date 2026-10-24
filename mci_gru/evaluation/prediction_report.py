@@ -11,7 +11,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from mci_gru.evaluation.metrics import evaluate_predictions
+from mci_gru.config import Legs
+from mci_gru.evaluation.metrics import compute_ic_metrics, evaluate_run
+from mci_gru.evaluation.outcomes import realized_returns
+from mci_gru.evaluation.tranche_book import signal_date_closes
 
 KEY_COLUMNS = ["dt", "kdcode"]
 DEFAULT_MODEL_NAME = "mci_gru"
@@ -74,7 +77,13 @@ def align_prediction_comparison(
     prediction_col: str = "score",
     return_col: str = "realized_return",
 ) -> pd.DataFrame:
-    """Inner-align predictions, realized returns, and optional baselines by date/ticker."""
+    """Align the primary's predictions with realized returns, then attach baselines.
+
+    The rows are the primary's: every (date, ticker) where the primary scored and the
+    realized return is finite. Baselines are left-joined onto those rows and are NaN
+    where they did not score, so adding a baseline never changes which rows the
+    primary is measured on (#342). Each model is then measured on its own finite rows.
+    """
     aligned = _normalise_value_frame(realized_returns, return_col, "realized_return")
     primary_col = _score_column(primary_name)
     aligned = aligned.merge(
@@ -82,21 +91,21 @@ def align_prediction_comparison(
         on=KEY_COLUMNS,
         how="inner",
     )
+    finite_mask = np.ones(len(aligned), dtype=bool)
+    for col in ("realized_return", primary_col):
+        finite_mask &= np.isfinite(pd.to_numeric(aligned[col], errors="coerce").to_numpy())
+    aligned = aligned.loc[finite_mask]
 
     for baseline_name, baseline_df in (baseline_predictions or {}).items():
         baseline_col = _score_column(baseline_name)
         aligned = aligned.merge(
             _normalise_value_frame(baseline_df, prediction_col, baseline_col),
             on=KEY_COLUMNS,
-            how="inner",
+            how="left",
         )
+        values = pd.to_numeric(aligned[baseline_col], errors="coerce")
+        aligned[baseline_col] = values.where(np.isfinite(values))
 
-    value_cols = [col for col in aligned.columns if col not in KEY_COLUMNS]
-    finite_mask = np.ones(len(aligned), dtype=bool)
-    for col in value_cols:
-        finite_mask &= np.isfinite(pd.to_numeric(aligned[col], errors="coerce").to_numpy())
-
-    aligned = aligned.loc[finite_mask].copy()
     aligned = aligned.sort_values(KEY_COLUMNS).reset_index(drop=True)
     return aligned
 
@@ -105,9 +114,18 @@ def compute_tsfm_prediction_report(
     aligned_predictions: pd.DataFrame,
     model_score_columns: list[str] | None = None,
     top_k_values: list[int] | None = None,
-    label_t: int = 1,
+    label_t: int = 5,
+    panel: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
-    """Compute a repeatable TSFM-style report from an already aligned comparison frame."""
+    """Compute a repeatable TSFM-style report from an already aligned comparison frame.
+
+    IC is scored against ``realized_return``. Portfolio numbers come from the in-run
+    summary's staggered tranche book (``evaluate_run``, #336) on ``panel``'s closes
+    (``kdcode``, ``dt``, ``close``), with a name rankable where the model scored it.
+    Without a panel there are no portfolio numbers: the matrix-only Sharpe and
+    cumulative return this report used to print treated overlapping returns as daily
+    (#342).
+    """
     if "realized_return" not in aligned_predictions.columns:
         raise ValueError("aligned_predictions must include 'realized_return'")
 
@@ -131,17 +149,21 @@ def compute_tsfm_prediction_report(
 
     for score_col in model_score_columns:
         model_name = _model_name_from_score_col(score_col)
+        # Each model on its own scored rows, so one model's coverage never moves another's.
+        scored = frame.loc[np.isfinite(pd.to_numeric(frame[score_col], errors="coerce"))]
         report["models"][model_name] = _model_metrics(
-            frame,
+            scored,
             score_col=score_col,
             top_k_values=top_k_values,
             label_t=label_t,
+            panel=panel,
         )
         report["yearly_decay"][model_name] = _yearly_metrics(
-            frame,
+            scored,
             score_col=score_col,
             top_k_values=top_k_values,
             label_t=label_t,
+            panel=panel,
         )
 
     return report
@@ -180,21 +202,39 @@ def realized_returns_from_market_data(
     label_t: int,
     return_col: str = "realized_return",
 ) -> pd.DataFrame:
-    """Compute forward close-to-close labels aligned to prediction dates."""
+    """Booked close ``D+1`` to close ``D+label_t`` return for every panel row.
+
+    Returns come from the evaluation core (:func:`mci_gru.evaluation.outcomes.realized_returns`)
+    on the panel's own session axis, the training label's resolver: a missing bar never
+    moves an endpoint, as the per-stock row shift used here before did (#225, #342).
+    A missing exit books the last close in the hold (E3). Rows whose hold runs past the
+    panel's end are NaN.
+    """
     required = {"dt", "kdcode", "close"}
     missing = required - set(market_data.columns)
     if missing:
         raise ValueError(f"market_data missing columns: {sorted(missing)}")
-    if label_t <= 0:
-        raise ValueError("label_t must be positive")
+    if label_t < 2:
+        raise ValueError("label_t must be >= 2: the label runs close D+1 to close D+label_t")
 
-    df = market_data.copy()
-    df["dt"] = pd.to_datetime(df["dt"]).dt.strftime("%Y-%m-%d")
-    df = df.sort_values(["kdcode", "dt"]).reset_index(drop=True)
-    close_t1 = df.groupby("kdcode")["close"].shift(-1)
-    close_tn = df.groupby("kdcode")["close"].shift(-label_t)
-    df[return_col] = close_tn / close_t1 - 1.0
-    return df[["dt", "kdcode", return_col]]
+    panel = market_data[["dt", "kdcode", "close"]].copy()
+    panel["dt"] = pd.to_datetime(panel["dt"]).dt.strftime("%Y-%m-%d")
+    panel["kdcode"] = panel["kdcode"].astype(str)
+    rows = panel[["dt", "kdcode"]].drop_duplicates()
+    booked = realized_returns(
+        panel,
+        sorted(rows["dt"].unique()),
+        legs=Legs(entry_session=1, exit_session=label_t),
+    )
+    grid = pd.DataFrame(
+        {
+            "dt": np.repeat(booked.dates, len(booked.kdcodes)),
+            "kdcode": np.tile(booked.kdcodes, len(booked.dates)),
+            return_col: booked.returns.ravel(),
+        }
+    )
+    out = rows.merge(grid, on=KEY_COLUMNS, how="left")
+    return out.sort_values(["kdcode", "dt"]).reset_index(drop=True)
 
 
 def write_tsfm_prediction_report(
@@ -226,6 +266,7 @@ def write_tsfm_prediction_report(
         model_score_columns=model_score_columns,
         top_k_values=top_k_values,
         label_t=label_t,
+        panel=market_data,
     )
 
     out_dir = Path(output_dir)
@@ -336,6 +377,7 @@ def _model_metrics(
     score_col: str,
     top_k_values: list[int] | None,
     label_t: int,
+    panel: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
     pred = frame[score_col].to_numpy(dtype=np.float64)
     ret = frame["realized_return"].to_numpy(dtype=np.float64)
@@ -347,15 +389,40 @@ def _model_metrics(
     }
     metrics.update(compute_sign_metrics(pred, ret))
 
-    prediction_matrix, return_matrix = _to_aligned_matrices(frame, score_col)
-    ranking_metrics = evaluate_predictions(
+    dates, kdcodes, prediction_matrix, return_matrix = _to_aligned_matrices(frame, score_col)
+    if panel is None:
+        metrics.update(compute_ic_metrics(prediction_matrix, return_matrix, label_t=label_t))
+        metrics["portfolio_basis"] = "NOT_COMPUTED_WITHOUT_PANEL"
+        return _json_ready(metrics)
+
+    legs = Legs(entry_session=1, exit_session=label_t)
+    closes = _close_panel(panel)
+    # The core's rule for a run without PIT: scored, and a close on the signal date.
+    rankable = np.isfinite(prediction_matrix) & signal_date_closes(
+        closes, realized_returns(closes, dates, legs, kdcodes=kdcodes)
+    )
+    summary = evaluate_run(
         prediction_matrix,
         return_matrix,
-        top_k_values=top_k_values,
+        panel=closes,
+        dates=dates,
+        kdcodes=kdcodes,
+        rankable_mask=rankable,
+        legs=legs,
+        tranches=legs.hold_sessions,
+        top_k_values=top_k_values or [10, 20, 50],
         label_t=label_t,
     )
-    metrics.update(ranking_metrics)
+    metrics.update(summary["metrics"])
+    metrics["portfolio_basis"] = "DAILY_TRANCHE_BOOK"
     return _json_ready(metrics)
+
+
+def _close_panel(panel: pd.DataFrame) -> pd.DataFrame:
+    closes = panel.loc[:, ["kdcode", "dt", "close"]].copy()
+    closes["dt"] = pd.to_datetime(closes["dt"]).dt.strftime("%Y-%m-%d")
+    closes["kdcode"] = closes["kdcode"].astype(str)
+    return closes
 
 
 def _yearly_metrics(
@@ -363,6 +430,7 @@ def _yearly_metrics(
     score_col: str,
     top_k_values: list[int] | None,
     label_t: int,
+    panel: pd.DataFrame | None = None,
 ) -> list[dict[str, Any]]:
     dated = frame.copy()
     dated["year"] = pd.to_datetime(dated["dt"]).dt.year
@@ -375,18 +443,27 @@ def _yearly_metrics(
                 score_col=score_col,
                 top_k_values=top_k_values,
                 label_t=label_t,
+                panel=panel,
             )
         )
         rows.append(row)
     return rows
 
 
-def _to_aligned_matrices(frame: pd.DataFrame, score_col: str) -> tuple[np.ndarray, np.ndarray]:
+def _to_aligned_matrices(
+    frame: pd.DataFrame, score_col: str
+) -> tuple[list[str], list[str], np.ndarray, np.ndarray]:
     predictions = frame.pivot(index="dt", columns="kdcode", values=score_col).sort_index()
+    predictions = predictions.reindex(columns=sorted(predictions.columns))
     returns = frame.pivot(index="dt", columns="kdcode", values="realized_return").reindex_like(
         predictions
     )
-    return predictions.to_numpy(dtype=np.float64), returns.to_numpy(dtype=np.float64)
+    return (
+        [str(day) for day in predictions.index],
+        [str(code) for code in predictions.columns],
+        predictions.to_numpy(dtype=np.float64),
+        returns.to_numpy(dtype=np.float64),
+    )
 
 
 def _json_ready(value: Any) -> Any:

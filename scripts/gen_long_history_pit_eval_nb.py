@@ -163,6 +163,8 @@ cells = [
 
         MARKET_FILENAME = 'sp500_pit_union_lseg_20150101_20260513.csv'
         PIT_FILENAME = 'sp500_pit_joiner_leaver_20160101_20260513_pit_universe.csv'
+        # The export's _meta.json "end": a blank valid_to means membership through it.
+        PIT_EXPORT_CUTOFF = '2026-05-13'
         MARKET_META_FILENAME = 'sp500_pit_union_lseg_20150101_20260513.meta.json'
 
         DRIVE_SEARCH_ROOTS = [
@@ -520,6 +522,7 @@ cells = [
             'tracking.log_predictions=false',
             f"data.filename={(repo_market_csv.relative_to(REPO_DIR)).as_posix()}",
             f"data.pit_universe_csv={(repo_pit_csv.relative_to(REPO_DIR)).as_posix()}",
+            f"data.pit_export_cutoff={PIT_EXPORT_CUTOFF}",
             'data.use_pit_universe=true',
             'data.pit_universe_mode=masked_panel',
             f'data.pit_min_scoreable_stocks={PIT_MIN_SCOREABLE_STOCKS}',
@@ -564,6 +567,7 @@ cells = [
             'market_csv': str(repo_market_csv),
             'market_csv_sha256': sha256_file(repo_market_csv),
             'pit_universe_csv': str(repo_pit_csv),
+            'pit_export_cutoff': PIT_EXPORT_CUTOFF,
             'model_recipe': MODEL_RECIPE,
             'mechanics_smoke_mode': MECHANICS_SMOKE_MODE,
             'his_t_values': HIS_T_VALUES,
@@ -664,6 +668,8 @@ cells = [
                 str(repo_market_csv),
                 '--pit_universe_csv',
                 str(repo_pit_csv),
+                '--pit_export_cutoff',
+                PIT_EXPORT_CUTOFF,
                 '--test_start',
                 str(training_row['test_start']),
                 '--test_end',

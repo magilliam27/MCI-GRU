@@ -2042,6 +2042,7 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 | `test_repeated_seed_training_rows_are_not_collapsed_by_year` |  |  |
 | `test_build_backtest_command_uses_scenario_cost_and_label_settings` |  |  |
 | `test_write_sensitivity_outputs_emits_cross_tabs_and_baseline_deltas` |  |  |
+| `test_replay_command_carries_the_pit_export_cutoff` | #339's replay refuses open-ended PIT rows without the export's cutoff. |  |
 
 ## `tests/test_pit_repeated_seed_replication_notebook.py`
 
@@ -2067,6 +2068,9 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 | `test_build_backtest_command_enables_costs_and_rank_gate` |  |  |
 | `test_resolve_year_jobs_remaps_stale_colab_paths_to_current_run_root` |  |  |
 | `test_write_summary_outputs_compares_cost_aware_rows_to_reviewed_artifact` |  |  |
+| `test_multi_year_combine_reads_the_concatenated_daily_series` | r7: a drawdown straddling the year end; yearly combine gave -0.148 against -0.274. |  |
+| `test_multi_year_benchmark_covers_the_days_the_simulator_skipped` | A skipped day is missing from daily_returns.csv but the benchmark still moved. |  |
+| `test_replay_command_carries_the_pit_export_cutoff` | #339's replay refuses open-ended PIT rows without the export's cutoff. |  |
 
 ## `tests/test_pit_universe_mode_config.py`
 
@@ -2130,15 +2134,19 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 
 ## `tests/test_prediction_report.py`
 
-**Exercises:** `mci_gru.evaluation.prediction_report`
+**Exercises:** `mci_gru.data.preprocessing`, `mci_gru.evaluation.prediction_report`
 
 | Test | Description | Markers |
 |---|---|---|
 | `test_oos_r2_uses_zero_return_benchmark` |  |  |
 | `test_sign_metrics_include_positive_negative_and_zero_returns` |  |  |
-| `test_alignment_intersects_dates_universe_and_optional_baselines` |  |  |
+| `test_alignment_keeps_the_primary_rows_and_left_joins_baselines` |  |  |
+| `test_adding_a_baseline_does_not_change_the_primary_numbers` | Logic C: a partial baseline's inner join moved the primary's rank IC 0.077 to 0.118. |  |
+| `test_realized_returns_read_the_session_axis_not_the_next_row` | Dates finding 2: a missing bar made the row shift book close D+6 as close D+5. |  |
+| `test_realized_returns_reject_a_label_with_no_hold` |  |  |
 | `test_prediction_report_includes_yearly_decay_for_each_model` |  |  |
 | `test_saved_prediction_report_runs_without_training` |  |  |
+| `test_report_portfolio_numbers_come_from_the_daily_tranche_book` | The matrix-only Sharpe annualised overlapping 4-session returns as daily (#342). |  |
 
 ## `tests/test_preprocessing_vectorised.py`
 
@@ -2248,6 +2256,15 @@ Regime forward context is refused unless the matching excludes the current month
 | `test_the_market_verdict_names_the_read_it_was_ruled_on` |  | parametrize |
 | `test_a_stopped_market_file_is_recorded_as_read_but_never_used` |  | parametrize |
 | `test_a_market_file_captured_through_read_file_still_replays` |  |  |
+
+## `tests/test_replay_callers_pass_pit_cutoff.py`
+
+Every notebook that replays on a PIT file names the export's cutoff (#342).
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_the_scan_finds_the_pit_replay_notebooks` |  |  |
+| `test_pit_replay_and_training_carry_the_export_cutoff` |  | parametrize |
 
 ## `tests/test_replay_inputs.py`
 
@@ -2469,6 +2486,23 @@ Regression tests for the isolated pytest launcher.
 | `test_permutation_preserves_daily_set_score_multiset_and_ties` |  |  |
 | `test_permutation_is_deterministic_and_assignment_is_outcome_independent` |  |  |
 
+## `tests/test_side_statistics_overlap.py`
+
+Side-module statistics are overlap-correct (#342).
+
+**Exercises:** `mci_gru.evaluation.paired_inference`, `mci_gru.evaluation.selection_audit`, `mci_gru.evaluation.selection_nulls`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_paired_hac_test_has_nominal_size_on_overlapping_days` | r3: Bartlett lag 4 gave SE 0.85x truth and 10% rejections at a nominal 5%. |  |
+| `test_power_tables_use_the_long_run_sd` | r2: the iid sd gave an MDE of 0.0027 against a Monte Carlo truth of 0.0073. |  |
+| `test_sharpe_of_daily_sampled_overlapping_returns_is_the_daily_sharpe` | Findings 1: uniform weights on 3 lags recover the daily book's annual Sharpe. |  |
+| `test_date_blocked_null_matches_the_sampling_spread_of_a_persistent_score` | r4: the per-date shuffle's null sd was 0.024 against a true 0.045. |  |
+| `test_date_blocked_null_is_deterministic_and_keyed_by_block` |  |  |
+| `test_date_blocked_null_induces_a_bijection_when_names_come_and_go` |  |  |
+| `test_selection_audit_deflates_the_daily_book_sharpe` | r5: the overlapping label series gave about twice the Sharpe and z-stat. |  |
+| `test_deflated_sharpe_has_nominal_size_on_the_daily_book` | r5: p <= 0.05 in 21% of no-skill samples on the overlapping label series. |  |
+
 ## `tests/test_sp500_gics_top10_mcap_export.py`
 
 **Exercises:** `scripts.data.export_sp500_gics_top10_mcap`
@@ -2568,8 +2602,8 @@ Training summaries average only available checkpoint metrics and count coverage.
 | `test_walkforward_mean_weights_windows_equally_and_counts_windows` | Window coverage counts windows, not members, and each available window counts once. |  |
 | `test_walkforward_treats_historical_non_finite_window_means_as_unavailable` | A -inf or NaN window mean from an older run no longer poisons the aggregate. |  |
 | `test_walkforward_summary_of_no_windows_stays_empty` | An empty walk-forward run has no aggregate at all. |  |
-| `test_walkforward_evaluation_mean_skips_nan_windows_and_reports_coverage` | A NaN evaluation metric in one window is left out and counted, not averaged in. |  |
-| `test_walkforward_evaluation_mean_is_unchanged_without_nan_windows` | With every window available, each aggregate is the plain equal-weight mean. |  |
+| `test_walkforward_evaluation_is_never_a_mean_of_windows` | Window Sharpes, CI bounds and cumulative returns do not average (#342). |  |
+| `test_walkforward_evaluation_is_the_pooled_summary_when_given` |  |  |
 | `test_walkforward_without_evaluation_adds_no_evaluation_keys` | Training-only windows keep the merged summary free of evaluation fields. |  |
 
 ## `tests/test_transforms.py`
@@ -2596,6 +2630,19 @@ Unit tests for mci_gru.data.transforms.
 | `test_write_trial_ledger_writes_csv_and_jsonl` |  |  |
 | `test_write_trial_ledger_strict_jsonl_and_force_guard` |  |  |
 | `test_validate_trial_family_rejects_missing_expected_member` |  |  |
+
+## `tests/test_val_test_embargo.py`
+
+Validation labels never read test-period closes (#342, dates finding 5).
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.preprocessing`, `mci_gru.features`, `mci_gru.pipeline`, `mci_gru.walkforward`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_val_tail_whose_labels_exit_in_test_is_purged` |  |  |
+| `test_a_wide_gap_purges_nothing` |  |  |
+| `test_no_walk_forward_window_leaks_test_closes_into_validation` | r6: 9 of 11 default windows leaked before the purge. |  |
+| `test_prepared_validation_dates_stop_before_labels_reach_test` | Both preparation paths purge: the calendar check passes, the sessions do not. | parametrize |
 
 ## `tests/test_vix_features.py`
 
@@ -2644,3 +2691,18 @@ Every walk-forward window must inherit the base configuration it was cloned from
 |---|---|---|
 | `test_walkforward_windows_carry_configured_evaluation` |  |  |
 | `test_walkforward_windows_do_not_silently_fall_back_to_evaluation_defaults` |  |  |
+
+## `tests/test_walkforward_pooled_evaluation.py`
+
+Walk-forward evaluation pools the windows' dated test series (#342).
+
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation.experiment_summary`, `mci_gru.evaluation.outcomes`, `mci_gru.walkforward`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_pooled_summary_is_the_summary_of_every_test_date_together` | r1: 63 + 63 + 10-date windows; the mean of windows moved avg_ic 0.076 to 0.029. |  |
+| `test_pooling_widens_to_the_union_of_names` |  |  |
+| `test_overlapping_test_windows_are_not_pooled` |  |  |
+| `test_one_pooled_window_books_what_the_full_panel_books` | The trimmed closes keep every exit: the book, not only IC, is unchanged. |  |
+| `test_without_pit_a_window_ranks_only_its_own_names` | The first window's tail closes must not make its names rankable in the next. |  |
+| `test_windows_stepped_by_their_span_share_no_test_date` | Review of #342: an inclusive test_end was the next window's test_start. |  |

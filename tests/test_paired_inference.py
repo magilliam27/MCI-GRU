@@ -126,8 +126,9 @@ def test_paired_mean_inference_under_the_null_brackets_zero() -> None:
 def test_paired_mean_inference_uses_overlap_aware_defaults() -> None:
     delta = _dated(np.linspace(-0.01, 0.01, 30).tolist())
     result = _inference(delta)
-    # Newey-West lags default to label_horizon - 1 and the block is label_horizon.
-    assert result.hac_lags == 4
+    # A close D+1 to close D+5 outcome spans 4 sessions, so uniform HAC lags default
+    # to label_horizon - 2 (#342); the block is label_horizon.
+    assert result.hac_lags == 3
     assert result.block_size == 5
 
 
@@ -244,7 +245,7 @@ def test_sharpe_block_bootstrap_ci_brackets_the_point_estimate() -> None:
     rng = np.random.default_rng(5)
     returns = rng.normal(0.0008, 0.01, size=240)
     result = sharpe_block_bootstrap_ci(
-        returns, nw_lags=4, block_size=5, n_resamples=300, seed=1729, ci_level=0.95
+        returns, hac_lags=3, block_size=5, n_resamples=300, seed=1729, ci_level=0.95
     )
     assert result["lower"] <= result["point"] <= result["upper"]
     assert result["n_days"] == 240

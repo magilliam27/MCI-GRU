@@ -461,9 +461,11 @@ equal weight per window: each `mean_best_val_*_across_windows` averages the
 windows whose own `mean_best_val_*` is available, `window_coverage` records the
 available and total window counts separately from each window's
 `member_coverage`, non-finite values from older summaries (such as `-inf`)
-count as unavailable, and an aggregate with no available window is `null`. It
-also takes the mean of each numeric evaluation metric across windows;
-`select_training_objective_value()` returns the aggregate matching
+count as unavailable, and an aggregate with no available window is `null`.
+Evaluation metrics are never averaged across windows: `run_experiment.py` pools
+every window's dated test set and scores it once (`pool_window_test_sets()`,
+`pooled_evaluation_summary()`), and `evaluation_pooling` records whether it
+could (#342). `select_training_objective_value()` returns the aggregate matching
 `training.selection_metric`.
 
 ## Run Artifacts
