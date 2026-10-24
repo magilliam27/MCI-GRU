@@ -86,7 +86,7 @@ class BacktestOptions:
     top_k: int = 10
     label_t: int = 5
     num_tests: int = 1
-    adjustment_method: str = "bhy"
+    adjustment_method: str = "holm"
 
 
 def build_backtest_command(job: BacktestJob, options: BacktestOptions) -> list[str]:
@@ -469,7 +469,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--adjustment-method",
         choices=["bhy", "bonferroni", "holm"],
-        default="bhy",
+        default="holm",
     )
     parser.add_argument("--backtest-suffix", default=DEFAULT_BACKTEST_SUFFIX)
     parser.add_argument("--dry-run", action="store_true")

@@ -1,4 +1,11 @@
-"""Golden-output regression tests for legacy backtest CLIs (WS-N step 2)."""
+"""Golden-output regression tests for the replay CLIs (WS-N step 2, regenerated in #340).
+
+#340 regenerated every golden deliberately: the default engine strategy is now close
+D+1 to close D+label_t in four staggered tranches, the open-to-open cases trade through
+the same book (buy-and-hold weights, costs on the trade date), metrics share one daily
+series, MDD starts from 1.0, IR is annualised, and MSE/MAE are gone. The pull request
+lists each changed number and the finding behind it.
+"""
 
 from __future__ import annotations
 
@@ -24,9 +31,13 @@ LABEL_T = 5
 ENGINE_CLI = REPO_ROOT / "scripts" / "backtest_sp500.py"
 DAILY_CLI = REPO_ROOT / "scripts" / "backtest_sp500_daily.py"
 
-# (case_name, cli_kind label for docs, extra_args, engines_to_run)
+# (case_name, cli_kind label for docs, extra_args, engines_to_run). The daily CLI is
+# the open-to-open daily variant; the engine with no strategy flag is the default
+# close-to-close tranche book.
 BACKTEST_CASES: list[tuple[str, str, list[str], tuple[str, ...]]] = [
-    ("daily", "daily", [], ("daily", "engine")),
+    ("daily", "daily", [], ("daily",)),
+    ("open_daily", "engine", ["--strategy", "open_to_open"], ("engine",)),
+    ("tranches", "engine", [], ("engine",)),
     ("staggered", "engine", ["--holding_period", "5"], ("engine",)),
     ("block", "engine", ["--holding_period", "5", "--rebalance_style", "block"], ("engine",)),
     (
@@ -45,7 +56,17 @@ BACKTEST_CASES: list[tuple[str, str, list[str], tuple[str, ...]]] = [
 
 
 def _normalize_metrics(payload: dict[str, Any]) -> dict[str, Any]:
-    """Round-trip through JSON so float formatting is stable across platforms."""
+    """Round-trip through JSON so float formatting is stable across platforms.
+
+    Input paths differ per machine and per temporary directory; their digests do not.
+    """
+    payload = dict(payload)
+    inputs = payload.pop("inputs", {})
+    payload["input_digests"] = {
+        "data_file_sha256": inputs.get("data_file_sha256"),
+        "pit_universe_sha256": inputs.get("pit_universe_sha256"),
+        "prediction_files": inputs.get("prediction_files"),
+    }
     return json.loads(json.dumps(payload, sort_keys=True))
 
 
@@ -130,9 +151,9 @@ def _assert_metrics_equal(actual: dict[str, Any], expected: dict[str, Any]) -> N
         av = actual[key]
         ev = expected[key]
         if isinstance(ev, float):
-            assert av == pytest.approx(ev, rel=1e-12, abs=0.0)
+            assert av == pytest.approx(ev, rel=1e-12, abs=0.0), key
         else:
-            assert av == ev
+            assert av == ev, key
 
 
 @pytest.mark.parametrize(

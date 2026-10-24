@@ -735,7 +735,7 @@ cells = [
                 '--holding_period', str(scenario['holding_period']),
                 '--rebalance_style', scenario['rebalance_style'],
                 '--num_tests', str(num_tests),
-                '--adjustment_method', 'bhy',
+                '--adjustment_method', 'holm',
                 '--auto_save',
                 '--plot',
                 '--disable_mlflow_autolink',
