@@ -2310,6 +2310,29 @@ Prevent retired repository surfaces from being reintroduced.
 | `test_retired_repository_surfaces_stay_absent` |  |  |
 | `test_retired_packages_stay_out_of_packaging_and_imports` |  |  |
 
+## `tests/test_rescore_run.py`
+
+A saved run is re-scored from its own inputs, without retraining (#337).
+
+**Exercises:** `mci_gru.evaluation.metrics`, `mci_gru.evaluation.replay_inputs`, `mci_gru.training`, `run_experiment`, `scripts`, `scripts.rescore_run`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_rescoring_reproduces_the_stored_ic_and_rank_ic` |  | parametrize |
+| `test_every_stored_metric_comes_back_when_the_code_has_not_changed` | The run was scored by this code, so the portfolio numbers must come back too. | parametrize |
+| `test_the_pit_run_is_scored_on_its_rebuilt_tradable_mask` | The fixture's leaver, joiner, missing bar and cessation all move the mask. |  |
+| `test_a_rescore_whose_ic_does_not_reproduce_writes_nothing` |  |  |
+| `test_the_rescore_is_a_new_file_and_the_run_is_untouched` |  |  |
+| `test_the_dated_ic_means_are_the_rescored_summary_means` |  |  |
+| `test_an_earlier_rescore_is_kept_unless_forced` |  |  |
+| `test_a_data_file_with_other_bytes_is_refused` |  |  |
+| `test_a_cessation_file_with_other_bytes_is_refused` |  |  |
+| `test_a_saved_prediction_changed_after_the_run_is_refused` |  |  |
+| `test_the_command_line_rescores_a_run_and_prints_both_ics` |  |  |
+| `test_a_stored_summary_changed_after_the_run_is_refused` |  |  |
+| `test_a_failed_summary_write_leaves_no_dated_ic_behind` |  |  |
+| `test_evaluation_code_from_another_checkout_is_refused` |  |  |
+
 ## `tests/test_research_paper_to_mci_gru_skill.py`
 
 | Test | Description | Markers |
