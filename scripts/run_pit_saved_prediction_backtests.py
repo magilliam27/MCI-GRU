@@ -49,6 +49,7 @@ DEFAULT_PIT_UNIVERSE_CSV = Path(
     "data/raw/constituents/sp500_pit_joiner_leaver_20160101_20260513_pit_universe.csv"
 )
 DEFAULT_BACKTEST_SUFFIX = "_pit_daily_tc_rank_gate"
+TRADING_DAYS = 252
 COMPARISON_METRICS = [
     "total_return",
     "excess_return",
@@ -256,13 +257,18 @@ def run_backtest_job(
     row["returncode"] = proc.returncode
 
     result_csv = job.backtest_dir / "backtest_results.csv"
+    yearly_copy_dir = output_dir / "yearly" / str(job.year)
     if result_csv.exists():
         result_df = pd.read_csv(result_csv)
         if len(result_df) > 0:
             row.update({f"backtest.{k}": v for k, v in result_df.iloc[0].to_dict().items()})
-            yearly_copy_dir = output_dir / "yearly" / str(job.year)
             yearly_copy_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(result_csv, yearly_copy_dir / "backtest_results.csv")
+    daily_csv = job.backtest_dir / "daily_returns.csv"
+    if daily_csv.exists():
+        yearly_copy_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(daily_csv, yearly_copy_dir / "daily_returns.csv")
+        row["daily_returns_csv"] = str(yearly_copy_dir / "daily_returns.csv")
 
     return row
 
@@ -551,28 +557,117 @@ def _build_side_by_side_df(cost_df: pd.DataFrame, reviewed_df: pd.DataFrame) -> 
 
 
 def _build_combined_summary_df(cost_df: pd.DataFrame, reviewed_df: pd.DataFrame) -> pd.DataFrame:
-    ok_cost = cost_df[cost_df.get("status", pd.Series(dtype=str)).eq("OK")]
-    reviewed = reviewed_df.copy()
+    """One multi-year row, every number from the concatenated daily return series.
 
-    row = {
+    Compounding yearly excess returns, taking the worst yearly drawdown and averaging
+    yearly ARR/ASR misstated the multi-year book: a drawdown that straddles a year
+    end is missed and yearly ratios do not average (#342). Each scenario's numbers are
+    therefore read from its years' ``daily_returns.csv``, concatenated in date order;
+    when any year lacks one, the scenario's numbers are NaN and
+    ``*_combined_from`` names the years missing.
+    """
+    ok_cost = cost_df[cost_df.get("status", pd.Series(dtype=str)).eq("OK")]
+    cost = _combine_daily_returns(ok_cost)
+    reviewed = _combine_daily_returns(reviewed_df)
+
+    row: dict[str, Any] = {
         "years": ",".join(str(int(year)) for year in sorted(cost_df.get("year", []))),
-        "cost_rank_gate_compounded_total_return": _compound_metric(ok_cost, "total_return"),
-        "cost_rank_gate_compounded_benchmark_return": _compound_metric(ok_cost, "benchmark_return"),
-        "cost_rank_gate_compounded_excess_return": _compound_metric(ok_cost, "excess_return"),
-        "cost_rank_gate_avg_ARR": _mean_metric(ok_cost, "ARR"),
-        "cost_rank_gate_avg_ASR": _mean_metric(ok_cost, "ASR"),
-        "cost_rank_gate_worst_MDD": _min_metric(ok_cost, "MDD"),
-        "cost_rank_gate_avg_daily_turnover": _mean_metric(ok_cost, "avg_daily_turnover"),
+        "cost_rank_gate_combined_from": cost["combined_from"],
+        "cost_rank_gate_total_return": cost["total_return"],
+        "cost_rank_gate_benchmark_return": cost["benchmark_return"],
+        "cost_rank_gate_excess_return": cost["excess_return"],
+        "cost_rank_gate_ARR": cost["ARR"],
+        "cost_rank_gate_ASR": cost["ASR"],
+        "cost_rank_gate_MDD": cost["MDD"],
+        "cost_rank_gate_avg_daily_turnover": _day_weighted_mean(ok_cost, "avg_daily_turnover"),
         "total_trading_days": _sum_metric(ok_cost, "num_trading_days"),
         "transaction_costs_enabled": True,
         "rank_gate_enabled": True,
-        "reviewed_compounded_total_return": _compound_metric(reviewed, "total_return"),
-        "reviewed_compounded_benchmark_return": _compound_metric(reviewed, "benchmark_return"),
-        "reviewed_compounded_excess_return": _compound_metric(reviewed, "excess_return"),
-        "reviewed_avg_ASR": _mean_metric(reviewed, "ASR"),
-        "reviewed_worst_MDD": _min_metric(reviewed, "MDD"),
+        "reviewed_combined_from": reviewed["combined_from"],
+        "reviewed_total_return": reviewed["total_return"],
+        "reviewed_benchmark_return": reviewed["benchmark_return"],
+        "reviewed_excess_return": reviewed["excess_return"],
+        "reviewed_ASR": reviewed["ASR"],
+        "reviewed_MDD": reviewed["MDD"],
     }
     return pd.DataFrame([row])
+
+
+def _combine_daily_returns(df: pd.DataFrame) -> dict[str, Any]:
+    """Multi-year paper metrics from the rows' concatenated ``daily_returns.csv``."""
+    empty = dict.fromkeys(
+        ("total_return", "benchmark_return", "excess_return", "ARR", "ASR", "MDD"), np.nan
+    )
+    if df.empty:
+        return {"combined_from": "NO_YEARS", **empty}
+    frames, missing = [], []
+    for record in df.to_dict("records"):
+        path = _daily_returns_path(record)
+        if path is None:
+            missing.append(str(record.get("year")))
+            continue
+        frames.append(pd.read_csv(path, usecols=["date", "portfolio_return", "benchmark_return"]))
+    if missing:
+        return {"combined_from": "MISSING_DAILY_RETURNS:" + ",".join(missing), **empty}
+
+    daily = pd.concat(frames, ignore_index=True)
+    daily["date"] = pd.to_datetime(daily["date"])
+    if daily["date"].duplicated().any():
+        raise ValueError("Yearly daily_returns.csv files overlap; cannot concatenate them")
+    daily = daily.sort_values("date")
+    portfolio = daily["portfolio_return"].to_numpy(dtype=float)
+    benchmark = daily["benchmark_return"].to_numpy(dtype=float)
+    portfolio = portfolio[np.isfinite(portfolio)]
+    benchmark = benchmark[np.isfinite(benchmark)]
+    total = float(np.prod(1.0 + portfolio) - 1.0) if portfolio.size else np.nan
+    bench = float(np.prod(1.0 + benchmark) - 1.0) if benchmark.size else np.nan
+    arr = (
+        float((1.0 + total) ** (TRADING_DAYS / portfolio.size) - 1.0) if portfolio.size else np.nan
+    )
+    avol = (
+        float(np.std(portfolio, ddof=1) * np.sqrt(TRADING_DAYS)) if portfolio.size > 1 else np.nan
+    )
+    # Drawdown from the starting capital of 1.0, so a first-day loss counts.
+    values = np.concatenate([[1.0], np.cumprod(1.0 + portfolio)])
+    mdd = float(-np.max((np.maximum.accumulate(values) - values) / np.maximum.accumulate(values)))
+    return {
+        "combined_from": "CONCATENATED_DAILY_RETURNS",
+        "total_return": round(total, 12),
+        "benchmark_return": round(bench, 12),
+        "excess_return": round(total - bench, 12),
+        "ARR": arr,
+        "ASR": arr / avol if avol and np.isfinite(avol) else np.nan,
+        "MDD": mdd,
+    }
+
+
+def _daily_returns_path(record: dict[str, Any]) -> Path | None:
+    candidates = [record.get("daily_returns_csv")]
+    backtest_dir = record.get("backtest_dir")
+    if isinstance(backtest_dir, str) and backtest_dir:
+        candidates.append(str(Path(backtest_dir) / "daily_returns.csv"))
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate and Path(candidate).is_file():
+            return Path(candidate)
+    return None
+
+
+def _day_weighted_mean(df: pd.DataFrame, metric: str) -> float:
+    """Mean of a per-day yearly average over all days, weighting years by their days."""
+    values, days = _metric_column(df, metric), _metric_column(df, "num_trading_days")
+    if values is None or days is None:
+        return np.nan
+    valid = values.notna() & days.notna() & (days > 0)
+    if not valid.any():
+        return np.nan
+    return float(np.average(values[valid], weights=days[valid]))
+
+
+def _metric_column(df: pd.DataFrame, metric: str) -> pd.Series | None:
+    for col in (f"backtest.{metric}", metric):
+        if col in df.columns:
+            return pd.to_numeric(df[col], errors="coerce")
+    return None
 
 
 def _build_summary_markdown(
@@ -653,23 +748,6 @@ def _metric_series(df: pd.DataFrame, metric: str) -> pd.Series:
     if df.empty or col not in df.columns:
         return pd.Series(dtype=float)
     return pd.to_numeric(df[col], errors="coerce").dropna()
-
-
-def _compound_metric(df: pd.DataFrame, metric: str) -> float:
-    series = _metric_series(df, metric)
-    if len(series) == 0:
-        return np.nan
-    return round(float(np.prod(1.0 + series.to_numpy(dtype=float)) - 1.0), 12)
-
-
-def _mean_metric(df: pd.DataFrame, metric: str) -> float:
-    series = _metric_series(df, metric)
-    return float(series.mean()) if len(series) else np.nan
-
-
-def _min_metric(df: pd.DataFrame, metric: str) -> float:
-    series = _metric_series(df, metric)
-    return float(series.min()) if len(series) else np.nan
 
 
 def _sum_metric(df: pd.DataFrame, metric: str) -> int:

@@ -1,10 +1,13 @@
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+import pytest
 
 from scripts.run_pit_saved_prediction_backtests import (
     BacktestJob,
     BacktestOptions,
+    _build_combined_summary_df,
     build_backtest_command,
     resolve_year_jobs,
     write_summary_outputs,
@@ -154,8 +157,69 @@ def test_write_summary_outputs_compares_cost_aware_rows_to_reviewed_artifact(
     assert total_return["cost_rank_gate"] == 0.12
     assert total_return["delta"] == -0.06
 
-    assert combined_df.loc[0, "cost_rank_gate_compounded_total_return"] == 0.12
-    assert combined_df.loc[0, "reviewed_compounded_total_return"] == 0.18
+    # No year carries its daily series, so nothing is combined from yearly summaries (#342).
+    assert np.isnan(combined_df.loc[0, "cost_rank_gate_total_return"])
+    assert combined_df.loc[0, "cost_rank_gate_combined_from"] == "MISSING_DAILY_RETURNS:2022"
+    assert np.isnan(combined_df.loc[0, "reviewed_total_return"])
+    assert combined_df.loc[0, "cost_rank_gate_avg_daily_turnover"] == pytest.approx(0.35)
     assert combined_df.loc[0, "total_trading_days"] == 237
     assert "transaction costs enabled" in summary_md
     assert "rank-drop gate enabled" in summary_md
+
+
+def _year_with_daily_returns(tmp_path: Path, year: int, portfolio, benchmark) -> dict:
+    dates = pd.bdate_range(f"{year}-01-03", periods=len(portfolio))
+    path = tmp_path / f"{year}_daily_returns.csv"
+    pd.DataFrame(
+        {
+            "date": dates.strftime("%Y-%m-%d"),
+            "portfolio_return": portfolio,
+            "benchmark_return": benchmark,
+            "excess_return": np.asarray(portfolio) - np.asarray(benchmark),
+        }
+    ).to_csv(path, index=False)
+    values = np.cumprod(1 + np.asarray(portfolio))
+    total = values[-1] - 1
+    bench = np.prod(1 + np.asarray(benchmark)) - 1
+    return {
+        "year": year,
+        "status": "OK",
+        "daily_returns_csv": str(path),
+        "backtest.total_return": total,
+        "backtest.benchmark_return": bench,
+        "backtest.excess_return": total - bench,
+        "backtest.MDD": float(np.min(values / np.maximum.accumulate(values) - 1)),
+        "backtest.avg_daily_turnover": 0.2 if year == 2022 else 0.4,
+        "backtest.num_trading_days": len(portfolio),
+    }
+
+
+def test_multi_year_combine_reads_the_concatenated_daily_series(tmp_path: Path) -> None:
+    """r7: a drawdown straddling the year end; yearly combine gave -0.148 against -0.274."""
+    p1 = np.r_[np.full(200, 0.002), np.full(40, -0.004)]
+    p2 = np.r_[np.full(40, -0.004), np.full(200, 0.0005)]
+    b1, b2 = np.full(240, 0.0012), np.full(240, -0.0008)
+    rows = [
+        _year_with_daily_returns(tmp_path, 2022, p1, b1),
+        _year_with_daily_returns(tmp_path, 2023, p2, b2),
+    ]
+    combined = _build_combined_summary_df(pd.DataFrame(rows), pd.DataFrame()).iloc[0]
+
+    portfolio, benchmark = np.r_[p1, p2], np.r_[b1, b2]
+    total = np.prod(1 + portfolio) - 1
+    values = np.r_[1.0, np.cumprod(1 + portfolio)]
+    true_mdd = float(np.min(values / np.maximum.accumulate(values) - 1))
+    arr = (1 + total) ** (252 / portfolio.size) - 1
+
+    assert combined["cost_rank_gate_combined_from"] == "CONCATENATED_DAILY_RETURNS"
+    assert combined["cost_rank_gate_total_return"] == pytest.approx(total)
+    assert combined["cost_rank_gate_excess_return"] == pytest.approx(
+        total - (np.prod(1 + benchmark) - 1)
+    )
+    assert combined["cost_rank_gate_MDD"] == pytest.approx(true_mdd)
+    assert true_mdd < min(row["backtest.MDD"] for row in rows) - 0.1  # straddles the year end
+    assert combined["cost_rank_gate_ARR"] == pytest.approx(arr)
+    assert combined["cost_rank_gate_ASR"] == pytest.approx(
+        arr / (np.std(portfolio, ddof=1) * np.sqrt(252))
+    )
+    assert combined["cost_rank_gate_avg_daily_turnover"] == pytest.approx(0.3)

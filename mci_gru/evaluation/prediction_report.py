@@ -11,7 +11,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from mci_gru.config import Legs
 from mci_gru.evaluation.metrics import evaluate_predictions
+from mci_gru.evaluation.outcomes import realized_returns
 
 KEY_COLUMNS = ["dt", "kdcode"]
 DEFAULT_MODEL_NAME = "mci_gru"
@@ -74,7 +76,13 @@ def align_prediction_comparison(
     prediction_col: str = "score",
     return_col: str = "realized_return",
 ) -> pd.DataFrame:
-    """Inner-align predictions, realized returns, and optional baselines by date/ticker."""
+    """Align the primary's predictions with realized returns, then attach baselines.
+
+    The rows are the primary's: every (date, ticker) where the primary scored and the
+    realized return is finite. Baselines are left-joined onto those rows and are NaN
+    where they did not score, so adding a baseline never changes which rows the
+    primary is measured on (#342). Each model is then measured on its own finite rows.
+    """
     aligned = _normalise_value_frame(realized_returns, return_col, "realized_return")
     primary_col = _score_column(primary_name)
     aligned = aligned.merge(
@@ -82,21 +90,21 @@ def align_prediction_comparison(
         on=KEY_COLUMNS,
         how="inner",
     )
+    finite_mask = np.ones(len(aligned), dtype=bool)
+    for col in ("realized_return", primary_col):
+        finite_mask &= np.isfinite(pd.to_numeric(aligned[col], errors="coerce").to_numpy())
+    aligned = aligned.loc[finite_mask]
 
     for baseline_name, baseline_df in (baseline_predictions or {}).items():
         baseline_col = _score_column(baseline_name)
         aligned = aligned.merge(
             _normalise_value_frame(baseline_df, prediction_col, baseline_col),
             on=KEY_COLUMNS,
-            how="inner",
+            how="left",
         )
+        values = pd.to_numeric(aligned[baseline_col], errors="coerce")
+        aligned[baseline_col] = values.where(np.isfinite(values))
 
-    value_cols = [col for col in aligned.columns if col not in KEY_COLUMNS]
-    finite_mask = np.ones(len(aligned), dtype=bool)
-    for col in value_cols:
-        finite_mask &= np.isfinite(pd.to_numeric(aligned[col], errors="coerce").to_numpy())
-
-    aligned = aligned.loc[finite_mask].copy()
     aligned = aligned.sort_values(KEY_COLUMNS).reset_index(drop=True)
     return aligned
 
@@ -131,14 +139,16 @@ def compute_tsfm_prediction_report(
 
     for score_col in model_score_columns:
         model_name = _model_name_from_score_col(score_col)
+        # Each model on its own scored rows, so one model's coverage never moves another's.
+        scored = frame.loc[np.isfinite(pd.to_numeric(frame[score_col], errors="coerce"))]
         report["models"][model_name] = _model_metrics(
-            frame,
+            scored,
             score_col=score_col,
             top_k_values=top_k_values,
             label_t=label_t,
         )
         report["yearly_decay"][model_name] = _yearly_metrics(
-            frame,
+            scored,
             score_col=score_col,
             top_k_values=top_k_values,
             label_t=label_t,
@@ -180,21 +190,39 @@ def realized_returns_from_market_data(
     label_t: int,
     return_col: str = "realized_return",
 ) -> pd.DataFrame:
-    """Compute forward close-to-close labels aligned to prediction dates."""
+    """Booked close ``D+1`` to close ``D+label_t`` return for every panel row.
+
+    Returns come from the evaluation core (:func:`mci_gru.evaluation.outcomes.realized_returns`)
+    on the panel's own session axis, the training label's resolver: a missing bar never
+    moves an endpoint, as the per-stock row shift used here before did (#225, #342).
+    A missing exit books the last close in the hold (E3). Rows whose hold runs past the
+    panel's end are NaN.
+    """
     required = {"dt", "kdcode", "close"}
     missing = required - set(market_data.columns)
     if missing:
         raise ValueError(f"market_data missing columns: {sorted(missing)}")
-    if label_t <= 0:
-        raise ValueError("label_t must be positive")
+    if label_t < 2:
+        raise ValueError("label_t must be >= 2: the label runs close D+1 to close D+label_t")
 
-    df = market_data.copy()
-    df["dt"] = pd.to_datetime(df["dt"]).dt.strftime("%Y-%m-%d")
-    df = df.sort_values(["kdcode", "dt"]).reset_index(drop=True)
-    close_t1 = df.groupby("kdcode")["close"].shift(-1)
-    close_tn = df.groupby("kdcode")["close"].shift(-label_t)
-    df[return_col] = close_tn / close_t1 - 1.0
-    return df[["dt", "kdcode", return_col]]
+    panel = market_data[["dt", "kdcode", "close"]].copy()
+    panel["dt"] = pd.to_datetime(panel["dt"]).dt.strftime("%Y-%m-%d")
+    panel["kdcode"] = panel["kdcode"].astype(str)
+    rows = panel[["dt", "kdcode"]].drop_duplicates()
+    booked = realized_returns(
+        panel,
+        sorted(rows["dt"].unique()),
+        legs=Legs(entry_session=1, exit_session=label_t),
+    )
+    grid = pd.DataFrame(
+        {
+            "dt": np.repeat(booked.dates, len(booked.kdcodes)),
+            "kdcode": np.tile(booked.kdcodes, len(booked.dates)),
+            return_col: booked.returns.ravel(),
+        }
+    )
+    out = rows.merge(grid, on=KEY_COLUMNS, how="left")
+    return out.sort_values(["kdcode", "dt"]).reset_index(drop=True)
 
 
 def write_tsfm_prediction_report(

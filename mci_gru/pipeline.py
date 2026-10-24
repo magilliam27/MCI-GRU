@@ -45,6 +45,7 @@ from mci_gru.data.preprocessing import (
     generate_time_series_features,
     label_session_axis,
     purge_training_sessions_for_embargo,
+    resolve_label_endpoints,
     resolve_labels,
 )
 from mci_gru.data.quality_contract import (
@@ -384,6 +385,45 @@ def _embargo_training_sessions(
     )
     logger.info(f"Session-level train/val embargo verified: {summary}")
     return purged
+
+
+def _embargo_validation_sessions(
+    val_dates: list[str],
+    df_for_labels: pd.DataFrame,
+    kdcode_list: list[str],
+    test_start: str,
+    label_t: int,
+) -> list[str]:
+    """Purge the validation tail whose labels read test-period closes (#342).
+
+    The calendar-day gap check cannot see sessions: six calendar days can hold three,
+    so a validation label ``label_t`` sessions out would exit inside the test window
+    and early stopping would read test prices. Exits come from the training label's
+    own resolver on the panel's session axis, and only dates whose exit is on or after
+    ``test_start`` are dropped, so a split with a wide gap loses nothing.
+    """
+    if label_t <= 0 or not val_dates:
+        return list(val_dates)
+    sessions = label_session_axis(df_for_labels, kdcode_list)
+    _entries, exits = resolve_label_endpoints(sessions, val_dates, label_t)
+    kept = [
+        date
+        for date, exit_date in zip(val_dates, exits, strict=True)
+        if exit_date is None or exit_date < test_start
+    ]
+    if not kept:
+        raise ValueError(
+            f"Val/test embargo purge leaves no validation sessions: every label of "
+            f"{len(val_dates)} validation session(s) exits on or after test_start="
+            f"{test_start} (label_t={label_t}). Widen the validation window."
+        )
+    if len(kept) < len(val_dates):
+        logger.info(
+            f"Val/test embargo purge: dropped the last {len(val_dates) - len(kept)} "
+            f"validation session(s) ({val_dates[len(kept)]}..{val_dates[-1]}) whose labels "
+            f"exit on or after test_start={test_start} (label_t={label_t} sessions)"
+        )
+    return kept
 
 
 def _build_tensors(
@@ -965,6 +1005,9 @@ def prepare_data(
         config.model.his_t,
         config.model.label_t,
     )
+    val_dates = _embargo_validation_sessions(
+        val_dates, frames.raw, kdcode_list, config.data.test_start, config.model.label_t
+    )
 
     tensor_bundle = build_tensors(
         frames,
@@ -1121,6 +1164,9 @@ def prepare_data_index_level(
         config.data.val_start,
         config.model.his_t,
         config.model.label_t,
+    )
+    val_dates = _embargo_validation_sessions(
+        val_dates, df_filtered, kdcode_list, config.data.test_start, config.model.label_t
     )
 
     tensors = _build_tensors(

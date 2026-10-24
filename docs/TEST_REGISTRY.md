@@ -1982,6 +1982,7 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 | `test_build_backtest_command_enables_costs_and_rank_gate` |  |  |
 | `test_resolve_year_jobs_remaps_stale_colab_paths_to_current_run_root` |  |  |
 | `test_write_summary_outputs_compares_cost_aware_rows_to_reviewed_artifact` |  |  |
+| `test_multi_year_combine_reads_the_concatenated_daily_series` | r7: a drawdown straddling the year end; yearly combine gave -0.148 against -0.274. |  |
 
 ## `tests/test_pit_universe_mode_config.py`
 
@@ -2045,13 +2046,16 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 
 ## `tests/test_prediction_report.py`
 
-**Exercises:** `mci_gru.evaluation.prediction_report`
+**Exercises:** `mci_gru.data.preprocessing`, `mci_gru.evaluation.prediction_report`
 
 | Test | Description | Markers |
 |---|---|---|
 | `test_oos_r2_uses_zero_return_benchmark` |  |  |
 | `test_sign_metrics_include_positive_negative_and_zero_returns` |  |  |
-| `test_alignment_intersects_dates_universe_and_optional_baselines` |  |  |
+| `test_alignment_keeps_the_primary_rows_and_left_joins_baselines` |  |  |
+| `test_adding_a_baseline_does_not_change_the_primary_numbers` | Logic C: a partial baseline's inner join moved the primary's rank IC 0.077 to 0.118. |  |
+| `test_realized_returns_read_the_session_axis_not_the_next_row` | Dates finding 2: a missing bar made the row shift book close D+6 as close D+5. |  |
+| `test_realized_returns_reject_a_label_with_no_hold` |  |  |
 | `test_prediction_report_includes_yearly_decay_for_each_model` |  |  |
 | `test_saved_prediction_report_runs_without_training` |  |  |
 
@@ -2349,6 +2353,21 @@ Regression tests for the isolated pytest launcher.
 | `test_permutation_preserves_daily_set_score_multiset_and_ties` |  |  |
 | `test_permutation_is_deterministic_and_assignment_is_outcome_independent` |  |  |
 
+## `tests/test_side_statistics_overlap.py`
+
+Side-module statistics are overlap-correct (#342).
+
+**Exercises:** `mci_gru.evaluation.paired_inference`, `mci_gru.evaluation.selection_nulls`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_paired_hac_test_has_nominal_size_on_overlapping_days` | r3: Bartlett lag 4 gave SE 0.85x truth and 10% rejections at a nominal 5%. |  |
+| `test_power_tables_use_the_long_run_sd` | r2: the iid sd gave an MDE of 0.0027 against a Monte Carlo truth of 0.0073. |  |
+| `test_sharpe_of_daily_sampled_overlapping_returns_is_the_daily_sharpe` | Findings 1: uniform weights on 3 lags recover the daily book's annual Sharpe. |  |
+| `test_date_blocked_null_matches_the_sampling_spread_of_a_persistent_score` | r4: the per-date shuffle's null sd was 0.024 against a true 0.045. |  |
+| `test_date_blocked_null_keeps_each_score_path_whole` |  |  |
+| `test_date_blocked_null_induces_a_bijection_when_names_come_and_go` |  |  |
+
 ## `tests/test_sp500_gics_top10_mcap_export.py`
 
 **Exercises:** `scripts.data.export_sp500_gics_top10_mcap`
@@ -2476,6 +2495,18 @@ Unit tests for mci_gru.data.transforms.
 | `test_write_trial_ledger_writes_csv_and_jsonl` |  |  |
 | `test_write_trial_ledger_strict_jsonl_and_force_guard` |  |  |
 | `test_validate_trial_family_rejects_missing_expected_member` |  |  |
+
+## `tests/test_val_test_embargo.py`
+
+Validation labels never read test-period closes (#342, dates finding 5).
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.preprocessing`, `mci_gru.pipeline`, `mci_gru.walkforward`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_val_tail_whose_labels_exit_in_test_is_purged` |  |  |
+| `test_a_wide_gap_purges_nothing` |  |  |
+| `test_no_walk_forward_window_leaks_test_closes_into_validation` | r6: 9 of 11 default windows leaked before the purge. |  |
 
 ## `tests/test_vix_features.py`
 

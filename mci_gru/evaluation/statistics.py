@@ -244,6 +244,53 @@ def newey_west_std(values: np.ndarray, lags: int) -> float:
     return float(np.sqrt(max(variance, 0.0)))
 
 
+def hansen_hodrick_std(values: np.ndarray, lags: int) -> float:
+    """Long-run standard deviation with uniform (Hansen-Hodrick) weights on lags 1..lags."""
+    x = np.asarray(values, dtype=np.float64)
+    x = x[np.isfinite(x)]
+    if lags < 0:
+        raise ValueError("lags must be >= 0")
+    if x.size <= 1:
+        return 0.0
+
+    centered = x - np.mean(x)
+    n = centered.size
+    variance = float(np.dot(centered, centered) / n)
+    for lag in range(1, min(lags, n - 1) + 1):
+        variance += 2.0 * float(np.dot(centered[lag:], centered[:-lag]) / n)
+    return float(np.sqrt(max(variance, 0.0)))
+
+
+def hansen_hodrick_mean_inference(values: np.ndarray, *, label_horizon: int) -> HACMeanInference:
+    """Mean inference with uniform HAC weights; ``label_horizon`` is the sessions spanned."""
+    if label_horizon <= 0:
+        raise ValueError("label_horizon must be > 0")
+    x = np.asarray(values, dtype=np.float64)
+    if x.ndim != 1:
+        raise ValueError("values must be 1-D")
+    if not np.all(np.isfinite(x)):
+        raise ValueError("values must contain only finite observations")
+    lags = label_horizon - 1
+    if x.size == 0:
+        return HACMeanInference("hansen_hodrick_uniform_v1", 0, None, lags, None, None, None)
+    mean_value = float(np.mean(x))
+    standard_error = hansen_hodrick_std(x, lags=lags) / math.sqrt(x.size)
+    if standard_error <= 0.0 or not np.isfinite(standard_error):
+        return HACMeanInference(
+            "hansen_hodrick_uniform_v1", int(x.size), mean_value, lags, None, None, None
+        )
+    t_stat = float(mean_value / standard_error)
+    return HACMeanInference(
+        method="hansen_hodrick_uniform_v1",
+        n_obs=int(x.size),
+        mean=mean_value,
+        lags=lags,
+        standard_error=float(standard_error),
+        t_stat=t_stat,
+        p_value=float(math.erfc(abs(t_stat) / math.sqrt(2.0))),
+    )
+
+
 def newey_west_mean_inference(
     values: np.ndarray,
     *,

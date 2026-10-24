@@ -77,6 +77,9 @@ def _one_window_from_train_end(
     wf: WalkforwardConfig,
     global_end: date,
 ) -> ExperimentConfig | None:
+    # Calendar-day gaps only. Six calendar days can hold three sessions, so the
+    # pipeline purges, on the session axis, the training tail whose labels reach
+    # val_start and the validation tail whose labels reach test_start (#342).
     gap = timedelta(days=label_t + 1)
     val_start = train_end + gap
     val_end = val_start + relativedelta(months=wf.window_val_months)
