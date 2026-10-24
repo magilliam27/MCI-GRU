@@ -981,6 +981,28 @@ def junit_outcome(xml_text: str, test_name: str) -> str:
     return "passed"
 
 
+def _command_check_arms(args: Any) -> int:
+    """Refuse, before anything trains, an arm the recipe at this commit cannot take."""
+    recipe = recipe_overrides((REPO_DIR / RECIPE_PATH).read_text(encoding="utf-8"))
+    problems = []
+    for arm in args.arms:
+        if arm not in RUN_ARMS:
+            problems.append(f"{arm!r} is not an arm; arms are {list(RUN_ARMS)}")
+            continue
+        try:
+            apply_arm(recipe, arm)
+        except (KeyError, ValueError) as error:
+            problems.append(f"{arm!r}: {error.args[0]}")
+            continue
+        changes = [o for o in apply_arm(recipe, arm) if o not in recipe]
+        print(f"ok      {arm}: {', '.join(changes) or 'the recipe'}")
+    if len(set(args.arms)) != len(args.arms):
+        problems.append(f"each arm may be listed once: {args.arms}")
+    for problem in problems:
+        print(f"REFUSED {problem}")
+    return 1 if problems else 0
+
+
 def _command_gpu_check(args: Any) -> int:
     import sys
 
@@ -1074,6 +1096,48 @@ def _ties(summary: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+#: Overrides that name where a run writes rather than what it trains.
+_RUN_LOCATION_KEYS = ("hydra.run.dir", "experiment_name", "data.auxiliary_snapshot_directory")
+
+
+def _trained_overrides(overrides: Sequence[str]) -> list[str]:
+    """A run's overrides without the ones that only say where it writes, sorted."""
+    return sorted(o for o in overrides if o.partition("=")[0] not in _RUN_LOCATION_KEYS)
+
+
+def _package_identity(record: dict[str, Any]) -> dict[str, Any] | None:
+    """The staged package's bytes, without how each file got there (copied or reused)."""
+    package = record.get("staging", {}).get("package")
+    if not isinstance(package, dict):
+        return package
+    return {
+        "manifest_sha256": package.get("manifest_sha256"),
+        "files": sorted(
+            (f.get("path"), f.get("sha256"), f.get("size_bytes")) for f in package.get("files", [])
+        ),
+    }
+
+
+def auxiliary_observation_digests(run_dir: Path) -> list[str]:
+    """SHA-256 of every captured auxiliary observation (FRED, the index file), sorted."""
+    return sorted(
+        sha256_of(path) for path in Path(run_dir).rglob("input_snapshots/**/observations.bin")
+    )
+
+
+def _finite_or_none(value: Any) -> Any:
+    """Strict JSON: NaN and infinities become null, recursively."""
+    import math
+
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {key: _finite_or_none(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_finite_or_none(item) for item in value]
+    return value
+
+
 def compare_arms(
     results: Sequence[ArmResult],
     *,
@@ -1081,10 +1145,11 @@ def compare_arms(
     seed: int,
     ci_level: float = 0.95,
 ) -> dict[str, Any]:
-    """Each arm's IC and ties, and the first arm's paired daily IC difference to the rest.
+    """Each arm's IC and ties, and the recipe arm's paired daily IC difference to the rest.
 
-    Arms must come from one commit and one staged package, so they differ only by
-    their arm's overrides. The paired difference uses the same overlap-aware HAC and
+    The first arm must be the recipe. Every other arm must come from the same commit,
+    mode and staged package, and its overrides must be the recipe arm's with only that
+    arm's change, so the arms differ by nothing else. The paired difference uses the same overlap-aware HAC and
     block bootstrap the graph ablation used (``paired_inference``), with the label's
     horizon from the summary.
     """
@@ -1094,16 +1159,31 @@ def compare_arms(
 
     if len(results) < 2:
         raise ValueError("compare needs at least two arms")
+    names = [result.arm for result in results]
+    if len(set(names)) != len(names):
+        raise ValueError(f"each arm may be given once: {names}")
     reference = results[0]
+    if reference.arm != "recipe":
+        raise ValueError(
+            f"the first arm is the reference and must be 'recipe', not {reference.arm!r}"
+        )
+    reference_trained = _trained_overrides(reference.record.get("overrides", []))
     for result in results[1:]:
-        if result.record.get("commit") != reference.record.get("commit"):
-            raise ValueError(
-                f"arm {result.arm!r} ran commit {result.record.get('commit')!r}; "
-                f"arm {reference.arm!r} ran {reference.record.get('commit')!r}"
-            )
-        package = result.record.get("staging", {}).get("package")
-        if package != reference.record.get("staging", {}).get("package"):
+        for key in ("commit", "mode"):
+            if result.record.get(key) != reference.record.get(key):
+                raise ValueError(
+                    f"arm {result.arm!r} ran {key} {result.record.get(key)!r}; "
+                    f"arm {reference.arm!r} ran {reference.record.get(key)!r}"
+                )
+        if _package_identity(result.record) != _package_identity(reference.record):
             raise ValueError(f"arm {result.arm!r} staged another input package")
+        expected = _trained_overrides(apply_arm(reference_trained, result.arm))
+        if _trained_overrides(result.record.get("overrides", [])) != expected:
+            raise ValueError(
+                f"arm {result.arm!r} trained with overrides other than the recipe arm's "
+                "plus its own change"
+            )
+    reference_aux = auxiliary_observation_digests(reference.run_dir)
     label_t = int(reference.summary["label_t"])
     arms = []
     for result in results:
@@ -1127,6 +1207,10 @@ def compare_arms(
                     )
                 },
                 "linked_score_ties": _ties(result.summary),
+                "auxiliary_observations": len(auxiliary_observation_digests(result.run_dir)),
+                "auxiliary_inputs_match_reference": (
+                    auxiliary_observation_digests(result.run_dir) == reference_aux
+                ),
             }
         )  # fmt: skip
     paired = []
@@ -1153,13 +1237,19 @@ def compare_arms(
         "arms": arms,
         "paired_daily_difference": paired,
         "note": "Evidence, not a pass/fail gate (PRD #319, D1). Paired rows are "
-        "reference minus control, per date, on the dates every arm scored.",
+        "reference minus control, per date, on the dates every arm scored. Each arm "
+        "fetched its FRED inputs itself; auxiliary_inputs_match_reference says whether "
+        "the captured bytes were the same as the recipe arm's.",
     }
 
 
 def _command_compare(args: Any) -> int:
     import pandas as pd
 
+    out_dir = Path(args.out_dir)
+    if out_dir.exists():
+        print(f"Refusing to write over {out_dir}: it already exists.")
+        return 1
     results = []
     for item in args.run:
         arm, _, run_dir = item.partition("=")
@@ -1176,8 +1266,8 @@ def _command_compare(args: Any) -> int:
     except ValueError as error:
         print(f"Cannot compare: {error}")
         return 1
-    out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=False)
+    comparison = _finite_or_none(comparison)
+    out_dir.mkdir(parents=True)
     write_json(out_dir / "arm_comparison.json", comparison)
     pd.concat(
         {f"{r.arm}_{c}": r.daily[c] for r in results for c in ("ic", "rank_ic")}, axis=1
@@ -1209,6 +1299,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     run.add_argument("--eodhd-drive-path", default=EODHD_MARKET_DRIVE_PATH)
     run.add_argument("--tag-file", default="")
     run.add_argument("--arm", choices=list(RUN_ARMS), default="recipe")
+    check_arms = commands.add_parser("check-arms")
+    check_arms.add_argument("arms", nargs="+")
     gpu_check = commands.add_parser("gpu-check")
     gpu_check.add_argument("--out-dir", required=True)
     compare = commands.add_parser("compare")
@@ -1225,6 +1317,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "prerequisites": _command_prerequisites,
         "stage": _command_stage,
         "run": _command_run,
+        "check-arms": _command_check_arms,
         "gpu-check": _command_gpu_check,
         "compare": _command_compare,
     }[args.command]

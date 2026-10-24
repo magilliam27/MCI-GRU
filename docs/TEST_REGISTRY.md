@@ -1228,6 +1228,13 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_compare_refuses_arms_from_different_commits` |  |  |
 | `test_compare_refuses_a_folder_labelled_as_another_arm` |  |  |
 | `test_the_notebook_runs_one_recipe_arm_unless_told_otherwise` |  |  |
+| `test_compare_refuses_a_control_that_differs_by_more_than_its_arm` |  | parametrize |
+| `test_compare_accepts_the_same_package_bytes_however_they_were_staged` |  |  |
+| `test_compare_refuses_an_arm_given_twice_or_a_reference_other_than_the_recipe` |  |  |
+| `test_compare_flags_auxiliary_inputs_that_differ_from_the_recipe_arms` |  |  |
+| `test_compare_writes_strict_json_and_never_writes_over_a_folder` |  |  |
+| `test_check_arms_refuses_before_training_an_arm_the_recipe_cannot_take` |  |  |
+| `test_the_notebook_checks_every_arm_before_any_trains` |  |  |
 
 ## `tests/test_gat_own_signal.py`
 

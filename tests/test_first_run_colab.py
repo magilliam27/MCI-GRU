@@ -704,7 +704,7 @@ def test_notebook_runs_the_repository_in_the_lock_qualified_python():
         'UV + ["venv", "--python", PYTHON_VERSION'
     )
     invocations = re.findall(r'([\w.]+), "scripts/first_run_colab.py"', sources)
-    assert invocations == ["PY"] * 6
+    assert invocations == ["PY"] * 7
 
 
 def test_the_run_folder_lists_installed_packages_without_pip():
@@ -1009,7 +1009,9 @@ def test_each_control_arm_differs_from_the_recipe_only_by_its_change():
 
 
 def test_an_arm_that_would_change_nothing_is_refused():
-    with pytest.raises(KeyError, match="changes features.base_inputs, which the recipe does not set"):
+    with pytest.raises(
+        KeyError, match="changes features.base_inputs, which the recipe does not set"
+    ):
         frc.apply_arm(["seed=1729"], "levels_inputs")
     with pytest.raises(ValueError, match="changes nothing"):
         frc.apply_arm(["features.base_inputs=levels"], "levels_inputs")
@@ -1129,7 +1131,33 @@ def test_the_gpu_check_fails_when_pytest_writes_no_report(tmp_path, monkeypatch)
 _DATES = [f"2025-01-{day:02d}" for day in range(2, 22)]
 
 
-def _fake_arm_run(root, arm, ic, *, commit="c0ffee", ties=None, summary_ic=None):
+_FAKE_RECIPE = ["seed=1729", "training.num_models=20", _FIXED_RECIPE_LINE, "tracking.enabled=false"]
+
+
+def _fake_package(staging="reused"):
+    return {
+        "package_id": "p",
+        "package_revision": "r2",
+        "manifest_sha256": "m" * 64,
+        "files": [
+            {"path": "data/raw/a.csv", "sha256": "a" * 64, "size_bytes": 3, "staging": staging}
+        ],
+    }
+
+
+def _fake_arm_run(
+    root,
+    arm,
+    ic,
+    *,
+    commit="c0ffee",
+    ties=None,
+    summary_ic=None,
+    mode="full",
+    overrides=None,
+    package=None,
+    observations=(b"fred",),
+):
     """A finished run folder as the launcher and run_experiment.py leave it."""
     import numpy as np
     import pandas as pd
@@ -1155,15 +1183,26 @@ def _fake_arm_run(root, arm, ic, *, commit="c0ffee", ties=None, summary_ic=None)
     if ties is not None:
         summary["linked_score_ties"] = ties
     (window / "evaluation_summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    for index, data in enumerate(observations):
+        files = run_dir / "input_snapshots" / f"obs{index}" / "files"
+        files.mkdir(parents=True)
+        (files / "observations.bin").write_bytes(data)
+    if overrides is None:
+        overrides = frc.apply_arm(_FAKE_RECIPE, arm)
     frc.write_json(
         run_dir / "colab_run_record.json",
         {
             "arm": arm,
+            "mode": mode,
             "run_tag": f"tag-{arm}",
             "commit": commit,
             "returncode": 0,
-            "staging": {"package": {"package_id": "p", "package_revision": "r2"}},
-            "overrides": [f"experiment_name=slug-{arm}"],
+            "staging": {"package": package or _fake_package()},
+            "overrides": [
+                *overrides,
+                f"hydra.run.dir=/content/mci_gru_runs/tag-{arm}",
+                f"experiment_name=slug-{arm}",
+            ],
         },
     )
     return run_dir
@@ -1271,3 +1310,91 @@ def test_the_notebook_runs_one_recipe_arm_unless_told_otherwise():
     assert 'RUN_ARMS = ["recipe"]' in sources
     assert '"--arm", arm' in sources
     assert sources.index('"gpu-check"') < sources.index('"run",')
+
+
+def _compare(tmp_path, runs, out="out"):
+    argv = ["compare", "--out-dir", str(tmp_path / out), "--resamples", "50"]
+    for arm, run_dir in runs:
+        argv += ["--run", f"{arm}={run_dir}"]
+    return frc.main(argv)
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"mode": "smoke"}, "ran mode"),
+        ({"overrides": [*_FAKE_RECIPE, "+experiment=graph_zeroed", "graph.drop_edge_p=0.0"]}, "overrides other than"),
+        ({"overrides": [s.replace("20", "1") for s in _FAKE_RECIPE] + ["+experiment=graph_zeroed"]}, "overrides other than"),
+        ({"package": {**_fake_package(), "manifest_sha256": "n" * 64}}, "another input package"),
+    ],
+)  # fmt: skip
+def test_compare_refuses_a_control_that_differs_by_more_than_its_arm(
+    tmp_path, capsys, change, message
+):
+    ic = [0.01] * len(_DATES)
+    recipe = _fake_arm_run(tmp_path, "recipe", ic)
+    zeroed = _fake_arm_run(tmp_path, "graph_zeroed", ic, **change)
+    assert _compare(tmp_path, [("recipe", recipe), ("graph_zeroed", zeroed)]) == 1
+    assert message in capsys.readouterr().out
+    assert not (tmp_path / "out").exists()
+
+
+def test_compare_accepts_the_same_package_bytes_however_they_were_staged(tmp_path):
+    ic = [0.01, 0.02] * (len(_DATES) // 2)
+    recipe = _fake_arm_run(tmp_path, "recipe", ic, package=_fake_package("copied"))
+    zeroed = _fake_arm_run(tmp_path, "graph_zeroed", ic, package=_fake_package("reused"))
+    assert _compare(tmp_path, [("recipe", recipe), ("graph_zeroed", zeroed)]) == 0
+
+
+def test_compare_refuses_an_arm_given_twice_or_a_reference_other_than_the_recipe(tmp_path, capsys):
+    ic = [0.01] * len(_DATES)
+    recipe = _fake_arm_run(tmp_path, "recipe", ic)
+    zeroed = _fake_arm_run(tmp_path, "graph_zeroed", ic)
+    assert _compare(tmp_path, [("recipe", recipe), ("recipe", recipe)]) == 1
+    assert "each arm may be given once" in capsys.readouterr().out
+    assert _compare(tmp_path, [("graph_zeroed", zeroed), ("recipe", recipe)]) == 1
+    assert "must be 'recipe'" in capsys.readouterr().out
+
+
+def test_compare_flags_auxiliary_inputs_that_differ_from_the_recipe_arms(tmp_path):
+    ic = [0.01, 0.03] * (len(_DATES) // 2)
+    recipe = _fake_arm_run(tmp_path, "recipe", ic, observations=(b"fred-a", b"index"))
+    same = _fake_arm_run(tmp_path, "graph_zeroed", ic, observations=(b"index", b"fred-a"))
+    revised = _fake_arm_run(tmp_path, "levels_inputs", ic, observations=(b"fred-b", b"index"))
+    runs = [("recipe", recipe), ("graph_zeroed", same), ("levels_inputs", revised)]
+    assert _compare(tmp_path, runs) == 0
+    arms = json.loads((tmp_path / "out" / "arm_comparison.json").read_text())["arms"]
+    assert [a["auxiliary_inputs_match_reference"] for a in arms] == [True, True, False]
+    assert [a["auxiliary_observations"] for a in arms] == [2, 2, 2]
+
+
+def test_compare_writes_strict_json_and_never_writes_over_a_folder(tmp_path, capsys):
+    ic = [0.01] * len(_DATES)  # identical arms: every difference is 0, so some stats are NaN
+    recipe = _fake_arm_run(tmp_path, "recipe", ic)
+    zeroed = _fake_arm_run(tmp_path, "graph_zeroed", ic)
+    runs = [("recipe", recipe), ("graph_zeroed", zeroed)]
+    assert _compare(tmp_path, runs) == 0
+    text = (tmp_path / "out" / "arm_comparison.json").read_text()
+    json.loads(text, parse_constant=lambda token: pytest.fail(f"non-strict JSON {token}"))
+    assert json.loads(text)["paired_daily_difference"][0]["top_decile_share"] is None
+    assert _compare(tmp_path, runs) == 1
+    assert "already exists" in capsys.readouterr().out
+
+
+def test_check_arms_refuses_before_training_an_arm_the_recipe_cannot_take(
+    tmp_path, run_repo, capsys
+):
+    # The fake recipe predates #325: levels_inputs has nothing to undo.
+    assert frc.main(["check-arms", "recipe", "graph_zeroed"]) == 0
+    assert "ok      graph_zeroed: +experiment=graph_zeroed" in capsys.readouterr().out
+    assert frc.main(["check-arms", "recipe", "graph_zeroed", "levels_inputs"]) == 1
+    out = capsys.readouterr().out
+    assert "REFUSED 'levels_inputs'" in out
+    assert frc.main(["check-arms", "recipe", "recipe"]) == 1
+    assert frc.main(["check-arms", "no_such_arm"]) == 1
+
+
+def test_the_notebook_checks_every_arm_before_any_trains():
+    sources = _notebook_sources()
+    assert sources.index('"check-arms", *RUN_ARMS') < sources.index('"run",')
+    assert "for arm, tag in RUN_TAGS.items():" in sources

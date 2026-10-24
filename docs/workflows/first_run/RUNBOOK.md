@@ -53,7 +53,7 @@ draft is [`ADMISSION_RECEIPT_AND_CHARTER_DRAFT.md`](ADMISSION_RECEIPT_AND_CHARTE
      every 10 minutes and at the end;
    - print where the outputs are;
    - with more than one arm, write their comparison to
-     `<DRIVE_OUTPUT_ROOT>/comparison-<first arm's tag>/`.
+     `<DRIVE_OUTPUT_ROOT>/comparison-<recipe arm's tag>/`.
 5. Keep the browser tab open while it trains. `colab_heartbeat.json` in the Drive
    run folder shows when the last copy was made.
 

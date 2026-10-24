@@ -54,8 +54,9 @@ def build_cells() -> list[dict]:
             that can be an admitted-run candidate. `graph_zeroed` is the recipe with the
             correlation edges empty; `levels_inputs` is the recipe on the old raw price
             and volume levels. With more than one arm, the last cell writes their
-            comparison: each arm's IC and rank IC, its linked-name ties, and the first
-            arm's paired daily IC difference against each of the others.
+            comparison: each arm's IC and rank IC, its linked-name ties, and the recipe
+            arm's paired daily IC difference against each of the others. The recipe arm
+            comes first, and every arm is checked against the recipe before any trains.
 
             **GPU precision check.** Before any arm trains, the CUDA test in
             `tests/test_eval_precision.py` (#327) runs on this GPU. It is skipped on a
@@ -99,6 +100,7 @@ def build_cells() -> list[dict]:
 
             assert RUN_MODE in ("full", "smoke"), RUN_MODE
             assert RUN_ARMS and len(set(RUN_ARMS)) == len(RUN_ARMS), RUN_ARMS
+            assert len(RUN_ARMS) == 1 or RUN_ARMS[0] == "recipe", "the comparison's reference arm is the recipe"
             """
         ),
         code(
@@ -201,6 +203,8 @@ def build_cells() -> list[dict]:
             """
             # What this commit needs from open pull requests. Full mode stops here if any is missing.
             stream([PY, "scripts/first_run_colab.py", "prerequisites", "--mode", RUN_MODE], cwd=REPO_DIR)
+            # Every arm in RUN_ARMS must be one the recipe at this commit can take, before any trains.
+            stream([PY, "scripts/first_run_colab.py", "check-arms", *RUN_ARMS], cwd=REPO_DIR)
             """
         ),
         code(
@@ -265,13 +269,13 @@ def build_cells() -> list[dict]:
         ),
         code(
             """
-            # With more than one arm: compare them, the first arm against each of the others.
+            # With more than one arm: compare them, the recipe arm against each of the others.
             # Written to Drive beside the runs; evidence, not a pass/fail gate.
             if len(RUN_TAGS) > 1:
                 COMPARISON_DIR = Path(DRIVE_OUTPUT_ROOT) / f"comparison-{RUN_TAGS[RUN_ARMS[0]]}"
                 command = [PY, "scripts/first_run_colab.py", "compare", "--out-dir", str(COMPARISON_DIR)]
-                for arm in RUN_ARMS:
-                    command += ["--run", f"{arm}={Path(LOCAL_RUN_ROOT) / RUN_TAGS[arm]}"]
+                for arm, tag in RUN_TAGS.items():
+                    command += ["--run", f"{arm}={Path(LOCAL_RUN_ROOT) / tag}"]
                 stream(command, cwd=REPO_DIR)
             else:
                 print("One arm: nothing to compare.")
