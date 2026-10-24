@@ -57,21 +57,27 @@ Transaction Costs (Retail Investor Model):
 - Slippage: Execution price deviation from expected price for market orders
 - Excludes market impact (negligible for retail-size trades)
 
+Inputs (#339):
+- ``--run_dir`` (one window's run_experiment.py output) supplies the data file, PIT
+  file and its export cutoff, test window, label, k and members, each checked against
+  what the run recorded (``mci_gru/evaluation/replay_inputs.py``). Other input flags
+  are checked overrides.
+- Without ``--run_dir`` every input must be named explicitly; nothing defaults to a
+  paper-era file, window or k, and nothing is checked against a run.
+- The benchmark is always a universe: the PIT file's members (open-ended rows kept
+  through the export cutoff), else the run's members, else the names scored. A trade
+  entering on session t is benchmarked on the members of the session before it, the
+  date its candidates were ranked.
+
 Usage:
-    # Basic evaluation (no transaction costs, matches paper)
-    python evaluate_sp500.py --predictions_dir output/averaged_predictions
+    # Replay a run from its own directory (no transaction costs)
+    python scripts/backtest_sp500.py --run_dir <run>/ --auto_save
 
-    # With transaction costs (retail investor model)
-    python evaluate_sp500.py --predictions_dir output/averaged_predictions --transaction_costs
-
-    # Custom transaction cost parameters (in basis points)
-    python evaluate_sp500.py --predictions_dir output/averaged_predictions --transaction_costs --spread 15 --slippage 3
+    # With transaction costs (retail investor model), in basis points
+    python scripts/backtest_sp500.py --run_dir <run>/ --transaction_costs --spread 15 --slippage 3
 
     # With multiple testing adjustment (if you tried 50 hyperparameter combinations):
-    python evaluate_sp500.py --predictions_dir output/averaged_predictions --num_tests 50
-
-    # Using different adjustment method (Bonferroni instead of BHY):
-    python evaluate_sp500.py --predictions_dir output/averaged_predictions --num_tests 50 --adjustment_method bonferroni
+    python scripts/backtest_sp500.py --run_dir <run>/ --num_tests 50 --adjustment_method bonferroni
 """
 
 import argparse
@@ -91,9 +97,16 @@ import pandas as pd
 
 warnings.filterwarnings("ignore")
 
+from mci_gru.data.path_resolver import resolve_project_data_path  # noqa: E402
 from mci_gru.data.pit import normalise_pit_intervals  # noqa: E402
+from mci_gru.data.quality_contract import fill_open_valid_to  # noqa: E402
 from mci_gru.evaluation.portfolio import (  # noqa: E402
     calculate_turnover as shared_calculate_turnover,  # noqa: E402
+)
+from mci_gru.evaluation.replay_inputs import (  # noqa: E402
+    ReplayInputError,
+    iso_date,
+    resolve_replay_inputs,
 )
 from mci_gru.tracking import (  # noqa: E402
     MLflowTrackingManager,
@@ -104,14 +117,10 @@ from mci_gru.tracking import (  # noqa: E402
 # CONFIGURATION (Paper Section 4.1.1 and 4.1.2)
 # ============================================================================
 
+# Strategy defaults only. Inputs (data file, PIT file, window, label, k) have no
+# defaults: they come from the run (--run_dir) or are named explicitly (#339).
 DEFAULT_CONFIG = {
-    "top_k": 10,  # Paper: k=10 stocks in portfolio
     "trading_days_per_year": 252,  # Standard trading days
-    "test_start": "2025-01-01",  # Updated to match training config
-    "test_end": "2025-12-31",  # Updated to match training config
-    "data_file": "data/raw/market/sp500_data.csv",  # Updated to reorganized path
-    "pit_universe_csv": None,
-    "label_t": 5,  # Forward return period (days)
     # Transaction costs for retail investor
     "transaction_costs": {
         "enabled": False,  # Disabled by default (paper excludes costs)
@@ -634,19 +643,11 @@ def haircut_sharpe_ratio(sharpe_ratio, num_years, num_tests, method="bhy", rank=
 
 
 def resolve_data_file(filename):
-    """Resolve data file from reorganized and legacy locations."""
-    if os.path.exists(filename):
-        return filename
+    """Resolve the named data file, as given or relative to the project root.
 
-    basename = os.path.basename(filename)
-    candidates = [
-        os.path.join("data", "raw", "market", basename),
-        basename,
-    ]
-    for candidate in candidates:
-        if os.path.exists(candidate):
-            return candidate
-    raise FileNotFoundError(f"Could not find data file: {filename}")
+    A same-named file elsewhere is never substituted (#339, the #223 class).
+    """
+    return str(resolve_project_data_path(filename, allow_basename_fallback=False))
 
 
 def load_stock_data(filename, start_date=None, end_date=None):
@@ -765,24 +766,82 @@ def calculate_forward_returns(df, label_t=5):
     return df
 
 
-def load_pit_universe_for_backtest(csv_path: str | None) -> pd.DataFrame | None:
-    """Load optional PIT intervals used to restrict candidates and benchmark rows."""
+def load_pit_universe_for_backtest(
+    csv_path: str | None, *, open_valid_to: str | None = None
+) -> pd.DataFrame | None:
+    """Load optional PIT intervals used to restrict candidates and benchmark rows.
+
+    A blank ``valid_to`` is membership through ``open_valid_to`` (the run's
+    ``data.pit_export_cutoff``), as in training. With open-ended rows and no cutoff
+    the load is refused: dropping them would remove every current member.
+    """
     if not csv_path:
         return None
     if not os.path.isfile(csv_path):
         raise FileNotFoundError(f"PIT universe CSV not found: {csv_path}")
-    return normalise_pit_intervals(pd.read_csv(csv_path))
+    frame = pd.read_csv(csv_path)
+    valid_to = next((c for c in frame.columns if str(c).strip().lower() == "valid_to"), None)
+    if valid_to is not None and open_valid_to is None:
+        open_ended = frame[valid_to].isna() | (frame[valid_to].astype(str).str.strip() == "")
+        if open_ended.any():
+            raise ValueError(
+                f"PIT universe CSV {csv_path} has {int(open_ended.sum())} open-ended rows "
+                "(blank valid_to); pass the run's pit_export_cutoff so they keep their members"
+            )
+    return normalise_pit_intervals(fill_open_valid_to(frame, open_valid_to))
+
+
+def replay_universe(config: dict, predictions_df: pd.DataFrame) -> pd.DataFrame | None:
+    """The universe a replay admits candidates from and benchmarks against.
+
+    The PIT file's intervals (restricted to the run's members when known); with no
+    PIT file, the run's members over the whole panel; with neither, the names the
+    predictions score. So the benchmark never averages a name the run could not rank.
+    """
+    members = config.get("members")
+    pit = load_pit_universe_for_backtest(
+        config.get("pit_universe_csv"), open_valid_to=config.get("pit_export_cutoff")
+    )
+    if pit is not None:
+        if members is not None:
+            pit = pit[pit["kdcode"].isin({str(m) for m in members})].reset_index(drop=True)
+        return pit
+    if members is None:
+        if "kdcode" not in predictions_df.columns or predictions_df.empty:
+            return None
+        members = sorted(predictions_df["kdcode"].astype(str).unique())
+    return pd.DataFrame(
+        {"kdcode": [str(m) for m in members], "valid_from": "0000-01-01", "valid_to": "9999-12-31"}
+    )
 
 
 def _pit_active_rows(
     stock_data_df: pd.DataFrame, pit_universe_df: pd.DataFrame | None
 ) -> pd.DataFrame:
+    """Rows at session t whose stock was a member on the session before t.
+
+    A trade entering on t was ranked on t-1, so its candidates were admitted on
+    t-1's membership; the benchmark uses the same date, which keeps out names that
+    join on t. The panel's first session has no ranking date and no benchmark row.
+    """
     if pit_universe_df is None:
         return stock_data_df
-    pit = pit_universe_df.copy()
-    merged = stock_data_df.merge(pit, on="kdcode", how="inner")
-    mask = (merged["dt"] >= merged["valid_from"]) & (merged["dt"] <= merged["valid_to"])
-    return merged.loc[mask, stock_data_df.columns]
+    sessions = sorted(stock_data_df["dt"].unique())
+    ranked_on = dict(zip(sessions[1:], sessions[:-1], strict=True))
+    frame = stock_data_df.assign(
+        _membership_dt=stock_data_df["dt"].map(ranked_on),
+        _kdcode=stock_data_df["kdcode"].astype(str),
+    )
+    pit = pit_universe_df[["kdcode", "valid_from", "valid_to"]].rename(
+        columns={"kdcode": "_kdcode"}
+    )
+    merged = frame.merge(pit.assign(_kdcode=pit["_kdcode"].astype(str)), on="_kdcode")
+    mask = (
+        merged["_membership_dt"].notna()
+        & (merged["_membership_dt"] >= merged["valid_from"])
+        & (merged["_membership_dt"] <= merged["valid_to"])
+    )
+    return merged.loc[mask, stock_data_df.columns].drop_duplicates(subset=["kdcode", "dt"])
 
 
 def _pit_active_kdcodes_on_date(pit_universe_df: pd.DataFrame | None, date: str) -> set[str] | None:
@@ -817,7 +876,8 @@ def equal_weight_benchmark_daily_series(
     Equal-weight mean open_to_open_return for each calendar dt in the panel.
 
     Deterministic for a fixed OHLC dataset (does not depend on which prediction
-    days the strategy successfully trades).
+    days the strategy successfully trades). With a universe, the members at dt are
+    those of the session before dt, the candidates' ranking date (#339).
     """
     if "open_to_open_return" not in stock_data_df.columns:
         raise ValueError(
@@ -2267,7 +2327,10 @@ def evaluate(predictions_dir, config=None):
         Dictionary of all evaluation metrics
     """
     if config is None:
-        config = DEFAULT_CONFIG
+        raise ValueError(
+            "evaluate() needs a config naming its inputs (data_file, test_start, test_end, "
+            "top_k, label_t); build one from a run with resolve_replay_inputs (#339)"
+        )
 
     print("\n" + "=" * 70)
     print("MCI-GRU MODEL EVALUATION")
@@ -2284,7 +2347,7 @@ def evaluate(predictions_dir, config=None):
 
     # Calculate forward returns
     stock_data = calculate_forward_returns(stock_data, label_t=config["label_t"])
-    pit_universe_df = load_pit_universe_for_backtest(config.get("pit_universe_csv"))
+    pit_universe_df = replay_universe(config, predictions_df)
 
     # Get transaction cost settings (with fallback to defaults)
     tc_config = config.get("transaction_costs", DEFAULT_CONFIG["transaction_costs"])
@@ -3105,7 +3168,7 @@ def plot_equity_curve(predictions_dir, stock_data, config, output_path=None):
 
     predictions_df = load_predictions(predictions_dir)
     stock_data = calculate_forward_returns(stock_data, label_t=config["label_t"])
-    pit_universe_df = load_pit_universe_for_backtest(config.get("pit_universe_csv"))
+    pit_universe_df = replay_universe(config, predictions_df)
 
     # Get transaction cost settings
     tc_config = config.get("transaction_costs", DEFAULT_CONFIG["transaction_costs"])
@@ -3205,7 +3268,7 @@ def evaluate_multiple_models(save_path, num_models=10, config=None):
         Dictionary with individual and averaged results
     """
     if config is None:
-        config = DEFAULT_CONFIG
+        raise ValueError("evaluate_multiple_models() needs a config naming its inputs (#339)")
 
     print("\n" + "=" * 70)
     print(f"MULTI-MODEL EVALUATION ({num_models} runs)")
@@ -3263,45 +3326,69 @@ def main(argv: list[str] | None = None):
     )
 
     parser.add_argument(
+        "--run_dir",
+        type=str,
+        default=None,
+        help="One window's run_experiment.py output directory. Supplies the data file, PIT "
+        "file and export cutoff, test window, label, k and members, each checked against "
+        "the run's records; the input flags below become checked overrides.",
+    )
+    parser.add_argument(
         "--predictions_dir",
         type=str,
-        required=True,
-        help="Directory containing prediction CSV files",
+        default=None,
+        help="Directory containing prediction CSV files (default with --run_dir: "
+        "<run_dir>/averaged_predictions; required without it)",
     )
 
     parser.add_argument(
         "--data_file",
         type=str,
-        default="data/raw/market/sp500_data.csv",
-        help="Path to stock data CSV file",
+        default=None,
+        help="Stock data CSV. With --run_dir it must carry the bytes the run consumed.",
     )
     parser.add_argument(
         "--pit_universe_csv",
         type=str,
         default=None,
-        help="Optional PIT kdcode/valid_from/valid_to CSV for candidate and benchmark filtering",
+        help="PIT kdcode/valid_from/valid_to CSV for candidate and benchmark membership. "
+        "With --run_dir it must carry the bytes the run consumed.",
+    )
+    parser.add_argument(
+        "--pit_export_cutoff",
+        type=str,
+        default=None,
+        help="Membership end for PIT rows with a blank valid_to. With --run_dir it must "
+        "equal the run's data.pit_export_cutoff.",
     )
 
     parser.add_argument(
-        "--top_k", type=int, default=10, help="Number of top stocks to select (default: 10)"
+        "--top_k",
+        type=int,
+        default=None,
+        help="Number of top stocks to select. With --run_dir: default the run's headline k, "
+        "and it must be one of the run's evaluation.top_k_values.",
     )
 
     parser.add_argument(
         "--test_start",
         type=str,
-        default="2025-01-01",
-        help="Test period start date (default: 2025-01-01)",
+        default=None,
+        help="Test period start date. With --run_dir it must not precede the run's.",
     )
 
     parser.add_argument(
         "--test_end",
         type=str,
-        default="2025-12-31",
-        help="Test period end date (default: 2025-12-31)",
+        default=None,
+        help="Test period end date. With --run_dir it must not follow the run's.",
     )
 
     parser.add_argument(
-        "--label_t", type=int, default=5, help="Forward return period in days (default: 5)"
+        "--label_t",
+        type=int,
+        default=None,
+        help="Forward return period in days. With --run_dir it must equal the run's.",
     )
 
     parser.add_argument("--output", type=str, default=None, help="Output path for results CSV")
@@ -3441,15 +3528,64 @@ def main(argv: list[str] | None = None):
 
     args = parser.parse_args(argv)
 
+    if args.run_dir and args.multi_model:
+        parser.error(
+            "--multi_model replays other directories, which --run_dir cannot check; "
+            "pass one run's --run_dir (and --predictions_dir inside it) instead"
+        )
+    if args.run_dir:
+        try:
+            replay_inputs = resolve_replay_inputs(
+                args.run_dir,
+                predictions_dir=args.predictions_dir,
+                data_file=args.data_file,
+                pit_universe_csv=args.pit_universe_csv,
+                pit_export_cutoff=args.pit_export_cutoff,
+                test_start=args.test_start,
+                test_end=args.test_end,
+                label_t=args.label_t,
+                top_k=args.top_k,
+            )
+        except ReplayInputError as error:
+            parser.error(f"--run_dir {args.run_dir}: {error}")
+        args.predictions_dir = str(replay_inputs.predictions_dir)
+        input_config = replay_inputs.backtest_config()
+    else:
+        required = {
+            "--predictions_dir": args.predictions_dir,
+            "--data_file": args.data_file,
+            "--test_start": args.test_start,
+            "--test_end": args.test_end,
+            "--top_k": args.top_k,
+            "--label_t": args.label_t,
+        }
+        missing = [flag for flag, value in required.items() if value is None]
+        if missing:
+            parser.error(
+                "pass --run_dir to replay a run from its own records, or name every input: "
+                f"missing {' '.join(missing)}"
+            )
+        try:
+            args.test_start, args.test_end = iso_date(args.test_start), iso_date(args.test_end)
+        except ReplayInputError as error:
+            parser.error(str(error))
+        print(
+            "WARNING: no --run_dir, so the inputs below are not checked against any run's records."
+        )
+        input_config = {
+            "data_file": args.data_file,
+            "pit_universe_csv": args.pit_universe_csv,
+            "pit_export_cutoff": args.pit_export_cutoff,
+            "test_start": args.test_start,
+            "test_end": args.test_end,
+            "label_t": args.label_t,
+            "top_k": args.top_k,
+        }
+
     # Build config
     config = {
-        "top_k": args.top_k,
+        **input_config,
         "trading_days_per_year": 252,
-        "test_start": args.test_start,
-        "test_end": args.test_end,
-        "data_file": args.data_file,
-        "pit_universe_csv": args.pit_universe_csv,
-        "label_t": args.label_t,
         "transaction_costs": {
             "enabled": args.transaction_costs,
             "bid_ask_spread": args.spread / 10000.0,  # Convert bps to decimal
@@ -3560,7 +3696,7 @@ def main(argv: list[str] | None = None):
                 # Load predictions
                 predictions_df = load_predictions(args.predictions_dir)
                 stock_data = calculate_forward_returns(stock_data, label_t=config["label_t"])
-                pit_universe_df = load_pit_universe_for_backtest(config.get("pit_universe_csv"))
+                pit_universe_df = replay_universe(config, predictions_df)
 
                 # Get full simulation results
                 holding_period = config.get("holding_period", 1)
