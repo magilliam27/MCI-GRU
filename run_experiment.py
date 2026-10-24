@@ -384,6 +384,10 @@ def main(cfg: DictConfig):
                     avg_predictions,
                     data["test_labels"],
                     cfg_w,
+                    panel=data["df"],
+                    dates=data["test_dates"],
+                    kdcodes=data["kdcode_list"],
+                    rankable_mask=data.get("test_tradable_mask"),
                 )
                 evaluation_summary["linked_score_ties"] = linked_score_tie_summary(
                     avg_predictions,
