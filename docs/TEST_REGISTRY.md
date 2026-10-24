@@ -2657,3 +2657,6 @@ Walk-forward evaluation pools the windows' dated test series (#342).
 | `test_pooled_summary_is_the_summary_of_every_test_date_together` | r1: 63 + 63 + 10-date windows; the mean of windows moved avg_ic 0.076 to 0.029. |  |
 | `test_pooling_widens_to_the_union_of_names` |  |  |
 | `test_overlapping_test_windows_are_not_pooled` |  |  |
+| `test_one_pooled_window_books_what_the_full_panel_books` | The trimmed closes keep every exit: the book, not only IC, is unchanged. |  |
+| `test_without_pit_a_window_ranks_only_its_own_names` | The first window's tail closes must not make its names rankable in the next. |  |
+| `test_windows_stepped_by_their_span_share_no_test_date` | Review of #342: an inclusive test_end was the next window's test_start. |  |

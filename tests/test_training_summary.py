@@ -251,7 +251,8 @@ def test_walkforward_evaluation_is_the_pooled_summary_when_given() -> None:
 
     merged = merge_walkforward_summary(windows, pooled_evaluation=pooled)
 
-    assert merged["evaluation"] == pooled
+    assert merged["evaluation"] == {"avg_ic": 0.25}  # the windows' shape
+    assert merged["evaluation_summary"] == {"schema_version": "v2"}
     assert merged["evaluation_pooling"] == "POOLED_TEST_DATES"
 
 

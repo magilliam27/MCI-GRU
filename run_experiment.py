@@ -75,6 +75,7 @@ from mci_gru.walkforward import (
     generate_walkforward_configs,
     merge_walkforward_summary,
     pool_window_test_sets,
+    pooled_evaluation_summary,
     window_test_set,
 )
 
@@ -520,15 +521,7 @@ def main(cfg: DictConfig):
                 pooling_status = f"NOT_POOLED: {error}"
                 logger.warning("Walk-forward evaluation not pooled: %s", error)
             else:
-                pooled_evaluation = compute_evaluation_summary(
-                    pooled.predictions,
-                    pooled.labels,
-                    config,
-                    panel=pooled.closes,
-                    dates=pooled.dates,
-                    kdcodes=pooled.kdcodes,
-                    rankable_mask=pooled.rankable_mask,
-                )
+                pooled_evaluation = pooled_evaluation_summary(pooled, config)
             merged = merge_walkforward_summary(
                 wf_summaries, pooled_evaluation=pooled_evaluation, pooling_status=pooling_status
             )

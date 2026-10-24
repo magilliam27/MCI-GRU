@@ -7,6 +7,8 @@ short final window weighted as much as a full one (math side finding C1, ``r1``)
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -14,7 +16,12 @@ import pytest
 from mci_gru.config import ExperimentConfig
 from mci_gru.evaluation.experiment_summary import compute_evaluation_summary
 from mci_gru.evaluation.outcomes import realized_returns
-from mci_gru.walkforward import pool_window_test_sets, window_test_set
+from mci_gru.walkforward import (
+    generate_walkforward_configs,
+    pool_window_test_sets,
+    pooled_evaluation_summary,
+    window_test_set,
+)
 
 LABEL_T = 5
 NAMES = [f"N{i:02d}" for i in range(30)]
@@ -32,7 +39,7 @@ def _market(rng: np.random.Generator, sessions: list[str]) -> pd.DataFrame:
     )
 
 
-def _window(rng, market, dates, kdcodes, skill):
+def _window(rng, market, dates, kdcodes, skill, *, pit_mask=True):
     """Scores with the given skill on the core's booked returns; labels are those returns."""
     labels = realized_returns(market, dates, kdcodes=kdcodes).returns
     noise = rng.standard_normal(labels.shape)
@@ -43,7 +50,7 @@ def _window(rng, market, dates, kdcodes, skill):
         panel=market,
         dates=dates,
         kdcodes=kdcodes,
-        rankable_mask=np.ones(labels.shape, dtype=bool),
+        rankable_mask=np.ones(labels.shape, dtype=bool) if pit_mask else None,
         label_t=LABEL_T,
     )
 
@@ -117,3 +124,79 @@ def test_overlapping_test_windows_are_not_pooled() -> None:
     ]
     with pytest.raises(ValueError, match="overlap"):
         pool_window_test_sets(windows)
+
+
+def test_one_pooled_window_books_what_the_full_panel_books() -> None:
+    """The trimmed closes keep every exit: the book, not only IC, is unchanged."""
+    rng = np.random.default_rng(3)
+    sessions = pd.bdate_range("2024-01-01", periods=120).strftime("%Y-%m-%d").tolist()
+    market = _market(rng, sessions)
+    window = _window(rng, market, sessions[20:80], NAMES, 0.1)
+    config = ExperimentConfig()
+
+    pooled = pooled_evaluation_summary(pool_window_test_sets([window]), config)["metrics"]
+    direct = compute_evaluation_summary(
+        window.predictions,
+        window.labels,
+        config,
+        panel=market,
+        dates=window.dates,
+        kdcodes=window.kdcodes,
+        rankable_mask=window.rankable_mask,
+    )["metrics"]
+
+    assert np.isfinite(direct["top_20_abs_sharpe"])
+    for key, value in direct.items():
+        if isinstance(value, float) and np.isfinite(value):
+            assert pooled[key] == pytest.approx(value), key
+
+
+def test_without_pit_a_window_ranks_only_its_own_names() -> None:
+    """The first window's tail closes must not make its names rankable in the next."""
+    rng = np.random.default_rng(4)
+    sessions = pd.bdate_range("2024-01-01", periods=120).strftime("%Y-%m-%d").tolist()
+    market = _market(rng, sessions)
+    first = _window(rng, market, sessions[0:40], NAMES, 0.1, pit_mask=False)
+    second = _window(rng, market, sessions[40:80], NAMES[10:], 0.1, pit_mask=False)
+
+    pooled = pool_window_test_sets([first, second])
+    summary = pooled_evaluation_summary(pooled, ExperimentConfig())
+
+    assert pooled.rankable_source == "SIGNAL_DATE_CLOSES"
+    assert pooled.rankable_mask[:40].all()
+    assert not pooled.rankable_mask[40:, :10].any()  # closes exist, but not its names
+    assert pooled.rankable_mask[40:, 10:].all()
+    assert summary["benchmark"] == "equal_weight_rankable_universe"
+    # Left to rebuild the set from the pooled closes, the universe gains those names.
+    rebuilt = compute_evaluation_summary(
+        pooled.predictions,
+        pooled.labels,
+        ExperimentConfig(),
+        panel=pooled.closes,
+        dates=pooled.dates,
+        kdcodes=pooled.kdcodes,
+        rankable_mask=None,
+    )["metrics"]
+    universe = "universe_abs_period_return"
+    assert summary["metrics"][universe] != pytest.approx(rebuilt[universe], abs=1e-9)
+
+
+def test_windows_stepped_by_their_span_share_no_test_date() -> None:
+    """Review of #342: an inclusive test_end was the next window's test_start."""
+    base = ExperimentConfig()
+    base = replace(
+        base,
+        data=replace(
+            base.data, train_start="2016-01-04", test_end="2025-12-31", use_pit_universe=False
+        ),
+        training=replace(
+            base.training,
+            walkforward=replace(
+                base.training.walkforward, enabled=True, test_span_months=3, step_months=3
+            ),
+        ),
+    )
+    windows = generate_walkforward_configs(base)
+    assert len(windows) > 4
+    for earlier, later in zip(windows, windows[1:], strict=False):
+        assert earlier.data.test_end < later.data.test_start

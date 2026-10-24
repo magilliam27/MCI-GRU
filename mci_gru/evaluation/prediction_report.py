@@ -14,6 +14,7 @@ import pandas as pd
 from mci_gru.config import Legs
 from mci_gru.evaluation.metrics import compute_ic_metrics, evaluate_run
 from mci_gru.evaluation.outcomes import realized_returns
+from mci_gru.evaluation.tranche_book import signal_date_closes
 
 KEY_COLUMNS = ["dt", "kdcode"]
 DEFAULT_MODEL_NAME = "mci_gru"
@@ -395,13 +396,18 @@ def _model_metrics(
         return _json_ready(metrics)
 
     legs = Legs(entry_session=1, exit_session=label_t)
+    closes = _close_panel(panel)
+    # The core's rule for a run without PIT: scored, and a close on the signal date.
+    rankable = np.isfinite(prediction_matrix) & signal_date_closes(
+        closes, realized_returns(closes, dates, legs, kdcodes=kdcodes)
+    )
     summary = evaluate_run(
         prediction_matrix,
         return_matrix,
-        panel=_close_panel(panel),
+        panel=closes,
         dates=dates,
         kdcodes=kdcodes,
-        rankable_mask=np.isfinite(prediction_matrix),
+        rankable_mask=rankable,
         legs=legs,
         tranches=legs.hold_sessions,
         top_k_values=top_k_values or [10, 20, 50],
