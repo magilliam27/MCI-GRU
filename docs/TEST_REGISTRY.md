@@ -1494,6 +1494,9 @@ The in-run summary measures a tradable book and nets the universe (#336).
 | `test_scores_that_know_the_outcome_show_excess_with_a_large_t_stat` |  |  |
 | `test_every_k_comes_from_top_k_values_and_nets_the_universe_by_hand` | Six names, k of 2 and 3: the excess is the picks' mean minus all six. |  |
 | `test_a_name_outside_the_rankable_set_is_never_bought` |  |  |
+| `test_the_universe_benchmark_uses_the_same_mask_as_the_picks` | A soaring name outside the mask is in neither the picks nor the benchmark. |  |
+| `test_a_window_with_no_resolved_hold_reports_nan_not_zero` |  |  |
+| `test_missing_close_events_count_only_names_that_could_be_held` |  |  |
 | `test_the_summary_labels_its_basis_and_drops_metrics_an_ic_loss_leaves_arbitrary` |  |  |
 | `test_ic_and_rank_ic_are_unchanged_by_the_new_summary` | Control: the per-date IC means and their bootstrap CIs, recomputed independently. |  |
 | `test_ic_date_coverage_counts_dates_that_could_not_be_scored` |  |  |

@@ -545,10 +545,13 @@ its own capital. Sharpe (per `evaluation.sharpe_method`) and cumulative return
 come from that book's daily P&L. The headline for each k in
 `evaluation.top_k_values` is excess over the equal-weight universe book on the
 same mask and schedule; the mean per-period excess carries a Hansen-Hodrick
-t-stat with `label_t - 2` lags (the label spans `label_t - 1` sessions).
+t-stat with `hold - 1` lags, where the hold is the legs' session span
+(`label_t - 1` under the default legs, so 3 lags for the recipe).
 Long-only numbers are kept as `top_<k>_abs_*`. `resolved_evaluation_kwargs()`
 derives the defaults: legs and tranches from `label_t`, Newey-West lags for the
-daily Sharpe `label_t - 2`, bootstrap block `max(1, label_t)`.
+daily Sharpe `hold - 1`, bootstrap block `max(1, label_t)`. The book ramps in
+and out over its first and last `hold - 1` sessions, which dilutes absolute
+numbers on short windows; excess numbers net the ramp.
 `evaluate_predictions` is the older matrix-only path that
 `prediction_report.py` still uses; its Sharpe and cumulative return treat
 overlapping returns as daily (#342).

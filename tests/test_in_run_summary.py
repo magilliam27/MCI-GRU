@@ -157,7 +157,7 @@ def test_the_hansen_hodrick_t_stat_holds_its_size_on_overlapping_returns():
         overlapping = np.convolve(daily, np.ones(4), mode="valid")
         t = hansen_hodrick_mean_inference(overlapping, label_horizon=4).t_stat
         rejections += abs(t) > 1.96
-    assert rejections / trials < 0.09
+    assert 0.02 < rejections / trials < 0.09
 
 
 # --- The tranche book ---------------------------------------------------------------
@@ -310,6 +310,56 @@ def test_a_name_outside_the_rankable_set_is_never_bought():
 
     assert excluded["top_1_abs_period_return"] == pytest.approx(without["top_1_abs_period_return"])
     assert excluded["top_1_abs_sharpe"] == pytest.approx(without["top_1_abs_sharpe"])
+
+
+def test_the_universe_benchmark_uses_the_same_mask_as_the_picks():
+    """A soaring name outside the mask is in neither the picks nor the benchmark."""
+    closes, _ = _market(40, 4, seed=24, idio_vol=0.01)
+    closes[:, 0] *= np.cumprod(np.full(40, 1.05))  # S000 gains 5% a session
+    scores = np.tile([0.0, 1.0, 2.0, 3.0], (30, 1))
+    rankable = np.ones((30, 4), dtype=bool)
+    rankable[:, 0] = False
+
+    excluded = _run(closes, scores, top_k_values=[1], rankable=rankable)["metrics"]
+    without = _run(closes[:, 1:], scores[:, 1:], top_k_values=[1])["metrics"]
+
+    for key in (
+        "universe_abs_period_return",
+        "universe_abs_sharpe",
+        "universe_abs_cumulative_return",
+        "top_1_excess_period_return",
+        "top_1_excess_sharpe",
+        "top_1_excess_cumulative_return",
+    ):
+        assert excluded[key] == pytest.approx(without[key], rel=1e-12), key
+
+
+def test_a_window_with_no_resolved_hold_reports_nan_not_zero():
+    closes, _ = _market(5, 4, seed=25, idio_vol=0.01)
+    scores = np.random.default_rng(26).normal(size=(3, 4))  # holds run past the panel
+
+    metrics = _run(closes, scores, top_k_values=[2])["metrics"]
+
+    assert metrics["book_sessions"] == 0
+    for key in (
+        "top_2_abs_cumulative_return",
+        "top_2_excess_cumulative_return",
+        "top_2_abs_sharpe",
+    ):
+        assert math.isnan(metrics[key]), key
+
+
+def test_missing_close_events_count_only_names_that_could_be_held():
+    closes, _ = _market(12, 3, seed=27, idio_vol=0.01)
+    closes[4:, 0] = np.nan  # S000 stops trading after session 3
+    closes[4:, 1] = np.nan  # so does S001
+    scores = np.tile([1.0, 2.0, 3.0], (2, 1))
+    rankable = np.ones((2, 3), dtype=bool)
+    rankable[:, 1] = False  # S001 was never holdable
+
+    summary = _run(closes, scores, top_k_values=[1], rankable=rankable)
+
+    assert summary["missing_close_events"] == {"missing_entry": 0, "missing_exit": 2}
 
 
 # --- What the summary says about itself ---------------------------------------------

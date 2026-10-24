@@ -509,9 +509,14 @@ def evaluate_run(
 
     metrics.update(quintile_period_returns(scores, rankable, realized.returns, kdcodes))
 
+    # Missing closes among names that could have been held: rankable on the date.
     events = {"missing_entry": 0, "missing_exit": 0}
+    position = {
+        (date, kdcode): (i, j) for i, date in enumerate(dates) for j, kdcode in enumerate(kdcodes)
+    }
     for event in realized.events:
-        events[event.kind] += 1
+        if rankable[position[(event.date, event.kdcode)]]:
+            events[event.kind] += 1
     return {
         "schema_version": SUMMARY_SCHEMA_VERSION,
         "label_t": label_t,

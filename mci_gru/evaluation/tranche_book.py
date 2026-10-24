@@ -18,7 +18,10 @@ session:
   therefore equals ``1 +`` the core's booked return for its date.
 * A sleeve holds cash before its first tranche and after its last one, and in place
   of a tranche with no picks. The book runs from the first scheduled entry to the
-  last scheduled exit.
+  last scheduled exit, so it ramps in over the first ``hold - 1`` sessions and out
+  over the last ones, as a staggered book does when traded. On a short window this
+  dilutes the absolute numbers (about 4% of a one-year Sharpe on four sleeves);
+  excess numbers net it, since the universe book ramps on the same schedule.
 
 Selection reads only the scores and the rankable mask, through the core's tie rule.
 """
@@ -53,7 +56,9 @@ class TrancheBook:
 
     @property
     def cumulative_return(self) -> float:
-        """Compounded return of the book over its sessions."""
+        """Compounded return of the book over its sessions; NaN for an empty book."""
+        if not self.daily_returns.size:
+            return float("nan")
         return float(np.prod(1.0 + self.daily_returns) - 1.0)
 
 
