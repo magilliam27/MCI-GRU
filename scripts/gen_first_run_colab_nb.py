@@ -49,6 +49,19 @@ def build_cells() -> list[dict]:
             runs even before the three pull requests land, and is labelled
             *not evidence*.
 
+            **Arms (#326).** `RUN_ARMS` lists what to train, one after another, on the
+            same commit, data and seeds. `recipe` is the recipe itself and the only arm
+            that can be an admitted-run candidate. `graph_zeroed` is the recipe with the
+            correlation edges empty; `levels_inputs` is the recipe on the old raw price
+            and volume levels. With more than one arm, the last cell writes their
+            comparison: each arm's IC and rank IC, its linked-name ties, and the first
+            arm's paired daily IC difference against each of the others.
+
+            **GPU precision check.** Before any arm trains, the CUDA test in
+            `tests/test_eval_precision.py` (#327) runs on this GPU. It is skipped on a
+            machine without one, so this is the only place it runs; the notebook stops
+            if it does not pass, and keeps its log beside the runs.
+
             **Where outputs go.** The run writes to local disk under
             `/content/mci_gru_runs/<run tag>`, because snapshot capture publishes with
             hard links and Colab's Drive mount is not known to support them. The folder is copied to
@@ -64,6 +77,9 @@ def build_cells() -> list[dict]:
             """
             # Parameters
             RUN_MODE = "full"  # "full" = admitted-run candidate; "smoke" = 1 model x 2 epochs, not evidence
+            # The model-fix rerun (#326) sets ["recipe", "graph_zeroed", "levels_inputs"]
+            # and DRIVE_OUTPUT_ROOT to ".../runs/model_fix_rerun".
+            RUN_ARMS = ["recipe"]
             BRANCH = "main"
             EXPECTED_COMMIT = ""  # optional: the full commit SHA to run; empty records whatever BRANCH is
 
@@ -82,6 +98,7 @@ def build_cells() -> list[dict]:
             TORCH_INDEX_URL = ""
 
             assert RUN_MODE in ("full", "smoke"), RUN_MODE
+            assert RUN_ARMS and len(set(RUN_ARMS)) == len(RUN_ARMS), RUN_ARMS
             """
         ),
         code(
@@ -169,6 +186,19 @@ def build_cells() -> list[dict]:
         ),
         code(
             """
+            # The CUDA-only precision test (#327), on this GPU. Stops unless it ran and passed.
+            from datetime import datetime, timezone
+
+            GPU_CHECK_DIR = (
+                Path(DRIVE_OUTPUT_ROOT) / "gpu_checks"
+                / f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{COMMIT[:8]}"
+            )
+            stream([PY, "scripts/first_run_colab.py", "gpu-check", "--out-dir", str(GPU_CHECK_DIR)], cwd=REPO_DIR)
+            print("GPU check log:", GPU_CHECK_DIR)
+            """
+        ),
+        code(
+            """
             # What this commit needs from open pull requests. Full mode stops here if any is missing.
             stream([PY, "scripts/first_run_colab.py", "prerequisites", "--mode", RUN_MODE], cwd=REPO_DIR)
             """
@@ -192,23 +222,29 @@ def build_cells() -> list[dict]:
         ),
         code(
             """
-            # Run the recipe. Outputs land under LOCAL_RUN_ROOT and are copied to DRIVE_OUTPUT_ROOT
-            # every SYNC_EVERY_SECONDS and at the end. colab_run_record.json in the run folder holds
-            # the commit, mode, prerequisites, staged input hashes and the exact overrides.
-            TAG_FILE = "/content/first_run_tag.txt"
-            stream(
-                [
-                    PY, "scripts/first_run_colab.py", "run",
-                    "--mode", RUN_MODE,
-                    "--local-root", LOCAL_RUN_ROOT,
-                    "--drive-root", DRIVE_OUTPUT_ROOT,
-                    "--sync-every", str(SYNC_EVERY_SECONDS),
-                    "--package-drive-dir", PACKAGE_DRIVE_DIR,
-                    "--eodhd-drive-path", EODHD_DRIVE_PATH,
-                    "--tag-file", TAG_FILE,
-                ],
-                cwd=REPO_DIR,
-            )
+            # Run each arm in turn. Outputs land under LOCAL_RUN_ROOT and are copied to
+            # DRIVE_OUTPUT_ROOT every SYNC_EVERY_SECONDS and at the end. colab_run_record.json in
+            # each run folder holds the commit, mode, arm, prerequisites, staged input hashes and
+            # the exact overrides.
+            RUN_TAGS = {}
+            for arm in RUN_ARMS:
+                tag_file = Path(f"/content/run_tag_{arm}.txt")
+                stream(
+                    [
+                        PY, "scripts/first_run_colab.py", "run",
+                        "--mode", RUN_MODE,
+                        "--arm", arm,
+                        "--local-root", LOCAL_RUN_ROOT,
+                        "--drive-root", DRIVE_OUTPUT_ROOT,
+                        "--sync-every", str(SYNC_EVERY_SECONDS),
+                        "--package-drive-dir", PACKAGE_DRIVE_DIR,
+                        "--eodhd-drive-path", EODHD_DRIVE_PATH,
+                        "--tag-file", str(tag_file),
+                    ],
+                    cwd=REPO_DIR,
+                )
+                RUN_TAGS[arm] = tag_file.read_text().strip()
+            print(RUN_TAGS)
             """
         ),
         code(
@@ -216,14 +252,29 @@ def build_cells() -> list[dict]:
             # Where the outputs are, and what the run decided about its inputs.
             import json
 
-            run_folder = Path(DRIVE_OUTPUT_ROOT) / Path(TAG_FILE).read_text().strip()
-            print("Drive run folder:", run_folder)
-            record = json.loads((run_folder / "colab_run_record.json").read_text())
-            print("Mode:", record["mode"], "-", record["evidence"])
-            print("Commit:", record["commit"], "exit code:", record.get("returncode"))
-            for name in ("admission.json", "run_failure.json", "run_metadata.json"):
-                for path in sorted(run_folder.rglob(name)):
-                    print("found", path.relative_to(run_folder))
+            for arm, tag in RUN_TAGS.items():
+                run_folder = Path(DRIVE_OUTPUT_ROOT) / tag
+                print(f"[{arm}] Drive run folder:", run_folder)
+                record = json.loads((run_folder / "colab_run_record.json").read_text())
+                print("Mode:", record["mode"], "-", record["evidence"])
+                print("Commit:", record["commit"], "exit code:", record.get("returncode"))
+                for name in ("admission.json", "run_failure.json", "run_metadata.json"):
+                    for path in sorted(run_folder.rglob(name)):
+                        print("found", path.relative_to(run_folder))
+            """
+        ),
+        code(
+            """
+            # With more than one arm: compare them, the first arm against each of the others.
+            # Written to Drive beside the runs; evidence, not a pass/fail gate.
+            if len(RUN_TAGS) > 1:
+                COMPARISON_DIR = Path(DRIVE_OUTPUT_ROOT) / f"comparison-{RUN_TAGS[RUN_ARMS[0]]}"
+                command = [PY, "scripts/first_run_colab.py", "compare", "--out-dir", str(COMPARISON_DIR)]
+                for arm in RUN_ARMS:
+                    command += ["--run", f"{arm}={Path(LOCAL_RUN_ROOT) / RUN_TAGS[arm]}"]
+                stream(command, cwd=REPO_DIR)
+            else:
+                print("One arm: nothing to compare.")
             """
         ),
         md(

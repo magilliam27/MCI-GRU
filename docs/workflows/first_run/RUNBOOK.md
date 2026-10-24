@@ -43,15 +43,50 @@ draft is [`ADMISSION_RECEIPT_AND_CHARTER_DRAFT.md`](ADMISSION_RECEIPT_AND_CHARTE
    - build a Python 3.12.11 environment with uv, install `requirements.lock` into
      it, then the repository with `--no-deps`, and check
      that every pin is installed and a CUDA GPU is visible;
+   - run the CUDA-only precision test from #327 on this GPU, keeping its log under
+     `<DRIVE_OUTPUT_ROOT>/gpu_checks/`; the notebook stops unless it ran and passed;
    - check the commit for #270, #274 and #275;
    - stage and verify the stock package the recipe's data config declares, and
      the EODHD S&P 500 file;
-   - run the recipe (it stages and verifies again first), copying the run folder to
-     `MyDrive/MCI_GRU_shared/runs/first_run/<run tag>/` every 10 minutes and at
-     the end;
-   - print where the outputs are.
+   - run each arm in `RUN_ARMS` in turn (each stages and verifies again first),
+     copying its run folder to `MyDrive/MCI_GRU_shared/runs/first_run/<run tag>/`
+     every 10 minutes and at the end;
+   - print where the outputs are;
+   - with more than one arm, write their comparison to
+     `<DRIVE_OUTPUT_ROOT>/comparison-<first arm's tag>/`.
 5. Keep the browser tab open while it trains. `colab_heartbeat.json` in the Drive
    run folder shows when the last copy was made.
+
+## The model-fix rerun (#326)
+
+Three arms on one commit, one data package and the recipe's seed, so they differ
+only by what each arm names (`RUN_ARMS` in `scripts/first_run_colab.py`):
+
+| Arm | What changes from the recipe | Run tag |
+| --- | --- | --- |
+| `recipe` | nothing | `<time>-full-<commit>` |
+| `graph_zeroed` | `+experiment=graph_zeroed`: the GAT layers stay, the correlation edges are empty | `<time>-full-graph-zeroed-<commit>` |
+| `levels_inputs` | `features.base_inputs=levels`: the fixed graph layers on the old raw price and volume levels | `<time>-full-inputs-levels-<commit>` |
+
+An arm refuses to start if its change would change nothing, so `levels_inputs`
+cannot run until the recipe pins `features.base_inputs=relative` (#325). Each arm
+files its results under its own experiment name, the recipe slug plus
+`__arm-<suffix>`, and only the `recipe` arm is labelled an admitted-run
+candidate.
+
+In the parameters cell set
+`RUN_ARMS = ["recipe", "graph_zeroed", "levels_inputs"]` and
+`DRIVE_OUTPUT_ROOT = "/content/drive/MyDrive/MCI_GRU_shared/runs/model_fix_rerun"`,
+then Run all. The three arms train one after another in the same runtime.
+
+The comparison folder holds `arm_comparison.json` and `daily_ic_by_arm.csv`. For each
+arm: IC and rank IC with their intervals and the linked-name tie counts from #324.
+Then the recipe arm's paired daily IC and rank IC difference against each of the
+other two, computed over the dates every arm scored, with the same HAC and block
+bootstrap the graph ablation used. It reads each run's `daily_ic.csv` and refuses
+a run whose dated series does not average to its own summary's `avg_ic`, or arms
+from different commits or packages. It is evidence, not a pass/fail gate (PRD #319,
+decision D1).
 
 ## When something stops
 
@@ -64,6 +99,8 @@ draft is [`ADMISSION_RECEIPT_AND_CHARTER_DRAFT.md`](ADMISSION_RECEIPT_AND_CHARTE
 | `Missing on Drive` or `does not match its pin` | A staged file is absent or has other bytes | Fix the Drive copy; never edit the pin to match |
 | `run_failure.json` in the run folder | An input failed admission before training | Report it as it stands; do not edit inputs to get past it |
 | The runtime disconnects | The run is incomplete | Start again from the top; the new run gets a new tag and folder |
+| `GPU precision check FAILED` | The #327 CUDA test was skipped or failed on this GPU | Read `eval_precision_gpu.log` under `gpu_checks/`; do not train until it passes |
+| `Refusing to run arm` | The recipe at this commit cannot take that arm's change | Run a commit with the recipe it needs (#325 for `levels_inputs`) |
 
 ## What the notebook changes in the clone
 

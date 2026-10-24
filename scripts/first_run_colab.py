@@ -175,6 +175,60 @@ def replace_override(overrides: Sequence[str], key: str, value: str) -> list[str
     return result
 
 
+@dataclass(frozen=True)
+class RunArm:
+    """One arm of the model-fix rerun (#326): the recipe with named changes.
+
+    ``replace`` changes values the recipe sets; each key must be in the recipe and
+    must change. ``add`` appends overrides the recipe does not have, such as a config
+    group. An arm can therefore never restate a default, so it cannot silently run
+    the recipe under another name.
+    """
+
+    slug_suffix: str
+    replace: tuple[tuple[str, str], ...] = ()
+    add: tuple[str, ...] = ()
+
+
+#: Every arm trains on the recipe's data, seed and budget; only these overrides differ.
+RUN_ARMS = {
+    "recipe": RunArm(slug_suffix=""),
+    # The graph-zeroed control: GAT layers stay, the correlation edges are empty.
+    "graph_zeroed": RunArm(slug_suffix="graph-zeroed", add=("+experiment=graph_zeroed",)),
+    # The fixed graph layers on the old raw price and volume levels (#323), so the
+    # input change's effect reads separately from the graph fix's.
+    "levels_inputs": RunArm(
+        slug_suffix="inputs-levels", replace=(("features.base_inputs", "levels"),)
+    ),
+}
+
+
+def apply_arm(overrides: Sequence[str], arm: str) -> list[str]:
+    """The recipe's overrides with *arm*'s changes; refuses a change that changes nothing."""
+    spec = RUN_ARMS[arm]
+    result = list(overrides)
+    for key, value in spec.replace:
+        current = override_value(result, key)
+        if current is None:
+            raise KeyError(f"Arm {arm!r} changes {key}, which the recipe does not set")
+        if current == value:
+            raise ValueError(f"Arm {arm!r} changes nothing: the recipe already sets {key}={value}")
+        result = replace_override(result, key, value)
+    keys = {override.partition("=")[0].lstrip("+~") for override in result}
+    for override in spec.add:
+        key = override.partition("=")[0].lstrip("+~")
+        if key in keys:
+            raise ValueError(f"Arm {arm!r} adds {key}, which the recipe already sets")
+        result.append(override)
+    return result
+
+
+def arm_experiment_name(slug: str, arm: str) -> str:
+    """The recipe slug for the recipe arm; a suffixed one for every other arm."""
+    suffix = RUN_ARMS[arm].slug_suffix
+    return f"{slug}__arm-{suffix}" if suffix else slug
+
+
 #: The keys #270 added to a data config to declare its input package.
 PACKAGE_DECLARATION_KEYS = (
     "input_package_manifest",
@@ -271,8 +325,12 @@ def build_run_overrides(
     run_dir: Path,
     experiment_name: str,
     smoke: bool,
+    arm: str = "recipe",
 ) -> list[str]:
     """The recipe's overrides plus where this run writes; budgets change only for smoke.
+
+    *arm* applies one of :data:`RUN_ARMS` first, so a control arm differs from the
+    recipe only by its named changes.
 
     Capture is added only when the recipe does not already select it (main before
     #274). The folder is named explicitly then, because before #274 capture has no
@@ -280,7 +338,7 @@ def build_run_overrides(
     MLflow tracking is switched off: ``requirements.lock`` does not carry the
     ``tracking`` extra, and the run's own records do not depend on it.
     """
-    overrides = list(recipe)
+    overrides = apply_arm(recipe, arm)
     if smoke:
         for key, value in SMOKE_BUDGET.items():
             overrides = replace_override(overrides, key, value)
@@ -675,6 +733,13 @@ EVIDENCE_LABELS = {
 }
 
 
+def evidence_label(mode: str, arm: str) -> str:
+    """What a run is evidence of. Only the recipe arm can be an admitted-run candidate."""
+    if mode == "full" and arm != "recipe":
+        return f"control arm {arm!r} of the recipe (#326); not an admitted-run candidate"
+    return EVIDENCE_LABELS[mode]
+
+
 def _git(*args: str) -> str:
     return subprocess.run(
         ["git", "-C", str(REPO_DIR), *args], check=True, capture_output=True, text=True
@@ -822,9 +887,15 @@ def _command_run(args: Any) -> int:
         return 1
     recipe_text = (REPO_DIR / RECIPE_PATH).read_text(encoding="utf-8")
     slug = recipe_slug(recipe_text)
+    try:
+        apply_arm(recipe_overrides(recipe_text), args.arm)
+    except (KeyError, ValueError) as error:
+        print(f"Refusing to run arm {args.arm!r}: {error.args[0]}")
+        return 1
     commit = _git("rev-parse", "HEAD")
+    arm_part = f"-{RUN_ARMS[args.arm].slug_suffix}" if args.arm != "recipe" else ""
     run_tag = args.run_tag or (
-        f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{args.mode}-{commit[:8]}"
+        f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{args.mode}{arm_part}-{commit[:8]}"
     )
     local_dir = Path(args.local_root) / run_tag
     drive_dir = Path(args.drive_root) / run_tag
@@ -837,13 +908,15 @@ def _command_run(args: Any) -> int:
     overrides = build_run_overrides(
         recipe_overrides(recipe_text),
         run_dir=local_dir,
-        experiment_name=slug,
+        experiment_name=arm_experiment_name(slug, args.arm),
         smoke=not full,
+        arm=args.arm,
     )
     record = {
         "run_tag": run_tag,
         "mode": args.mode,
-        "evidence": EVIDENCE_LABELS[args.mode],
+        "arm": args.arm,
+        "evidence": evidence_label(args.mode, args.arm),
         "recipe_slug": slug,
         "commit": commit,
         "source_changes": source_changes,
@@ -883,6 +956,237 @@ def _command_run(args: Any) -> int:
     return returncode
 
 
+# ---------------------------------------------------------------------------
+# The model-fix rerun (#326): the GPU precision test and the arm comparison
+# ---------------------------------------------------------------------------
+
+#: The CUDA-only test #327 left for a GPU; it is skipped anywhere else.
+GPU_PRECISION_TEST_FILE = "tests/test_eval_precision.py"
+GPU_PRECISION_TEST = "test_cuda_prediction_matches_fp32_to_1e6"
+
+
+def junit_outcome(xml_text: str, test_name: str) -> str:
+    """``passed``, ``failed``, ``skipped`` or ``missing`` for one test in a JUnit report."""
+    import xml.etree.ElementTree as ElementTree
+
+    root = ElementTree.fromstring(xml_text)
+    cases = [case for case in root.iter("testcase") if case.get("name") == test_name]
+    if len(cases) != 1:
+        return "missing"
+    tags = {child.tag for child in cases[0]}
+    if tags & {"failure", "error"}:
+        return "failed"
+    if "skipped" in tags:
+        return "skipped"
+    return "passed"
+
+
+def _command_gpu_check(args: Any) -> int:
+    import sys
+
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    junit = out_dir / "eval_precision_gpu.junit.xml"
+    completed = subprocess.run(
+        [
+            sys.executable, "scripts/run_pytest_isolated.py", GPU_PRECISION_TEST_FILE,
+            "-v", "-rs", f"--junitxml={junit}",
+        ],
+        cwd=REPO_DIR, capture_output=True, text=True,
+    )  # fmt: skip
+    log = completed.stdout + completed.stderr
+    (out_dir / "eval_precision_gpu.log").write_text(log, encoding="utf-8")
+    print(log)
+    outcome = (
+        junit_outcome(junit.read_text(encoding="utf-8"), GPU_PRECISION_TEST)
+        if (junit.exists())
+        else "missing"
+    )
+    print(f"{GPU_PRECISION_TEST}: {outcome}; pytest exited {completed.returncode}")
+    if outcome != "passed" or completed.returncode != 0:
+        print("GPU precision check FAILED: the CUDA test must run and pass on this GPU.")
+        return 1
+    return 0
+
+
+@dataclass(frozen=True)
+class ArmResult:
+    """What one finished arm's run folder says about itself."""
+
+    arm: str
+    run_dir: Path
+    record: dict[str, Any]
+    summary: dict[str, Any]
+    daily: Any  # pandas.DataFrame indexed by dt, columns ic and rank_ic
+
+
+#: The dated IC series and the summary's mean must agree this closely, or the folder
+#: is not the run its summary describes.
+RECONCILE_TOLERANCE = 1e-9
+
+
+def read_arm_result(arm: str, run_dir: Path) -> ArmResult:
+    """Read one arm's record, summary and dated IC, and check that they agree."""
+    import pandas as pd
+
+    run_dir = Path(run_dir)
+    record = json.loads((run_dir / "colab_run_record.json").read_text(encoding="utf-8"))
+    if record.get("arm", "recipe") != arm:
+        raise ValueError(f"{run_dir} is arm {record.get('arm', 'recipe')!r}, not {arm!r}")
+    if record.get("returncode") != 0:
+        raise ValueError(
+            f"{run_dir} did not finish cleanly (returncode {record.get('returncode')})"
+        )
+    summaries = sorted(run_dir.rglob("evaluation_summary.json"))
+    if len(summaries) != 1:
+        raise ValueError(f"{run_dir} holds {len(summaries)} evaluation summaries; expected one")
+    window = summaries[0].parent
+    summary = json.loads(summaries[0].read_text(encoding="utf-8"))
+    daily_path = window / "daily_ic.csv"
+    if not daily_path.exists():
+        raise ValueError(f"{window} has no daily_ic.csv; it ran on a commit without #326's series")
+    daily = pd.read_csv(daily_path, dtype={"dt": str}).set_index("dt")
+    for column, key in (("ic", "avg_ic"), ("rank_ic", "avg_rank_ic")):
+        stored = summary["metrics"][key]
+        recomputed = float(daily[column].mean())
+        if abs(recomputed - stored) > RECONCILE_TOLERANCE:
+            raise ValueError(
+                f"{daily_path}: mean {column} {recomputed!r} differs from the summary's "
+                f"{key} {stored!r}"
+            )
+    return ArmResult(arm, run_dir, record, summary, daily)
+
+
+def _ties(summary: dict[str, Any]) -> dict[str, Any] | None:
+    """The tie counts #324 writes, reduced to totals; None for a run without them."""
+    ties = summary.get("linked_score_ties")
+    if ties is None:
+        return None
+    pairs = ties["linked_pairs"]["total"]
+    tied = ties["ensemble"]["total"]
+    return {
+        "tolerance": ties.get("tolerance"),
+        "linked_pairs_total": pairs,
+        "ensemble_tied_total": tied,
+        "ensemble_tied_share": tied / pairs if pairs else None,
+        "dates_with_an_ensemble_tie": sum(1 for n in ties["ensemble"]["per_date"].values() if n),
+        "member_tied_totals": [member["total"] for member in ties.get("members", [])],
+    }
+
+
+def compare_arms(
+    results: Sequence[ArmResult],
+    *,
+    n_resamples: int,
+    seed: int,
+    ci_level: float = 0.95,
+) -> dict[str, Any]:
+    """Each arm's IC and ties, and the first arm's paired daily IC difference to the rest.
+
+    Arms must come from one commit and one staged package, so they differ only by
+    their arm's overrides. The paired difference uses the same overlap-aware HAC and
+    block bootstrap the graph ablation used (``paired_inference``), with the label's
+    horizon from the summary.
+    """
+    from dataclasses import asdict
+
+    from mci_gru.evaluation.paired_inference import align_daily_series, paired_mean_inference
+
+    if len(results) < 2:
+        raise ValueError("compare needs at least two arms")
+    reference = results[0]
+    for result in results[1:]:
+        if result.record.get("commit") != reference.record.get("commit"):
+            raise ValueError(
+                f"arm {result.arm!r} ran commit {result.record.get('commit')!r}; "
+                f"arm {reference.arm!r} ran {reference.record.get('commit')!r}"
+            )
+        package = result.record.get("staging", {}).get("package")
+        if package != reference.record.get("staging", {}).get("package"):
+            raise ValueError(f"arm {result.arm!r} staged another input package")
+    label_t = int(reference.summary["label_t"])
+    arms = []
+    for result in results:
+        metrics = result.summary["metrics"]
+        arms.append(
+            {
+                "arm": result.arm,
+                "run_tag": result.record.get("run_tag"),
+                "experiment_name": next(
+                    (o.partition("=")[2] for o in result.record.get("overrides", [])
+                     if o.startswith("experiment_name=")),
+                    None,
+                ),
+                "n_dates": int(result.daily["ic"].notna().sum()),
+                **{
+                    key: metrics.get(key)
+                    for key in (
+                        "avg_ic", "avg_ic_ci_lower", "avg_ic_ci_upper",
+                        "avg_rank_ic", "avg_rank_ic_ci_lower", "avg_rank_ic_ci_upper",
+                        "rank_ic_ir",
+                    )
+                },
+                "linked_score_ties": _ties(result.summary),
+            }
+        )  # fmt: skip
+    paired = []
+    for column in ("ic", "rank_ic"):
+        frame = align_daily_series({r.arm: r.daily[column] for r in results})
+        for other in results[1:]:
+            inference = paired_mean_inference(
+                frame[reference.arm] - frame[other.arm],
+                arm=reference.arm,
+                control=other.arm,
+                label_horizon=label_t,
+                n_resamples=n_resamples,
+                seed=seed,
+                ci_level=ci_level,
+            )
+            paired.append({"metric": column, "n_common_dates": len(frame), **asdict(inference)})
+    return {
+        "reference_arm": reference.arm,
+        "commit": reference.record.get("commit"),
+        "label_t": label_t,
+        "ci_level": ci_level,
+        "n_resamples": n_resamples,
+        "seed": seed,
+        "arms": arms,
+        "paired_daily_difference": paired,
+        "note": "Evidence, not a pass/fail gate (PRD #319, D1). Paired rows are "
+        "reference minus control, per date, on the dates every arm scored.",
+    }
+
+
+def _command_compare(args: Any) -> int:
+    import pandas as pd
+
+    results = []
+    for item in args.run:
+        arm, _, run_dir = item.partition("=")
+        if arm not in RUN_ARMS or not run_dir:
+            print(f"--run takes ARM=RUN_FOLDER with ARM one of {list(RUN_ARMS)}; got {item!r}")
+            return 1
+        try:
+            results.append(read_arm_result(arm, Path(run_dir)))
+        except (OSError, ValueError, KeyError) as error:
+            print(f"Cannot use arm {arm!r}: {error}")
+            return 1
+    try:
+        comparison = compare_arms(results, n_resamples=args.resamples, seed=args.seed)
+    except ValueError as error:
+        print(f"Cannot compare: {error}")
+        return 1
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=False)
+    write_json(out_dir / "arm_comparison.json", comparison)
+    pd.concat(
+        {f"{r.arm}_{c}": r.daily[c] for r in results for c in ("ic", "rank_ic")}, axis=1
+    ).sort_index().to_csv(out_dir / "daily_ic_by_arm.csv", float_format="%.17g")
+    print(json.dumps(comparison, indent=2))
+    print(f"Comparison written to {out_dir}")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     import argparse
 
@@ -904,12 +1208,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     run.add_argument("--package-drive-dir", default="")
     run.add_argument("--eodhd-drive-path", default=EODHD_MARKET_DRIVE_PATH)
     run.add_argument("--tag-file", default="")
+    run.add_argument("--arm", choices=list(RUN_ARMS), default="recipe")
+    gpu_check = commands.add_parser("gpu-check")
+    gpu_check.add_argument("--out-dir", required=True)
+    compare = commands.add_parser("compare")
+    compare.add_argument(
+        "--run", action="append", required=True, metavar="ARM=RUN_FOLDER",
+        help="an arm's run folder; the first given is the reference",
+    )  # fmt: skip
+    compare.add_argument("--out-dir", required=True)
+    compare.add_argument("--resamples", type=int, default=2000)
+    compare.add_argument("--seed", type=int, default=1729)
     args = parser.parse_args(argv)
     handler = {
         "check-env": _command_check_env,
         "prerequisites": _command_prerequisites,
         "stage": _command_stage,
         "run": _command_run,
+        "gpu-check": _command_gpu_check,
+        "compare": _command_compare,
     }[args.command]
     return handler(args)
 
