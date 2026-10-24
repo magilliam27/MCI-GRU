@@ -116,6 +116,20 @@ def test_a_missing_bar_never_moves_an_endpoint() -> None:
     assert book.period_returns[0] == pytest.approx(b[5] / b[1] - 1.0)
     assert book.period_returns[2] == pytest.approx(b[7] / b[3] - 1.0)
 
+    # The daily P&L reads the same session axis: one tranche holding B from close 1 to
+    # close 5 grows by b5/b1, flat through the missing session, then b5/b3 on session 5.
+    one = _book(
+        panel,
+        _scores(["B", "A"], ["A", "B"], dates[:1]),
+        dates[:1],
+        ["A", "B"],
+        strategy=ReplayStrategy.close_tranches(label_t=5, tranches=1),
+    )
+    assert one.sessions == SESSIONS[1:6]
+    assert np.prod(1.0 + one.gross_returns) == pytest.approx(b[5] / b[1])
+    assert one.gross_returns[3] == 0.0
+    assert one.gross_returns[4] == pytest.approx(b[5] / b[3] - 1.0)
+
 
 def test_a_missing_exit_books_the_last_close_then_cash_and_is_recorded() -> None:
     """D delists after session 3: its loss is booked, and it is not dropped from the

@@ -89,7 +89,7 @@ class BacktestSensitivityOptions:
     output_dir: Path
     pit_export_cutoff: str | None = None
     num_tests: int = 4
-    adjustment_method: str = "bhy"
+    adjustment_method: str = "holm"
 
 
 def default_scenarios(
@@ -578,7 +578,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--adjustment-method",
         choices=["bhy", "bonferroni", "holm"],
-        default="bhy",
+        default="holm",
     )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--fail-fast", action="store_true")
