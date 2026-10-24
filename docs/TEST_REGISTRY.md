@@ -1635,6 +1635,25 @@ Public exact-observation snapshot preservation and offline replay contracts.
 | `test_trainer_rejects_checkpoint_selection_without_eligible_rank_rows` |  |  |
 | `test_select_training_objective_respects_selection_metric` |  |  |
 
+## `tests/test_linked_score_ties.py`
+
+Run summaries count ties among graph-linked names (#324).
+
+**Exercises:** `mci_gru.evaluation.experiment_summary`, `run_experiment`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_linked_pairs_drop_direction_duplicates_and_self_loops` |  |  |
+| `test_an_empty_or_missing_graph_links_nothing` |  |  |
+| `test_an_edge_list_laid_out_as_rows_is_refused` |  |  |
+| `test_ties_are_counted_only_between_linked_finite_scores_within_tolerance` |  |  |
+| `test_the_summary_reports_ensemble_and_each_member_per_date_and_in_total` |  |  |
+| `test_each_date_is_counted_against_its_own_graph_snapshot` |  |  |
+| `test_a_dynamic_run_counts_against_the_schedule_snapshot_not_the_initial_graph` |  |  |
+| `test_a_static_run_counts_against_its_one_graph` |  |  |
+| `test_the_runner_counts_each_members_own_scores_on_the_graph_it_used` |  |  |
+| `test_the_runner_writes_the_counts_into_the_evaluation_summary` |  |  |
+
 ## `tests/test_long_history_issue23.py`
 
 | Test | Description | Markers |
