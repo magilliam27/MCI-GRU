@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -20,6 +21,7 @@ import yaml
 from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 
+import scripts.data.check_eodhd_volume_basis as volume_check
 import scripts.data.export_eodhd_pit_prices as export
 from mci_gru.config import create_config_from_dict
 from mci_gru.data.eodhd_prices import (
@@ -830,6 +832,38 @@ def test_export_takes_splits_after_the_panel_end_out_of_volume_only(vendor):
     (rebased,) = [f for f in meta["findings"] if f["code"] == "volume_rebased_for_later_split"]
     assert rebased["kdcode"] == "GOOD.OQ" and not rebased["blocking"]
     assert rebased["evidence"]["splits"] == {"2016-09-01": 3.0}
+    symbols = json.loads(next(root.glob("*_symbols.json")).read_text())
+    (segment,) = symbols["GOOD.OQ"]["segments"]
+    assert segment["volume_later_splits"] == {"2016-09-01": 3.0}
+    assert segment["served"] == "2016-10-03"
+
+
+def test_a_response_with_no_serving_time_blocks(vendor):
+    """Without a serving time the later splits in the vendor's volume cannot be known."""
+    FakeClient.served_at = None
+    try:
+        assert export.main(_argv(vendor)) == 1
+    finally:
+        FakeClient.served_at = "2016-10-03T12:00:00+00:00"
+    meta = json.loads(next((vendor["tmp"] / "package" / "market").glob("*.meta.json")).read_text())
+    codes = {(f["kdcode"], f["code"], f["blocking"]) for f in meta["findings"]}
+    assert ("GOOD.OQ", "vendor_serve_time_unknown", True) in codes
+
+
+def test_export_blocks_when_the_vendor_records_a_declared_adjustment_as_a_split(vendor):
+    """GOOD's map declares a spin-off on session 300; the vendor now lists a split that day."""
+    dates = vendor["dates"]
+    FakeClient.split_rows["GOOD.US"] = [
+        *FakeClient.split_rows["GOOD.US"],
+        {"date": dates[300], "split": "5.000000/4.000000"},
+    ]
+
+    assert export.main(_argv(vendor)) == 1
+
+    meta = json.loads(next((vendor["tmp"] / "package" / "market").glob("*.meta.json")).read_text())
+    (clash,) = [f for f in meta["findings"] if f["code"] == "adjustment_on_split_date"]
+    assert clash["kdcode"] == "GOOD.OQ" and clash["blocking"]
+    assert clash["evidence"]["dates"] == [dates[300]]
 
 
 def test_export_stops_without_a_manifest_when_no_candidate_matches(vendor):
@@ -1012,6 +1046,156 @@ def test_client_quotes_symbols_and_retries_dropped_connections(tmp_path, monkeyp
     assert client.eod("A B.US", "2020-01-01", "2020-01-31") == []
     assert len(attempts) == 2
     assert "/eod/A%20B.US?" in attempts[-1]
+
+
+def test_client_records_when_each_response_was_served(tmp_path, monkeypatch):
+    """Issue 347: the later splits in volume run to when the vendor served the rows, cached or not."""
+    monkeypatch.setattr(export.urllib.request, "urlopen", lambda url, timeout: _Response([]))
+    client = export.EodhdClient("k", tmp_path / "cache", [])
+
+    client.eod("AAPL.US", "2020-01-01", "2020-01-31")
+    fresh = client.last_retrieved_at
+    assert fresh and fresh[:4] >= "2026"
+
+    cache_file = next((tmp_path / "cache" / "eod").glob("AAPL.US.*.json"))
+    envelope = json.loads(cache_file.read_text())
+    envelope["retrieved_at"] = "2026-10-08T05:00:00+00:00"
+    cache_file.write_text(json.dumps(envelope))
+    client.splits("AAPL.US", "2020-01-01", "2020-01-31")  # another response in between
+    client.eod("AAPL.US", "2020-01-01", "2020-01-31")
+    assert client.last_retrieved_at == "2026-10-08T05:00:00+00:00"
+
+
+# ---------------------------------------------------------------------------
+# The volume check, on a package built from a cache with no vendor calls
+# ---------------------------------------------------------------------------
+
+_CHECK_START, _CHECK_END, _CHECK_SERVED = "2020-01-01", "2020-01-31", "2020-03-02"
+
+
+def _put(cache: Path, kind: str, symbol: str, params: dict, body) -> None:
+    path = f"{kind}/{symbol}"
+    digest = hashlib.sha256(json.dumps([path, params], sort_keys=True).encode()).hexdigest()
+    file = cache / kind / f"{symbol}.{digest[:16]}.json"
+    file.parent.mkdir(parents=True, exist_ok=True)
+    envelope = {"status": 200, "body": body, "retrieved_at": f"{_CHECK_SERVED}T12:00:00+00:00"}
+    file.write_text(json.dumps(envelope), encoding="utf-8")
+
+
+def _cached_package(tmp_path: Path, *, x_close_shift: float = 0.0) -> dict[str, Path]:
+    """X.OQ is read from X.US in two stretches; X.US splits 2-for-1 after the panel end."""
+    cache = tmp_path / "cache"
+    dates = _sessions(_CHECK_START, 22)
+    for symbol, base in (("X.US", 50.0), ("Y.US", 80.0)):
+        closes = [base + 0.1 * i + (x_close_shift if symbol == "X.US" else 0) for i in range(22)]
+        _put(
+            cache,
+            "eod",
+            symbol,
+            {"period": "d", "from": _CHECK_START, "to": _CHECK_END},
+            _raw_rows(dates, closes, volume=1000.0),
+        )
+        _put(cache, "splits", symbol, {"from": _CHECK_START, "to": _CHECK_END}, [])
+    later = [{"date": "2020-02-10", "split": "2.000000/1.000000"}]
+    _put(cache, "splits", "X.US", {"from": _CHECK_END, "to": _CHECK_SERVED}, later)
+    _put(cache, "splits", "Y.US", {"from": _CHECK_END, "to": _CHECK_SERVED}, [])
+    pit = tmp_path / "toy_pit_universe.csv"
+    pit.write_text("kdcode,valid_from,valid_to\nX.OQ,2020-01-01,\nY.OQ,2020-01-01,\n")
+    symbol_map = tmp_path / "map.json"
+    segments = [
+        {"candidates": ["X.US"], "end": "2020-01-15"},
+        {"candidates": ["X.US"], "start": "2020-01-16"},
+    ]
+    symbol_map.write_text(json.dumps({"schema": 1, "overrides": {"X.OQ": {"segments": segments}}}))
+    return {"cache": cache, "pit": pit, "map": symbol_map}
+
+
+def _build(tmp_path: Path, inputs: dict[str, Path], name: str, monkeypatch) -> Path:
+    def no_network(url, timeout):
+        raise AssertionError(f"unexpected vendor call: {url}")
+
+    monkeypatch.setattr(export.urllib.request, "urlopen", no_network)
+    monkeypatch.setenv(export.KEY_ENV, "unused")
+    root = tmp_path / name
+    argv = [
+        "--pit-universe", str(inputs["pit"]),
+        "--symbol-map", str(inputs["map"]),
+        "--start", _CHECK_START,
+        "--end", _CHECK_END,
+        "--pit-export-cutoff", _CHECK_END,
+        "--package-root", str(root),
+        "--cache-dir", str(inputs["cache"]),
+    ]  # fmt: skip
+    assert export.main(argv) == 0
+    return root
+
+
+def _check(tmp_path: Path, root: Path, previous: Path, cache: Path, *allowed: str) -> dict:
+    out = tmp_path / f"check_{root.name}_{previous.name}"
+    argv = [
+        "--package-root", str(root),
+        "--previous-root", str(previous),
+        "--cache-dir", str(cache),
+        "--start", _CHECK_START,
+        "--end", _CHECK_END,
+        "--out-dir", str(out),
+    ]  # fmt: skip
+    for item in allowed:
+        argv += ["--allow-price-change", item]
+    code = volume_check.main(argv)
+    return {"code": code, **json.loads((out / "summary.json").read_text())}
+
+
+def test_the_volume_check_passes_a_package_built_from_its_cache(tmp_path, monkeypatch):
+    """Two stretches of one symbol share its later split once each, never twice (#347 review)."""
+    inputs = _cached_package(tmp_path)
+    root = _build(tmp_path, inputs, "new", monkeypatch)
+    panel = pd.read_csv(next((root / "market").glob("*_20200131.csv")), dtype={"dt": str})
+    assert (panel.loc[panel["kdcode"] == "X.OQ", "volume"] == 500.0).all()
+    assert (panel.loc[panel["kdcode"] == "Y.OQ", "volume"] == 1000.0).all()
+
+    summary = _check(tmp_path, root, root, inputs["cache"])
+
+    assert summary["code"] == 0
+    assert summary["volume_mismatches"] == 0 and summary["rows_without_vendor_volume"] == 0
+    assert summary["training_rows_above_vendor_volume"] == 0
+    assert summary["price_difference_rows"] == 0
+
+
+def test_the_volume_check_fails_doubled_volume_and_undeclared_price_changes(tmp_path, monkeypatch):
+    inputs = _cached_package(tmp_path)
+    root = _build(tmp_path, inputs, "new", monkeypatch)
+    panel_path = next((root / "market").glob("*_20200131.csv"))
+    previous = tmp_path / "previous"
+    shutil.copytree(root, previous)
+    doubled = pd.read_csv(panel_path, dtype={"dt": str})
+    doubled["volume"] *= 2  # what a second split adjustment does
+    doubled.to_csv(next((previous / "market").glob("*_20200131.csv")), index=False)
+
+    as_built = _check(tmp_path, root, previous, inputs["cache"])
+    assert as_built["code"] == 0  # volume may differ from the previous revision; prices may not
+
+    shutil.copytree(root, tmp_path / "doubled")
+    doubled.to_csv(next((tmp_path / "doubled" / "market").glob("*_20200131.csv")), index=False)
+    bad = _check(tmp_path, tmp_path / "doubled", root, inputs["cache"])
+    assert bad["code"] == 1
+    assert bad["volume_mismatches"] == len(doubled)
+    assert bad["training_rows_above_vendor_volume"] > 0
+
+    halved = doubled.assign(volume=doubled["volume"] / 4)  # under the vendor's, still wrong
+    shutil.copytree(root, tmp_path / "halved")
+    halved.to_csv(next((tmp_path / "halved" / "market").glob("*_20200131.csv")), index=False)
+    low = _check(tmp_path, tmp_path / "halved", root, inputs["cache"])
+    assert low["code"] == 1 and low["volume_mismatches"] == len(halved)
+    assert low["training_rows_above_vendor_volume"] == 0
+
+    shifted = _build(
+        tmp_path, _cached_package(tmp_path / "s", x_close_shift=1.0), "shifted", monkeypatch
+    )
+    moved = _check(tmp_path, shifted, root, tmp_path / "s" / "cache")
+    assert moved["code"] == 1 and moved["unexpected_price_difference_rows"] == 22
+    declared = _check(tmp_path, shifted, root, tmp_path / "s" / "cache", "X.OQ:2020-02-01")
+    assert declared["code"] == 0 and declared["price_difference_rows"] == 22
 
 
 def test_inputs_must_match_the_reference_manifest(tmp_path):

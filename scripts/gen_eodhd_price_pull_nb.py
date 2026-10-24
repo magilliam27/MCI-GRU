@@ -85,6 +85,8 @@ def build_cells() -> list[dict]:
             # The revision this one replaces, read only to compare against.
             PREVIOUS_DRIVE_DIR = f"/content/drive/MyDrive/MCI_GRU_shared/preservation/eodhd_{PREFIX}_r2"
             CHECK_DRIVE_DIR = f"{OUTPUT_DRIVE_DIR}_volume_check"
+            # The one deliberate price change from r2: CHTR's merger conversion is 0.9042, not 0.9.
+            ALLOWED_PRICE_CHANGES = ["CHTR.OQ:2016-05-18"]
             CACHE_DRIVE_DIR = "/content/drive/MyDrive/MCI_GRU_shared/eodhd_cache/gics_top10_110_2016"
             LOCAL_PACKAGE = "/content/eodhd_package"
             LOCAL_MANIFEST = f"/content/{PREFIX}_eodhd.{REVISION}.json"
@@ -190,6 +192,7 @@ def build_cells() -> list[dict]:
                         "--start", START,
                         "--end", END,
                         "--out-dir", LOCAL_CHECK,
+                        *[arg for item in ALLOWED_PRICE_CHANGES for arg in ("--allow-price-change", item)],
                     ],
                     cwd=REPO_DIR,
                     check=False,
@@ -213,6 +216,18 @@ def build_cells() -> list[dict]:
             if exit_code != 0:
                 stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
                 target = target.with_name(f"{target.name}_FAILED_{stamp}")
+            # The check's evidence goes beside the package, never inside it, and first, so a
+            # clash there stops before any package file is copied.
+            if check_code is not None:
+                check_target = Path(CHECK_DRIVE_DIR if exit_code == 0 else f"{target}_volume_check")
+                check_target.mkdir(parents=True, exist_ok=True)
+                for source in sorted(Path(LOCAL_CHECK).glob("*")):
+                    destination = check_target / source.name
+                    if destination.exists() and not filecmp.cmp(source, destination, shallow=False):
+                        raise RuntimeError(f"{destination} already on Drive with other bytes")
+                    if not destination.exists():
+                        shutil.copyfile(source, destination)
+                print("Volume check evidence:", check_target)
             sources = [p for p in sorted(Path(LOCAL_PACKAGE).rglob("*")) if p.is_file()]
             pairs = [(p, target / p.relative_to(LOCAL_PACKAGE)) for p in sources]
             manifest = Path(LOCAL_MANIFEST)
@@ -231,17 +246,6 @@ def build_cells() -> list[dict]:
             if exit_code == 0 and manifest.exists():
                 print("Manifest SHA-256:", hashlib.sha256(manifest.read_bytes()).hexdigest())
             print(f"Copied {copied} files to {target}")
-            # The check's evidence goes beside the package, never inside it.
-            if check_code is not None:
-                check_target = Path(CHECK_DRIVE_DIR if exit_code == 0 else f"{target}_volume_check")
-                check_target.mkdir(parents=True, exist_ok=True)
-                for source in sorted(Path(LOCAL_CHECK).glob("*")):
-                    destination = check_target / source.name
-                    if destination.exists() and not filecmp.cmp(source, destination, shallow=False):
-                        raise RuntimeError(f"{destination} already on Drive with other bytes")
-                    if not destination.exists():
-                        shutil.copyfile(source, destination)
-                print("Volume check evidence:", check_target)
             """
         ),
         md(
