@@ -20,6 +20,7 @@ python run_experiment.py output_dir=/path/to/output
 - `graph_data.pt` - Static edge tensors for inference
 - `checkpoints/` - Model checkpoints
 - `averaged_predictions/` - Ensemble predictions
+- Re-score a saved run with the current evaluation code, no retraining: `python scripts/rescore_run.py --run_dir path/to/run` writes `evaluation_summary.rescored.json` and `daily_ic.rescored.csv` beside the originals and refuses inputs whose bytes differ from the run's (#337)
 
 ## Backtesting
 
