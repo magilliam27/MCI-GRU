@@ -21,10 +21,12 @@ from mci_gru.evaluation.outcomes import order_by_score, realized_returns
 from mci_gru.evaluation.portfolio import top_k_returns
 from mci_gru.evaluation.statistics import (
     daily_ic_series,
+    hansen_hodrick_mean_ci,
     hansen_hodrick_mean_inference,
     moving_block_bootstrap_ci,
     newey_west_sharpe,
     newey_west_std,
+    overlap_hac_lags,
 )
 from mci_gru.evaluation.tranche_book import (
     period_returns,
@@ -42,18 +44,33 @@ PERIODS_PER_YEAR = 252
 QUINTILES = 5
 
 
+def ic_confidence_interval(
+    ic_values: np.ndarray, *, label_t: int, ci_level: float
+) -> dict[str, float]:
+    """Interval for the mean of a daily IC series scored against ``label_t`` labels.
+
+    The label runs from close ``D+1`` to close ``D+label_t``, so neighbouring dates
+    share ``label_t - 2`` sessions of outcome and their ICs are correlated that far.
+    The interval is the uniform-weight HAC one over exactly those lags (#356); the
+    circular block bootstrap with ``block_size = label_t`` it replaces covered about
+    89% for a nominal 95%. NaN bounds when the series admits no interval.
+    """
+    interval = hansen_hodrick_mean_ci(ic_values, lags=overlap_hac_lags(label_t), ci_level=ci_level)
+    return {
+        "lower": float("nan") if interval.lower is None else interval.lower,
+        "upper": float("nan") if interval.upper is None else interval.upper,
+    }
+
+
 def compute_ic_metrics(
     predictions: np.ndarray,
     true_returns: np.ndarray,
     *,
     label_t: int,
-    bootstrap_enabled: bool = False,
-    bootstrap_resamples: int = 1000,
-    bootstrap_seed: int = 42,
+    ci_enabled: bool = False,
     ci_level: float = 0.95,
-    block_size: int | None = None,
 ) -> dict[str, float]:
-    """Pearson and Spearman IC per date, their means, IRs and optional block-bootstrap CIs."""
+    """Pearson and Spearman IC per date, their means, IRs and optional overlap-aware CIs."""
     metrics: dict[str, float] = {}
     # Rank IC (Spearman correlation)
     rank_ic_values = daily_ic_series(predictions, true_returns, method="spearman")
@@ -66,15 +83,8 @@ def compute_ic_metrics(
         metrics["rank_ic_ir"] = float(np.mean(rank_ic_values) / (np.std(rank_ic_values) + 1e-8))
         metrics["avg_spearman_corr"] = avg_rank_ic
         metrics["median_spearman_corr"] = median_rank_ic
-        if bootstrap_enabled:
-            ci = moving_block_bootstrap_ci(
-                rank_ic_values,
-                statistic=np.mean,
-                block_size=block_size or max(1, label_t),
-                n_resamples=bootstrap_resamples,
-                seed=bootstrap_seed + 17,
-                ci_level=ci_level,
-            )
+        if ci_enabled:
+            ci = ic_confidence_interval(rank_ic_values, label_t=label_t, ci_level=ci_level)
             metrics["avg_rank_ic_ci_lower"] = ci["lower"]
             metrics["avg_rank_ic_ci_upper"] = ci["upper"]
 
@@ -86,15 +96,8 @@ def compute_ic_metrics(
         metrics["ic_ir"] = float(
             np.mean(ic_values) / (np.std(ic_values) + 1e-8)
         )  # Information Ratio
-        if bootstrap_enabled:
-            ci = moving_block_bootstrap_ci(
-                ic_values,
-                statistic=np.mean,
-                block_size=block_size or max(1, label_t),
-                n_resamples=bootstrap_resamples,
-                seed=bootstrap_seed,
-                ci_level=ci_level,
-            )
+        if ci_enabled:
+            ci = ic_confidence_interval(ic_values, label_t=label_t, ci_level=ci_level)
             metrics["avg_ic_ci_lower"] = ci["lower"]
             metrics["avg_ic_ci_upper"] = ci["upper"]
 
@@ -144,11 +147,8 @@ def compute_metrics(
             predictions,
             true_returns,
             label_t=label_t,
-            bootstrap_enabled=bootstrap_enabled,
-            bootstrap_resamples=bootstrap_resamples,
-            bootstrap_seed=bootstrap_seed,
+            ci_enabled=bootstrap_enabled,
             ci_level=ci_level,
-            block_size=block_size,
         )
     )
 
@@ -411,10 +411,7 @@ def evaluate_run(
     sharpe_method: str = "newey_west",
     newey_west_lags: int | None = None,
     bootstrap_enabled: bool = False,
-    bootstrap_resamples: int = 1000,
-    bootstrap_seed: int = 42,
     ci_level: float = 0.95,
-    block_size: int | None = None,
 ) -> dict[str, Any]:
     """The in-run summary body: IC on ``labels``, portfolio numbers from the tranche book.
 
@@ -428,6 +425,10 @@ def evaluate_run(
     and tranche schedule. ``*_period_return`` is the mean per signal date of the
     ``legs.hold_sessions``-session return, with a Hansen-Hodrick t-stat for the excess;
     ``*_sharpe`` and ``*_cumulative_return`` come from the book's daily P&L.
+
+    ``bootstrap_enabled`` turns on the intervals: the IC ones and the excess-return
+    one, both uniform-weight HAC intervals over the outcome's overlap (#356). The name
+    is the config key's; no interval here resamples.
     """
     hold = legs.hold_sessions
     scores = np.asarray(predictions, dtype=np.float64)
@@ -442,19 +443,12 @@ def evaluate_run(
         rankable = np.asarray(rankable_mask, dtype=bool)
         benchmark = "equal_weight_pit_tradable_universe"
     nw_lags = max(0, hold - 1) if newey_west_lags is None else newey_west_lags
-    # The excess CI resamples overlapping hold-length returns, so a block never
-    # shorter than the hold.
-    excess_block = max(block_size or max(1, label_t), hold)
-
     metrics: dict[str, Any] = compute_ic_metrics(
         predictions,
         labels,
         label_t=label_t,
-        bootstrap_enabled=bootstrap_enabled,
-        bootstrap_resamples=bootstrap_resamples,
-        bootstrap_seed=bootstrap_seed,
+        ci_enabled=bootstrap_enabled,
         ci_level=ci_level,
-        block_size=block_size,
     )
     metrics["test_dates"] = len(dates)
     metrics["ic_valid_dates"] = int(daily_ic_series(predictions, labels, "pearson").size)
@@ -496,16 +490,10 @@ def evaluate_run(
         )
         metrics[f"top_{k}_unbooked_tranches"] = book.tranches_unbooked
         if bootstrap_enabled:
-            ci = moving_block_bootstrap_ci(
-                finite_excess,
-                statistic=np.mean,
-                block_size=excess_block,
-                n_resamples=bootstrap_resamples,
-                seed=bootstrap_seed + k,
-                ci_level=ci_level,
-            )
-            metrics[f"top_{k}_excess_period_return_ci_lower"] = ci["lower"]
-            metrics[f"top_{k}_excess_period_return_ci_upper"] = ci["upper"]
+            # Hold-length returns sampled every session overlap for hold - 1 lags.
+            ci = hansen_hodrick_mean_ci(finite_excess, lags=hold - 1, ci_level=ci_level)
+            metrics[f"top_{k}_excess_period_return_ci_lower"] = _or_nan(ci.lower)
+            metrics[f"top_{k}_excess_period_return_ci_upper"] = _or_nan(ci.upper)
 
     metrics.update(quintile_period_returns(scores, rankable, realized.returns, kdcodes))
 
@@ -529,8 +517,8 @@ def evaluate_run(
         "periods_per_year": PERIODS_PER_YEAR,
         "sharpe_method": sharpe_method,
         "newey_west_lags": nw_lags,
-        "excess_inference": {"method": "hansen_hodrick_uniform_v1", "lags": hold - 1},
-        "excess_ci_block_size": excess_block,
+        "excess_inference": {"method": "hansen_hodrick_t_v1", "lags": hold - 1},
+        "ic_inference": {"method": "hansen_hodrick_t_v1", "lags": overlap_hac_lags(label_t)},
         "missing_close_events": events,
         "metrics": metrics,
     }

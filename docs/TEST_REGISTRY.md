@@ -1507,6 +1507,29 @@ Issue 131: how ``gru_attn`` reads ``model.gru_hidden_sizes``.
 | `test_model_config_validates_and_serialises_the_setting` |  |  |
 | `test_encoder_rejects_an_unknown_layer_widths_value` |  |  |
 
+## `tests/test_ic_interval_overlap.py`
+
+IC confidence intervals reach nominal coverage on overlapping labels (#356).
+
+**Exercises:** `mci_gru.evaluation.metrics`, `mci_gru.evaluation.paired_inference`, `mci_gru.evaluation.statistics`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_label_overlap_is_label_t_minus_two_lags` |  |  |
+| `test_ic_interval_reaches_nominal_coverage_on_overlapping_labels` | The in-run IC CI covers the true mean about 95% of the time on the first run's length. |  |
+| `test_paired_interval_reaches_nominal_coverage_on_overlapping_labels` | The paired-difference CI uses the same interval, so it covers at the same rate. |  |
+| `test_the_block_bootstrap_at_label_t_undercovers` | Control: the scheme #356 replaces fails the coverage band, so the band has teeth. |  |
+| `test_without_overlap_the_interval_is_a_t_interval_on_n_minus_one_df` |  |  |
+| `test_the_interval_records_its_method_lags_and_degrees_of_freedom` |  |  |
+| `test_a_non_positive_long_run_variance_gives_no_interval` |  |  |
+| `test_compute_ic_metrics_reports_the_overlap_interval_for_ic_and_rank_ic` |  |  |
+| `test_compute_ic_metrics_omits_intervals_unless_asked` |  |  |
+| `test_paired_inference_defaults_to_the_overlap_interval` |  |  |
+| `test_paired_inference_keeps_an_explicitly_requested_block_bootstrap` | The archived graph notebooks pass ``block_size``; they reproduce their own records. |  |
+| `test_a_block_bootstrap_needs_its_resamples_and_seed` |  |  |
+| `test_the_t_reference_holds_coverage_on_a_short_test_span` | At 60 dates a normal critical value covers about 91%; the t reference keeps 95%. |  |
+| `test_the_hac_p_value_and_interval_agree` | A p-value under 5% exactly when the 95% interval excludes zero, as one reference. |  |
+
 ## `tests/test_in_run_summary.py`
 
 The in-run summary measures a tradable book and nets the universe (#336).
@@ -1531,7 +1554,9 @@ The in-run summary measures a tradable book and nets the universe (#336).
 | `test_a_window_with_no_resolved_hold_reports_nan_not_zero` |  |  |
 | `test_missing_close_events_count_only_names_that_could_be_held` |  |  |
 | `test_the_summary_labels_its_basis_and_drops_metrics_an_ic_loss_leaves_arbitrary` |  |  |
-| `test_ic_and_rank_ic_are_unchanged_by_the_new_summary` | Control: the per-date IC means and their bootstrap CIs, recomputed independently. |  |
+| `test_ic_and_rank_ic_are_unchanged_by_the_new_summary` | Control: the per-date IC means, recomputed independently, and their overlap CIs (#356). |  |
+| `test_the_excess_interval_and_its_p_value_agree` | #356: the summary pairs each excess CI with the p-value of the same test. |  |
+| `test_the_excess_interval_is_the_hac_interval_over_the_hold_overlap` | #356: the excess CI is recomputed from the per-date excess, hold - 1 = 3 lags. |  |
 | `test_ic_date_coverage_counts_dates_that_could_not_be_scored` |  |  |
 | `test_quintiles_split_the_cross_section_evenly` | Twelve names in five quintiles are 2, 2, 2, 3, 3 from the bottom, not 2, 2, 2, 2, 4. |  |
 | `test_sharpe_method_is_honoured_on_the_daily_book` |  |  |

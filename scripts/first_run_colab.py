@@ -1152,9 +1152,10 @@ def compare_arms(
 
     The first arm must be the recipe. Every other arm must come from the same commit,
     mode and staged package, and its overrides must be the recipe arm's with only that
-    arm's change, so the arms differ by nothing else. The paired difference uses the same overlap-aware HAC and
-    block bootstrap the graph ablation used (``paired_inference``), with the label's
-    horizon from the summary.
+    arm's change, so the arms differ by nothing else. The paired difference uses the
+    overlap-aware HAC t-test and interval of ``paired_inference`` (#356), with the
+    label's horizon from the summary; that interval draws no resamples, so
+    ``n_resamples`` and ``seed`` no longer move it.
     """
     from dataclasses import asdict
 

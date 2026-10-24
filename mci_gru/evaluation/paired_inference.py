@@ -24,10 +24,12 @@ import numpy as np
 import pandas as pd
 
 from mci_gru.evaluation.statistics import (
+    hansen_hodrick_mean_ci,
     hansen_hodrick_mean_inference,
     hansen_hodrick_std,
     moving_block_bootstrap_ci,
     moving_block_mean_ci,
+    overlap_hac_lags,
 )
 
 if TYPE_CHECKING:
@@ -50,7 +52,8 @@ class PairedMeanInference:
     hac_t: float | None
     hac_p: float | None
     long_run_sd: float | None
-    block_size: int
+    ci_method: str
+    block_size: int | None
     ci_lower: float | None
     ci_upper: float | None
     top_decile_share: float
@@ -101,30 +104,19 @@ def tail_share(delta: np.ndarray, top_fraction: float = 0.1) -> float:
     return float(np.sum(top) / total)
 
 
-def overlap_hac_lags(label_horizon: int) -> int:
-    """Uniform HAC lags for close ``D+1`` to close ``D+label_horizon`` outcomes.
-
-    The outcome spans ``label_horizon - 1`` sessions, so consecutive days share
-    ``label_horizon - 2`` of them and autocovariances vanish beyond that lag.
-    """
-    if label_horizon <= 0:
-        raise ValueError("label_horizon must be > 0")
-    return max(0, label_horizon - 2)
-
-
 def paired_mean_inference(
     delta: pd.Series | np.ndarray,
     *,
     arm: str,
     control: str,
     label_horizon: int,
-    n_resamples: int,
-    seed: int,
     ci_level: float,
+    n_resamples: int | None = None,
+    seed: int | None = None,
     block_size: int | None = None,
     hac_lags: int | None = None,
 ) -> PairedMeanInference:
-    """HAC t-test and block-bootstrap interval for the mean daily difference.
+    """HAC t-test and interval for the mean daily difference.
 
     Non-finite days are dropped and ``n_days`` reports what remained.
     ``label_horizon`` is the model's ``label_t``: the outcome runs from close ``D+1``
@@ -132,7 +124,15 @@ def paired_mean_inference(
     consecutive days share ``label_horizon - 2`` of them. The HAC uses uniform
     (Hansen-Hodrick) weights on that many lags, which is exact for the overlap;
     Bartlett weights on ``label_horizon - 1`` lags understate it (#342).
-    ``block_size`` defaults to ``label_horizon``.
+
+    The interval is the same HAC one with a Student-t critical value
+    (``statistics.hansen_hodrick_mean_ci``), as the in-run IC intervals use (#356).
+    Passing ``block_size`` asks for the circular block bootstrap instead, with
+    ``n_resamples`` and ``seed``; the archived graph notebooks do, so their intervals
+    reproduce. Their ``hac_p`` does not: since #356 it is Student-t on the interval's
+    equivalent degrees of freedom, where it was normal before (at 238 days a t-stat of
+    2.0 moves from p 0.046 to 0.054). A block of ``label_horizon`` covers about 89%
+    for a nominal 95% on a year of overlapping days, so new work leaves it unset.
 
     ``long_run_sd`` (``hac_se * sqrt(n_days)``) is the standard deviation that power
     and minimum-detectable-effect arithmetic needs; ``sd_delta`` is the iid one and
@@ -151,17 +151,21 @@ def paired_mean_inference(
             f"hac_lags must be at least label_horizon - 2 ({minimum_lags}) for outcomes "
             f"spanning {label_horizon - 1} sessions"
         )
-    block = label_horizon if block_size is None else int(block_size)
 
     hac = hansen_hodrick_mean_inference(x, label_horizon=lags + 1)
-    interval = moving_block_mean_ci(
-        x,
-        block_size=block,
-        label_horizon=label_horizon,
-        n_resamples=n_resamples,
-        seed=seed,
-        ci_level=ci_level,
-    )
+    if block_size is None:
+        interval = hansen_hodrick_mean_ci(x, lags=lags, ci_level=ci_level)
+    else:
+        if n_resamples is None or seed is None:
+            raise ValueError("a block bootstrap interval needs n_resamples and seed")
+        interval = moving_block_mean_ci(
+            x,
+            block_size=int(block_size),
+            label_horizon=label_horizon,
+            n_resamples=n_resamples,
+            seed=seed,
+            ci_level=ci_level,
+        )
     return PairedMeanInference(
         arm=arm,
         control=control,
@@ -179,7 +183,8 @@ def paired_mean_inference(
             if hac.standard_error is not None
             else None
         ),
-        block_size=block,
+        ci_method=interval.method,
+        block_size=None if block_size is None else int(block_size),
         ci_lower=interval.lower,
         ci_upper=interval.upper,
         top_decile_share=tail_share(x, 0.1),

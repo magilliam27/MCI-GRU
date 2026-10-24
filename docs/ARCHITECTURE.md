@@ -537,8 +537,18 @@ backtest.
 
 `mci_gru/evaluation/metrics.py` (`evaluate_run`) writes `evaluation_summary.json`
 (schema `mci_gru.evaluation_summary.v2`, #336). Pearson and Spearman IC are
-scored against the training labels, with optional moving-block bootstrap
-intervals (`mci_gru/evaluation/statistics.py`) and their date coverage.
+scored against the training labels, with their date coverage and, when
+`evaluation.bootstrap_enabled`, intervals on the mean
+(`ic_confidence_interval`, recorded as `ic_inference`). The label's overlap
+makes neighbouring dates' ICs correlated for `label_t - 2` lags, so the interval
+uses a uniform-weight HAC standard error over exactly those lags and a Student-t
+critical value on `n / (2 * lags + 1) - 1` degrees of freedom
+(`statistics.hansen_hodrick_mean_ci`). It reaches nominal coverage on a year of
+overlapping dates, where the block bootstrap at `block_size = label_t` it
+replaced covered about 89% for a nominal 95% (#356). `paired_inference` uses the
+same interval for arm-versus-control differences. The interval takes
+autocovariance past the overlap as zero, so persistence in the IC beyond the
+label (a lasting signal or regime) is not covered.
 Portfolio numbers read realized returns from the evaluation core
 (`mci_gru/evaluation/outcomes.py`) on the panel's session axis, with the PIT
 tradable mask as the rankable set, and book them in the staggered tranche book of
@@ -552,7 +562,10 @@ t-stat with `hold - 1` lags, where the hold is the legs' session span
 (`label_t - 1` under the default legs, so 3 lags for the recipe).
 Long-only numbers are kept as `top_<k>_abs_*`. `resolved_evaluation_kwargs()`
 derives the defaults: legs and tranches from `label_t`, Newey-West lags for the
-daily Sharpe `hold - 1`, bootstrap block `max(1, label_t)`. The book ramps in
+daily Sharpe `hold - 1`. The excess interval, when
+`evaluation.bootstrap_enabled`, is the same HAC-t interval as the IC one, over
+the `hold - 1` lags its t-stat uses; that t-stat's p-value uses the same t
+reference, so a p-value under 5% and a 95% interval excluding zero agree (#356). The book ramps in
 and out over its first and last `hold - 1` sessions, which dilutes absolute
 numbers on short windows; excess numbers net the ramp.
 `evaluate_predictions` is the older matrix-only path that
@@ -709,7 +722,7 @@ mci_gru/
 │   └── metrics.py                ← compatibility shim to evaluation.metrics
 ├── evaluation/
 │   ├── metrics.py                ← prediction metrics
-│   ├── statistics.py             ← IC, Newey-West, bootstrap primitives
+│   ├── statistics.py             ← IC, HAC (Newey-West, Hansen-Hodrick), bootstrap primitives
 │   ├── experiment_summary.py     ← in-run evaluation policy, resolved-config provenance
 │   ├── backtest_engine.py        ← economic saved-prediction replay (CLI, metrics, outputs)
 │   ├── replay_book.py            ← the replay's tranche book, issuers, costs

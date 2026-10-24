@@ -132,6 +132,10 @@ training:
 # Evaluation and statistical confidence
 evaluation:
   top_k_values: [10, 20, 50, 100]
+  # Turns on the in-run intervals. Since #356 the IC, rank-IC and excess-return
+  # intervals are uniform-weight HAC intervals over the label's overlap, with no
+  # resampling; bootstrap_resamples, bootstrap_seed and block_size only reach the
+  # legacy matrix-only evaluate_predictions path.
   bootstrap_enabled: true
   bootstrap_resamples: 1000
   bootstrap_seed: 1729
