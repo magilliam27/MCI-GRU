@@ -43,9 +43,14 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from mci_gru.config import ExperimentConfig, create_config_from_dict
-from mci_gru.data.data_manager import DataManager
-from mci_gru.data.pit import (
+REPO_DIR = Path(__file__).resolve().parents[1]
+if str(REPO_DIR) not in sys.path:
+    sys.path.insert(0, str(REPO_DIR))
+
+import mci_gru  # noqa: E402
+from mci_gru.config import ExperimentConfig, create_config_from_dict  # noqa: E402
+from mci_gru.data.data_manager import DataManager  # noqa: E402
+from mci_gru.data.pit import (  # noqa: E402
     CESSATION_EVENTS_ROLE,
     CessationEvidence,
     PredictionClock,
@@ -54,19 +59,22 @@ from mci_gru.data.pit import (
     cessation_exclusion_mask,
     resolve_cessation_events,
 )
-from mci_gru.data.preprocessing import apply_rank_labels, compute_labels, label_session_axis
-from mci_gru.data.quality_contract import AdmissionLedger
-from mci_gru.evaluation.artifacts import write_json_artifact
-from mci_gru.evaluation.dated_ic import dated_ic_frame
-from mci_gru.evaluation.experiment_summary import (
+from mci_gru.data.preprocessing import (  # noqa: E402
+    apply_rank_labels,
+    compute_labels,
+    label_session_axis,
+)
+from mci_gru.data.quality_contract import AdmissionLedger  # noqa: E402
+from mci_gru.evaluation.artifacts import write_json_artifact  # noqa: E402
+from mci_gru.evaluation.dated_ic import dated_ic_frame  # noqa: E402
+from mci_gru.evaluation.experiment_summary import (  # noqa: E402
     REDACTED_ABSOLUTE_PATH,
     compute_evaluation_summary,
 )
-from mci_gru.evaluation.replay_inputs import DATA_ROLE, resolve_replay_inputs
-from mci_gru.pipeline import resolve_pit_context, select_universe
-from mci_gru.utils.hashing import sha256_file
+from mci_gru.evaluation.replay_inputs import DATA_ROLE, resolve_replay_inputs  # noqa: E402
+from mci_gru.pipeline import resolve_pit_context, select_universe  # noqa: E402
+from mci_gru.utils.hashing import sha256_file  # noqa: E402
 
-REPO_DIR = Path(__file__).resolve().parents[1]
 STORED_SUMMARY_FILENAME = "evaluation_summary.json"
 RESCORED_SUMMARY_FILENAME = "evaluation_summary.rescored.json"
 RESCORED_DAILY_IC_FILENAME = "daily_ic.rescored.csv"
@@ -106,6 +114,7 @@ def rescore_run(
     The overrides name a copy of an input at another path (a Colab staging
     directory, say); each must carry the bytes the run recorded.
     """
+    _check_code_root()
     run = Path(run_dir)
     summary_path = run / RESCORED_SUMMARY_FILENAME
     daily_ic_path = run / RESCORED_DAILY_IC_FILENAME
@@ -125,6 +134,10 @@ def rescore_run(
         top_k=top_k_values[0],
     )
     recorded = metadata.get("data_inputs") or {}
+    if not recorded and resolved["data"].get("source") == "csv":
+        # Runs before data_inputs existed fingerprinted the configured CSV directly,
+        # the record resolve_replay_inputs has just checked the data file against.
+        recorded = {DATA_ROLE: {"sha256": metadata.get("data_file_sha256")}}
 
     data_cfg = dict(resolved["data"])
     data_cfg["filename"] = str(inputs.data_file)
@@ -163,6 +176,7 @@ def rescore_run(
         rankable_mask=scoring.rankable_mask,
     )
     stored_path = run / STORED_SUMMARY_FILENAME
+    stored_sha256 = _check_stored_summary(run, metadata, stored_path)
     stored = _read_json(stored_path)
     ic_check = check_ic_reproduced(stored.get("metrics", {}), summary["metrics"], tolerance)
     daily_ic = dated_ic_frame(predictions, scoring.labels, scoring.dates)
@@ -173,7 +187,7 @@ def rescore_run(
         "code": _code_identity(),
         "stored_summary": {
             "path": STORED_SUMMARY_FILENAME,
-            "sha256": sha256_file(stored_path),
+            "sha256": stored_sha256,
             "schema_version": stored.get("schema_version"),
         },
         "resolved_config_sha256": metadata.get("resolved_config_sha256"),
@@ -187,8 +201,17 @@ def rescore_run(
         "daily_ic": RESCORED_DAILY_IC_FILENAME,
         "not_rescored": list(NOT_RESCORED),
     }
-    daily_ic.to_csv(daily_ic_path, index=False, float_format="%.17g")
-    return write_json_artifact(summary_path, summary, force=force)
+    # Both files or neither: the dated IC waits under a temporary name until the
+    # summary is written.
+    pending = daily_ic_path.with_name(f".{daily_ic_path.name}.pending")
+    daily_ic.to_csv(pending, index=False, float_format="%.17g")
+    try:
+        path = write_json_artifact(summary_path, summary, force=force)
+    except BaseException:
+        pending.unlink()
+        raise
+    pending.replace(daily_ic_path)
+    return path
 
 
 def rebuild_scoring_inputs(config: ExperimentConfig) -> ScoringInputs:
@@ -226,9 +249,12 @@ def rebuild_scoring_inputs(config: ExperimentConfig) -> ScoringInputs:
             pit.intervals,
             cessation_exclusion_mask(events, kdcodes, dates, clock),
         )
-        # A masked panel trains on raw returns, unfilled, masked to the loss set.
+        # A masked panel's returns are unfilled and masked to the loss set before any
+        # rank transform, as apply_pit_masks_to_tensors does.
         labels = compute_labels(panel, kdcodes, dates, label_t, fill_missing=False)
         labels = apply_label_mask(labels, masks.loss)
+        if config.training.label_type == "rank":
+            labels = apply_rank_labels(labels, masks.loss)
         rankable_mask = np.asarray(masks.tradable, dtype=bool)
     else:
         labels = compute_labels(panel, kdcodes, dates, label_t, fill_missing=True)
@@ -237,9 +263,10 @@ def rebuild_scoring_inputs(config: ExperimentConfig) -> ScoringInputs:
         rankable_mask = None
 
     consumed: dict[str, set[str]] = {}
-    for record in observations.freeze().to_dict()["observations"]:
-        if record.get("outcome") == "success" and "sha256" in record.get("identity", {}):
-            consumed.setdefault(record["role"], set()).add(record["identity"]["sha256"])
+    sealed = observations.freeze().to_dict()
+    for use in sealed["uses"]:
+        identity = sealed["observations"][use["observation_id"]].get("identity", {})
+        consumed.setdefault(use["role"], set()).add(str(identity.get("sha256")))
     return ScoringInputs(panel, kdcodes, dates, labels, rankable_mask, consumed)
 
 
@@ -306,13 +333,43 @@ def _check_consumed(consumed: dict[str, set[str]], recorded: dict[str, Any]) -> 
 
 
 def _recorded_path(recorded: dict[str, Any], role: str, configured: str) -> str:
-    if configured != REDACTED_ABSOLUTE_PATH:
-        return configured
+    """The first of the configured and recorded paths that exists; its bytes are checked later."""
     record = recorded.get(role) or {}
-    path = record.get("resolved_path") or record.get("configured_path")
-    if not path:
-        raise RescoreError(f"the run recorded no path for {role}; pass an override")
-    return str(path)
+    candidates = [
+        c
+        for c in (configured, record.get("configured_path"), record.get("resolved_path"))
+        if c and c != REDACTED_ABSOLUTE_PATH
+    ]
+    for candidate in candidates:
+        if Path(candidate).is_file() or (REPO_DIR / candidate).is_file():
+            return str(candidate)
+    raise RescoreError(
+        f"no file for {role} at {candidates or 'any recorded path'}; pass an override"
+    )
+
+
+def _check_stored_summary(run: Path, metadata: dict[str, Any], path: Path) -> str:
+    """The summary the IC is checked against must be the one the run's receipt bound."""
+    actual = sha256_file(path)
+    start = (metadata.get("execution_start") or {}).get("path")
+    if start:
+        receipt = run / Path(start).with_name(f"{Path(start).stem}.receipt.json")
+        bound = (_read_json(receipt).get("artifacts") or {}).get(path.name)
+        if bound is not None and bound != actual:
+            raise RescoreError(
+                f"{path.name} has sha256 {actual}, not the {bound} the run's receipt bound"
+            )
+    return actual
+
+
+def _check_code_root() -> None:
+    """The evaluation code imported must be this checkout's, whose commit is recorded."""
+    package = Path(mci_gru.__file__).resolve().parent
+    if not package.is_relative_to(REPO_DIR):
+        raise RescoreError(
+            f"mci_gru is imported from {package}, not from {REPO_DIR}, so the recorded "
+            "commit would not describe the code that scored the run"
+        )
 
 
 def _read_json(path: Path) -> dict[str, Any]:

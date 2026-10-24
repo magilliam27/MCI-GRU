@@ -2312,6 +2312,9 @@ A saved run is re-scored from its own inputs, without retraining (#337).
 | `test_a_cessation_file_with_other_bytes_is_refused` |  |  |
 | `test_a_saved_prediction_changed_after_the_run_is_refused` |  |  |
 | `test_the_command_line_rescores_a_run_and_prints_both_ics` |  |  |
+| `test_a_stored_summary_changed_after_the_run_is_refused` |  |  |
+| `test_a_failed_summary_write_leaves_no_dated_ic_behind` |  |  |
+| `test_evaluation_code_from_another_checkout_is_refused` |  |  |
 
 ## `tests/test_research_paper_to_mci_gru_skill.py`
 

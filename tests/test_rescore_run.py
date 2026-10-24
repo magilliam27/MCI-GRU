@@ -147,11 +147,15 @@ def _restored_process_state(directory: Path):
         root.setLevel(level)
 
 
-def _run(base: Path, *, use_pit: bool) -> Path:
+def _run(base: Path, *, use_pit: bool, label_type: str = "returns") -> Path:
     base.mkdir(parents=True, exist_ok=True)
     panel = base / "panel.csv"
     _write_panel(panel)
-    overrides = [*OVERRIDES, f"data.filename={panel.as_posix()}"]
+    overrides = [
+        *OVERRIDES,
+        f"data.filename={panel.as_posix()}",
+        f"training.label_type={label_type}",
+    ]
     if use_pit:
         _write_pit(base / "pit.csv")
         _write_cessation(base / "cessation.csv")
@@ -189,6 +193,19 @@ def plain_run(tmp_path_factory) -> Path:
     return _run(tmp_path_factory.mktemp("rescore") / "plain", use_pit=False)
 
 
+@pytest.fixture(scope="module")
+def pit_rank_run(tmp_path_factory) -> Path:
+    return _run(tmp_path_factory.mktemp("rescore") / "pit_rank", use_pit=True, label_type="rank")
+
+
+@pytest.fixture(scope="module")
+def plain_rank_run(tmp_path_factory) -> Path:
+    return _run(tmp_path_factory.mktemp("rescore") / "plain_rank", use_pit=False, label_type="rank")
+
+
+ALL_RUNS = ["pit_run", "plain_run", "pit_rank_run", "plain_rank_run"]
+
+
 @pytest.fixture
 def run_copy(pit_run, tmp_path) -> Path:
     """A private copy of the PIT run; its recorded inputs stay where the run read them."""
@@ -208,7 +225,7 @@ def _rescored_files(run: Path) -> list[Path]:
 # --- The re-score reproduces the run -------------------------------------------------
 
 
-@pytest.mark.parametrize("fixture", ["pit_run", "plain_run"])
+@pytest.mark.parametrize("fixture", ALL_RUNS)
 def test_rescoring_reproduces_the_stored_ic_and_rank_ic(fixture, request, tmp_path):
     run = Path(shutil.copytree(request.getfixturevalue(fixture), tmp_path / "run"))
 
@@ -221,7 +238,7 @@ def test_rescoring_reproduces_the_stored_ic_and_rank_ic(fixture, request, tmp_pa
     assert rescored["ic_valid_dates"] == stored["ic_valid_dates"]
 
 
-@pytest.mark.parametrize("fixture", ["pit_run", "plain_run"])
+@pytest.mark.parametrize("fixture", ALL_RUNS)
 def test_every_stored_metric_comes_back_when_the_code_has_not_changed(fixture, request, tmp_path):
     """The run was scored by this code, so the portfolio numbers must come back too.
 
@@ -238,7 +255,8 @@ def test_every_stored_metric_comes_back_when_the_code_has_not_changed(fixture, r
 
     assert set(rescored) == set(stored)
     for key, value in stored.items():
-        tolerance = 1e-4 if "ic" in key else 1e-12
+        # IC means move within the rounding of the saved scores; counts never do.
+        tolerance = 1e-4 if key.startswith(("avg_", "median_", "ic_ir", "rank_ic_ir")) else 1e-12
         assert rescored[key] == pytest.approx(value, abs=tolerance, nan_ok=True), key
 
 
@@ -387,3 +405,34 @@ def test_the_command_line_rescores_a_run_and_prints_both_ics(run_copy, capsys):
     out = capsys.readouterr().out
     assert "avg_ic: stored" in out and "avg_rank_ic: stored" in out
     assert (run_copy / RESCORED_SUMMARY_FILENAME).is_file()
+
+
+def test_a_stored_summary_changed_after_the_run_is_refused(run_copy):
+    stored = run_copy / "evaluation_summary.json"
+    summary = json.loads(stored.read_text())
+    summary["metrics"]["avg_ic"] += 0.01
+    stored.write_text(json.dumps(summary))
+
+    with pytest.raises(RescoreError, match="receipt"):
+        rescore_run.rescore_run(run_copy)
+    assert _rescored_files(run_copy) == []
+
+
+def test_a_failed_summary_write_leaves_no_dated_ic_behind(run_copy, monkeypatch):
+    def fail(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(rescore_run, "write_json_artifact", fail)
+
+    with pytest.raises(OSError, match="disk full"):
+        rescore_run.rescore_run(run_copy)
+    assert _rescored_files(run_copy) == []
+    assert not list(run_copy.glob(".*pending"))
+
+
+def test_evaluation_code_from_another_checkout_is_refused(run_copy, monkeypatch, tmp_path):
+    monkeypatch.setattr(rescore_run.mci_gru, "__file__", str(tmp_path / "mci_gru" / "__init__.py"))
+
+    with pytest.raises(RescoreError, match="not from"):
+        rescore_run.rescore_run(run_copy)
+    assert _rescored_files(run_copy) == []
