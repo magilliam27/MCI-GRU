@@ -381,6 +381,10 @@ def main(cfg: DictConfig):
                     avg_predictions,
                     data["test_labels"],
                     cfg_w,
+                    panel=data["df"],
+                    dates=data["test_dates"],
+                    kdcodes=data["kdcode_list"],
+                    rankable_mask=data.get("test_tradable_mask"),
                 )
                 timing_summary["phases"]["evaluation_summary_seconds"] = (
                     perf_counter() - phase_started
