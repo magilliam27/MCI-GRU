@@ -11,6 +11,13 @@ one) or `[Inferred]` (reasoning on top of those figures). Section 10 is entirely
 interpretation and is labelled as such. Nothing from the mechanics smoke appears in any
 table in this document; see section 3.
 
+> **Statistics superseded, 2026-10-24.** The evaluation PRD #334 found that the in-run summary's portfolio statistics did not measure what their names say. Section 7 reads those statistics from `evaluation_summary.json`, and #336 (pull request #351, `83a40dc`) replaced them. Nothing was re-run for this note (#334 decision E10).
+>
+> - **Newey–West Sharpe by K** (section 7.2, and the Sharpe orderings in summary finding 4). Each test date's top-K return is a 4-session return (close `t+1` to close `t+5`), so consecutive dates overlap by three sessions. The code annualised these as daily returns with a lag-4 Bartlett correction, which overstates the Sharpe. On the first run the audit put the error at about 1.42 against 1.25. The schema-2 summary computes Sharpe from the daily P&L of the staggered tranche book instead.
+> - **April's composite** (section 7.1, summary finding 6) weights `sharpe_top_20_newey_west` at 0.25, so its scores inherit that bias. The schema-2 summary no longer carries that key.
+> - **Hit rate and test MSE** (section 7.3). Under the IC loss the level and scale of the scores are arbitrary, so these measure nothing about forecast quality. #336 removed them (#334 decision E7).
+> - **What stands:** the arbiter, test-span pooled daily IC with its 5-session block-bootstrap CI (sections 1 and 4, checked in section 9), the rank-IC figures, the mean top-K returns read as absolute 4-session returns (no universe benchmark is netted), and the per-year table (section 5), with the label caveat in the paired re-analysis's section 3. The section 7.4 point that the verdict is metric-dependent rests partly on the Sharpe orderings, so it should be re-read once the arms are re-scored on the schema-2 summary.
+
 ---
 
 ## 1. Summary

@@ -6,6 +6,29 @@ to the IC and top-k portfolio diagnostics MCI-GRU already uses.
 The report runs on existing `averaged_predictions/*.csv` files. It does not retrain
 models and does not add external model dependencies.
 
+> **Method changed, 2026-10-24 (#334).** #342 (pull request #352, `242ffb5`) moved
+> this report onto the evaluation core. A report written before that date can
+> differ on the points below. No saved report was re-scored for this note (#334
+> decision E10).
+>
+> - Realized returns come from the panel's own session axis
+>   (`mci_gru.evaluation.outcomes.realized_returns`), so a missing bar no longer
+>   moves an endpoint the way the per-stock row shift did. A missing exit books the
+>   last close in the hold.
+> - The rows are the primary model's: predictions inner-joined to realized returns.
+>   Baselines are left-joined onto those rows, so adding a baseline no longer
+>   changes the primary's numbers. Each model is scored on its own finite rows.
+>   This replaces the all-model inner join described under Alignment Rules below.
+> - Top-k portfolio numbers come from the in-run summary's staggered tranche book
+>   (`evaluate_run`, #336) and need the panel's closes. The older matrix-only Sharpe
+>   and cumulative return treated overlapping 4-session returns as daily, and have
+>   been removed.
+> - `oos_r2_zero`, `direction_accuracy` and `macro_f1` still depend on the scale and
+>   level of the scores. Under the IC loss those are arbitrary, so read these three
+>   only for models trained to forecast returns. The #334 audit also found that
+>   macro-F1 scores an empty zero class as 0, so a perfect sign forecaster reads
+>   0.667; that remains as it was.
+
 ## Command
 
 ```bash

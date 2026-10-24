@@ -19,6 +19,25 @@ correction. Readings, costs, and expected outcomes in sections 1, 4, and 5 are
 `[Inferred]`. The runs were local CPU smokes, so there is no Drive run folder
 or run tag; the preserved raw outputs are the record.
 
+Statistics superseded, 2026-10-24 (#334). This report takes two things from
+the graph paired re-analysis that #342 (pull request #352, `242ffb5`) later
+corrected. The first is the minimum detectable effect of 0.0035 (sections 2
+and 7), which sections 1 and 3 use as a yardstick. It was computed from the
+iid standard deviation of the daily IC difference rather than the long-run
+one, so it is understated. `[Inferred]` The re-analysis's own HAC standard
+error puts the factor at about 1.5× or more, roughly 0.005 or more for the
+shipped configuration at four pooled years; that report's statistics note
+gives the arithmetic. Where sections 1 and 3 call an effect "ten times" or "an
+order of magnitude larger" than the MDE, the multiple is overstated by the
+same factor, though the effect is still several times the MDE. The second is
+the "lag-4 HAC" in the section 5 protocol, as ruled on #181. The code now uses
+uniform (Hansen-Hodrick) weights with `label_t − 2 = 3` lags and refuses
+fewer, because Bartlett lag 4 understates the variance of the 4-session label,
+so a protocol run on today's `paired_mean_inference` gets the corrected
+inference. Amending the wording of the #181 ruling is the owner's call.
+Nothing was re-run for this note (#334 decision E10), and the trunk
+measurements in section 3 are unaffected.
+
 Refresh note, 2026-09-27 (#228). This report predates the 2026-09 cleanup
 (map #211). Paths it names that #212 or #213 moved now point at their new
 homes, and retired ones are cited at tag `archive/pre-cleanup-2026-09`, as #213

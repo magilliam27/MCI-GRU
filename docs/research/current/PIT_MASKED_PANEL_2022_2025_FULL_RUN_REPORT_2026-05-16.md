@@ -9,6 +9,13 @@ This report reviews the full PIT masked-panel notebook run that followed
 `archive/pre-cleanup-2026-09:docs/handoffs/2026-05-15-frozen-default-pit-masked-panel.md`
 (a retired handoff; read it with `git show`).
 
+> **Statistics superseded, 2026-10-24 (#334).** Nothing was re-run for this note (#334 decision E10).
+>
+> - **The cross-year figures.** Two of them are averages of yearly ratios: the average ARR of 22.39% and the average ASR of 0.855. The worst yearly MDD of −30.25% is the worst single year, not the drawdown of the four-year path, which can be deeper when a drawdown runs across a year boundary. These are the aggregation that #342 (pull request #352, `242ffb5`) replaced in `scripts/run_pit_saved_prediction_backtests.py`, which now builds multi-year figures from the concatenated daily return series. Read them as summaries of yearly rows, not as multi-year ARR, ASR or MDD. The compounded 91.9% for the model and 20.0% for the benchmark are products of the yearly totals. They stand, except for the few days between one test window's end and the next one's start.
+> - **The yearly p-values and significance flags** come from the replay engine's own test, and #340 reworks it to Holm or Bonferroni for one strategy, with BHY only against a trial ledger. #340 remains open.
+> - **Every yearly figure in the backtest table** comes from the daily open-to-open replay engine. The #334 audit, run on that engine as it stood on `main` in October, found faults in it: returns by per-stock row shift, a holding with no exit price dropped and the rest re-weighted, and a hold that is not the label the model was trained on. #340 reworks the engine. #339 (pull request #350) already makes the replay read its inputs from the run. Whether these faults move this run's figures has not been measured.
+> - **What stands:** the training-completion, PIT-breadth and prediction-integrity tables, and the validation ICs.
+
 ## Executive Summary
 
 The run clears the main methodological hurdle. It executed the frozen default
