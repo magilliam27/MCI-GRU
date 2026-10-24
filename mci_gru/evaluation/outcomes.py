@@ -19,50 +19,18 @@ module is the single answer they call:
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
-from mci_gru.data.preprocessing import resolve_labels
+from mci_gru.config import Legs
+from mci_gru.data.preprocessing import LabelResolution, resolve_labels
 
 if TYPE_CHECKING:
     from mci_gru.data.pit import PITMaskSet
-
-
-@dataclass(frozen=True)
-class Legs:
-    """Entry and exit sessions after signal date ``D``, both at the close."""
-
-    entry_session: int = 1
-    exit_session: int = 5
-
-    def __post_init__(self) -> None:
-        for name in ("entry_session", "exit_session"):
-            value = getattr(self, name)
-            if isinstance(value, bool) or not isinstance(value, int):
-                raise ValueError(f"{name} must be an integer session offset, got {value!r}")
-        if self.entry_session < 1:
-            raise ValueError(
-                f"entry_session must be >= 1, got {self.entry_session}: the signal uses "
-                "close D, so the earliest fill is close D+1"
-            )
-        if self.exit_session <= self.entry_session:
-            raise ValueError(
-                f"exit_session ({self.exit_session}) must be after entry_session "
-                f"({self.entry_session})"
-            )
-
-    @property
-    def hold_sessions(self) -> int:
-        """Close-to-close intervals the position is held for."""
-        return self.exit_session - self.entry_session
-
-    @classmethod
-    def from_label(cls, label_t: int) -> Legs:
-        """The training label's legs: close ``D+1`` to close ``D+label_t``."""
-        return cls(entry_session=1, exit_session=label_t)
 
 
 @dataclass(frozen=True)
@@ -80,11 +48,13 @@ class MissingCloseEvent:
 class RealizedReturns:
     """Booked return per ``(signal date, stock)`` under one set of legs.
 
-    Where both closes exist, ``returns`` is the training label's value. The E3 rules
-    apply to a stock with a close on the signal date (one that could have been
-    picked): a missing exit books the last close in the hold, a missing entry books
-    cash (0.0). Any other incomplete cell is NaN, as is every cell of a date whose
-    hold runs past the panel's last session.
+    Where both closes exist, ``returns`` is the training label's value, whether or
+    not the stock printed on the signal date. The E3 rules apply only to a stock with
+    a close on the signal date (one that could have been picked): a missing exit books
+    the last close in the hold, then cash to the exit (``booked_exit_dates`` names the
+    session booked); a missing entry books cash (0.0). A stock with no close on the
+    signal date and an incomplete label is NaN, as is every cell of a date whose hold
+    runs past the panel's last session.
     """
 
     dates: list[str]
@@ -114,10 +84,22 @@ def realized_returns(
         kdcodes = sorted(panel["kdcode"].astype(str).unique())
     kdcodes = list(kdcodes)
 
-    def at(offset: int):
-        # resolve_labels(label_t=k) reads the close at session D+k as its exit, on the
-        # same session axis the training label uses.
-        return resolve_labels(panel, kdcodes, dates, offset)
+    # The session axis comes from every name in the panel, never from the requested
+    # columns alone: a subset would rebuild the axis from its own rows, and a missing
+    # bar would then move an endpoint as a per-stock row shift does.
+    universe = sorted(set(panel["kdcode"].astype(str)) | set(kdcodes))
+    position = {kdcode: j for j, kdcode in enumerate(universe)}
+    columns = [position[kdcode] for kdcode in kdcodes]
+
+    def at(offset: int) -> LabelResolution:
+        # resolve_labels(label_t=k) reads the close at session D+k as its exit.
+        resolved = resolve_labels(panel, universe, dates, offset)
+        return dataclasses.replace(
+            resolved,
+            kdcodes=kdcodes,
+            entry_close=resolved.entry_close[:, columns],
+            exit_close=resolved.exit_close[:, columns],
+        )
 
     entry = at(legs.entry_session)
     exit_ = at(legs.exit_session)
@@ -192,7 +174,7 @@ def rankable(masks: PITMaskSet) -> np.ndarray:
 def order_by_score(scores: np.ndarray, kdcodes: list[str]) -> np.ndarray:
     """Indices by score descending, ties by kdcode ascending; NaN scores last."""
     arr = np.asarray(scores, dtype=np.float64)
-    keys = np.asarray(kdcodes, dtype=str)
+    keys = np.asarray(list(kdcodes))
     if arr.shape != keys.shape:
         raise ValueError(f"scores and kdcodes differ in shape: {arr.shape} != {keys.shape}")
     return np.lexsort((keys, -arr))
@@ -224,7 +206,10 @@ def top_k_tranche_returns(
     """Equal-weight booked return of each date's top-k tranche.
 
     Selection reads only scores and the rankable mask; what a pick returned never
-    decides whether it was picked. A date whose hold is unresolved is NaN.
+    decides whether it was picked. A date whose hold is unresolved is NaN. A pick
+    with no booked return (masks built from another panel) also makes its date NaN,
+    so the mismatch shows instead of being averaged away. The caller aligns the
+    rows and columns of ``scores`` and ``rankable_mask`` with ``realized``.
     """
     scores = np.asarray(scores, dtype=np.float64)
     mask = np.asarray(rankable_mask, dtype=bool)

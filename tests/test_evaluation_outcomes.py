@@ -7,6 +7,8 @@ the four rules it owns, on one small synthetic panel:
 * ``KEEP`` trades every session.
 * ``GAP`` has no bar on session 3, so per-stock row shifts and the session axis disagree.
 * ``DLST`` stops trading after session 4, inside the hold of earlier signal dates.
+* ``HALT`` misses sessions 4 and 6 and trades again on session 7, so "the last close
+  in the hold" and "the next close after the exit" give different answers.
 """
 
 from __future__ import annotations
@@ -19,12 +21,17 @@ import pandas as pd
 import pytest
 from omegaconf import OmegaConf
 
-from mci_gru.config import EvaluationConfig, ExperimentConfig, ModelConfig
+from mci_gru.config import (
+    EvaluationConfig,
+    ExperimentConfig,
+    Legs,
+    ModelConfig,
+    create_config_from_dict,
+)
 from mci_gru.data.pit import build_pit_masks
 from mci_gru.data.preprocessing import compute_labels
 from mci_gru.evaluation import portfolio
 from mci_gru.evaluation.outcomes import (
-    Legs,
     order_by_score,
     rankable,
     realized_returns,
@@ -34,14 +41,20 @@ from mci_gru.evaluation.outcomes import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SESSIONS = pd.bdate_range("2025-03-03", periods=10).strftime("%Y-%m-%d").tolist()
-KDCODES = ["DLST", "GAP", "KEEP"]
-DLST, GAP, KEEP = range(3)
+KDCODES = ["DLST", "GAP", "HALT", "KEEP"]
+DLST, GAP, HALT, KEEP = range(4)
 GAP_MISSING = 3
 DLST_LAST = 4
+HALT_MISSING = (4, 6)
 
 
 def _close(kdcode: str, i: int) -> float:
-    return {"KEEP": 100.0 + i, "GAP": 100.0 + 10.0 * i, "DLST": 50.0 - 5.0 * i}[kdcode]
+    return {
+        "KEEP": 100.0 + i,
+        "GAP": 100.0 + 10.0 * i,
+        "DLST": 50.0 - 5.0 * i,
+        "HALT": 200.0 + 7.0 * i,
+    }[kdcode]
 
 
 def _panel() -> pd.DataFrame:
@@ -52,6 +65,8 @@ def _panel() -> pd.DataFrame:
                 continue
             if kdcode == "DLST" and i > DLST_LAST:
                 continue
+            if kdcode == "HALT" and i in HALT_MISSING:
+                continue
             close = _close(kdcode, i)
             rows.append({"kdcode": kdcode, "dt": session, "open": close, "close": close})
     # Shuffled so nothing depends on the input's row order.
@@ -60,7 +75,11 @@ def _panel() -> pd.DataFrame:
 
 def _intervals() -> pd.DataFrame:
     return pd.DataFrame(
-        {"kdcode": KDCODES, "valid_from": ["2016-01-04"] * 3, "valid_to": ["2030-12-31"] * 3}
+        {
+            "kdcode": KDCODES,
+            "valid_from": ["2016-01-04"] * len(KDCODES),
+            "valid_to": ["2030-12-31"] * len(KDCODES),
+        }
     )
 
 
@@ -112,6 +131,31 @@ def test_missing_exit_books_the_last_available_close_and_records_the_event():
     assert event.kind == "missing_exit"
     assert event.scheduled_session == SESSIONS[6]
     assert event.booked_session == SESSIONS[DLST_LAST]
+
+
+def test_missing_exit_books_the_last_close_inside_the_hold_never_a_later_one():
+    out = realized_returns(_panel(), SESSIONS, Legs(), kdcodes=KDCODES)
+
+    # Signal on session 1: HALT is bought at session 2, has no close on session 4 or
+    # on its exit (session 6), and trades again on session 7. The last close inside
+    # the hold is session 5; session 7 is after the exit and is never read.
+    d = 1
+    assert out.returns[d, HALT] == _close("HALT", 5) / _close("HALT", 2) - 1.0
+    assert out.booked_exit_dates[d][HALT] == SESSIONS[5]
+    event = {(e.date, e.kdcode): e for e in out.events}[(SESSIONS[d], "HALT")]
+    assert (event.kind, event.booked_session) == ("missing_exit", SESSIONS[5])
+
+
+def test_the_session_axis_does_not_depend_on_which_columns_are_requested():
+    panel = _panel()
+    full = realized_returns(panel, SESSIONS, Legs(), kdcodes=KDCODES)
+    alone = realized_returns(panel, SESSIONS, Legs(), kdcodes=["GAP"])
+
+    # Asked for GAP alone, the axis must still include session 3 (GAP's missing bar),
+    # or every endpoint across it would shift by a session.
+    assert alone.exit_dates == full.exit_dates
+    np.testing.assert_array_equal(alone.returns[:, 0], full.returns[:, GAP])
+    assert alone.returns[1, 0] == _close("GAP", 6) / _close("GAP", 2) - 1.0
 
 
 def test_missing_entry_close_holds_cash_and_records_the_event():
@@ -174,13 +218,14 @@ def test_a_top_pick_that_stops_trading_keeps_its_slot_and_books_its_loss():
     sample = SESSIONS[1:]
     masks = build_pit_masks(panel, panel, KDCODES, sample, 1, 5, _intervals())
     out = realized_returns(panel, sample, Legs(), kdcodes=KDCODES)
-    scores = np.tile(np.array([0.9, 0.1, 0.5]), (len(sample), 1))  # DLST ranked first
+    # DLST ranked first, KEEP second.
+    scores = np.tile(np.array([0.9, 0.1, 0.05, 0.5]), (len(sample), 1))
 
     d = sample.index(SESSIONS[1])
     tranche = top_k_tranche_returns(scores, rankable(masks), out, top_k=2)
-    expected = (out.returns[d, DLST] + out.returns[d, KEEP]) / 2
-    assert out.returns[d, DLST] < 0
-    assert tranche[d] == pytest.approx(expected)
+    dlst = _close("DLST", 4) / _close("DLST", 2) - 1.0  # -0.25, booked at its last close
+    keep = _close("KEEP", 6) / _close("KEEP", 2) - 1.0
+    assert tranche[d] == pytest.approx((dlst + keep) / 2)
 
     # Session 1 is the first sample date; once its hold runs past the panel end, the
     # date is unresolved rather than averaged over whoever happens to have a close.
@@ -220,6 +265,17 @@ def test_tie_order_does_not_depend_on_column_order():
     assert picks == ["X.N", "GOOG.OQ", "GOOGL.OQ", "MA.N"]
 
 
+def test_unscored_names_order_last():
+    scores = np.array([np.nan, 0.5, np.nan, 0.5])
+    kd = ["D", "C", "A", "B"]
+    order = [kd[i] for i in order_by_score(scores, kd)]
+    assert order[:2] == ["B", "C"]
+    assert set(order[2:]) == {"A", "D"}
+    ranked = portfolio.rank_scores(pd.DataFrame({"kdcode": kd, "score": scores}))
+    assert ranked["kdcode"].tolist()[:2] == ["B", "C"]
+    assert ranked["score"].iloc[2:].isna().all()
+
+
 def test_unscored_and_unrankable_names_are_never_selected():
     scores = np.array([np.nan, 0.5, 0.4, 0.3])
     kd = ["A", "B", "C", "D"]
@@ -246,13 +302,16 @@ def test_evaluation_legs_and_tranches_default_to_the_training_label():
     cfg = EvaluationConfig()
     assert cfg.legs is None
     assert cfg.tranches is None
-    assert cfg.resolved_legs(label_t=5) == (1, 5)
+    assert cfg.resolved_legs(label_t=5) == Legs(1, 5)
     assert cfg.resolved_tranches(label_t=5) == 4
-    assert cfg.resolved_legs(label_t=10) == (1, 10)
+    assert cfg.resolved_legs(label_t=10) == Legs(1, 10)
 
-    explicit = EvaluationConfig(legs={"entry_session": 1, "exit_session": 5}, tranches=2)
-    assert explicit.resolved_legs(label_t=10) == (1, 5)
+    explicit = EvaluationConfig(legs={"entry_session": 2, "exit_session": 6}, tranches=2)
+    assert explicit.resolved_legs(label_t=10) == Legs(2, 6)
     assert explicit.resolved_tranches(label_t=10) == 2
+    assert explicit.resolved_tranches(label_t=10) != EvaluationConfig(
+        legs={"entry_session": 2, "exit_session": 6}
+    ).resolved_tranches(label_t=10)
 
 
 @pytest.mark.parametrize(
@@ -280,6 +339,34 @@ def test_tranches_must_divide_the_hold_the_label_implies():
         ExperimentConfig(model=ModelConfig(label_t=5), evaluation=EvaluationConfig(tranches=3))
     ok = ExperimentConfig(model=ModelConfig(label_t=5), evaluation=EvaluationConfig(tranches=2))
     assert ok.evaluation.resolved_tranches(ok.model.label_t) == 2
+
+    # Explicit legs: close D+1 to close D+7 is a six-session hold.
+    seven = ModelConfig(label_t=7)
+    legs = {"entry_session": 1, "exit_session": 7}
+    with pytest.raises(ValueError, match="tranches"):
+        ExperimentConfig(model=seven, evaluation=EvaluationConfig(legs=legs, tranches=4))
+    ExperimentConfig(model=seven, evaluation=EvaluationConfig(legs=legs, tranches=3))
+
+
+def test_legs_may_not_exit_past_the_embargoed_label_horizon():
+    legs = {"entry_session": 1, "exit_session": 6}
+    with pytest.raises(ValueError, match="label_t"):
+        ExperimentConfig(model=ModelConfig(label_t=5), evaluation=EvaluationConfig(legs=legs))
+    shorter = {"entry_session": 2, "exit_session": 5}
+    ExperimentConfig(model=ModelConfig(label_t=5), evaluation=EvaluationConfig(legs=shorter))
+
+
+def test_legs_and_tranches_survive_the_hydra_construction_paths():
+    section = OmegaConf.create(
+        {"legs": {"entry_session": 1, "exit_session": 5}, "tranches": 2, "top_k_values": [10]}
+    )
+    from_dict = create_config_from_dict({"evaluation": OmegaConf.to_container(section)})
+    assert from_dict.evaluation.resolved_legs(from_dict.model.label_t) == Legs(1, 5)
+    assert from_dict.evaluation.tranches == 2
+
+    from_dictconfig = ExperimentConfig(evaluation=section)
+    assert isinstance(from_dictconfig.evaluation, EvaluationConfig)
+    assert from_dictconfig.evaluation.legs == {"entry_session": 1, "exit_session": 5}
 
 
 def test_unknown_evaluation_key_is_rejected():

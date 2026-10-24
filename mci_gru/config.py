@@ -953,6 +953,44 @@ class TrainingConfig:
             raise ValueError("warmup_steps must be >= 0")
 
 
+@dataclass(frozen=True)
+class Legs:
+    """Entry and exit sessions after signal date ``D``, both at the close (#335).
+
+    The training label's legs are close ``D+1`` to close ``D+label_t``. Sessions count
+    on the panel's own trading-date axis, as the label does.
+    """
+
+    entry_session: int = 1
+    exit_session: int = 5
+
+    def __post_init__(self) -> None:
+        for name in ("entry_session", "exit_session"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"legs.{name} must be an integer session offset, got {value!r}")
+        if self.entry_session < 1:
+            raise ValueError(
+                f"legs.entry_session must be >= 1, got {self.entry_session}: the signal "
+                "uses close D, so the earliest fill is close D+1"
+            )
+        if self.exit_session <= self.entry_session:
+            raise ValueError(
+                f"legs.exit_session ({self.exit_session}) must be after entry_session "
+                f"({self.entry_session})"
+            )
+
+    @property
+    def hold_sessions(self) -> int:
+        """Close-to-close intervals the position is held for."""
+        return self.exit_session - self.entry_session
+
+    @classmethod
+    def from_label(cls, label_t: int) -> "Legs":
+        """The training label's legs: close ``D+1`` to close ``D+label_t``."""
+        return cls(entry_session=1, exit_session=label_t)
+
+
 @dataclass
 class EvaluationConfig:
     """Evaluation and statistical confidence configuration."""
@@ -966,8 +1004,9 @@ class EvaluationConfig:
     sharpe_method: str = "newey_west"
     newey_west_lags: int | None = None
     # Realized-return legs (#335): {"entry_session": e, "exit_session": x}, both at the
-    # close, in sessions after signal date D. None follows the training label: close
-    # D+1 to close D+model.label_t.
+    # close, in sessions after signal date D; exit_session may not pass model.label_t,
+    # the horizon the split embargo is sized for. None follows the training label:
+    # close D+1 to close D+model.label_t.
     legs: dict[str, int] | None = None
     # Staggered tranches across the hold; must divide its session count. None is one
     # tranche per held session (4 under the default legs).
@@ -1016,32 +1055,20 @@ class EvaluationConfig:
                 f"unknown {sorted(keys - set(cls._LEG_KEYS))}, "
                 f"missing {sorted(set(cls._LEG_KEYS) - keys)}"
             )
-        for key in cls._LEG_KEYS:
-            value = legs[key]
-            if isinstance(value, bool) or not isinstance(value, int):
-                raise ValueError(f"evaluation.legs.{key} must be an integer, got {value!r}")
-        entry, exit_ = legs["entry_session"], legs["exit_session"]
-        if entry < 1:
-            raise ValueError(
-                f"evaluation.legs.entry_session must be >= 1, got {entry}: the signal "
-                "uses close D, so the earliest fill is close D+1"
-            )
-        if exit_ <= entry:
-            raise ValueError(
-                f"evaluation.legs.exit_session ({exit_}) must be after entry_session ({entry})"
-            )
-        return {key: int(legs[key]) for key in cls._LEG_KEYS}
+        Legs(**{key: legs[key] for key in cls._LEG_KEYS})
+        return {key: legs[key] for key in cls._LEG_KEYS}
 
-    def resolved_legs(self, label_t: int) -> tuple[int, int]:
-        """(entry_session, exit_session); the training label's legs when unset."""
+    def resolved_legs(self, label_t: int) -> Legs:
+        """The configured legs, or the training label's when unset."""
         if self.legs is None:
-            return (1, label_t)
-        return (self.legs["entry_session"], self.legs["exit_session"])
+            return Legs.from_label(label_t)
+        return Legs(**self.legs)
 
     def resolved_tranches(self, label_t: int) -> int:
         """Tranche count; one per held session when unset."""
-        entry, exit_ = self.resolved_legs(label_t)
-        return exit_ - entry if self.tranches is None else self.tranches
+        if self.tranches is None:
+            return self.resolved_legs(label_t).hold_sessions
+        return self.tranches
 
 
 @dataclass
@@ -1099,21 +1126,28 @@ class ExperimentConfig:
     seed: int = 1729
 
     def __post_init__(self) -> None:
-        if isinstance(self.evaluation, dict):
+        if isinstance(self.evaluation, Mapping):
             self.evaluation = EvaluationConfig(**self.evaluation)
         self._validate_embargo()
         self._validate_sector_relation()
         self._validate_evaluation_tranches()
 
     def _validate_evaluation_tranches(self) -> None:
-        """Tranches enter on evenly spaced sessions, so their count must divide the hold."""
-        entry, exit_ = self.evaluation.resolved_legs(self.model.label_t)
-        hold = exit_ - entry
-        tranches = self.evaluation.resolved_tranches(self.model.label_t)
-        if hold % tranches:
+        """Legs stay inside the embargoed horizon; tranches evenly divide the hold."""
+        label_t = self.model.label_t
+        legs = self.evaluation.resolved_legs(label_t)
+        if legs.exit_session > label_t:
             raise ValueError(
-                f"evaluation.tranches ({tranches}) must divide the hold of {hold} sessions "
-                f"(close D+{entry} to close D+{exit_})"
+                f"evaluation.legs.exit_session ({legs.exit_session}) must be <= "
+                f"model.label_t ({label_t}): the split embargo is sized for label_t, so a "
+                "later exit would read closes from the next split"
+            )
+        tranches = self.evaluation.resolved_tranches(label_t)
+        if legs.hold_sessions % tranches:
+            raise ValueError(
+                f"evaluation.tranches ({tranches}) must divide the hold of "
+                f"{legs.hold_sessions} sessions (close D+{legs.entry_session} to close "
+                f"D+{legs.exit_session})"
             )
 
     def _validate_sector_relation(self) -> None:
@@ -1244,8 +1278,8 @@ class ExperimentConfig:
             "evaluation.bootstrap_enabled": self.evaluation.bootstrap_enabled,
             "evaluation.bootstrap_resamples": self.evaluation.bootstrap_resamples,
             "evaluation.ci_level": self.evaluation.ci_level,
-            "evaluation.legs": str(self.evaluation.legs),
-            "evaluation.tranches": self.evaluation.tranches,
+            "evaluation.legs": str(self.evaluation.resolved_legs(self.model.label_t)),
+            "evaluation.tranches": self.evaluation.resolved_tranches(self.model.label_t),
             # Tracking
             "tracking.enabled": self.tracking.enabled,
             "tracking.tracking_uri": self.tracking.tracking_uri,

@@ -18,7 +18,7 @@ def rank_scores(scores_df: pd.DataFrame) -> pd.DataFrame:
     missing = required - set(scores_df.columns)
     if missing:
         raise ValueError(f"Scores DataFrame missing columns: {sorted(missing)}")
-    order = outcomes.order_by_score(scores_df["score"].to_numpy(), scores_df["kdcode"].astype(str))
+    order = outcomes.order_by_score(scores_df["score"].to_numpy(), scores_df["kdcode"])
     ranked = scores_df.iloc[order].reset_index(drop=True)
     ranked["rank"] = np.arange(1, len(ranked) + 1, dtype=int)
     return ranked
