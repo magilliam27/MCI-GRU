@@ -81,11 +81,12 @@ def test_issue29_all_seeds_row_counts_each_date_once() -> None:
     three = pd.concat([_seed_daily_frame(excess, seed, dates) for seed in seeds], ignore_index=True)
 
     single = fns["pooled_significance_row"](one, "replication_seed_314159")
-    pooled = fns["all_seeds_significance_row"](three, "replication_all_seeds")
+    pooled = fns["all_seeds_significance_row"](three, "replication_all_seeds", expected_seeds=3)
 
     assert pooled["n_days"] == dates.size
     assert pooled["n_seeds"] == 3
     assert pooled["min_seeds_per_date"] == 3
+    assert pooled["all_seeds_complete"] is True
     for key in (
         "mean_daily_excess_return",
         "information_ratio",
@@ -111,11 +112,28 @@ def test_issue29_all_seeds_row_averages_seeds_per_date() -> None:
     expected = fns["pooled_significance_row"](
         pd.DataFrame({"date": dates, "excess_return": averaged}), "expected"
     )
-    pooled = fns["all_seeds_significance_row"](three, "replication_all_seeds")
+    pooled = fns["all_seeds_significance_row"](three, "replication_all_seeds", expected_seeds=3)
 
     assert pooled["n_days"] == dates.size
     assert pooled["newey_west_t_stat"] == pytest.approx(expected["newey_west_t_stat"], rel=1e-12)
     assert pooled["mean_daily_excess_return"] == pytest.approx(float(np.mean(averaged)), rel=1e-12)
+
+
+def test_issue29_all_seeds_row_flags_a_missing_seed() -> None:
+    """A seed absent on some dates is reported, not silently averaged as complete (#357)."""
+    fns = _notebook_functions(*_SIGNIFICANCE_FUNCTIONS)
+    dates = pd.bdate_range("2025-01-02", periods=60)
+    excess = np.linspace(-0.005, 0.01, dates.size)
+    frames = [_seed_daily_frame(excess, seed, dates) for seed in (1, 2)]
+    frames.append(_seed_daily_frame(excess[:30], 3, dates[:30]))
+    pooled = fns["all_seeds_significance_row"](
+        pd.concat(frames, ignore_index=True), "replication_all_seeds", expected_seeds=3
+    )
+
+    assert pooled["n_days"] == dates.size
+    assert pooled["n_seeds"] == 3
+    assert pooled["min_seeds_per_date"] == 2
+    assert pooled["all_seeds_complete"] is False
 
 
 def test_issue29_pooled_significance_refuses_repeated_dates() -> None:
@@ -128,14 +146,18 @@ def test_issue29_pooled_significance_refuses_repeated_dates() -> None:
     )
     with pytest.raises(ValueError, match="repeats dates"):
         fns["pooled_significance_row"](stacked, "stacked")
+    with pytest.raises(ValueError, match="no date column"):
+        fns["pooled_significance_row"](stacked.drop(columns="date"), "undated")
 
 
 def test_issue29_replication_all_seeds_uses_per_date_average() -> None:
+    """The notebook builds replication_all_seeds from the per-date seed average (#357)."""
     generator = GENERATOR_PATH.read_text(encoding="utf-8")
     combined = "\n".join(_cell_sources())
     for text in (generator, combined):
-        assert "all_seeds_significance_row(replication_daily_df, 'replication_all_seeds')" in text
-        assert "pooled_significance_row(replication_daily_df" not in text
+        flat = " ".join(text.split())
+        assert "all_seeds_significance_row( replication_daily_df, 'replication_all_seeds'," in flat
+        assert "pooled_significance_row(replication_daily_df" not in flat
 
 
 def test_issue31_notebook_pins_repeated_seed_full_pit_replication() -> None:
