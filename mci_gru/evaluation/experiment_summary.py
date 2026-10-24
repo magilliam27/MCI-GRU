@@ -1,7 +1,7 @@
 """Experiment-level evaluation summary helpers.
 
 Moved from ``run_experiment.py`` so the research policy they encode
-(Newey-West lag defaults derived from ``label_t``, the selection-metric
+(the evaluation defaults derived from ``label_t``, the selection-metric
 key mapping) lives in the package where it is importable and unit-testable.
 """
 
@@ -14,10 +14,11 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 import numpy as np
+import pandas as pd
 
 from mci_gru.config import ExperimentConfig
 from mci_gru.evaluation.artifacts import write_json_artifact
-from mci_gru.training import evaluate_predictions
+from mci_gru.evaluation.metrics import evaluate_run
 
 RESOLVED_CONFIG_FILENAME = "resolved_config.json"
 REDACTED_ABSOLUTE_PATH = "<ABSOLUTE_PATH>"
@@ -139,17 +140,24 @@ def build_run_metadata(
 
 def resolved_evaluation_kwargs(config: ExperimentConfig) -> dict[str, Any]:
     eval_cfg = config.evaluation
+    label_t = config.model.label_t
+    legs = eval_cfg.resolved_legs(label_t)
     return {
         "top_k_values": eval_cfg.top_k_values,
-        "label_t": config.model.label_t,
+        "label_t": label_t,
+        "legs": legs,
+        "tranches": eval_cfg.resolved_tranches(label_t),
+        "sharpe_method": eval_cfg.sharpe_method,
         "bootstrap_enabled": eval_cfg.bootstrap_enabled,
         "bootstrap_resamples": eval_cfg.bootstrap_resamples,
         "bootstrap_seed": eval_cfg.bootstrap_seed,
         "ci_level": eval_cfg.ci_level,
-        "block_size": eval_cfg.block_size or max(1, config.model.label_t),
+        "block_size": eval_cfg.block_size or max(1, label_t),
+        # Lags for the Sharpe of the daily book. The label spans hold_sessions
+        # close-to-close intervals (label_t - 1), not label_t.
         "newey_west_lags": eval_cfg.newey_west_lags
         if eval_cfg.newey_west_lags is not None
-        else max(0, config.model.label_t - 1),
+        else max(0, legs.hold_sessions - 1),
     }
 
 
@@ -157,17 +165,26 @@ def compute_evaluation_summary(
     predictions: np.ndarray,
     labels: np.ndarray,
     config: ExperimentConfig,
+    *,
+    panel: pd.DataFrame,
+    dates: list[str],
+    kdcodes: list[str],
+    rankable_mask: np.ndarray | None,
 ) -> dict[str, Any]:
-    metrics = evaluate_predictions(
+    """One window's ``evaluation_summary.json`` (schema v2, #336).
+
+    IC is scored against ``labels``, the training labels; every portfolio number is
+    the staggered tranche book on ``panel``'s closes. See ``evaluate_run``.
+    """
+    return evaluate_run(
         predictions,
         labels,
+        panel=panel,
+        dates=dates,
+        kdcodes=kdcodes,
+        rankable_mask=rankable_mask,
         **resolved_evaluation_kwargs(config),
     )
-    return {
-        "label_t": config.model.label_t,
-        "top_k_values": config.evaluation.top_k_values,
-        "metrics": metrics,
-    }
 
 
 def linked_pairs(edge_index: Any) -> np.ndarray:

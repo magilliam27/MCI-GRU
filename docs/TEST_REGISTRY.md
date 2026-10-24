@@ -1508,6 +1508,38 @@ Issue 131: how ``gru_attn`` reads ``model.gru_hidden_sizes``.
 | `test_model_config_validates_and_serialises_the_setting` |  |  |
 | `test_encoder_rejects_an_unknown_layer_widths_value` |  |  |
 
+## `tests/test_in_run_summary.py`
+
+The in-run summary measures a tradable book and nets the universe (#336).
+
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation.experiment_summary`, `mci_gru.evaluation.metrics`, `mci_gru.evaluation.outcomes`, `mci_gru.evaluation.statistics`, `mci_gru.evaluation.tranche_book`, `run_experiment`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_hansen_hodrick_std_gives_every_lag_up_to_the_span_full_weight` |  |  |
+| `test_hansen_hodrick_std_floors_a_negative_variance_at_zero` |  |  |
+| `test_hansen_hodrick_inference_takes_its_lags_from_the_outcome_span` |  |  |
+| `test_the_hansen_hodrick_t_stat_holds_its_size_on_overlapping_returns` | Zero-mean 4-session returns sampled daily: |t| > 1.96 about 5% of the time. |  |
+| `test_the_book_rolls_each_sleeve_and_never_re_equalises_them` | One stock, two-session hold, two sleeves: worked out by hand. |  |
+| `test_a_tranche_that_loses_its_exit_books_the_last_close_as_the_core_does` | A pick that stops trading mid-hold is held at its last close, then cash (E3). |  |
+| `test_the_book_sharpe_matches_a_known_daily_sharpe_on_overlapping_labels` | Identical stocks: every book earns the market each session, so its Sharpe is known. |  |
+| `test_cumulative_return_compounds_the_daily_book` | One sleeve, fully invested from first entry to last exit: exactly the market. |  |
+| `test_random_scores_on_a_rising_market_have_no_excess` |  |  |
+| `test_scores_that_know_the_outcome_show_excess_with_a_large_t_stat` |  |  |
+| `test_every_k_comes_from_top_k_values_and_nets_the_universe_by_hand` | Six names, k of 2 and 3: the excess is the picks' mean minus all six. |  |
+| `test_a_name_outside_the_rankable_set_is_never_bought` |  |  |
+| `test_the_universe_benchmark_uses_the_same_mask_as_the_picks` | A soaring name outside the mask is in neither the picks nor the benchmark. |  |
+| `test_a_window_with_no_resolved_hold_reports_nan_not_zero` |  |  |
+| `test_missing_close_events_count_only_names_that_could_be_held` |  |  |
+| `test_the_summary_labels_its_basis_and_drops_metrics_an_ic_loss_leaves_arbitrary` |  |  |
+| `test_ic_and_rank_ic_are_unchanged_by_the_new_summary` | Control: the per-date IC means and their bootstrap CIs, recomputed independently. |  |
+| `test_ic_date_coverage_counts_dates_that_could_not_be_scored` |  |  |
+| `test_quintiles_split_the_cross_section_evenly` | Twelve names in five quintiles are 2, 2, 2, 3, 3 from the bottom, not 2, 2, 2, 2, 4. |  |
+| `test_sharpe_method_is_honoured_on_the_daily_book` |  |  |
+| `test_the_config_drives_legs_tranches_and_lags` |  |  |
+| `test_the_runner_scores_the_book_on_the_panel_it_trained_on` |  |  |
+| `test_the_runner_writes_the_v2_summary` |  |  |
+
 ## `tests/test_index_level_mode.py`
 
 Tests for index-level experiment mode (no stock-level survivorship bias).

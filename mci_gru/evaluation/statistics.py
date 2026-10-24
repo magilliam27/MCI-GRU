@@ -245,7 +245,14 @@ def newey_west_std(values: np.ndarray, lags: int) -> float:
 
 
 def hansen_hodrick_std(values: np.ndarray, lags: int) -> float:
-    """Long-run standard deviation with uniform (Hansen-Hodrick) weights on lags 1..lags."""
+    """Long-run standard deviation with uniform (Hansen-Hodrick) weights on lags 1..``lags``.
+
+    The right estimator for a dated series of ``h``-session returns sampled every
+    session: the overlap makes the first ``h - 1`` autocovariances real and the rest
+    zero, so each gets full weight. Bartlett weights would discount them and leave the
+    variance too small. The variance is floored at zero, since uniform weights do not
+    guarantee a positive estimate.
+    """
     x = np.asarray(values, dtype=np.float64)
     x = x[np.isfinite(x)]
     if lags < 0:
@@ -261,8 +268,16 @@ def hansen_hodrick_std(values: np.ndarray, lags: int) -> float:
     return float(np.sqrt(max(variance, 0.0)))
 
 
-def hansen_hodrick_mean_inference(values: np.ndarray, *, label_horizon: int) -> HACMeanInference:
-    """Mean inference with uniform HAC weights; ``label_horizon`` is the sessions spanned."""
+def hansen_hodrick_mean_inference(
+    values: np.ndarray,
+    *,
+    label_horizon: int,
+) -> HACMeanInference:
+    """Mean of a dated series of overlapping ``label_horizon``-session outcomes, HH t-stat.
+
+    Lags are ``label_horizon - 1``, the overlap the outcomes really have. The standard
+    error, t-stat and p-value are None when the estimated variance is not positive.
+    """
     if label_horizon <= 0:
         raise ValueError("label_horizon must be > 0")
     x = np.asarray(values, dtype=np.float64)
@@ -270,18 +285,19 @@ def hansen_hodrick_mean_inference(values: np.ndarray, *, label_horizon: int) -> 
         raise ValueError("values must be 1-D")
     if not np.all(np.isfinite(x)):
         raise ValueError("values must contain only finite observations")
+
     lags = label_horizon - 1
+    method = "hansen_hodrick_uniform_v1"
     if x.size == 0:
-        return HACMeanInference("hansen_hodrick_uniform_v1", 0, None, lags, None, None, None)
+        return HACMeanInference(method, 0, None, lags, None, None, None)
+
     mean_value = float(np.mean(x))
     standard_error = hansen_hodrick_std(x, lags=lags) / math.sqrt(x.size)
     if standard_error <= 0.0 or not np.isfinite(standard_error):
-        return HACMeanInference(
-            "hansen_hodrick_uniform_v1", int(x.size), mean_value, lags, None, None, None
-        )
+        return HACMeanInference(method, int(x.size), mean_value, lags, None, None, None)
     t_stat = float(mean_value / standard_error)
     return HACMeanInference(
-        method="hansen_hodrick_uniform_v1",
+        method=method,
         n_obs=int(x.size),
         mean=mean_value,
         lags=lags,
