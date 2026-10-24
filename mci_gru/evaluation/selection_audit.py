@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from mci_gru.config import Legs
 from mci_gru.data.pit import (
     PITKnowledgeClass,
     classify_pit_knowledge_as_of,
@@ -27,6 +28,7 @@ from mci_gru.evaluation.artifacts import (
     write_json_artifact,
     write_selection_research_bundle,
 )
+from mci_gru.evaluation.outcomes import realized_returns
 from mci_gru.evaluation.portfolio import top_k_returns
 from mci_gru.evaluation.prediction_report import (
     align_prediction_comparison,
@@ -46,6 +48,7 @@ from mci_gru.evaluation.statistics import (
     moving_block_bootstrap_ci,
     moving_block_mean_ci,
 )
+from mci_gru.evaluation.tranche_book import TrancheBook, signal_date_closes, tranche_book
 from mci_gru.evaluation.trial_ledger import validate_trial_family
 
 MIN_RESEARCH_NULL_DRAWS = 1_000
@@ -1235,6 +1238,7 @@ def build_selection_audit(
         p_value = None
         bootstrap_ci = None
     top_k_return_map = _top_k_return_map(score_matrix, return_matrix, top_k_values)
+    books = _daily_books(predictions, market_data, label_t=label_t, top_k_values=top_k_values)
     reasons = _insufficient_evidence_reasons(
         aligned,
         valid_spearman_count=valid_spearman_count,
@@ -1264,9 +1268,15 @@ def build_selection_audit(
             "spearman_bootstrap_ci": bootstrap_ci,
         },
         "top_k": _top_k_summary(top_k_return_map),
+        # On the daily P&L of the staggered top-k book: the overlapping label returns
+        # annualised as daily doubled the Sharpe and its z-stat (#342).
         "deflated_sharpe": {
-            str(top_k): deflated_sharpe_ratio(returns, trial_count=trial_count)
-            for top_k, returns in top_k_return_map.items()
+            str(top_k): {
+                **deflated_sharpe_ratio(book.daily_returns, trial_count=trial_count),
+                "return_basis": "daily_tranche_book",
+                "tranches": book.tranches,
+            }
+            for top_k, book in books.items()
         },
         "multiple_testing": {
             "method": "bhy_single_family_v0",
@@ -1354,6 +1364,45 @@ def write_selection_audit(
     out_dir = Path(output_dir)
     path = out_dir / "selection_audit_summary.json"
     return write_json_artifact(path, audit, force=force)
+
+
+def _daily_books(
+    predictions: pd.DataFrame,
+    market_data: pd.DataFrame,
+    *,
+    label_t: int,
+    top_k_values: list[int],
+) -> dict[int, TrancheBook]:
+    """The staggered top-k book on the market's closes, one per k (#336's book).
+
+    Picks read only the saved scores; a name is rankable on a date it was scored and
+    printed a close. One tranche opens per signal date, so the book has as many
+    sleeves as the label has hold sessions.
+    """
+    legs = Legs(entry_session=1, exit_session=label_t)
+    panel = market_data[["kdcode", "dt", "close"]].copy()
+    panel["dt"] = pd.to_datetime(panel["dt"]).dt.strftime("%Y-%m-%d")
+    panel["kdcode"] = panel["kdcode"].astype(str)
+    scored = predictions[["dt", "kdcode", "score"]].copy()
+    scored["dt"] = pd.to_datetime(scored["dt"]).dt.strftime("%Y-%m-%d")
+    scored["kdcode"] = scored["kdcode"].astype(str)
+    dates = sorted(set(scored["dt"]) & set(panel["dt"]))
+    kdcodes = sorted(set(scored["kdcode"]) & set(panel["kdcode"]))
+    if not dates or not kdcodes:
+        return {}
+    scores = (
+        scored.pivot_table(index="dt", columns="kdcode", values="score", aggfunc="first")
+        .reindex(index=dates, columns=kdcodes)
+        .to_numpy(dtype=np.float64)
+    )
+    realized = realized_returns(panel, dates, legs, kdcodes=kdcodes)
+    rankable = np.isfinite(scores) & signal_date_closes(panel, realized)
+    return {
+        int(top_k): tranche_book(
+            panel, scores, rankable, realized, top_k=int(top_k), tranches=legs.hold_sessions
+        )
+        for top_k in top_k_values
+    }
 
 
 def _pivot(frame: pd.DataFrame, value_col: str) -> np.ndarray:

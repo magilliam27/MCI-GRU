@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 from mci_gru.config import Legs
-from mci_gru.evaluation.metrics import evaluate_predictions
+from mci_gru.evaluation.metrics import compute_ic_metrics, evaluate_run
 from mci_gru.evaluation.outcomes import realized_returns
 
 KEY_COLUMNS = ["dt", "kdcode"]
@@ -113,9 +113,18 @@ def compute_tsfm_prediction_report(
     aligned_predictions: pd.DataFrame,
     model_score_columns: list[str] | None = None,
     top_k_values: list[int] | None = None,
-    label_t: int = 1,
+    label_t: int = 5,
+    panel: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
-    """Compute a repeatable TSFM-style report from an already aligned comparison frame."""
+    """Compute a repeatable TSFM-style report from an already aligned comparison frame.
+
+    IC is scored against ``realized_return``. Portfolio numbers come from the in-run
+    summary's staggered tranche book (``evaluate_run``, #336) on ``panel``'s closes
+    (``kdcode``, ``dt``, ``close``), with a name rankable where the model scored it.
+    Without a panel there are no portfolio numbers: the matrix-only Sharpe and
+    cumulative return this report used to print treated overlapping returns as daily
+    (#342).
+    """
     if "realized_return" not in aligned_predictions.columns:
         raise ValueError("aligned_predictions must include 'realized_return'")
 
@@ -146,12 +155,14 @@ def compute_tsfm_prediction_report(
             score_col=score_col,
             top_k_values=top_k_values,
             label_t=label_t,
+            panel=panel,
         )
         report["yearly_decay"][model_name] = _yearly_metrics(
             scored,
             score_col=score_col,
             top_k_values=top_k_values,
             label_t=label_t,
+            panel=panel,
         )
 
     return report
@@ -254,6 +265,7 @@ def write_tsfm_prediction_report(
         model_score_columns=model_score_columns,
         top_k_values=top_k_values,
         label_t=label_t,
+        panel=market_data,
     )
 
     out_dir = Path(output_dir)
@@ -364,6 +376,7 @@ def _model_metrics(
     score_col: str,
     top_k_values: list[int] | None,
     label_t: int,
+    panel: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
     pred = frame[score_col].to_numpy(dtype=np.float64)
     ret = frame["realized_return"].to_numpy(dtype=np.float64)
@@ -375,15 +388,35 @@ def _model_metrics(
     }
     metrics.update(compute_sign_metrics(pred, ret))
 
-    prediction_matrix, return_matrix = _to_aligned_matrices(frame, score_col)
-    ranking_metrics = evaluate_predictions(
+    dates, kdcodes, prediction_matrix, return_matrix = _to_aligned_matrices(frame, score_col)
+    if panel is None:
+        metrics.update(compute_ic_metrics(prediction_matrix, return_matrix, label_t=label_t))
+        metrics["portfolio_basis"] = "NOT_COMPUTED_WITHOUT_PANEL"
+        return _json_ready(metrics)
+
+    legs = Legs(entry_session=1, exit_session=label_t)
+    summary = evaluate_run(
         prediction_matrix,
         return_matrix,
-        top_k_values=top_k_values,
+        panel=_close_panel(panel),
+        dates=dates,
+        kdcodes=kdcodes,
+        rankable_mask=np.isfinite(prediction_matrix),
+        legs=legs,
+        tranches=legs.hold_sessions,
+        top_k_values=top_k_values or [10, 20, 50],
         label_t=label_t,
     )
-    metrics.update(ranking_metrics)
+    metrics.update(summary["metrics"])
+    metrics["portfolio_basis"] = "DAILY_TRANCHE_BOOK"
     return _json_ready(metrics)
+
+
+def _close_panel(panel: pd.DataFrame) -> pd.DataFrame:
+    closes = panel.loc[:, ["kdcode", "dt", "close"]].copy()
+    closes["dt"] = pd.to_datetime(closes["dt"]).dt.strftime("%Y-%m-%d")
+    closes["kdcode"] = closes["kdcode"].astype(str)
+    return closes
 
 
 def _yearly_metrics(
@@ -391,6 +424,7 @@ def _yearly_metrics(
     score_col: str,
     top_k_values: list[int] | None,
     label_t: int,
+    panel: pd.DataFrame | None = None,
 ) -> list[dict[str, Any]]:
     dated = frame.copy()
     dated["year"] = pd.to_datetime(dated["dt"]).dt.year
@@ -403,18 +437,27 @@ def _yearly_metrics(
                 score_col=score_col,
                 top_k_values=top_k_values,
                 label_t=label_t,
+                panel=panel,
             )
         )
         rows.append(row)
     return rows
 
 
-def _to_aligned_matrices(frame: pd.DataFrame, score_col: str) -> tuple[np.ndarray, np.ndarray]:
+def _to_aligned_matrices(
+    frame: pd.DataFrame, score_col: str
+) -> tuple[list[str], list[str], np.ndarray, np.ndarray]:
     predictions = frame.pivot(index="dt", columns="kdcode", values=score_col).sort_index()
+    predictions = predictions.reindex(columns=sorted(predictions.columns))
     returns = frame.pivot(index="dt", columns="kdcode", values="realized_return").reindex_like(
         predictions
     )
-    return predictions.to_numpy(dtype=np.float64), returns.to_numpy(dtype=np.float64)
+    return (
+        [str(day) for day in predictions.index],
+        [str(code) for code in predictions.columns],
+        predictions.to_numpy(dtype=np.float64),
+        returns.to_numpy(dtype=np.float64),
+    )
 
 
 def _json_ready(value: Any) -> Any:

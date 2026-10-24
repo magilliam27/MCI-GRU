@@ -210,7 +210,45 @@ def test_saved_prediction_report_runs_without_training(tmp_path) -> None:
 
     assert result["report"]["comparison"]["aligned_observations"] == 4
     assert set(result["report"]["models"]) == {"mci_gru", "baseline"}
+    # The writer hands the report its market panel, so the book is built (#342).
+    assert result["report"]["models"]["mci_gru"]["portfolio_basis"] == "DAILY_TRANCHE_BOOK"
     assert (output_dir / "tsfm_prediction_report.json").is_file()
     assert (output_dir / "tsfm_prediction_report.md").is_file()
     assert (output_dir / "tsfm_aligned_predictions.csv").is_file()
     assert "OOS R2" in (output_dir / "tsfm_prediction_report.md").read_text(encoding="utf-8")
+
+
+def test_report_portfolio_numbers_come_from_the_daily_tranche_book(tmp_path) -> None:
+    """The matrix-only Sharpe annualised overlapping 4-session returns as daily (#342)."""
+    rng = np.random.default_rng(21)
+    dates = [str(day.date()) for day in pd.bdate_range("2024-01-01", periods=60)]
+    kdcodes = [f"K{i:02d}" for i in range(10)]
+    closes = 100.0 * np.cumprod(1.0 + rng.normal(0.0, 0.01, (len(dates), len(kdcodes))), 0)
+    market = pd.DataFrame(
+        {
+            "dt": np.repeat(dates, 10),
+            "kdcode": np.tile(kdcodes, len(dates)),
+            "close": closes.ravel(),
+        }
+    )
+    predictions = pd.DataFrame(
+        {
+            "dt": np.repeat(dates[:50], 10),
+            "kdcode": np.tile(kdcodes, 50),
+            "score": rng.standard_normal(500),
+        }
+    )
+    aligned = align_prediction_comparison(
+        predictions, realized_returns_from_market_data(market, label_t=5)
+    )
+
+    with_panel = compute_tsfm_prediction_report(aligned, top_k_values=[3], panel=market)
+    without = compute_tsfm_prediction_report(aligned, top_k_values=[3])
+
+    model = with_panel["models"]["mci_gru"]
+    assert model["portfolio_basis"] == "DAILY_TRANCHE_BOOK"
+    assert np.isfinite(model["top_3_abs_sharpe"]) and np.isfinite(model["top_3_excess_t_stat"])
+    assert without["models"]["mci_gru"]["portfolio_basis"] == "NOT_COMPUTED_WITHOUT_PANEL"
+    assert not any("sharpe" in key for key in without["models"]["mci_gru"])
+    # IC is the same either way.
+    assert model["avg_ic"] == pytest.approx(without["models"]["mci_gru"]["avg_ic"])

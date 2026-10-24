@@ -10,10 +10,16 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pandas as pd
+import pytest
 
-from mci_gru.config import ExperimentConfig
+from mci_gru.config import ExperimentConfig, create_config_from_dict
 from mci_gru.data.preprocessing import resolve_label_endpoints
-from mci_gru.pipeline import _embargo_validation_sessions
+from mci_gru.features import FeatureEngineer
+from mci_gru.pipeline import (
+    _embargo_validation_sessions,
+    prepare_data,
+    prepare_data_index_level,
+)
 from mci_gru.walkforward import generate_walkforward_configs
 
 LABEL_T = 5
@@ -82,3 +88,50 @@ def test_no_walk_forward_window_leaks_test_closes_into_validation() -> None:
                 leaks_after += leaked
     assert leaks_before >= len(windows) // 2  # the defect is present on this calendar
     assert leaks_after == 0
+
+
+@pytest.mark.parametrize("mode", ["stock", "index_level"])
+def test_prepared_validation_dates_stop_before_labels_reach_test(tmp_path, mode) -> None:
+    """Both preparation paths purge: the calendar check passes, the sessions do not.
+
+    No sessions on 01-24..01-26, so the four calendar days before test_start hold
+    none and the last two validation labels (label_t=2) exit on test closes.
+    """
+    days = [f"2020-01-{day:02d}" for day in range(1, 32) if day not in (24, 25, 26)]
+    if mode == "stock":
+        rows = ["kdcode,dt,open,high,low,close,volume,turnover"]
+        rows += [
+            f"{code},{dt},{100 + i + off},{101 + i + off},{99 + i + off},{100 + i + off},1000,1000"
+            for i, dt in enumerate(days)
+            for code, off in (("AAA", 0), ("BBB", 20))
+        ]
+    else:
+        rows = ["dt,close"] + [f"{dt},{100 + i}" for i, dt in enumerate(days)]
+    source = tmp_path / "input.csv"
+    source.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    data_section = {
+        "filename": str(source),
+        "use_pit_universe": False,
+        "train_start": "2020-01-05",
+        "train_end": "2020-01-15",
+        "val_start": "2020-01-19",
+        "val_end": "2020-01-23",
+        "test_start": "2020-01-27",
+        "test_end": "2020-01-31",
+    }
+    if mode == "index_level":
+        data_section["index_filename"] = str(source)
+    config = create_config_from_dict(
+        {
+            "data": data_section,
+            "features": {"include_momentum": False, "include_weekly_momentum": False},
+            "model": {"his_t": 2, "label_t": 2},
+            "graph": {"use_multi_feature_edges": False},
+            "training": {"label_type": "returns"},
+            "tracking": {"enabled": False},
+        }
+    )
+    prepare = prepare_data if mode == "stock" else prepare_data_index_level
+    data = prepare(config, FeatureEngineer(config.features))
+
+    assert data["val_dates"] == ["2020-01-19", "2020-01-20", "2020-01-21"]

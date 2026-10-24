@@ -208,9 +208,10 @@ def build_cells() -> list[dict]:
             market = pd.read_csv(panel_path, usecols=["dt", "kdcode", "close"])
             market["dt"] = pd.to_datetime(market["dt"]).dt.strftime("%Y-%m-%d")
 
-            # Arbiter label: close[t + LABEL_T] / close[t + 1] - 1, identical to
-            # mci_gru.data.preprocessing.compute_labels and to what the production
-            # evaluation received as ``true_returns``.
+            # Arbiter label: close[t + LABEL_T] / close[t + 1] - 1 on the session axis,
+            # through the evaluation core. On a panel with every close present it is
+            # mci_gru.data.preprocessing.compute_labels, what the production evaluation
+            # received as ``true_returns``; a missing close follows the core's rules (#335).
             realized = realized_returns_from_market_data(market, label_t=LABEL_T)
             LABEL_ARBITER = realized.pivot_table(index="dt", columns="kdcode", values="realized_return").sort_index()
 

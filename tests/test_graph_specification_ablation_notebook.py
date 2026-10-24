@@ -726,8 +726,8 @@ def test_notebook_reports_arbiter_composite_and_disclosures() -> None:
         # April composite, computed alongside and labelled non-authoritative.
         "DECISION_SCORE_WEIGHTS",
         "avg_spearman_corr",
-        "sharpe_top_20_newey_west",
-        "return_top_20",
+        "top_20_abs_sharpe",
+        "top_20_abs_period_return",
         "not the arbiter",
         # Per-span adjacency disclosure and the twin hygiene check.
         "isolated_fraction",

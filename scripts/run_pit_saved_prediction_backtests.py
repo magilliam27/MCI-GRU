@@ -594,7 +594,14 @@ def _build_combined_summary_df(cost_df: pd.DataFrame, reviewed_df: pd.DataFrame)
 
 
 def _combine_daily_returns(df: pd.DataFrame) -> dict[str, Any]:
-    """Multi-year paper metrics from the rows' concatenated ``daily_returns.csv``."""
+    """Multi-year paper metrics from the rows' concatenated ``daily_returns.csv``.
+
+    The portfolio side reads the concatenated traded days. The benchmark is each year's
+    full-calendar ``benchmark_return`` compounded: the daily file holds only the days the
+    simulator traded, while the engine benchmarks the whole evaluation calendar (a
+    skipped day holds cash against a moving benchmark). The years' calendars are
+    disjoint, so compounding their totals is exact.
+    """
     empty = dict.fromkeys(
         ("total_return", "benchmark_return", "excess_return", "ARR", "ASR", "MDD"), np.nan
     )
@@ -606,7 +613,7 @@ def _combine_daily_returns(df: pd.DataFrame) -> dict[str, Any]:
         if path is None:
             missing.append(str(record.get("year")))
             continue
-        frames.append(pd.read_csv(path, usecols=["date", "portfolio_return", "benchmark_return"]))
+        frames.append(pd.read_csv(path, usecols=["date", "portfolio_return"]))
     if missing:
         return {"combined_from": "MISSING_DAILY_RETURNS:" + ",".join(missing), **empty}
 
@@ -616,19 +623,22 @@ def _combine_daily_returns(df: pd.DataFrame) -> dict[str, Any]:
         raise ValueError("Yearly daily_returns.csv files overlap; cannot concatenate them")
     daily = daily.sort_values("date")
     portfolio = daily["portfolio_return"].to_numpy(dtype=float)
-    benchmark = daily["benchmark_return"].to_numpy(dtype=float)
     portfolio = portfolio[np.isfinite(portfolio)]
-    benchmark = benchmark[np.isfinite(benchmark)]
     total = float(np.prod(1.0 + portfolio) - 1.0) if portfolio.size else np.nan
-    bench = float(np.prod(1.0 + benchmark) - 1.0) if benchmark.size else np.nan
+    yearly_benchmark = _metric_column(df, "benchmark_return")
+    bench = (
+        float(np.prod(1.0 + yearly_benchmark.to_numpy(dtype=float)) - 1.0)
+        if yearly_benchmark is not None
+        else np.nan
+    )
     arr = (
         float((1.0 + total) ** (TRADING_DAYS / portfolio.size) - 1.0) if portfolio.size else np.nan
     )
     avol = (
         float(np.std(portfolio, ddof=1) * np.sqrt(TRADING_DAYS)) if portfolio.size > 1 else np.nan
     )
-    # Drawdown from the starting capital of 1.0, so a first-day loss counts.
-    values = np.concatenate([[1.0], np.cumprod(1.0 + portfolio)])
+    # Same convention as the engine's calculate_mdd, so the row compares with the years.
+    values = np.cumprod(1.0 + portfolio)
     mdd = float(-np.max((np.maximum.accumulate(values) - values) / np.maximum.accumulate(values)))
     return {
         "combined_from": "CONCATENATED_DAILY_RETURNS",

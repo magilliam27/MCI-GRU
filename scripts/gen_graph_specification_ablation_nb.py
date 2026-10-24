@@ -948,12 +948,17 @@ def build_cells() -> list[dict]:
                         "avg_ic": metrics.get("avg_ic"),
                         "avg_ic_ci_lower": metrics.get("avg_ic_ci_lower"),
                         "avg_ic_ci_upper": metrics.get("avg_ic_ci_upper"),
-                        # April-composite inputs and context metrics.
+                        # April-composite inputs and context metrics, read from the v2
+                        # summary (#336): the Sharpe is the daily tranche book's, the
+                        # return the mean 4-session top-20 return, and the CI is on the
+                        # top-20 excess over the universe (#342).
                         "avg_spearman_corr": metrics.get("avg_spearman_corr"),
                         "avg_rank_ic": metrics.get("avg_rank_ic"),
-                        "sharpe_top_20_newey_west": metrics.get("sharpe_top_20_newey_west"),
-                        "return_top_20": metrics.get("return_top_20"),
-                        "top_20_return_ci_lower": metrics.get("top_20_return_ci_lower"),
+                        "top_20_abs_sharpe": metrics.get("top_20_abs_sharpe"),
+                        "top_20_abs_period_return": metrics.get("top_20_abs_period_return"),
+                        "top_20_excess_period_return_ci_lower": metrics.get(
+                            "top_20_excess_period_return_ci_lower"
+                        ),
                         "models_trained": training.get("models_trained"),
                         "mean_best_val_ic": training.get("mean_best_val_ic"),
                         "hypothesis": job["hypothesis"],
@@ -1239,9 +1244,10 @@ def build_cells() -> list[dict]:
             if set(POOLED_FOLD_KEYS) & set(ALONGSIDE_FOLD_KEYS):
                 raise AssertionError("alongside folds must never enter the pooled primary")
 
-            # Arbiter label: close[t + LABEL_T] / close[t + 1] - 1, identical to
-            # mci_gru.data.preprocessing.compute_labels and to what the production
-            # evaluation received as `true_returns`.
+            # Arbiter label: close[t + LABEL_T] / close[t + 1] - 1 on the session axis,
+            # through the evaluation core. On a panel with every close present it is
+            # mci_gru.data.preprocessing.compute_labels, what the production evaluation
+            # received as `true_returns`; a missing close follows the core's rules (#335).
             realized = realized_returns_from_market_data(market_frame, label_t=LABEL_T)
             LABEL_ARBITER = realized.pivot_table(
                 index="dt", columns="kdcode", values="realized_return"
@@ -1679,8 +1685,8 @@ def build_cells() -> list[dict]:
             DECISION_SCORE_WEIGHTS = {
                 "avg_ic": 0.35,
                 "avg_spearman_corr": 0.25,
-                "sharpe_top_20_newey_west": 0.25,
-                "return_top_20": 0.15,
+                "top_20_abs_sharpe": 0.25,
+                "top_20_abs_period_return": 0.15,
             }
 
             scored_df = results_df.copy()

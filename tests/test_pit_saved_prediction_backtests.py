@@ -207,7 +207,7 @@ def test_multi_year_combine_reads_the_concatenated_daily_series(tmp_path: Path) 
 
     portfolio, benchmark = np.r_[p1, p2], np.r_[b1, b2]
     total = np.prod(1 + portfolio) - 1
-    values = np.r_[1.0, np.cumprod(1 + portfolio)]
+    values = np.cumprod(1 + portfolio)
     true_mdd = float(np.min(values / np.maximum.accumulate(values) - 1))
     arr = (1 + total) ** (252 / portfolio.size) - 1
 
@@ -223,3 +223,21 @@ def test_multi_year_combine_reads_the_concatenated_daily_series(tmp_path: Path) 
         arr / (np.std(portfolio, ddof=1) * np.sqrt(252))
     )
     assert combined["cost_rank_gate_avg_daily_turnover"] == pytest.approx(0.3)
+
+
+def test_multi_year_benchmark_covers_the_days_the_simulator_skipped(tmp_path: Path) -> None:
+    """A skipped day is missing from daily_returns.csv but the benchmark still moved."""
+    p1, p2 = np.full(200, 0.001), np.full(200, 0.001)
+    rows = [
+        _year_with_daily_returns(tmp_path, 2022, p1, np.full(200, 0.0005)),
+        _year_with_daily_returns(tmp_path, 2023, p2, np.full(200, 0.0005)),
+    ]
+    # The engine's calendar benchmark for 2023 includes ten skipped days at -1% each.
+    calendar_2023 = np.r_[np.full(200, 0.0005), np.full(10, -0.01)]
+    rows[1]["backtest.benchmark_return"] = np.prod(1 + calendar_2023) - 1
+    combined = _build_combined_summary_df(pd.DataFrame(rows), pd.DataFrame()).iloc[0]
+
+    total = np.prod(1 + np.r_[p1, p2]) - 1
+    bench = (1 + rows[0]["backtest.benchmark_return"]) * (1 + rows[1]["backtest.benchmark_return"])
+    assert combined["cost_rank_gate_benchmark_return"] == pytest.approx(bench - 1)
+    assert combined["cost_rank_gate_excess_return"] == pytest.approx(total - (bench - 1))

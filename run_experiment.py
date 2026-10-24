@@ -70,7 +70,13 @@ from mci_gru.tracking import MLflowTrackingManager
 from mci_gru.training import train_multiple_models
 from mci_gru.training.summary import build_training_summary
 from mci_gru.utils.seeding import set_seed
-from mci_gru.walkforward import generate_walkforward_configs, merge_walkforward_summary
+from mci_gru.walkforward import (
+    WindowTestSet,
+    generate_walkforward_configs,
+    merge_walkforward_summary,
+    pool_window_test_sets,
+    window_test_set,
+)
 
 
 def setup_logging(output_dir: str, experiment_name: str) -> logging.Logger:
@@ -124,6 +130,7 @@ def main(cfg: DictConfig):
     window_configs = generate_walkforward_configs(config)
     use_wf_subdir = config.training.walkforward.enabled
     wf_summaries: list[dict[str, Any]] = []
+    wf_test_sets: list[WindowTestSet] = []
     window_paths = [
         os.path.join(output_path, "walkforward", f"w{wi:03d}") if use_wf_subdir else output_path
         for wi in range(len(window_configs))
@@ -409,6 +416,18 @@ def main(cfg: DictConfig):
                 logger.info(f"Dated daily IC saved to: {daily_ic_path}")
                 training_summary["evaluation"] = evaluation_summary["metrics"]
                 wf_summaries.append(training_summary)
+                if use_wf_subdir:
+                    wf_test_sets.append(
+                        window_test_set(
+                            avg_predictions,
+                            data["test_labels"],
+                            panel=data["df"],
+                            dates=data["test_dates"],
+                            kdcodes=data["kdcode_list"],
+                            rankable_mask=data.get("test_tradable_mask"),
+                            label_t=cfg_w.model.label_t,
+                        )
+                    )
 
                 if active_tracking.enabled:
                     active_tracking.log_metrics(
@@ -493,7 +512,26 @@ def main(cfg: DictConfig):
             logger.info("Terminal receipt saved to: %s", window_receipt.path)
 
         if use_wf_subdir and wf_summaries:
-            merged = merge_walkforward_summary(wf_summaries)
+            # One summary over every window's test dates, never a mean of windows (#342).
+            pooled_evaluation, pooling_status = None, None
+            try:
+                pooled = pool_window_test_sets(wf_test_sets)
+            except ValueError as error:
+                pooling_status = f"NOT_POOLED: {error}"
+                logger.warning("Walk-forward evaluation not pooled: %s", error)
+            else:
+                pooled_evaluation = compute_evaluation_summary(
+                    pooled.predictions,
+                    pooled.labels,
+                    config,
+                    panel=pooled.closes,
+                    dates=pooled.dates,
+                    kdcodes=pooled.kdcodes,
+                    rankable_mask=pooled.rankable_mask,
+                )
+            merged = merge_walkforward_summary(
+                wf_summaries, pooled_evaluation=pooled_evaluation, pooling_status=pooling_status
+            )
             merged_path = os.path.join(output_path, "walkforward_summary.json")
             with open(merged_path, "w") as f:
                 json.dump(merged, f, indent=2)

@@ -2068,6 +2068,7 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 | `test_resolve_year_jobs_remaps_stale_colab_paths_to_current_run_root` |  |  |
 | `test_write_summary_outputs_compares_cost_aware_rows_to_reviewed_artifact` |  |  |
 | `test_multi_year_combine_reads_the_concatenated_daily_series` | r7: a drawdown straddling the year end; yearly combine gave -0.148 against -0.274. |  |
+| `test_multi_year_benchmark_covers_the_days_the_simulator_skipped` | A skipped day is missing from daily_returns.csv but the benchmark still moved. |  |
 
 ## `tests/test_pit_universe_mode_config.py`
 
@@ -2143,6 +2144,7 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 | `test_realized_returns_reject_a_label_with_no_hold` |  |  |
 | `test_prediction_report_includes_yearly_decay_for_each_model` |  |  |
 | `test_saved_prediction_report_runs_without_training` |  |  |
+| `test_report_portfolio_numbers_come_from_the_daily_tranche_book` | The matrix-only Sharpe annualised overlapping 4-session returns as daily (#342). |  |
 
 ## `tests/test_preprocessing_vectorised.py`
 
@@ -2442,7 +2444,7 @@ Regression tests for the isolated pytest launcher.
 
 Side-module statistics are overlap-correct (#342).
 
-**Exercises:** `mci_gru.evaluation.paired_inference`, `mci_gru.evaluation.selection_nulls`
+**Exercises:** `mci_gru.evaluation.paired_inference`, `mci_gru.evaluation.selection_audit`, `mci_gru.evaluation.selection_nulls`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -2450,8 +2452,10 @@ Side-module statistics are overlap-correct (#342).
 | `test_power_tables_use_the_long_run_sd` | r2: the iid sd gave an MDE of 0.0027 against a Monte Carlo truth of 0.0073. |  |
 | `test_sharpe_of_daily_sampled_overlapping_returns_is_the_daily_sharpe` | Findings 1: uniform weights on 3 lags recover the daily book's annual Sharpe. |  |
 | `test_date_blocked_null_matches_the_sampling_spread_of_a_persistent_score` | r4: the per-date shuffle's null sd was 0.024 against a true 0.045. |  |
-| `test_date_blocked_null_keeps_each_score_path_whole` |  |  |
+| `test_date_blocked_null_is_deterministic_and_keyed_by_block` |  |  |
 | `test_date_blocked_null_induces_a_bijection_when_names_come_and_go` |  |  |
+| `test_selection_audit_deflates_the_daily_book_sharpe` | r5: the overlapping label series gave about twice the Sharpe and z-stat. |  |
+| `test_deflated_sharpe_has_nominal_size_on_the_daily_book` | r5: p <= 0.05 in 21% of no-skill samples on the overlapping label series. |  |
 
 ## `tests/test_sp500_gics_top10_mcap_export.py`
 
@@ -2552,8 +2556,8 @@ Training summaries average only available checkpoint metrics and count coverage.
 | `test_walkforward_mean_weights_windows_equally_and_counts_windows` | Window coverage counts windows, not members, and each available window counts once. |  |
 | `test_walkforward_treats_historical_non_finite_window_means_as_unavailable` | A -inf or NaN window mean from an older run no longer poisons the aggregate. |  |
 | `test_walkforward_summary_of_no_windows_stays_empty` | An empty walk-forward run has no aggregate at all. |  |
-| `test_walkforward_evaluation_mean_skips_nan_windows_and_reports_coverage` | A NaN evaluation metric in one window is left out and counted, not averaged in. |  |
-| `test_walkforward_evaluation_mean_is_unchanged_without_nan_windows` | With every window available, each aggregate is the plain equal-weight mean. |  |
+| `test_walkforward_evaluation_is_never_a_mean_of_windows` | Window Sharpes, CI bounds and cumulative returns do not average (#342). |  |
+| `test_walkforward_evaluation_is_the_pooled_summary_when_given` |  |  |
 | `test_walkforward_without_evaluation_adds_no_evaluation_keys` | Training-only windows keep the merged summary free of evaluation fields. |  |
 
 ## `tests/test_transforms.py`
@@ -2585,13 +2589,14 @@ Unit tests for mci_gru.data.transforms.
 
 Validation labels never read test-period closes (#342, dates finding 5).
 
-**Exercises:** `mci_gru.config`, `mci_gru.data.preprocessing`, `mci_gru.pipeline`, `mci_gru.walkforward`
+**Exercises:** `mci_gru.config`, `mci_gru.data.preprocessing`, `mci_gru.features`, `mci_gru.pipeline`, `mci_gru.walkforward`
 
 | Test | Description | Markers |
 |---|---|---|
 | `test_val_tail_whose_labels_exit_in_test_is_purged` |  |  |
 | `test_a_wide_gap_purges_nothing` |  |  |
 | `test_no_walk_forward_window_leaks_test_closes_into_validation` | r6: 9 of 11 default windows leaked before the purge. |  |
+| `test_prepared_validation_dates_stop_before_labels_reach_test` | Both preparation paths purge: the calendar check passes, the sessions do not. | parametrize |
 
 ## `tests/test_vix_features.py`
 
@@ -2640,3 +2645,15 @@ Every walk-forward window must inherit the base configuration it was cloned from
 |---|---|---|
 | `test_walkforward_windows_carry_configured_evaluation` |  |  |
 | `test_walkforward_windows_do_not_silently_fall_back_to_evaluation_defaults` |  |  |
+
+## `tests/test_walkforward_pooled_evaluation.py`
+
+Walk-forward evaluation pools the windows' dated test series (#342).
+
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation.experiment_summary`, `mci_gru.evaluation.outcomes`, `mci_gru.walkforward`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_pooled_summary_is_the_summary_of_every_test_date_together` | r1: 63 + 63 + 10-date windows; the mean of windows moved avg_ic 0.076 to 0.029. |  |
+| `test_pooling_widens_to_the_union_of_names` |  |  |
+| `test_overlapping_test_windows_are_not_pooled` |  |  |

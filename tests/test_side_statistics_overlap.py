@@ -12,12 +12,18 @@ import math
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from mci_gru.evaluation.paired_inference import (
     minimum_detectable_effect,
     paired_mean_inference,
     required_days,
     sharpe_block_bootstrap_ci,
+)
+from mci_gru.evaluation.selection_audit import (
+    _daily_books,
+    build_selection_audit,
+    deflated_sharpe_ratio,
 )
 from mci_gru.evaluation.selection_nulls import (
     DatedScoreOutcome,
@@ -149,7 +155,7 @@ def test_date_blocked_null_matches_the_sampling_spread_of_a_persistent_score() -
     assert null.block_dates is None and null.block_count == 1
 
 
-def test_date_blocked_null_keeps_each_score_path_whole() -> None:
+def test_date_blocked_null_is_deterministic_and_keyed_by_block() -> None:
     rng = np.random.default_rng(5)
     scores, outcomes = _persistent_no_skill(rng)
     sections = [
@@ -186,3 +192,71 @@ def test_date_blocked_null_induces_a_bijection_when_names_come_and_go() -> None:
     null = run_date_blocked_permutation_null(sections, n_draws=1000, null_seed=1, top_k=3)
     assert null.valid_draw_count == 1000
     assert all(-1.0 <= value <= 1.0 for value in null.rank_ic_means)
+
+
+# ── deflated Sharpe on the daily book ─────────────────────────────────────
+
+BOOK_NAMES = [f"B{i:02d}" for i in range(20)]
+BOOK_SIGNALS, BOOK_K = 300, 5
+
+
+def _random_score_market(
+    rng: np.random.Generator, drift: float
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """iid daily returns for 20 names and skill-free scores on 300 signal dates."""
+    dates = pd.bdate_range("2023-01-02", periods=BOOK_SIGNALS + 6).strftime("%Y-%m-%d")
+    daily = rng.normal(drift, 0.01, size=(len(dates), len(BOOK_NAMES)))
+    closes = 100.0 * np.cumprod(1.0 + daily, axis=0)
+    market = pd.DataFrame(
+        {
+            "dt": np.repeat(dates, len(BOOK_NAMES)),
+            "kdcode": np.tile(BOOK_NAMES, len(dates)),
+            "close": closes.ravel(),
+        }
+    )
+    predictions = pd.DataFrame(
+        {
+            "dt": np.repeat(dates[:BOOK_SIGNALS], len(BOOK_NAMES)),
+            "kdcode": np.tile(BOOK_NAMES, BOOK_SIGNALS),
+            "score": rng.standard_normal(BOOK_SIGNALS * len(BOOK_NAMES)),
+        }
+    )
+    return predictions, market
+
+
+def test_selection_audit_deflates_the_daily_book_sharpe(tmp_path) -> None:
+    """r5: the overlapping label series gave about twice the Sharpe and z-stat."""
+    predictions, market = _random_score_market(np.random.default_rng(12), drift=0.0005)
+    predictions_dir = tmp_path / "averaged_predictions"
+    predictions_dir.mkdir()
+    predictions.to_csv(predictions_dir / "predictions.csv", index=False)
+    market.to_csv(tmp_path / "market.csv", index=False)
+
+    audit = build_selection_audit(
+        predictions_dir=predictions_dir,
+        market_data_path=tmp_path / "market.csv",
+        label_t=LABEL_T,
+        top_k_values=[BOOK_K],
+        trial_count=1,
+        bootstrap_resamples=5,
+    )
+    deflated = audit["deflated_sharpe"][str(BOOK_K)]
+
+    book = _daily_books(predictions, market, label_t=LABEL_T, top_k_values=[BOOK_K])[BOOK_K]
+    daily = book.daily_returns
+    assert deflated["return_basis"] == "daily_tranche_book" and deflated["tranches"] == 4
+    assert deflated["n_obs"] == daily.size == BOOK_SIGNALS + LABEL_T - 2
+    assert deflated["annualized_sharpe"] == pytest.approx(
+        np.mean(daily) / np.std(daily, ddof=1) * math.sqrt(252)
+    )
+
+
+def test_deflated_sharpe_has_nominal_size_on_the_daily_book() -> None:
+    """r5: p <= 0.05 in 21% of no-skill samples on the overlapping label series."""
+    rng = np.random.default_rng(13)
+    p_values = []
+    for _ in range(120):
+        predictions, market = _random_score_market(rng, drift=0.0)
+        book = _daily_books(predictions, market, label_t=LABEL_T, top_k_values=[BOOK_K])[BOOK_K]
+        p_values.append(deflated_sharpe_ratio(book.daily_returns, trial_count=1)["p_value"])
+    assert np.mean(np.asarray(p_values) <= 0.05) < 0.1
