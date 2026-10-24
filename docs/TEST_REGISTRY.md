@@ -2040,8 +2040,15 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 
 ## `tests/test_pit_repeated_seed_replication_notebook.py`
 
+**Exercises:** `mci_gru.evaluation.statistics`
+
 | Test | Description | Markers |
 |---|---|---|
+| `test_issue29_all_seeds_row_counts_each_date_once` | Three identical seeds are one series: same t-stat, p-value and n_days (#357). |  |
+| `test_issue29_all_seeds_row_averages_seeds_per_date` | Different seeds enter as their per-date mean, one value per date (#357). |  |
+| `test_issue29_all_seeds_row_flags_a_missing_seed` | A seed absent on some dates is reported, not silently averaged as complete (#357). |  |
+| `test_issue29_pooled_significance_refuses_repeated_dates` | A series that repeats a date would overstate significance; refuse it (#357). |  |
+| `test_issue29_replication_all_seeds_uses_per_date_average` | The notebook builds replication_all_seeds from the per-date seed average (#357). |  |
 | `test_issue31_notebook_pins_repeated_seed_full_pit_replication` |  |  |
 | `test_issue31_notebook_writes_required_decision_artifacts` |  |  |
 | `test_issue31_notebook_can_resume_and_retry_transient_regime_fetch_failures` |  |  |

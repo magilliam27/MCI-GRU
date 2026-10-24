@@ -1460,6 +1460,15 @@ cells = [
             return float(np.mean(values) * 252 / vol)
 
         def pooled_significance_row(frame: pd.DataFrame, scenario: str) -> dict:
+            # Every row must be its own date: a series that repeats dates (one row per
+            # seed) shrinks the standard error by sqrt(seeds) without adding information.
+            if 'date' not in frame.columns:
+                raise ValueError(f'{scenario}: daily excess series has no date column')
+            if frame['date'].duplicated().any():
+                raise ValueError(
+                    f'{scenario}: daily excess series repeats dates; average the seeds '
+                    'per date with all_seeds_significance_row first'
+                )
             values = pd.to_numeric(frame['excess_return'], errors='coerce').dropna().to_numpy(dtype=np.float64)
             if values.size == 0:
                 return {'scenario': scenario, 'n_days': 0}
@@ -1514,6 +1523,42 @@ cells = [
                 'bootstrap_block_size': block_size,
             }
 
+        def all_seeds_significance_row(frame: pd.DataFrame, scenario: str, expected_seeds: int) -> dict:
+            # One row per date: the seeds' mean daily excess return. The seeds share
+            # every date, so stacking their series would count each date once per seed
+            # and overstate the t-stat by up to sqrt(seeds) (#357). The daily book's
+            # returns span one session, so they do not overlap and need no extra lags.
+            if frame is None or frame.empty:
+                return {
+                    'scenario': scenario,
+                    'n_days': 0,
+                    'n_seeds': 0,
+                    'min_seeds_per_date': 0,
+                    'expected_seeds': int(expected_seeds),
+                    'all_seeds_complete': False,
+                }
+            daily = frame[['date', 'base_seed']].copy()
+            daily['excess_return'] = pd.to_numeric(frame['excess_return'], errors='coerce')
+            daily = daily.dropna(subset=['excess_return'])
+            per_date = (
+                daily.groupby('date', sort=True)
+                .agg(excess_return=('excess_return', 'mean'), seeds=('base_seed', 'nunique'))
+                .reset_index()
+            )
+            row = pooled_significance_row(per_date, scenario)
+            row['n_seeds'] = int(daily['base_seed'].nunique())
+            row['min_seeds_per_date'] = int(per_date['seeds'].min()) if not per_date.empty else 0
+            row['expected_seeds'] = int(expected_seeds)
+            row['all_seeds_complete'] = bool(
+                row['n_seeds'] == expected_seeds and row['min_seeds_per_date'] == expected_seeds
+            )
+            if not row['all_seeds_complete']:
+                print(
+                    f"WARNING {scenario}: {row['n_seeds']} of {expected_seeds} seeds present, "
+                    f"as few as {row['min_seeds_per_date']} on a date; the row averages fewer seeds."
+                )
+            return row
+
         def adjust_p_values_bhy(frame: pd.DataFrame, p_col: str = 'p_value') -> pd.Series:
             if frame.empty or p_col not in frame.columns:
                 return pd.Series(dtype=float)
@@ -1547,7 +1592,11 @@ cells = [
             for scenario, frame in pooled_daily_df.groupby('scenario', sort=True):
                 significance_rows.append(pooled_significance_row(frame, str(scenario)))
             if not replication_daily_df.empty:
-                significance_rows.append(pooled_significance_row(replication_daily_df, 'replication_all_seeds'))
+                significance_rows.append(all_seeds_significance_row(
+                    replication_daily_df,
+                    'replication_all_seeds',
+                    expected_seeds=len(REPLICATION_BASE_SEEDS),
+                ))
 
         pooled_significance_df = pd.DataFrame(significance_rows)
         if not pooled_significance_df.empty:
