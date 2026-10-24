@@ -431,7 +431,11 @@ def test_ic_and_rank_ic_are_unchanged_by_the_new_summary():
 
 
 def test_the_excess_interval_and_its_p_value_agree():
-    """#356: the excess CI is the HAC-t interval its p-value tests, so the two agree."""
+    """#356: the summary pairs each excess CI with the p-value of the same test.
+
+    Wiring only: these weights sit far from the 5% line, so this does not tell a t
+    reference from a normal one. ``test_the_hac_p_value_and_interval_agree`` does.
+    """
     closes, _ = _market(90, 12, seed=21, idio_vol=0.02)
     future = np.log(closes[5:85] / closes[1:81])
     outcomes = []

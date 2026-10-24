@@ -128,9 +128,11 @@ def paired_mean_inference(
     The interval is the same HAC one with a Student-t critical value
     (``statistics.hansen_hodrick_mean_ci``), as the in-run IC intervals use (#356).
     Passing ``block_size`` asks for the circular block bootstrap instead, with
-    ``n_resamples`` and ``seed``; the archived graph notebooks do, to reproduce their
-    records. A block of ``label_horizon`` covers about 89% for a nominal 95% on a
-    year of overlapping days, so new work leaves it unset.
+    ``n_resamples`` and ``seed``; the archived graph notebooks do, so their intervals
+    reproduce. Their ``hac_p`` does not: since #356 it is Student-t on the interval's
+    equivalent degrees of freedom, where it was normal before (at 238 days a t-stat of
+    2.0 moves from p 0.046 to 0.054). A block of ``label_horizon`` covers about 89%
+    for a nominal 95% on a year of overlapping days, so new work leaves it unset.
 
     ``long_run_sd`` (``hac_se * sqrt(n_days)``) is the standard deviation that power
     and minimum-detectable-effect arithmetic needs; ``sd_delta`` is the iid one and

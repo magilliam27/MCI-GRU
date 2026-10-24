@@ -55,8 +55,10 @@ TWIN_PAIR = ("GOOG.OQ", "GOOGL.OQ")
 TWIN_OVERRIDE = '+graph.exclude_edge_pairs=[["GOOG.OQ","GOOGL.OQ"]]'
 
 # Paired arbiter settings, resolved exactly as
-# ``mci_gru.evaluation.experiment_summary.resolved_evaluation_kwargs`` resolves
-# them for the frozen recipe: block = label_t. The HAC uses uniform (Hansen-Hodrick)
+# ``mci_gru.evaluation.experiment_summary.resolved_evaluation_kwargs`` resolved
+# them for the frozen recipe when this ran: block = label_t. Since #356 the in-run and
+# default paired intervals use no block; this notebook passes one to keep its
+# recorded scheme, and its HAC p-values now use a t reference. The HAC uses uniform (Hansen-Hodrick)
 # weights on label_t - 2 lags: the close[t+5] / close[t+1] label spans 4 sessions, so
 # consecutive days share 3. Bartlett weights on label_t - 1 lags understated the
 # overlap variance (#342).

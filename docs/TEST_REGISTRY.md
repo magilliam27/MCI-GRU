@@ -1556,7 +1556,7 @@ The in-run summary measures a tradable book and nets the universe (#336).
 | `test_missing_close_events_count_only_names_that_could_be_held` |  |  |
 | `test_the_summary_labels_its_basis_and_drops_metrics_an_ic_loss_leaves_arbitrary` |  |  |
 | `test_ic_and_rank_ic_are_unchanged_by_the_new_summary` | Control: the per-date IC means, recomputed independently, and their overlap CIs (#356). |  |
-| `test_the_excess_interval_and_its_p_value_agree` | #356: the excess CI is the HAC-t interval its p-value tests, so the two agree. |  |
+| `test_the_excess_interval_and_its_p_value_agree` | #356: the summary pairs each excess CI with the p-value of the same test. |  |
 | `test_the_excess_interval_is_the_hac_interval_over_the_hold_overlap` | #356: the excess CI is recomputed from the per-date excess, hold - 1 = 3 lags. |  |
 | `test_ic_date_coverage_counts_dates_that_could_not_be_scored` |  |  |
 | `test_quintiles_split_the_cross_section_evenly` | Twelve names in five quintiles are 2, 2, 2, 3, 3 from the bottom, not 2, 2, 2, 2, 4. |  |
