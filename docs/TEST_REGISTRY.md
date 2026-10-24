@@ -472,6 +472,33 @@ Scoring precision: training may use AMP, validation and prediction do not.
 | `test_eval_amp_needs_a_cuda_device` |  |  |
 | `test_cuda_prediction_matches_fp32_to_1e6` |  | skipif |
 
+## `tests/test_evaluation_outcomes.py`
+
+The shared evaluation core: realized returns, the rankable set, exits and ties (#335).
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.pit`, `mci_gru.data.preprocessing`, `mci_gru.evaluation`, `mci_gru.evaluation.outcomes`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_default_legs_equal_the_training_label_exactly_on_a_panel_with_a_missing_bar` |  |  |
+| `test_custom_legs_read_closes_at_their_own_sessions` |  |  |
+| `test_missing_exit_books_the_last_available_close_and_records_the_event` |  |  |
+| `test_missing_entry_close_holds_cash_and_records_the_event` |  |  |
+| `test_a_name_with_no_close_on_the_signal_date_has_no_outcome_and_no_event` |  |  |
+| `test_a_hold_past_the_panel_end_is_unresolved_not_booked` |  |  |
+| `test_legs_reject_impossible_or_non_integer_sessions` |  | parametrize |
+| `test_rankable_is_the_tradable_mask_and_keeps_a_name_with_no_future_price` |  |  |
+| `test_a_top_pick_that_stops_trading_keeps_its_slot_and_books_its_loss` |  |  |
+| `test_ties_order_by_score_then_kdcode` |  |  |
+| `test_tie_order_does_not_depend_on_column_order` |  |  |
+| `test_unscored_and_unrankable_names_are_never_selected` |  |  |
+| `test_portfolio_top_k_uses_the_core_tie_rule` |  |  |
+| `test_evaluation_legs_and_tranches_default_to_the_training_label` |  |  |
+| `test_evaluation_rejects_unknown_or_invalid_legs_and_tranches` |  | parametrize |
+| `test_tranches_must_divide_the_hold_the_label_implies` |  |  |
+| `test_unknown_evaluation_key_is_rejected` |  |  |
+| `test_shipped_config_declares_legs_and_tranches_following_the_label` |  |  |
+
 ## `tests/test_evaluation_portfolio.py`
 
 **Exercises:** `mci_gru.evaluation.portfolio`

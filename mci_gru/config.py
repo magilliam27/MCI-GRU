@@ -7,6 +7,7 @@ for experiment configuration and management.
 
 import re
 import warnings
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -964,8 +965,16 @@ class EvaluationConfig:
     block_size: int | None = None
     sharpe_method: str = "newey_west"
     newey_west_lags: int | None = None
+    # Realized-return legs (#335): {"entry_session": e, "exit_session": x}, both at the
+    # close, in sessions after signal date D. None follows the training label: close
+    # D+1 to close D+model.label_t.
+    legs: dict[str, int] | None = None
+    # Staggered tranches across the hold; must divide its session count. None is one
+    # tranche per held session (4 under the default legs).
+    tranches: int | None = None
 
     _VALID_SHARPE_METHODS = ("newey_west", "naive")
+    _LEG_KEYS = ("entry_session", "exit_session")
 
     def __post_init__(self):
         if not self.top_k_values or any(k <= 0 for k in self.top_k_values):
@@ -983,6 +992,56 @@ class EvaluationConfig:
             )
         if self.newey_west_lags is not None and self.newey_west_lags < 0:
             raise ValueError("evaluation.newey_west_lags must be >= 0 when set")
+        if self.legs is not None:
+            self.legs = self._validated_legs(self.legs)
+        if self.tranches is not None and (
+            isinstance(self.tranches, bool)
+            or not isinstance(self.tranches, int)
+            or self.tranches <= 0
+        ):
+            raise ValueError(
+                f"evaluation.tranches must be a positive integer or null, got {self.tranches!r}"
+            )
+
+    @classmethod
+    def _validated_legs(cls, legs: Any) -> dict[str, int]:
+        if not isinstance(legs, Mapping):
+            raise ValueError(
+                f"evaluation.legs must be a mapping with keys {cls._LEG_KEYS} or null, got {legs!r}"
+            )
+        keys = set(legs)
+        if keys != set(cls._LEG_KEYS):
+            raise ValueError(
+                f"evaluation.legs must have exactly the keys {cls._LEG_KEYS}; "
+                f"unknown {sorted(keys - set(cls._LEG_KEYS))}, "
+                f"missing {sorted(set(cls._LEG_KEYS) - keys)}"
+            )
+        for key in cls._LEG_KEYS:
+            value = legs[key]
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"evaluation.legs.{key} must be an integer, got {value!r}")
+        entry, exit_ = legs["entry_session"], legs["exit_session"]
+        if entry < 1:
+            raise ValueError(
+                f"evaluation.legs.entry_session must be >= 1, got {entry}: the signal "
+                "uses close D, so the earliest fill is close D+1"
+            )
+        if exit_ <= entry:
+            raise ValueError(
+                f"evaluation.legs.exit_session ({exit_}) must be after entry_session ({entry})"
+            )
+        return {key: int(legs[key]) for key in cls._LEG_KEYS}
+
+    def resolved_legs(self, label_t: int) -> tuple[int, int]:
+        """(entry_session, exit_session); the training label's legs when unset."""
+        if self.legs is None:
+            return (1, label_t)
+        return (self.legs["entry_session"], self.legs["exit_session"])
+
+    def resolved_tranches(self, label_t: int) -> int:
+        """Tranche count; one per held session when unset."""
+        entry, exit_ = self.resolved_legs(label_t)
+        return exit_ - entry if self.tranches is None else self.tranches
 
 
 @dataclass
@@ -1044,6 +1103,18 @@ class ExperimentConfig:
             self.evaluation = EvaluationConfig(**self.evaluation)
         self._validate_embargo()
         self._validate_sector_relation()
+        self._validate_evaluation_tranches()
+
+    def _validate_evaluation_tranches(self) -> None:
+        """Tranches enter on evenly spaced sessions, so their count must divide the hold."""
+        entry, exit_ = self.evaluation.resolved_legs(self.model.label_t)
+        hold = exit_ - entry
+        tranches = self.evaluation.resolved_tranches(self.model.label_t)
+        if hold % tranches:
+            raise ValueError(
+                f"evaluation.tranches ({tranches}) must divide the hold of {hold} sessions "
+                f"(close D+{entry} to close D+{exit_})"
+            )
 
     def _validate_sector_relation(self) -> None:
         """Reject the sector branch in index-level mode, where it has nothing to connect."""
@@ -1173,6 +1244,8 @@ class ExperimentConfig:
             "evaluation.bootstrap_enabled": self.evaluation.bootstrap_enabled,
             "evaluation.bootstrap_resamples": self.evaluation.bootstrap_resamples,
             "evaluation.ci_level": self.evaluation.ci_level,
+            "evaluation.legs": str(self.evaluation.legs),
+            "evaluation.tranches": self.evaluation.tranches,
             # Tracking
             "tracking.enabled": self.tracking.enabled,
             "tracking.tracking_uri": self.tracking.tracking_uri,
