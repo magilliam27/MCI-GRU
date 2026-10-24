@@ -1,11 +1,13 @@
-# First admitted run: admission receipt and run charter (DRAFT)
+# First admitted run: admission receipt and run charter
 
-> **Draft for the owner's review. Not posted on #187, and not an admission.**
-> Prepared 2026-10-04 by a Claude Code session working while the owner was away
-> (ticket #278). Admission stays on **HOLD** (#187, comment 5862836271) until the
-> owner edits this, signs the release in section 3, and posts it on #187.
-> Ticket states below were read from GitHub on 2026-10-04 around 06:25 UTC, and
-> updated on 2026-10-08 for #279, #275, #280 and the move to EODHD stock prices.
+> **ADMITTED on 2026-10-23.** The owner approved admission of run
+> `20261010T044328Z-full-ec77f4b7` in the project chat ("yes go ahead and admit",
+> 2026-10-23 04:32 UTC). The receipt was posted on #187 at the owner's direction,
+> which lifts the HOLD of #187 comment 5862836271 for this run only.
+> Drafted 2026-10-04 (ticket #278) and updated 2026-10-08. On 2026-10-23 the
+> ticket states were brought up to date, the charter's run fields were filled in,
+> and section 2.2 was read in the run folder. The file keeps its original name
+> because the notebook and runbook link to it.
 
 The run this governs is the first admitted real-data run of the frozen recipe
 (`docs/DEFAULT_EXPERIMENT_RECIPE.md`) on the 110-name universe with EODHD stock
@@ -31,12 +33,14 @@ Each row is an item the run depends on, the work that delivers it, and its state
 | Never-finite selection metric fails the run; walk-forward means skip NaN windows with coverage | #252, #253 | #260 merged | Closed | Done |
 | Retrieval and two-copy preservation | #207 | none | Stock package: two new copies, each restored on its own 10/10 (comment 5964915801). The rest is **deferred until after the run** by the owner (2026-10-04 02:33 UTC) | Nothing for this run; see limitation 2.6 |
 | Colab launcher, EODHD staging in the regime notebooks, this draft | #278 | #280 | **Merged** at `46889bd` | Done |
-| Stock prices from EODHD: the same 110-name membership, priced from an EODHD pull | #281 | #282 | Draft at `2fd9a76`. r2 (published 2026-10-09) replaces the r1 package of 2026-10-08 and drops its carried zero-volume final rows on delisted codes; the data config pins r2 | Owner merges |
-| Recipe selects the EODHD data config (`data=gics_top10_110_2016_eodhd`) | #283 | #284 | Draft, lands after #282. Its delisting check found a carried zero-volume final row for `ATVI.OQ^J23`, `HES.N^G25` and `WBA.OQ^H25` on r1; on r2 every delisted name is clean (reported by the price package thread, 2026-10-09) | Owner merges |
-| The notebook stages the package the recipe's data config declares, and no other | #285 | #286 | Draft; pins r2 | Owner merges |
+| Stock prices from EODHD: the same 110-name membership, priced from an EODHD pull | #281 | #282 | **Merged** at `ed87edc`. r2 (published 2026-10-09) replaces the r1 package of 2026-10-08 and drops its carried zero-volume final rows on delisted codes; the data config pins r2 | Done |
+| Recipe selects the EODHD data config (`data=gics_top10_110_2016_eodhd`) | #283 | #284 | **Merged** at `ee5c154`. On r2 every delisted name passes the delisting check | Done |
+| The notebook stages the package the recipe's data config declares, and no other | #285 | #286 | **Merged** at `ec77f4b`, the run commit; pins r2 | Done |
+| The notebook runs the repository in its own Python 3.12.11 | #287 | #288 | **Merged** at `36a1af7`, after the run. The run itself used Colab runtime version 2026.04, whose Python is 3.12 (limitation 9) | Nothing for this run |
 
-Merged: #270 at `6d02778`, #274 at `1dcd818`, #279 at `24d1d2a`, #275 at `f2beea0`
-and #280 at `46889bd`. Still open before the run: #282, #284 and #286.
+Merged before the run: #270 at `6d02778`, #274 at `1dcd818`, #279 at `24d1d2a`,
+#275 at `f2beea0`, #280 at `46889bd`, #282 at `ed87edc`, #284 at `ee5c154` and
+#286 at `ec77f4b`.
 
 ## 2. The six receipt sections of #187 (comment 5862836271)
 
@@ -62,7 +66,8 @@ replaced by r2 and must not be staged; the notebook carries no pin for it.
 ### 2.2 Admission findings
 
 The run records its own verdicts. These must be present and clean in the run
-folder before the owner signs section 3:
+folder before the owner signs section 3. What was read on 2026-10-23 follows the
+list.
 
 - `admission.json` for the window, with every role admitted: the market panel and
   PIT file (#223), the six regime roles `fred.yield_10y`, `fred.yield_3m`,
@@ -73,6 +78,26 @@ folder before the owner signs section 3:
   decision agenda, as recorded on #223 (comment 5971665014), #224 (comment
   5971662000) and #225 (comment 5971662968), with answer 7 superseded by the
   EODHD decision of 2026-10-04 03:17 UTC.
+
+**Read in the run folder, 2026-10-23:**
+
+- `admission.json`: `"schema": "mci_gru.admission.v1"`, `"admitted": true`. Seven
+  required items, every one `"verdict": "valid"`: the five FRED roles and
+  `eodhd.regime_market` (`valid_for_stated_scope`), and `data.pit_universe_csv`
+  (`pit_names_declared_absent`, the one declared name `DD.N^I17`). The market
+  panel is recorded under `coverage."data.filename"` rather than as an item: 205
+  stocks, 2,911 sessions, 0 rows with a missing price.
+- PIT eligibility and labels (`coverage.pit_eligibility`,
+  `mci_gru.pit_eligibility.v1`): label coverage 0.99995 train (12 of 219,199
+  omitted), 0.99981 validation (5 of 26,271), 1.0 test. No cessation events
+  declared (limitation 1).
+- No `run_failure.json` in the run folder.
+- Input attachment: the training log reads `input_attachments/fd99e5ff1ff849379676bf4009b7dba4/record.json (complete)`.
+  The record binds the r2 manifest (`dcebb8ef…d1c0`) to `data.filename` and
+  `data.pit_universe_csv`, and a captured manifest to each of the six regime roles.
+- `training_summary.json`: 20 of 20 members, `member_coverage` 20/20 for every
+  metric; every member's selected validation IC is positive (0.0187 to 0.0541,
+  mean 0.0364). The log has no ERROR line and no traceback.
 
 ### 2.3 Restoration
 
@@ -125,6 +150,17 @@ recipe gets a new recipe id and is compared against this one (owner decision,
    UTC). EODHD has no price history for it, and no LSEG prices are mixed in, so
    from January 2016 to August 2017 the panel scores at most 109 names (session
    floor 104). The data config declares the gap in `data.pit_absent_kdcodes`.
+9. **Colab runtime version 2026.04.** Colab's default image had moved to Python
+   3.13, which the environment check refuses, so the run used the 2026.04 image
+   (Python 3.12) on a GPU runtime. `colab_run_record.json` does not record the
+   runtime version; this receipt does. #288, merged after the run, makes later
+   runs build their own Python 3.12.11.
+10. **Edge channels have numerical rank 2.** With `graph.use_multi_feature_edges=true`
+    and `graph.top_k=0`, `rank_pct` is identically zero and `|corr|` duplicates
+    `corr`; the run logs this warning once. This is the recipe as the owner kept it
+    ("Keep as is", 2026-10-04). The static graph has 110 edges over 200 nodes.
+11. **`PSKY.OQ` is absent for 799 sessions within history** in the market panel's
+    coverage (804 in all). It is a live name, past the test window at its stale tail.
 
 ## 3. Run charter
 
@@ -136,19 +172,19 @@ recipe gets a new recipe id and is compared against this one (owner decision,
 | Model and training | `gru_attn`, 20 models x 100 epochs, patience 15, pure IC loss on raw 5-day returns, selection on validation IC |
 | Inputs | Section 2.1, captured (`data.auxiliary_snapshot_mode=capture`) |
 | Compute | Google Colab GPU runtime, `notebooks/first_run_colab.ipynb` in `full` mode |
-| Commit | _to fill: the `main` commit after the last of #282, #284 and #286 merges; set as `EXPECTED_COMMIT`_ |
-| Run tag and Drive folder | _to fill from `colab_run_record.json`_ |
+| Commit | `ec77f4b7aee770b2d56a4c659602f4fb803310e2` (merge of #286); `colab_run_record.json` records it with no source changes, and `pip_freeze.txt` records the package installed from that commit |
+| Run tag and Drive folder | `20261010T044328Z-full-ec77f4b7`; `MyDrive/MCI_GRU_shared/runs/first_run/20261010T044328Z-full-ec77f4b7/`. Started 2026-10-10 04:43:28 UTC, finished 05:10:27 UTC, exit code 0; the heartbeat reads `finished` |
 | Success | Exit code 0; no `run_failure.json`; every role admitted in `admission.json`; input attachment `complete`; 20 member records |
 | Stop rules | Any `run_failure.json` stops the run and is reported as it stands, without editing inputs. A lost runtime leaves an incomplete run: start again from the top under a new tag, never resume into the same folder |
 | What it may claim | Only results of this slug on the 2025 test window, with the limitations in 2.6. No claim against runs of other slugs or the pre-2026-10-04 recipe |
 | Not authorised by this charter | Other recipes, other universes, vendor pulls, data edits, further GPU campaigns |
 
-**Release** (owner, after the run):
+**Release** (owner approval 2026-10-23 04:32 UTC; checked and posted by Claude Code at the owner's direction):
 
-- [ ] Section 1 items merged or accepted as limitations
-- [ ] Section 2.2 verdicts read in the run folder
-- [ ] Run tag, commit and Drive folder filled in above
-- [ ] Posted on #187 by the owner on: ____
+- [x] Section 1 items merged or accepted as limitations
+- [x] Section 2.2 verdicts read in the run folder
+- [x] Run tag, commit and Drive folder filled in above
+- [x] Posted on #187 on 2026-10-23, at the owner's direction
 
 ---
-_Drafted by Claude Code for the owner's review._
+_Drafted by Claude Code for the owner's review; admitted by the owner on 2026-10-23._
