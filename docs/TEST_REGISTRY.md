@@ -287,7 +287,7 @@ Input admission at the confirmed #223 seams: native read, preparation, runner.
 
 Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
 
-**Exercises:** `mci_gru.config`, `mci_gru.graph.utils`, `mci_gru.models`
+**Exercises:** `mci_gru.config`, `mci_gru.features.base`, `mci_gru.features.registry`, `mci_gru.graph.utils`, `mci_gru.models`, `mci_gru.models.graph`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -300,7 +300,13 @@ Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
 | `test_the_recipe_builds_data_dependent_market_latents` | Issue 198: static latents cannot see the date, so the first run must not use them. |  |
 | `test_the_recipe_builds_the_residual_cross_stock_block` | Issue 197: the legacy block replaces z and discards most cross-sectional variation. |  |
 | `test_the_recipe_builds_gru_attn_layers_at_32_then_10` | Issue 131: [32, 10] must mean a 32-wide layer then a 10-wide one. |  |
+| `test_the_recipe_builds_residual_graph_layers` | Issue 320: legacy graph layers tie linked names; every layer needs an own-feature path. |  |
+| `test_the_recipe_feeds_relative_base_inputs` | Issue 323: raw split-adjusted levels encode later splits; the recipe must not feed them. |  |
+| `test_the_recipe_scores_in_full_precision` | Issue 321: the first run scored under autocast, so its scores sat on an fp16 grid. |  |
 | `test_the_base_config_alone_still_builds_the_legacy_forms` | Control: the two tests above must come from the recipe's own pins. |  |
+| `test_the_slug_names_each_fix_the_recipe_adopts` | PRD 319 D6: the fixed model gets its own id, so its results never mix with the first run's. |  |
+| `test_every_document_naming_the_current_slug_names_this_one` | The slug is quoted outside the recipe; a stale copy would label new runs with the old id. |  |
+| `test_recipe_records_the_model_fix_and_keeps_the_first_run_apart` | PRD 319 D7: the first run stays on record under its own slug and is not this baseline. |  |
 | `test_the_override_block_parser_reads_the_block` | Control: an empty parse would make every composition test vacuous. |  |
 | `test_recipe_captures_its_provider_inputs` | The owner chose capture for the first run (2026-10-04); source leaves inputs unverifiable. |  |
 | `test_the_recipe_trains_on_the_eodhd_price_panel` | Issue 283: the first run reads the EODHD package, not the LSEG one (owner, 2026-10-08). |  |
@@ -1152,6 +1158,7 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_every_prerequisite_present_reads_as_ready` |  |  |
 | `test_each_missing_prerequisite_is_named_by_its_pull_request` |  | parametrize |
 | `test_one_of_three_model_pins_is_not_enough_for_275` |  |  |
+| `test_a_fix_key_set_to_its_legacy_value_is_missing` | Naming the key is not enough: the pin must select the fixed form. | parametrize |
 | `test_a_digest_without_a_pin_is_named_as_the_pin_not_as_270` |  |  |
 | `test_270_needs_the_package_declaration_in_the_data_config` |  |  |
 | `test_the_recipe_data_config_chooses_the_package_to_stage` |  | parametrize |

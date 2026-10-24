@@ -1,6 +1,6 @@
 # Default Frozen Experiment Recipe
 
-Last updated: 2026-10-08
+Last updated: 2026-10-24
 
 Use this recipe for production-style confirmation notebooks and PIT validation
 runs unless an experiment is explicitly testing one of these factors.
@@ -62,10 +62,38 @@ runs unless an experiment is explicitly testing one of these factors.
 > Regular dividends are not applied, which matches the LSEG panel's basis.
 > Results on the two panels are close but are not the same run.
 
+> **The model and its inputs changed on 2026-10-24, after the first admitted run (#187).**
+>
+> The first run's scores had two faults (#319). Its graph layers gave linked
+> stocks that share a neighbourhood the same score, whatever their own data said,
+> and its six base inputs were raw price and volume levels from a panel
+> split-adjusted as of its last date, so a row before a split already encoded
+> that split. Prediction also ran under half-precision autocast, which rounds
+> scores onto a coarse grid. The recipe now pins the fixed forms, each behind a
+> key whose base default keeps the old behaviour, and the slug gains one part per
+> fix (#325).
+>
+> | | before 2026-10-24 | from 2026-10-24 |
+> |---|---|---|
+> | `model.gat_layer_form` | `legacy` (inherited): every graph layer sees a stock's own features only as one neighbour, so linked names tie (#320) | `residual` (pinned): `GATConv(residual=True)` in both layers of all three graph blocks, an own-feature path for every stock |
+> | `features.base_inputs` | `levels` (inherited): raw close, open, high, low, volume and turnover, rescaled by splits that happen after the row (#323) | `relative` (pinned): log return, overnight and intraday returns, high-low range over close, and log volume and turnover against the stock's own 20-session mean |
+> | `training.eval_amp` | no such key: validation and prediction ran under CUDA autocast whenever `training.use_amp` did | `false` (pinned): validation and prediction run in full precision; training keeps AMP (#321) |
+> | slug | `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10` | `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32` |
+>
+> The residual layers hold parameters the legacy ones do not, and the relative
+> inputs change the input width, so a checkpoint trained under the earlier slug
+> does not load into this recipe's model. Such a checkpoint still rebuilds from
+> its own run directory, because the base defaults keep the legacy forms.
+>
+> The first admitted run, `20261010T044328Z-full-ec77f4b7`, stays on record under
+> the earlier slug as the result of the model with these faults. It is not the
+> baseline for this recipe; the rerun of this recipe with its control arms
+> (#326) is.
+
 Recipe slug:
 
 ```text
-static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10
+static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32
 ```
 
 ## Hydra Overrides
@@ -84,6 +112,7 @@ training.loss_type=ic
 training.label_type=returns
 training.selection_metric=val_ic
 training.shuffle_train=true
+training.eval_amp=false
 model.label_t=5
 model.temporal_encoder=gru_attn
 model.use_multi_scale=true
@@ -92,6 +121,7 @@ model.use_nn_multihead_attention=true
 model.market_latent_mode=data_dependent
 model.cross_section_block=residual
 model.gru_attn_layer_widths=per_layer
+model.gat_layer_form=residual
 
 graph.judge_value=0.8
 graph.update_frequency_months=0
@@ -104,6 +134,7 @@ graph.use_lead_lag_features=false
 graph.drop_edge_p=0.1
 
 features=with_momentum
+features.base_inputs=relative
 features.include_momentum=true
 features.include_weekly_momentum=true
 features.momentum_encoding=binary
@@ -142,7 +173,7 @@ features.regime_min_history_months=24
   `scripts/ci_smoke.py` does.
 - `FRED_API_KEY` is required when `features.include_global_regime=true` and
   `features.regime_strict=true`.
-- The seven `model.*` keys after `model.label_t` are pinned for the same reason
+- The eight `model.*` keys after `model.label_t` are pinned for the same reason
   as the data config. `market_latent_mode=data_dependent` and
   `cross_section_block=residual` are the corrected forms from #198 and #197, and `gru_attn_layer_widths=per_layer` makes
   `gru_hidden_sizes: [32, 10]` mean a 32-wide layer then a 10-wide one, the
@@ -154,6 +185,16 @@ features.regime_min_history_months=24
   `gru-32-10` does not move if a base default does.
   `tests/test_default_experiment_recipe.py` composes this block the way
   `run_experiment.py` does and checks the model it builds.
+- `model.gat_layer_form=residual` (#320) and `features.base_inputs=relative`
+  (#323) were added on 2026-10-24, with the same reasoning: the base defaults
+  stay `legacy` and `levels` so earlier run directories rebuild. The relative
+  volume inputs divide by the stock's own trailing mean and treat zero or
+  negative volume as missing; the check of the panel's volume column for bad
+  rows is #322.
+- `training.eval_amp=false` (#321) is the base default too. It is pinned so a
+  move of that default cannot put prediction back under autocast. It applies to
+  validation and `Trainer.predict` only; `training.use_amp` still governs
+  training.
 - No cessation (delisting) event file is declared:
   `data.pit_cessation_events_csv` stays `null` (decided 2026-10-04, #273). The
   EODHD panel keeps the LSEG identifiers. Five of its names carry LSEG delisted

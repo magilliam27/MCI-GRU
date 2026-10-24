@@ -16,8 +16,11 @@ from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 
 from mci_gru.config import create_config_from_dict
+from mci_gru.features.base import BASE_FEATURES, RELATIVE_BASE_FEATURES
+from mci_gru.features.registry import FeatureEngineer
 from mci_gru.graph.utils import edge_feature_dim
 from mci_gru.models import ResidualCrossSectionBlock, create_model
+from mci_gru.models.graph import GATBlock
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RECIPE = REPO_ROOT / "docs" / "DEFAULT_EXPERIMENT_RECIPE.md"
@@ -26,6 +29,15 @@ RECIPE = REPO_ROOT / "docs" / "DEFAULT_EXPERIMENT_RECIPE.md"
 DATA_SELECTOR = re.compile(r"^data=([A-Za-z0-9_]+)$", re.M)
 OVERRIDE_BLOCK = re.compile(r"^## Hydra Overrides\n+```text\n(.*?)^```", re.M | re.S)
 SNAPSHOT_MODE = re.compile(r"^data\.auxiliary_snapshot_mode=(\w+)$", re.M)
+SLUG_BLOCK = re.compile(r"^Recipe slug:\n+```text\n(.*?)^```", re.M | re.S)
+
+#: The slug the first admitted run (#187) ran under. It stays on record for that run.
+FIRST_RUN_SLUG = (
+    "static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble"
+    "__drop-edge-0p1__latents-data__xsec-residual__gru-32-10"
+)
+#: One slug part per #319 fix the recipe adopts (#325).
+FIX_SLUG_PARTS = ("gat-residual", "inputs-relative", "eval-fp32")
 
 
 def _pinned_data_group(text: str) -> str | None:
@@ -126,6 +138,40 @@ def test_the_recipe_builds_gru_attn_layers_at_32_then_10():
         assert [layer.hidden_size for layer in branch.grus] == [32, 10]
 
 
+def _graph_blocks(model) -> dict[str, GATBlock]:
+    return {name: m for name, m in model.named_modules() if isinstance(m, GATBlock)}
+
+
+def test_the_recipe_builds_residual_graph_layers():
+    """Issue 320: legacy graph layers tie linked names; every layer needs an own-feature path."""
+    config = _compose(_recipe_overrides())
+    config.graph.use_sector_relation = True  # build the sector stream too, so all three are seen
+    blocks = _graph_blocks(_build_model(config))
+    assert set(blocks) == {"gat_layer", "gat_layer_sector", "final_gat"}
+    for name, block in blocks.items():
+        for conv in (block.gat1, block.gat2):
+            assert conv.residual and conv.res is not None, f"{name} has no own-feature path"
+
+
+def test_the_recipe_feeds_relative_base_inputs():
+    """Issue 323: raw split-adjusted levels encode later splits; the recipe must not feed them."""
+    config = _compose(_recipe_overrides())
+    columns = FeatureEngineer(config.features).get_feature_columns()
+    assert columns[: len(RELATIVE_BASE_FEATURES)] == RELATIVE_BASE_FEATURES
+    assert not set(BASE_FEATURES) & set(columns), "a raw level is still an input"
+
+
+def test_the_recipe_scores_in_full_precision():
+    """Issue 321: the first run scored under autocast, so its scores sat on an fp16 grid.
+
+    The base default is already false, so the composed value alone cannot tell a
+    pin from an inherited default. The recipe must say it, so a move of the
+    default cannot put scoring back under autocast.
+    """
+    assert "training.eval_amp=false" in _recipe_overrides()
+    assert _compose(_recipe_overrides()).training.eval_amp is False
+
+
 def test_the_base_config_alone_still_builds_the_legacy_forms():
     """Control: the two tests above must come from the recipe's own pins.
 
@@ -133,14 +179,54 @@ def test_the_base_config_alone_still_builds_the_legacy_forms():
     rebuild. If it ever moved, the recipe tests would pass without the pins, and
     this control says so rather than letting them pass for the wrong reason.
     """
-    without_model_pins = [line for line in _recipe_overrides() if not line.startswith("model.")] + [
-        "model.label_t=5"
-    ]
-    model = _build_model(_compose(without_model_pins))
+    without_model_pins = [
+        line
+        for line in _recipe_overrides()
+        if not line.startswith(("model.", "features.base_inputs="))
+    ] + ["model.label_t=5"]
+    config = _compose(without_model_pins)
+    model = _build_model(config)
     assert model.latent_learner.market_latent_mode == "static"
     assert not isinstance(model.self_attention, ResidualCrossSectionBlock)
     assert model.temporal_encoder.fast_gru.grus is None
     assert model.temporal_encoder.fast_gru.gru.hidden_size == 10
+    for name, block in _graph_blocks(model).items():
+        assert not block.gat1.residual and not block.gat2.residual, name
+    columns = FeatureEngineer(config.features).get_feature_columns()
+    assert columns[: len(BASE_FEATURES)] == BASE_FEATURES
+
+
+def _recipe_slug() -> str:
+    block = SLUG_BLOCK.search(RECIPE.read_text(encoding="utf-8"))
+    assert block, "the recipe has no slug block"
+    lines = [line.strip() for line in block.group(1).splitlines() if line.strip()]
+    assert len(lines) == 1, lines
+    return lines[0]
+
+
+def test_the_slug_names_each_fix_the_recipe_adopts():
+    """PRD 319 D6: the fixed model gets its own id, so its results never mix with the first run's."""
+    slug = _recipe_slug()
+    assert slug == FIRST_RUN_SLUG + "".join(f"__{part}" for part in FIX_SLUG_PARTS)
+    assert slug != FIRST_RUN_SLUG
+
+
+def test_every_document_naming_the_current_slug_names_this_one():
+    """The slug is quoted outside the recipe; a stale copy would label new runs with the old id."""
+    slug = _recipe_slug()
+    for relative in ("AGENTS.md", "docs/CONFIGURATION_GUIDE.md", "docs/NOTEBOOK_BEST_PRACTICES.md"):
+        text = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        assert slug in text, f"{relative} does not name the recipe slug"
+
+
+def test_recipe_records_the_model_fix_and_keeps_the_first_run_apart():
+    """PRD 319 D7: the first run stays on record under its own slug and is not this baseline."""
+    text = RECIPE.read_text(encoding="utf-8")
+    assert "The model and its inputs changed on 2026-10-24" in text
+    assert FIRST_RUN_SLUG in text, "the first run's slug is no longer recorded"
+    assert re.search(r"It is not the\s+(> )?baseline for this recipe", text)
+    match = re.search(r"^Last updated:\s*(\d{4}-\d{2}-\d{2})$", text, re.M)
+    assert match and match.group(1) >= "2026-10-24"
 
 
 def test_the_override_block_parser_reads_the_block():
