@@ -2299,7 +2299,7 @@ The replay reads its inputs from the run it replays (#339).
 
 The replay trades the trained return and reports one consistent set of metrics (#340).
 
-**Exercises:** `mci_gru.data.preprocessing`, `mci_gru.evaluation`, `mci_gru.evaluation.replay_book`, `run_experiment`
+**Exercises:** `mci_gru.data.preprocessing`, `mci_gru.evaluation`, `mci_gru.evaluation.replay_book`, `mci_gru.training`, `run_experiment`, `scripts`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -2320,7 +2320,7 @@ The replay trades the trained return and reports one consistent set of metrics (
 | `test_every_metric_and_file_reads_one_daily_series` |  |  |
 | `test_outputs_record_input_hashes` |  |  |
 | `test_multi_model_is_gone` | It averaged member metrics (not the ensemble the run reports) and found no folders. |  |
-| `test_the_replay_top_k_excess_equals_the_in_run_summary` |  | parametrize |
+| `test_the_replay_top_k_excess_equals_the_in_run_summary` | Against the summary the run wrote, and the one #337 re-scores from its inputs. | parametrize, parametrize |
 
 ## `tests/test_repository_retirement_guard.py`
 

@@ -43,6 +43,8 @@ from mci_gru.evaluation.replay_book import (
     build_replay_book,
     issuer_keys,
 )
+from mci_gru.training import ensemble
+from scripts import rescore_run
 
 SESSIONS = pd.bdate_range("2025-01-06", periods=16).strftime("%Y-%m-%d").tolist()
 
@@ -523,18 +525,41 @@ def synthetic_run(tmp_path_factory) -> Path:
     out.mkdir()
     patch = pytest.MonkeyPatch()
     patch.setattr(torch.cuda, "is_available", lambda: False)
+    patch.setattr(ensemble, "prediction_rows_for_date", _unrounded_rows)
     try:
         with _restored_process_state(out):
             run_experiment.main.__wrapped__(cfg)
     finally:
         patch.undo()
+    rescore_run.rescore_run(out)
     return out
 
 
+def _unrounded_rows(predictions, kdcode_list, date, prediction_mask=None):
+    """``prediction_rows_for_date`` without its 5-decimal rounding.
+
+    The summary ranks the run's own scores; the replay ranks the saved file. Rounding
+    can tie two names a one-epoch model scored nearly alike and flip a pick on one
+    platform but not another, so the fixture saves full precision (as #337's does).
+    """
+    mask = np.ones(len(kdcode_list), bool) if prediction_mask is None else prediction_mask
+    return [
+        [kdcode, date, float(score)]
+        for kdcode, score, keep in zip(kdcode_list, predictions, mask, strict=True)
+        if keep and np.isfinite(score)
+    ]
+
+
+@pytest.mark.parametrize(
+    "summary_file", ["evaluation_summary.json", rescore_run.RESCORED_SUMMARY_FILENAME]
+)
 @pytest.mark.parametrize("top_k", [2, 3])
-def test_the_replay_top_k_excess_equals_the_in_run_summary(synthetic_run, tmp_path, top_k):
+def test_the_replay_top_k_excess_equals_the_in_run_summary(
+    synthetic_run, tmp_path, top_k, summary_file
+):
+    """Against the summary the run wrote, and the one #337 re-scores from its inputs."""
     run = Path(shutil.copytree(synthetic_run, tmp_path / "run"))
-    summary = json.loads((run / "evaluation_summary.json").read_text(encoding="utf-8"))["metrics"]
+    summary = json.loads((run / summary_file).read_text(encoding="utf-8"))["metrics"]
 
     backtest_engine.main(
         ["--run_dir", str(run), "--top_k", str(top_k), "--auto_save", "--disable_mlflow_autolink"]
