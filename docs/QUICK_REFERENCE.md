@@ -23,21 +23,26 @@ python run_experiment.py output_dir=/path/to/output
 
 ## Backtesting
 
-Backtesting is done via `scripts/backtest_sp500.py` and `scripts/backtest_sp500_daily.py`:
+Backtesting is done via `scripts/backtest_sp500.py` and `scripts/backtest_sp500_daily.py`.
+Point `--run_dir` at one window's run output: it supplies the data file, PIT file and
+export cutoff, test window, label, k and members, and refuses a file whose bytes differ
+from what the run consumed (#339). Input flags are then checked overrides. Without
+`--run_dir`, every input (`--predictions_dir --data_file --test_start --test_end --top_k
+--label_t`) must be named; none has a default.
 
 ```bash
 # Basic backtest
-python scripts/backtest_sp500.py --predictions_dir path/to/averaged_predictions
+python scripts/backtest_sp500.py --run_dir path/to/run
 
 # With auto-save and plot
 python scripts/backtest_sp500.py \
-    --predictions_dir path/to/averaged_predictions \
+    --run_dir path/to/run \
     --auto_save \
     --plot
 
 # With transaction costs (separate directory)
 python scripts/backtest_sp500.py \
-    --predictions_dir path/to/averaged_predictions \
+    --run_dir path/to/run \
     --auto_save \
     --backtest_suffix _with_costs \
     --transaction_costs
