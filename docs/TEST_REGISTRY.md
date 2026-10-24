@@ -58,7 +58,7 @@ Public auxiliary loader and preparation capture/replay contracts.
 
 ## `tests/test_backtest_engine_golden.py`
 
-Golden-output regression tests for legacy backtest CLIs (WS-N step 2).
+Golden-output regression tests for the replay CLIs (WS-N step 2, regenerated in #340).
 
 | Test | Description | Markers |
 |---|---|---|
@@ -67,23 +67,22 @@ Golden-output regression tests for legacy backtest CLIs (WS-N step 2).
 
 ## `tests/test_backtest_fairness.py`
 
-Test script to verify backtest fairness fixes.
+Backtest fairness of the replay's open-to-open variant (#340 kept it as a labelled variant).
 
-**Exercises:** `mci_gru.evaluation`
+**Exercises:** `mci_gru.evaluation`, `mci_gru.evaluation.replay_book`
 
 | Test | Description | Markers |
 |---|---|---|
-| `test_return_calculation` | Test that calculate_forward_returns adds the correct columns. |  |
-| `test_simulation_timing` | Test that simulation uses correct timing (next-day open-to-open returns). |  |
-| `test_prediction_date_mapping` | Test that predictions on day t map to day t+1 entry open-to-open returns. |  |
-| `test_rank_drop_gate_eligible` | With rank-drop gate: stock that fell >= 10 ranks is eligible and can be selected. |  |
-| `test_rank_drop_gate_excluded` | With rank-drop gate: when no stock fell >= 10 ranks, holdings persist. |  |
-| `test_rank_drop_gate_disabled_regression` | With rank-drop gate disabled, behavior matches no-gate (same number of trading days as without gate). |  |
-| `test_portfolio_tracking_outputs_nonregression` | Validate additive portfolio tracking outputs and core output preservation. |  |
+| `test_simulation_timing` | The open_to_open variant earns the open D+1 to open D+2 move. |  |
+| `test_prediction_date_mapping` | A prediction on day t is held from the open of t+1 to the open of t+2. |  |
+| `test_rank_drop_gate_eligible` | A holding whose rank fell by >= min_rank_drop is sold and its slot refilled. |  |
+| `test_rank_drop_gate_excluded` | With no rank drop >= min_rank_drop, holdings persist. |  |
+| `test_rank_drop_gate_disabled_regression` | With the gate off, the book is the plain top-k book. |  |
+| `test_portfolio_tracking_outputs_nonregression` | Holdings and trades come from the same book, and every output file is written. |  |
 
 ## `tests/test_backtest_plotting.py`
 
-**Exercises:** `mci_gru.evaluation`
+**Exercises:** `mci_gru.evaluation`, `mci_gru.evaluation.replay_book`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -1987,14 +1986,9 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 
 | Test | Description | Markers |
 |---|---|---|
-| `test_dispatch_refuses_pit_universe_when_simulator_cannot_admit_it` | A simulator that cannot take the PIT universe must not be run with one. | parametrize |
-| `test_shipped_simulators_all_accept_the_pit_universe` | Every dispatchable path admits on the PIT basis, so production never refuses. |  |
 | `test_pit_inactive_name_is_never_held` | The top-scoring name is held only when the PIT universe admits it. | parametrize |
-| `test_internal_benchmark_uses_the_pit_filtered_universe` | Each booked benchmark return is the equal-weight mean over PIT-active rows only. | parametrize |
-| `test_pit_run_matches_a_universe_that_never_contained_the_name` | Public evaluate(): a PIT-restricted run equals a genuinely restricted universe. | parametrize |
+| `test_pit_run_matches_a_universe_that_never_contained_the_name` | A PIT-restricted run equals a genuinely restricted universe, benchmark included. | parametrize |
 | `test_saved_artifacts_exclude_pit_inactive_holdings` | The saved holdings artifacts inherit the same PIT admission basis. |  |
-| `test_dispatch_matches_direct_simulator_call_without_pit` | With no PIT universe the unified dispatch reproduces the legacy call exactly. | parametrize |
-| `test_admit_pit_candidates_is_a_noop_without_a_pit_universe` | The shared admission helper must not perturb non-PIT runs. |  |
 
 ## `tests/test_pit_masked_panel.py`
 
@@ -2270,7 +2264,7 @@ Every notebook that replays on a PIT file names the export's cutoff (#342).
 
 The replay reads its inputs from the run it replays (#339).
 
-**Exercises:** `mci_gru.evaluation`, `mci_gru.evaluation.backtest_engine`, `mci_gru.evaluation.replay_inputs`
+**Exercises:** `mci_gru.evaluation`, `mci_gru.evaluation.backtest_engine`, `mci_gru.evaluation.replay_book`, `mci_gru.evaluation.replay_inputs`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -2295,11 +2289,43 @@ The replay reads its inputs from the run it replays (#339).
 | `test_a_same_named_file_elsewhere_is_not_substituted` |  |  |
 | `test_open_ended_pit_rows_keep_their_members_through_the_cutoff` |  |  |
 | `test_open_ended_pit_rows_without_a_cutoff_are_refused_not_dropped` |  |  |
-| `test_benchmark_uses_the_candidates_membership_date` | DDD joins on session 6: it is out of the benchmark for the trade entering then |  |
-| `test_benchmark_without_a_pit_file_is_the_runs_members` |  |  |
+| `test_benchmark_uses_the_candidates_membership_date` | DDD joins on session 6: it is out of the benchmark for the tranche ranked on |  |
+| `test_benchmark_without_a_pit_file_is_the_runs_scored_members` |  |  |
 | `test_numeric_kdcodes_match_a_string_universe` |  |  |
 | `test_explicit_mode_without_a_pit_file_benchmarks_the_scored_names` |  |  |
 | `test_cli_replays_a_run_from_its_directory_alone` |  |  |
+
+## `tests/test_replay_strategy.py`
+
+The replay trades the trained return and reports one consistent set of metrics (#340).
+
+**Exercises:** `mci_gru.data.preprocessing`, `mci_gru.evaluation`, `mci_gru.evaluation.replay_book`, `mci_gru.training`, `run_experiment`, `scripts`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_the_default_book_buys_close_d_plus_1_and_sells_close_d_plus_5` |  |  |
+| `test_a_missing_bar_never_moves_an_endpoint` | A row shift would read the close one session later for every date before the gap. |  |
+| `test_a_missing_exit_books_the_last_close_then_cash_and_is_recorded` | D delists after session 3: its loss is booked, and it is not dropped from the |  |
+| `test_weights_drift_with_prices_inside_a_tranche` | A doubles then doubles again; B is flat. Buy and hold: the second day returns |  |
+| `test_costs_are_booked_on_the_sessions_trades_happen` |  |  |
+| `test_a_name_carried_into_the_next_tranche_trades_only_its_drift` | A rises 10% in the first hold, B is flat; both are picked again at the rollover. |  |
+| `test_a_missing_exit_is_charged_when_it_is_sold` | B has no close after session 2: it is sold at that close, and charged there. |  |
+| `test_the_portfolio_holds_one_share_class_per_issuer` |  |  |
+| `test_the_benchmark_weights_the_issuer_once` |  |  |
+| `test_the_open_to_open_variant_buys_open_d_plus_1_and_sells_open_d_plus_2` |  |  |
+| `test_the_rank_drop_gate_keeps_a_holding_until_its_rank_falls_far_enough` |  |  |
+| `test_the_rank_drop_gate_compares_each_sleeve_with_its_own_last_tranche` | Four sleeves: signal 4 rolls over sleeve 0, opened on signal 0. |  |
+| `test_drawdown_starts_from_one` |  |  |
+| `test_information_ratio_is_annualised` |  |  |
+| `test_standard_sharpe_sits_beside_the_papers_asr` |  |  |
+| `test_monthly_returns_compound` |  |  |
+| `test_holm_for_one_strategy_and_bhy_only_with_the_trial_ledger` |  |  |
+| `test_every_metric_and_file_reads_one_daily_series` |  |  |
+| `test_outputs_record_input_hashes` |  |  |
+| `test_an_issuer_map_joins_share_classes_the_built_in_map_lacks` |  |  |
+| `test_bhy_without_a_ledger_is_refused_before_the_replay_runs` |  |  |
+| `test_multi_model_is_gone` | It averaged member metrics (not the ensemble the run reports) and found no folders. |  |
+| `test_the_replay_top_k_excess_equals_the_in_run_summary` | Against the summary the run wrote, and the one #337 re-scores from its inputs. | parametrize, parametrize |
 
 ## `tests/test_repository_retirement_guard.py`
 
