@@ -21,15 +21,16 @@ or run tag; the preserved raw outputs are the record.
 
 Statistics superseded, 2026-10-24 (#334). This report takes two things from
 the graph paired re-analysis that #342 (pull request #352, `242ffb5`) later
-corrected. The first is the minimum detectable effect of 0.0035 (sections 2
-and 7), which sections 1 and 3 use as a yardstick. It was computed from the
+corrected. The first is the minimum detectable effect of 0.0035, which
+sections 1, 2, 3, 5 and 7 use as a yardstick or bar. It was computed from the
 iid standard deviation of the daily IC difference rather than the long-run
 one, so it is understated. `[Inferred]` The re-analysis's own HAC standard
 error puts the factor at about 1.5× or more, roughly 0.005 or more for the
 shipped configuration at four pooled years; that report's statistics note
-gives the arithmetic. Where sections 1 and 3 call an effect "ten times" or "an
-order of magnitude larger" than the MDE, the multiple is overstated by the
-same factor, though the effect is still several times the MDE. The second is
+gives the arithmetic. Where sections 1 and 3 call an effect "seven times",
+"ten times" or "an order of magnitude larger" than the MDE, the multiple is
+overstated by the same factor, though the effect is still several times the
+MDE. The section 5 bar that an arm must clear rises with it. The second is
 the "lag-4 HAC" in the section 5 protocol, as ruled on #181. The code now uses
 uniform (Hansen-Hodrick) weights with `label_t − 2 = 3` lags and refuses
 fewer, because Bartlett lag 4 understates the variance of the 4-session label,
