@@ -1,6 +1,6 @@
 # Default Frozen Experiment Recipe
 
-Last updated: 2026-10-08
+Last updated: 2026-10-24
 
 Use this recipe for production-style confirmation notebooks and PIT validation
 runs unless an experiment is explicitly testing one of these factors.
@@ -61,6 +61,36 @@ runs unless an experiment is explicitly testing one of these factors.
 > dividends declared in `data/mappings/eodhd_symbols_gics_top10_110_2016.json`.
 > Regular dividends are not applied, which matches the LSEG panel's basis.
 > Results on the two panels are close but are not the same run.
+
+> **The in-run summary changed on 2026-10-24, after the first admitted run (#187).**
+>
+> `evaluation_summary.json` now carries `schema_version: mci_gru.evaluation_summary.v2`
+> (#336, PRD #334). Its IC and rank IC, with their intervals, are computed exactly as
+> before. Every portfolio number is now the daily P&L of the staggered tranche book
+> the label implies (close `D+1` to close `D+5`, four sleeves), with returns from the
+> evaluation core (#335), and the headline is each top-k's excess over the
+> equal-weight PIT-tradable universe on the same mask, legs and schedule. Returns are
+> price returns (`return_basis: price`); the panel carries no dividends.
+>
+> | | schema v1 (first run and earlier) | schema v2 (from 2026-10-24) |
+> |---|---|---|
+> | Sharpe | overlapping 4-session top-k returns annualised as daily ones, Bartlett lags `label_t - 1` (about 1.13x the truth) | daily P&L of the tranche book, `evaluation.sharpe_method` honoured, lags `label_t - 2` |
+> | cumulative return | sum of the overlapping returns (each session counted ~4 times) | compounded daily book |
+> | benchmark | none | equal-weight PIT-tradable universe; excess per period with a Hansen-Hodrick t-stat (lags `label_t - 2`) |
+> | k | unsuffixed keys hard-coded to 50 | only the k in `evaluation.top_k_values` |
+> | quantiles | remainder piled into the top bucket | even quintiles |
+>
+> Removed keys, because an IC loss leaves a score's level and scale arbitrary or
+> because they measured overlapping returns as daily: `mse`, `rmse`, `mae`,
+> `hit_rate`, `top_k`, `avg_portfolio_return`, `cumulative_return`, `sharpe_ratio`,
+> `sharpe_naive`, `sharpe_newey_west`, `return_top_<k>`, `sharpe_top_<k>`,
+> `sharpe_top_<k>_naive`, `sharpe_top_<k>_newey_west`, `top_<k>_return_ci_lower/upper`,
+> `quantile_<q>_return`, `long_short_spread`. Their replacements are
+> `top_<k>_abs_*` (long-only), `top_<k>_excess_*` (over the universe),
+> `universe_abs_*`, `quintile_<q>_abs_period_return` and
+> `long_short_abs_period_spread`; `test_dates`, `ic_valid_dates` and
+> `ic_date_coverage` report IC date coverage. A v1 summary keeps its old numbers;
+> re-scoring a saved run writes a new file beside it (#337).
 
 Recipe slug:
 

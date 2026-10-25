@@ -38,11 +38,16 @@ STAGES = ["confirm", "screen"]
 CONFIRM_NUM_MODELS = 20
 
 # The arbiter's evaluation settings, resolved exactly as
-# ``mci_gru.evaluation.experiment_summary.resolved_evaluation_kwargs`` resolves
-# them for the frozen recipe: block = label_t, Newey-West lags = label_t - 1.
+# ``mci_gru.evaluation.experiment_summary.resolved_evaluation_kwargs`` resolved
+# them for the frozen recipe when this ran: block = label_t. Since #356 the in-run and
+# default paired intervals use no block; this notebook passes one to keep its
+# recorded scheme, and its HAC p-values now use a t reference. The HAC uses uniform (Hansen-Hodrick)
+# weights on label_t - 2 lags: the close[t+5] / close[t+1] label spans 4 sessions, so
+# consecutive days share 3. Bartlett weights on label_t - 1 lags understated the
+# overlap variance (#342).
 LABEL_T = 5
 BLOCK_SIZE = 5
-HAC_LAGS = 4
+HAC_LAGS = 3
 N_RESAMPLES = 1000
 BOOTSTRAP_SEED = 1729
 CI_LEVEL = 0.95
@@ -85,7 +90,7 @@ def build_cells() -> list[dict]:
               (`mci_gru.data.preprocessing.compute_labels`). The ablation notebook's
               section 8 used `close[t+5] / close[t] - 1`; that variant is computed
               alongside so the discrepancy is quantified, not guessed.
-            - **Inference:** Newey-West HAC (`lags = {HAC_LAGS}`) and a circular
+            - **Inference:** uniform-weight HAC (`lags = {HAC_LAGS}`) and a circular
               {BLOCK_SIZE}-session block bootstrap on the mean difference; BHY across the
               {len(COMPARISON_ARMS)} arm-versus-control comparisons.
             - **Power:** `sd(delta_k)` and the minimum detectable effect per pooled-day
@@ -205,9 +210,10 @@ def build_cells() -> list[dict]:
             market = pd.read_csv(panel_path, usecols=["dt", "kdcode", "close"])
             market["dt"] = pd.to_datetime(market["dt"]).dt.strftime("%Y-%m-%d")
 
-            # Arbiter label: close[t + LABEL_T] / close[t + 1] - 1, identical to
-            # mci_gru.data.preprocessing.compute_labels and to what the production
-            # evaluation received as ``true_returns``.
+            # Arbiter label: close[t + LABEL_T] / close[t + 1] - 1 on the session axis,
+            # through the evaluation core. On a panel with every close present it is
+            # mci_gru.data.preprocessing.compute_labels, what the production evaluation
+            # received as ``true_returns``; a missing close follows the core's rules (#335).
             realized = realized_returns_from_market_data(market, label_t=LABEL_T)
             LABEL_ARBITER = realized.pivot_table(index="dt", columns="kdcode", values="realized_return").sort_index()
 
@@ -331,8 +337,10 @@ def build_cells() -> list[dict]:
             rows = []
             for stage in STAGES:
                 for _, row in PAIRED[stage]["pearson"].iterrows():
-                    sd = float(row["sd_delta"])
-                    entry = {"stage": stage, "arm": row["arm"], "sd_delta": sd, "n_days_observed": int(row["n_days"])}
+                    # Power needs the long-run sd: overlapping days carry less information
+                    # than the iid sd_delta implies (#342).
+                    sd = float(row["long_run_sd"])
+                    entry = {"stage": stage, "arm": row["arm"], "sd_delta": float(row["sd_delta"]), "long_run_sd": sd, "n_days_observed": int(row["n_days"])}
                     for n in POWER_DAY_GRID:
                         entry[f"mde_at_{n}_days"] = minimum_detectable_effect(sd, n, power=POWER, alpha=ALPHA)
                     for mde in POWER_MDE_GRID:
@@ -409,7 +417,7 @@ def build_cells() -> list[dict]:
                     for arm in ALL_ARMS:
                         ci = sharpe_block_bootstrap_ci(
                             series[arm].to_numpy(),
-                            nw_lags=HAC_LAGS,
+                            hac_lags=HAC_LAGS,
                             block_size=BLOCK_SIZE,
                             n_resamples=N_RESAMPLES,
                             seed=BOOTSTRAP_SEED + k,
@@ -521,7 +529,7 @@ def build_cells() -> list[dict]:
                 f"- Repository commit: `{commit}` on branch `{BRANCH}`",
                 f"- Panel: `{PANEL_NAME}` sha256 `{panel_sha}`",
                 f"- Label: close[t+{LABEL_T}] / close[t+1] - 1 (arbiter); section-8 variant computed alongside",
-                f"- Inference: Newey-West lags {HAC_LAGS}; block {BLOCK_SIZE}; {N_RESAMPLES} resamples; seed {BOOTSTRAP_SEED}; CI {CI_LEVEL}; BHY over {len(COMPARISON_ARMS)} comparisons",
+                f"- Inference: uniform-weight HAC lags {HAC_LAGS}; block {BLOCK_SIZE}; {N_RESAMPLES} resamples; seed {BOOTSTRAP_SEED}; CI {CI_LEVEL}; BHY over {len(COMPARISON_ARMS)} comparisons",
                 "",
                 "## Confirm, primary (Pearson, arbiter label): paired against " + CONTROL_ARM,
                 "",

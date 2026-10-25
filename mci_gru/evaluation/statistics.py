@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
+from scipy import stats
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -32,6 +33,19 @@ class HACMeanInference:
     standard_error: float | None
     t_stat: float | None
     p_value: float | None
+
+
+@dataclass(frozen=True)
+class HACMeanInterval:
+    """Serializable uniform-weight HAC interval for the mean of a dated series."""
+
+    method: str
+    n_obs: int
+    lags: int
+    df: float | None
+    ci_level: float
+    lower: float | None
+    upper: float | None
 
 
 @dataclass(frozen=True)
@@ -242,6 +256,145 @@ def newey_west_std(values: np.ndarray, lags: int) -> float:
         weight = 1.0 - lag / (max_lag + 1.0)
         variance += 2.0 * weight * cov
     return float(np.sqrt(max(variance, 0.0)))
+
+
+def hansen_hodrick_std(values: np.ndarray, lags: int) -> float:
+    """Long-run standard deviation with uniform (Hansen-Hodrick) weights on lags 1..``lags``.
+
+    The right estimator for a dated series of ``h``-session returns sampled every
+    session: the overlap makes the first ``h - 1`` autocovariances real and the rest
+    zero, so each gets full weight. Bartlett weights would discount them and leave the
+    variance too small. The variance is floored at zero, since uniform weights do not
+    guarantee a positive estimate.
+    """
+    x = np.asarray(values, dtype=np.float64)
+    x = x[np.isfinite(x)]
+    if lags < 0:
+        raise ValueError("lags must be >= 0")
+    if x.size <= 1:
+        return 0.0
+
+    centered = x - np.mean(x)
+    n = centered.size
+    variance = float(np.dot(centered, centered) / n)
+    for lag in range(1, min(lags, n - 1) + 1):
+        variance += 2.0 * float(np.dot(centered[lag:], centered[:-lag]) / n)
+    return float(np.sqrt(max(variance, 0.0)))
+
+
+def hansen_hodrick_mean_inference(
+    values: np.ndarray,
+    *,
+    label_horizon: int,
+) -> HACMeanInference:
+    """Mean of a dated series of overlapping ``label_horizon``-session outcomes, HH t-stat.
+
+    Lags are ``label_horizon - 1``, the overlap the outcomes really have. The two-sided
+    p-value is Student-t on ``hac_equivalent_df`` degrees of freedom, the reference
+    ``hansen_hodrick_mean_ci`` uses, so a p-value under ``1 - ci_level`` and an interval
+    excluding zero agree; a normal reference over-rejects on a few hundred dates
+    (#356). The standard error, t-stat and p-value are None when the estimated
+    variance is not positive.
+    """
+    if label_horizon <= 0:
+        raise ValueError("label_horizon must be > 0")
+    x = np.asarray(values, dtype=np.float64)
+    if x.ndim != 1:
+        raise ValueError("values must be 1-D")
+    if not np.all(np.isfinite(x)):
+        raise ValueError("values must contain only finite observations")
+
+    lags = label_horizon - 1
+    method = "hansen_hodrick_t_v1"
+    if x.size == 0:
+        return HACMeanInference(method, 0, None, lags, None, None, None)
+
+    mean_value = float(np.mean(x))
+    standard_error = hansen_hodrick_std(x, lags=lags) / math.sqrt(x.size)
+    if standard_error <= 0.0 or not np.isfinite(standard_error):
+        return HACMeanInference(method, int(x.size), mean_value, lags, None, None, None)
+    t_stat = float(mean_value / standard_error)
+    return HACMeanInference(
+        method=method,
+        n_obs=int(x.size),
+        mean=mean_value,
+        lags=lags,
+        standard_error=float(standard_error),
+        t_stat=t_stat,
+        p_value=float(2.0 * stats.t.sf(abs(t_stat), hac_equivalent_df(int(x.size), lags))),
+    )
+
+
+def hac_equivalent_df(n_obs: int, lags: int) -> float:
+    """Degrees of freedom for a t reference on a uniform-weight HAC standard error.
+
+    ``n / (2 * lags + 1)`` is the equivalent degrees of freedom of a truncated-kernel
+    long-run variance at frequency zero; one more is lost to the estimated mean. With
+    no lags it is ``n - 1``. Floored at one.
+    """
+    return max(1.0, n_obs / (2 * lags + 1) - 1.0)
+
+
+def overlap_hac_lags(label_horizon: int) -> int:
+    """Uniform HAC lags for close ``D+1`` to close ``D+label_horizon`` outcomes.
+
+    The outcome spans ``label_horizon - 1`` sessions, so consecutive days share
+    ``label_horizon - 2`` of them and autocovariances vanish beyond that lag.
+    """
+    if label_horizon <= 0:
+        raise ValueError("label_horizon must be > 0")
+    return max(0, label_horizon - 2)
+
+
+def hansen_hodrick_mean_ci(
+    values: np.ndarray,
+    *,
+    lags: int,
+    ci_level: float,
+) -> HACMeanInterval:
+    """Interval for the mean of a dated series whose autocovariances end at ``lags``.
+
+    The standard error is the uniform-weight (Hansen-Hodrick) long-run one, exact for
+    overlapping outcomes when ``lags`` is their overlap (#342). The critical value is
+    Student-t on ``hac_equivalent_df``: ``n / (2 * lags + 1) - 1``, the equivalent
+    degrees of freedom of a truncated-kernel long-run variance at frequency zero, less
+    one for the estimated mean. With no lags that is the t interval on ``n - 1``. A normal
+    critical value leaves the interval short on a few hundred dates, since the
+    long-run variance is itself estimated from few effective observations (#356).
+
+    Autocovariances past ``lags`` are taken as zero: right for the overlap itself, but
+    persistence in the series beyond it (a signal or regime that lasts) is not
+    covered. Non-finite values are dropped. Bounds are None when fewer than two values
+    remain or the estimated variance is not positive.
+    """
+    if lags < 0:
+        raise ValueError("lags must be >= 0")
+    if not 0 < ci_level < 1:
+        raise ValueError("ci_level must be in (0, 1)")
+    x = np.asarray(values, dtype=np.float64)
+    if x.ndim != 1:
+        raise ValueError("values must be 1-D")
+    x = x[np.isfinite(x)]
+    method = "hansen_hodrick_t_v1"
+    n = int(x.size)
+    if n < 2:
+        return HACMeanInterval(method, n, lags, None, ci_level, None, None)
+
+    df = hac_equivalent_df(n, lags)
+    standard_error = hansen_hodrick_std(x, lags=lags) / math.sqrt(n)
+    if standard_error <= 0.0 or not np.isfinite(standard_error):
+        return HACMeanInterval(method, n, lags, df, ci_level, None, None)
+    mean_value = float(np.mean(x))
+    half_width = float(stats.t.ppf(0.5 + ci_level / 2.0, df)) * standard_error
+    return HACMeanInterval(
+        method=method,
+        n_obs=n,
+        lags=lags,
+        df=df,
+        ci_level=ci_level,
+        lower=mean_value - half_width,
+        upper=mean_value + half_width,
+    )
 
 
 def newey_west_mean_inference(

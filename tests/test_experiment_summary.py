@@ -8,11 +8,12 @@ import sys
 from datetime import datetime
 
 import numpy as np
+import pandas as pd
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from mci_gru.config import create_config_from_dict
+from mci_gru.config import Legs, create_config_from_dict
 from mci_gru.evaluation.experiment_summary import (
     REDACTED_ABSOLUTE_PATH,
     compute_evaluation_summary,
@@ -130,41 +131,42 @@ def test_resolved_evaluation_kwargs_derives_defaults_from_label_t():
     kwargs = resolved_evaluation_kwargs(config)
 
     assert kwargs["label_t"] == 5
-    assert kwargs["block_size"] == 5  # eval block_size unset -> max(1, label_t)
-    assert kwargs["newey_west_lags"] == 4  # unset -> max(0, label_t - 1)
+    assert kwargs["newey_west_lags"] == 3  # unset -> hold sessions - 1 (label_t - 2)
+    assert kwargs["legs"] == Legs(entry_session=1, exit_session=5)
+    assert kwargs["tranches"] == 4
+    assert kwargs["sharpe_method"] == config.evaluation.sharpe_method
     assert kwargs["top_k_values"] == config.evaluation.top_k_values
     assert kwargs["bootstrap_enabled"] == config.evaluation.bootstrap_enabled
-    assert kwargs["bootstrap_resamples"] == config.evaluation.bootstrap_resamples
-    assert kwargs["bootstrap_seed"] == config.evaluation.bootstrap_seed
+    # The in-run intervals draw no resamples (#356), so no resample settings pass.
+    assert not {"bootstrap_resamples", "bootstrap_seed", "block_size"} & set(kwargs)
     assert kwargs["ci_level"] == config.evaluation.ci_level
 
 
 def test_resolved_evaluation_kwargs_at_the_smallest_admissible_label_t():
     """`ModelConfig` refuses label_t < 2 (issue 107), so 2 is the lowest horizon a run carries.
 
-    The label_t=1 case this replaced can no longer be constructed. What remains to pin
-    is that neither the `max(1, ...)` nor the `max(0, ...)` floor binds on a validated
-    config: at the lowest horizon the defaults are still label_t and label_t - 1.
+    The label_t=1 case this replaced can no longer be constructed. At the lowest
+    horizon the label holds one session, so the daily book's Newey-West lags floor
+    at zero.
     """
     config = create_config_from_dict({"model": {"label_t": 2}})
 
     kwargs = resolved_evaluation_kwargs(config)
 
-    assert kwargs["block_size"] == 2
-    assert kwargs["newey_west_lags"] == 1
+    assert kwargs["newey_west_lags"] == 0
+    assert kwargs["tranches"] == 1
 
 
 def test_resolved_evaluation_kwargs_explicit_values_win():
     config = create_config_from_dict(
         {
             "model": {"label_t": 5},
-            "evaluation": {"block_size": 7, "newey_west_lags": 2},
+            "evaluation": {"newey_west_lags": 2},
         }
     )
 
     kwargs = resolved_evaluation_kwargs(config)
 
-    assert kwargs["block_size"] == 7
     assert kwargs["newey_west_lags"] == 2
 
 
@@ -176,15 +178,34 @@ def test_compute_evaluation_summary_shape_and_metrics():
         }
     )
     rng = np.random.default_rng(1729)
+    kdcodes = [f"S{j:02d}" for j in range(30)]
+    sessions = pd.bdate_range("2025-01-02", periods=12).strftime("%Y-%m-%d").tolist()
+    closes = 100.0 * np.cumprod(1.0 + rng.normal(0.0, 0.01, (12, 30)), axis=0)
+    panel = pd.DataFrame(
+        [
+            {"kdcode": kdcode, "dt": session, "close": closes[t, j]}
+            for t, session in enumerate(sessions)
+            for j, kdcode in enumerate(kdcodes)
+        ]
+    )
     predictions = rng.normal(size=(6, 30))
     labels = rng.normal(size=(6, 30))
 
-    summary = compute_evaluation_summary(predictions, labels, config)
+    summary = compute_evaluation_summary(
+        predictions,
+        labels,
+        config,
+        panel=panel,
+        dates=sessions[:6],
+        kdcodes=kdcodes,
+        rankable_mask=None,
+    )
 
     assert summary["label_t"] == 5
     assert summary["top_k_values"] == [5, 10]
+    assert summary["schema_version"] == "mci_gru.evaluation_summary.v2"
     assert isinstance(summary["metrics"], dict)
-    assert summary["metrics"]  # non-empty metric dict from evaluate_predictions
+    assert {"avg_ic", "top_5_excess_period_return", "top_10_abs_sharpe"} <= set(summary["metrics"])
 
 
 def test_select_training_objective_key_mapping_last_window():

@@ -8,7 +8,7 @@ three stages, a 1x2 mechanics smoke, a 3x20 mechanics-and-sanity screen, and the
 frozen-recipe 20x100 confirm that every arm reaches unconditionally.
 
 Arbiter: the mean paired daily Pearson IC difference against the zeroed control
-on the arbiter's label, pooled over the core folds, with lag-4 HAC, a 5-session
+on the arbiter's label, pooled over the core folds, with lag-3 uniform HAC, a 5-session
 circular block bootstrap, mandatory per-fold disclosure, and BHY across the five
 arm-versus-control contrasts. The GOOG.OQ/GOOGL.OQ twin is excluded from every
 arm's adjacency via ``graph.exclude_edge_pairs``, and ``drop_edge`` runs on a
@@ -55,12 +55,17 @@ TWIN_PAIR = ("GOOG.OQ", "GOOGL.OQ")
 TWIN_OVERRIDE = '+graph.exclude_edge_pairs=[["GOOG.OQ","GOOGL.OQ"]]'
 
 # Paired arbiter settings, resolved exactly as
-# ``mci_gru.evaluation.experiment_summary.resolved_evaluation_kwargs`` resolves
-# them for the frozen recipe: block = label_t, Newey-West lags = label_t - 1.
+# ``mci_gru.evaluation.experiment_summary.resolved_evaluation_kwargs`` resolved
+# them for the frozen recipe when this ran: block = label_t. Since #356 the in-run and
+# default paired intervals use no block; this notebook passes one to keep its
+# recorded scheme, and its HAC p-values now use a t reference. The HAC uses uniform (Hansen-Hodrick)
+# weights on label_t - 2 lags: the close[t+5] / close[t+1] label spans 4 sessions, so
+# consecutive days share 3. Bartlett weights on label_t - 1 lags understated the
+# overlap variance (#342).
 CONTROL_ARM = "A0_zeroed"
 LABEL_T = 5
 BLOCK_SIZE = 5
-HAC_LAGS = 4
+HAC_LAGS = 3
 N_RESAMPLES = 1000
 BOOTSTRAP_SEED = 1729
 CI_LEVEL = 0.95
@@ -506,7 +511,7 @@ def build_cells() -> list[dict]:
               2025 bridge fold run alongside, are disclosed per fold, and are
               **never pooled** into the primary.
             - **Arbiter:** the mean paired daily Pearson IC difference against
-              A0 on the arbiter's label, pooled over the core folds, lag-4 HAC,
+              A0 on the arbiter's label, pooled over the core folds, lag-3 uniform HAC,
               5-session circular block bootstrap, per-fold disclosure mandatory,
               BHY across the five arm-versus-control contrasts.
             - **Secondaries:** paired Spearman, seed-paired per-model IC, median
@@ -945,12 +950,17 @@ def build_cells() -> list[dict]:
                         "avg_ic": metrics.get("avg_ic"),
                         "avg_ic_ci_lower": metrics.get("avg_ic_ci_lower"),
                         "avg_ic_ci_upper": metrics.get("avg_ic_ci_upper"),
-                        # April-composite inputs and context metrics.
+                        # April-composite inputs and context metrics, read from the v2
+                        # summary (#336): the Sharpe is the daily tranche book's, the
+                        # return the mean 4-session top-20 return, and the CI is on the
+                        # top-20 excess over the universe (#342).
                         "avg_spearman_corr": metrics.get("avg_spearman_corr"),
                         "avg_rank_ic": metrics.get("avg_rank_ic"),
-                        "sharpe_top_20_newey_west": metrics.get("sharpe_top_20_newey_west"),
-                        "return_top_20": metrics.get("return_top_20"),
-                        "top_20_return_ci_lower": metrics.get("top_20_return_ci_lower"),
+                        "top_20_abs_sharpe": metrics.get("top_20_abs_sharpe"),
+                        "top_20_abs_period_return": metrics.get("top_20_abs_period_return"),
+                        "top_20_excess_period_return_ci_lower": metrics.get(
+                            "top_20_excess_period_return_ci_lower"
+                        ),
                         "models_trained": training.get("models_trained"),
                         "mean_best_val_ic": training.get("mean_best_val_ic"),
                         "hypothesis": job["hypothesis"],
@@ -1236,9 +1246,10 @@ def build_cells() -> list[dict]:
             if set(POOLED_FOLD_KEYS) & set(ALONGSIDE_FOLD_KEYS):
                 raise AssertionError("alongside folds must never enter the pooled primary")
 
-            # Arbiter label: close[t + LABEL_T] / close[t + 1] - 1, identical to
-            # mci_gru.data.preprocessing.compute_labels and to what the production
-            # evaluation received as `true_returns`.
+            # Arbiter label: close[t + LABEL_T] / close[t + 1] - 1 on the session axis,
+            # through the evaluation core. On a panel with every close present it is
+            # mci_gru.data.preprocessing.compute_labels, what the production evaluation
+            # received as `true_returns`; a missing close follows the core's rules (#335).
             realized = realized_returns_from_market_data(market_frame, label_t=LABEL_T)
             LABEL_ARBITER = realized.pivot_table(
                 index="dt", columns="kdcode", values="realized_return"
@@ -1366,12 +1377,13 @@ def build_cells() -> list[dict]:
                 paired_pooled_core["ci_upper"] < 0
             )
 
-            # Realised MDE from the run's own sd, and the per-arm branch of the
-            # pre-registered outcome map against the 0.005 line.
+            # Realised MDE from the run's own long-run sd (overlapping days carry less
+            # information than the iid sd_delta implies, #342), and the per-arm branch
+            # of the pre-registered outcome map against the 0.005 line.
             branches = []
             for _, row in paired_pooled_core.iterrows():
                 realised_mde = minimum_detectable_effect(
-                    float(row["sd_delta"]), int(row["n_days"]), power=POWER, alpha=ALPHA
+                    float(row["long_run_sd"]), int(row["n_days"]), power=POWER, alpha=ALPHA
                 )
                 core = paired_per_fold[
                     (paired_per_fold["method"] == row["method"])
@@ -1385,6 +1397,7 @@ def build_cells() -> list[dict]:
                         "arm": row["arm"],
                         "mean_delta": float(row["mean_delta"]),
                         "sd_delta": float(row["sd_delta"]),
+                        "long_run_sd": float(row["long_run_sd"]),
                         "n_days": int(row["n_days"]),
                         "hac_p": float(row["hac_p"]),
                         "bhy_p": float(row["bhy_p"]),
@@ -1638,7 +1651,7 @@ def build_cells() -> list[dict]:
                             continue
                         interval = sharpe_block_bootstrap_ci(
                             series.to_numpy(),
-                            nw_lags=HAC_LAGS,
+                            hac_lags=HAC_LAGS,
                             block_size=BLOCK_SIZE,
                             n_resamples=N_RESAMPLES,
                             seed=BOOTSTRAP_SEED,
@@ -1674,8 +1687,8 @@ def build_cells() -> list[dict]:
             DECISION_SCORE_WEIGHTS = {
                 "avg_ic": 0.35,
                 "avg_spearman_corr": 0.25,
-                "sharpe_top_20_newey_west": 0.25,
-                "return_top_20": 0.15,
+                "top_20_abs_sharpe": 0.25,
+                "top_20_abs_period_return": 0.15,
             }
 
             scored_df = results_df.copy()

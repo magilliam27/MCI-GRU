@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import tempfile
@@ -111,6 +112,21 @@ def _build_smoke_command(csv_path: Path, run_dir: Path) -> list[str]:
     ]
 
 
+def _assert_dated_ic_matches_the_summary(run_dir: Path) -> None:
+    """The dated series (#326) must be the one the run's summary averaged."""
+    metrics = json.loads((run_dir / "evaluation_summary.json").read_text(encoding="utf-8"))[
+        "metrics"
+    ]
+    daily = pd.read_csv(run_dir / "daily_ic.csv", dtype={"dt": str})
+    for column, key in (("ic", "avg_ic"), ("rank_ic", "avg_rank_ic")):
+        if key in metrics and abs(float(daily[column].mean()) - metrics[key]) > 1e-9:
+            raise AssertionError(f"daily_ic.csv {column} mean differs from the summary's {key}")
+    if daily["dt"].tolist() != sorted(
+        p.stem for p in (run_dir / "averaged_predictions").glob("*.csv")
+    ):
+        raise AssertionError("daily_ic.csv dates differ from the averaged prediction dates")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="mci_gru_ci_") as tmp:
         tmp_path = Path(tmp)
@@ -131,6 +147,7 @@ def main() -> int:
             "graph_data.pt",
             "training_summary.json",
             "evaluation_summary.json",
+            "daily_ic.csv",
         ]
         for name in required:
             path = run_dir / name
@@ -140,6 +157,7 @@ def main() -> int:
         if not pred_dir.exists() or not list(pred_dir.glob("*.csv")):
             raise AssertionError("Missing averaged prediction CSVs")
 
+        _assert_dated_ic_matches_the_summary(run_dir)
         _assert_collate_contract()
     print("CI smoke passed")
     return 0
