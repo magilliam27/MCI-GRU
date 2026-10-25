@@ -7,13 +7,15 @@ Each window is a full :class:`~mci_gru.config.ExperimentConfig` clone with
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
-from numbers import Real
 
+import numpy as np
+import pandas as pd
 from dateutil.relativedelta import relativedelta
 
 from mci_gru.config import ExperimentConfig, WalkforwardConfig
+from mci_gru.evaluation.experiment_summary import compute_evaluation_summary
 from mci_gru.training.summary import CHECKPOINT_METRICS, mean_of_available
 
 
@@ -77,13 +79,20 @@ def _one_window_from_train_end(
     wf: WalkforwardConfig,
     global_end: date,
 ) -> ExperimentConfig | None:
+    # Calendar-day gaps only. Six calendar days can hold three sessions, so the
+    # pipeline purges, on the session axis, the training tail whose labels reach
+    # val_start and the validation tail whose labels reach test_start (#342).
     gap = timedelta(days=label_t + 1)
     val_start = train_end + gap
     val_end = val_start + relativedelta(months=wf.window_val_months)
     test_start = val_end + gap
     if test_start > global_end:
         return None
-    test_end = min(test_start + relativedelta(months=wf.test_span_months), global_end)
+    # The span ends the day before the next span would start, so windows stepped by
+    # their own span never score the same date twice and their test sets pool (#342).
+    test_end = min(
+        test_start + relativedelta(months=wf.test_span_months) - timedelta(days=1), global_end
+    )
     if test_end <= test_start:
         return None
 
@@ -114,7 +123,130 @@ def _one_window_from_train_end(
     return cfg
 
 
-def merge_walkforward_summary(summaries: list[dict]) -> dict:
+@dataclass(frozen=True)
+class WindowTestSet:
+    """One window's test predictions and what the in-run summary scores them on."""
+
+    predictions: np.ndarray  # (dates, kdcodes)
+    labels: np.ndarray  # (dates, kdcodes), the training labels
+    dates: list[str]
+    kdcodes: list[str]
+    rankable_mask: np.ndarray  # (dates, kdcodes); explicit even for a run without PIT
+    closes: pd.DataFrame  # kdcode, dt, close
+    rankable_source: str  # PIT_MASK or SIGNAL_DATE_CLOSES
+
+
+def window_test_set(
+    predictions: np.ndarray,
+    labels: np.ndarray,
+    *,
+    panel: pd.DataFrame,
+    dates: list[str],
+    kdcodes: list[str],
+    rankable_mask: np.ndarray | None,
+    label_t: int,
+) -> WindowTestSet:
+    """Keep what pooling needs: the test arrays and the closes their holds read.
+
+    The closes run from the first test date to ``label_t`` sessions past the last,
+    on the window panel's own session axis, so every hold the window booked is kept.
+    Without a PIT mask the window's rankable set (its own names with a close on the
+    signal date) is fixed here: the pooled panel also holds the previous window's
+    tail closes, which would make names this window never carried rankable.
+    """
+    dates = [str(day) for day in dates]
+    kdcodes = [str(code) for code in kdcodes]
+    closes = panel.loc[:, ["kdcode", "dt", "close"]].copy()
+    closes["dt"] = closes["dt"].astype(str)
+    closes["kdcode"] = closes["kdcode"].astype(str)
+    closes = closes.loc[closes["kdcode"].isin(kdcodes)]
+    if rankable_mask is None:
+        signal_closes = closes.pivot_table(
+            index="dt", columns="kdcode", values="close", aggfunc="first"
+        ).reindex(index=dates, columns=kdcodes)
+        mask, source = np.isfinite(signal_closes.to_numpy(dtype=np.float64)), "SIGNAL_DATE_CLOSES"
+    else:
+        mask, source = np.asarray(rankable_mask, dtype=bool).copy(), "PIT_MASK"
+    if dates:
+        sessions = sorted(closes["dt"].unique())
+        last = sessions.index(dates[-1]) if dates[-1] in sessions else len(sessions) - 1
+        end = sessions[min(last + label_t, len(sessions) - 1)]
+        closes = closes.loc[(closes["dt"] >= dates[0]) & (closes["dt"] <= end)]
+    return WindowTestSet(
+        predictions=np.asarray(predictions, dtype=np.float64).copy(),
+        labels=np.asarray(labels, dtype=np.float64).copy(),
+        dates=dates,
+        kdcodes=kdcodes,
+        rankable_mask=mask,
+        closes=closes.reset_index(drop=True),
+        rankable_source=source,
+    )
+
+
+def pool_window_test_sets(windows: list[WindowTestSet]) -> WindowTestSet:
+    """Concatenate the windows' test dates on the union of their kdcodes.
+
+    A name a window did not carry is unscored and unrankable there. Windows whose
+    test dates overlap cannot be pooled (two models would score one date) and raise.
+    """
+    if not windows:
+        raise ValueError("no walk-forward windows to pool")
+    dates = [day for window in windows for day in window.dates]
+    if len(set(dates)) != len(dates):
+        raise ValueError("walk-forward test windows overlap; their test dates cannot be pooled")
+    sources = {window.rankable_source for window in windows}
+    if len(sources) != 1:
+        raise ValueError("either every walk-forward window has a PIT mask or none does")
+    kdcodes = sorted({code for window in windows for code in window.kdcodes})
+    column = {code: j for j, code in enumerate(kdcodes)}
+
+    def widen(window: WindowTestSet, values: np.ndarray, fill: float | bool) -> np.ndarray:
+        out = np.full((len(window.dates), len(kdcodes)), fill, dtype=np.asarray(values).dtype)
+        out[:, [column[code] for code in window.kdcodes]] = values
+        return out
+
+    order = np.argsort(np.asarray(dates), kind="stable")
+
+    def stack(arrays: list[np.ndarray]) -> np.ndarray:
+        return np.concatenate(arrays, axis=0)[order]
+
+    closes = pd.concat([window.closes for window in windows], ignore_index=True)
+    closes = closes.drop_duplicates(["kdcode", "dt"]).sort_values(["dt", "kdcode"])
+    return WindowTestSet(
+        predictions=stack([widen(w, w.predictions, np.nan) for w in windows]),
+        labels=stack([widen(w, w.labels, np.nan) for w in windows]),
+        dates=[dates[i] for i in order],
+        kdcodes=kdcodes,
+        rankable_mask=stack([widen(w, w.rankable_mask, False) for w in windows]),
+        closes=closes.reset_index(drop=True),
+        rankable_source=sources.pop(),
+    )
+
+
+def pooled_evaluation_summary(pooled: WindowTestSet, config: ExperimentConfig) -> dict:
+    """The in-run evaluation summary of the pooled test dates (#342).
+
+    The mask is always explicit, so a run without PIT keeps its benchmark label.
+    """
+    summary = compute_evaluation_summary(
+        pooled.predictions,
+        pooled.labels,
+        config,
+        panel=pooled.closes,
+        dates=pooled.dates,
+        kdcodes=pooled.kdcodes,
+        rankable_mask=pooled.rankable_mask,
+    )
+    if pooled.rankable_source == "SIGNAL_DATE_CLOSES":
+        summary["benchmark"] = "equal_weight_rankable_universe"
+    return summary
+
+
+def merge_walkforward_summary(
+    summaries: list[dict],
+    pooled_evaluation: dict | None = None,
+    pooling_status: str | None = None,
+) -> dict:
     """Aggregate per-window training_summary dicts.
 
     Each ``mean_best_val_*_across_windows`` is the unweighted mean of the windows
@@ -124,11 +256,13 @@ def merge_walkforward_summary(summaries: list[dict]) -> dict:
     non-finite window values, including historical ``-inf`` sentinels, are
     unavailable, and an aggregate with no available window is ``None``.
 
-    Evaluation metrics follow the same rule: each numeric key in any window's
-    ``evaluation`` gets ``mean_<key>_across_windows`` over the windows where it is
-    available, and ``evaluation_window_coverage`` records how many windows
-    contributed to it out of the total, so a window whose metric is NaN no longer
-    turns the aggregate into NaN.
+    Evaluation metrics are never averaged across windows: a mean of Sharpes, of CI
+    bounds or of cumulative returns is not the walk-forward's Sharpe, interval or
+    return, and a short last window would count as much as a full one (#342).
+    ``evaluation`` is ``pooled_evaluation``, the in-run summary scored once on every
+    window's test dates together (see :func:`pool_window_test_sets`), and
+    ``evaluation_pooling`` says whether it was available. Each window keeps its own
+    ``evaluation``.
     """
     if not summaries:
         return {}
@@ -140,20 +274,14 @@ def merge_walkforward_summary(summaries: list[dict]) -> dict:
         )
     merged["window_coverage"] = window_coverage
     merged["windows"] = summaries
-    evaluations = [summary.get("evaluation") or {} for summary in summaries]
-    numeric_keys = {
-        key
-        for evaluation in evaluations
-        for key, value in evaluation.items()
-        if isinstance(value, Real) and not isinstance(value, bool)
-    }
-    eval_summary: dict = {}
-    eval_coverage: dict[str, dict[str, int]] = {}
-    for key in sorted(numeric_keys):
-        eval_summary[f"mean_{key}_across_windows"], eval_coverage[key] = mean_of_available(
-            [evaluation.get(key) for evaluation in evaluations]
-        )
-    if eval_summary:
-        merged["evaluation"] = eval_summary
-        merged["evaluation_window_coverage"] = eval_coverage
+    if pooled_evaluation is not None:
+        # Same shape as each window's ``evaluation`` (the metrics); the rest of the
+        # pooled summary (legs, benchmark, inference methods) sits beside it.
+        merged["evaluation"] = pooled_evaluation["metrics"]
+        merged["evaluation_summary"] = {
+            key: value for key, value in pooled_evaluation.items() if key != "metrics"
+        }
+        merged["evaluation_pooling"] = "POOLED_TEST_DATES"
+    elif any(summary.get("evaluation") for summary in summaries):
+        merged["evaluation_pooling"] = pooling_status or "NOT_POOLED"
     return merged

@@ -7,6 +7,7 @@ from scripts.run_pit_repeated_seed_backtest_sensitivity import (
     build_backtest_command,
     build_sensitivity_jobs,
     default_scenarios,
+    resolve_pit_export_cutoff,
     resolve_training_rows,
     write_sensitivity_outputs,
 )
@@ -204,3 +205,33 @@ def _write_one_training_row(tmp_path: Path) -> Path:
         ]
     ).to_csv(path, index=False)
     return path
+
+
+def test_replay_command_carries_the_pit_export_cutoff(tmp_path: Path) -> None:
+    """#339's replay refuses open-ended PIT rows without the export's cutoff."""
+    pit = tmp_path / "sp500_pit_x_20160101_20260513_pit_universe.csv"
+    pit.write_text("kdcode,valid_from,valid_to\nAAA,2016-01-01,\n", encoding="utf-8")
+    (tmp_path / "sp500_pit_x_20160101_20260513_meta.json").write_text(
+        '{"end": "2026-05-13"}', encoding="utf-8"
+    )
+    assert resolve_pit_export_cutoff(None, None, pit) == "2026-05-13"
+    assert resolve_pit_export_cutoff(None, "2026-04-30", pit) == "2026-04-30"
+
+    row = resolve_training_rows(
+        run_root=tmp_path,
+        training_results_csv=_write_one_training_row(tmp_path),
+        years=[2022],
+        base_seeds=[314159],
+    )[0]
+    job = build_sensitivity_jobs([row], default_scenarios(training_label_t=5)[:1])[0]
+    options = BacktestSensitivityOptions(
+        repo_dir=tmp_path,
+        python_executable="python",
+        backtest_script=tmp_path / "backtest_sp500_daily.py",
+        data_file=tmp_path / "market.csv",
+        pit_universe_csv=pit,
+        output_dir=tmp_path / "out",
+        pit_export_cutoff=resolve_pit_export_cutoff(None, None, pit),
+    )
+    cmd = build_backtest_command(job, options)
+    assert cmd[cmd.index("--pit_export_cutoff") + 1] == "2026-05-13"

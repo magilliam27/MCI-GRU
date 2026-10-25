@@ -44,6 +44,7 @@ from mci_gru.config import create_config_from_dict
 from mci_gru.data.data_manager import create_data_loaders
 from mci_gru.data.input_observations import InputObservationError
 from mci_gru.data.quality_contract import AdmissionError, write_run_failure
+from mci_gru.evaluation.dated_ic import DAILY_IC_FILENAME, write_dated_ic
 from mci_gru.evaluation.execution_provenance import (
     EVIDENCE_DIR,
     capture_execution_start,
@@ -54,6 +55,8 @@ from mci_gru.evaluation.execution_provenance import (
 from mci_gru.evaluation.experiment_summary import (
     build_run_metadata,
     compute_evaluation_summary,
+    correlation_edges_for_date,
+    linked_score_tie_summary,
     select_training_objective_value,
     write_resolved_config,
 )
@@ -67,7 +70,14 @@ from mci_gru.tracking import MLflowTrackingManager
 from mci_gru.training import train_multiple_models
 from mci_gru.training.summary import build_training_summary
 from mci_gru.utils.seeding import set_seed
-from mci_gru.walkforward import generate_walkforward_configs, merge_walkforward_summary
+from mci_gru.walkforward import (
+    WindowTestSet,
+    generate_walkforward_configs,
+    merge_walkforward_summary,
+    pool_window_test_sets,
+    pooled_evaluation_summary,
+    window_test_set,
+)
 
 
 def setup_logging(output_dir: str, experiment_name: str) -> logging.Logger:
@@ -121,6 +131,7 @@ def main(cfg: DictConfig):
     window_configs = generate_walkforward_configs(config)
     use_wf_subdir = config.training.walkforward.enabled
     wf_summaries: list[dict[str, Any]] = []
+    wf_test_sets: list[WindowTestSet] = []
     window_paths = [
         os.path.join(output_path, "walkforward", f"w{wi:03d}") if use_wf_subdir else output_path
         for wi in range(len(window_configs))
@@ -381,6 +392,17 @@ def main(cfg: DictConfig):
                     avg_predictions,
                     data["test_labels"],
                     cfg_w,
+                    panel=data["df"],
+                    dates=data["test_dates"],
+                    kdcodes=data["kdcode_list"],
+                    rankable_mask=data.get("test_tradable_mask"),
+                )
+                evaluation_summary["linked_score_ties"] = linked_score_tie_summary(
+                    avg_predictions,
+                    [result.predictions for result in results],
+                    data["test_dates"],
+                    correlation_edges_for_date(data),
+                    eval_autocast=any(result.eval_autocast for result in results),
                 )
                 timing_summary["phases"]["evaluation_summary_seconds"] = (
                     perf_counter() - phase_started
@@ -389,8 +411,24 @@ def main(cfg: DictConfig):
                 with open(evaluation_summary_path, "w") as f:
                     json.dump(evaluation_summary, f, indent=2)
                 logger.info(f"Evaluation summary saved to: {evaluation_summary_path}")
+                daily_ic_path = write_dated_ic(
+                    avg_predictions, data["test_labels"], data["test_dates"], wpath
+                )
+                logger.info(f"Dated daily IC saved to: {daily_ic_path}")
                 training_summary["evaluation"] = evaluation_summary["metrics"]
                 wf_summaries.append(training_summary)
+                if use_wf_subdir:
+                    wf_test_sets.append(
+                        window_test_set(
+                            avg_predictions,
+                            data["test_labels"],
+                            panel=data["df"],
+                            dates=data["test_dates"],
+                            kdcodes=data["kdcode_list"],
+                            rankable_mask=data.get("test_tradable_mask"),
+                            label_t=cfg_w.model.label_t,
+                        )
+                    )
 
                 if active_tracking.enabled:
                     active_tracking.log_metrics(
@@ -467,6 +505,7 @@ def main(cfg: DictConfig):
                     "averaged_predictions",
                     "training_summary.json",
                     "evaluation_summary.json",
+                    DAILY_IC_FILENAME,
                     "timing_summary.json",
                 ],
             )
@@ -474,7 +513,18 @@ def main(cfg: DictConfig):
             logger.info("Terminal receipt saved to: %s", window_receipt.path)
 
         if use_wf_subdir and wf_summaries:
-            merged = merge_walkforward_summary(wf_summaries)
+            # One summary over every window's test dates, never a mean of windows (#342).
+            pooled_evaluation, pooling_status = None, None
+            try:
+                pooled = pool_window_test_sets(wf_test_sets)
+            except ValueError as error:
+                pooling_status = f"NOT_POOLED: {error}"
+                logger.warning("Walk-forward evaluation not pooled: %s", error)
+            else:
+                pooled_evaluation = pooled_evaluation_summary(pooled, config)
+            merged = merge_walkforward_summary(
+                wf_summaries, pooled_evaluation=pooled_evaluation, pooling_status=pooling_status
+            )
             merged_path = os.path.join(output_path, "walkforward_summary.json")
             with open(merged_path, "w") as f:
                 json.dump(merged, f, indent=2)

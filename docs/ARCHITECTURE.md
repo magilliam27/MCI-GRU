@@ -461,9 +461,11 @@ equal weight per window: each `mean_best_val_*_across_windows` averages the
 windows whose own `mean_best_val_*` is available, `window_coverage` records the
 available and total window counts separately from each window's
 `member_coverage`, non-finite values from older summaries (such as `-inf`)
-count as unavailable, and an aggregate with no available window is `null`. It
-also takes the mean of each numeric evaluation metric across windows;
-`select_training_objective_value()` returns the aggregate matching
+count as unavailable, and an aggregate with no available window is `null`.
+Evaluation metrics are never averaged across windows: `run_experiment.py` pools
+every window's dated test set and scores it once (`pool_window_test_sets()`,
+`pooled_evaluation_summary()`), and `evaluation_pooling` records whether it
+could (#342). `select_training_objective_value()` returns the aggregate matching
 `training.selection_metric`.
 
 ## Run Artifacts
@@ -485,6 +487,7 @@ output/
 ├── averaged_predictions/<date>.csv
 ├── training_summary.json
 ├── evaluation_summary.json
+├── daily_ic.csv                            # each test date's IC and rank IC; means equal the summary's (#326)
 ├── timing_summary.json
 └── training_step_profile_model_<id>.jsonl  # when training.profile_batches > 0
 ```
@@ -532,23 +535,61 @@ backtest.
 
 ### In-run prediction evaluation
 
-`mci_gru/evaluation/metrics.py` computes regression errors, Pearson and Spearman
-IC, hit rate, prediction quantiles, top-K returns, naive and Newey-West Sharpe,
-and optional moving-block bootstrap intervals
-(`mci_gru/evaluation/statistics.py`). The headline `sharpe_ratio` is the
-Newey-West value when `label_t > 1` and the naive value otherwise.
-`resolved_evaluation_kwargs()` derives defaults from `EvaluationConfig`:
-Newey-West lags default to `label_t - 1` and the bootstrap block size defaults to
-`max(1, label_t)`. `run_experiment.py` writes the result as
-`evaluation_summary.json`.
+`mci_gru/evaluation/metrics.py` (`evaluate_run`) writes `evaluation_summary.json`
+(schema `mci_gru.evaluation_summary.v2`, #336). Pearson and Spearman IC are
+scored against the training labels, with their date coverage and, when
+`evaluation.bootstrap_enabled`, intervals on the mean
+(`ic_confidence_interval`, recorded as `ic_inference`). The label's overlap
+makes neighbouring dates' ICs correlated for `label_t - 2` lags, so the interval
+uses a uniform-weight HAC standard error over exactly those lags and a Student-t
+critical value on `n / (2 * lags + 1) - 1` degrees of freedom
+(`statistics.hansen_hodrick_mean_ci`). It reaches nominal coverage on a year of
+overlapping dates, where the block bootstrap at `block_size = label_t` it
+replaced covered about 89% for a nominal 95% (#356). `paired_inference` uses the
+same interval for arm-versus-control differences. The interval takes
+autocovariance past the overlap as zero, so persistence in the IC beyond the
+label (a lasting signal or regime) is not covered.
+Portfolio numbers read realized returns from the evaluation core
+(`mci_gru/evaluation/outcomes.py`) on the panel's session axis, with the PIT
+tradable mask as the rankable set, and book them in the staggered tranche book of
+`mci_gru/evaluation/tranche_book.py`: `evaluation.tranches` sleeves, each opening
+a buy-and-hold tranche at close `D+1` and closing it at close `D+label_t`, rolling
+its own capital. Sharpe (per `evaluation.sharpe_method`) and cumulative return
+come from that book's daily P&L. The headline for each k in
+`evaluation.top_k_values` is excess over the equal-weight universe book on the
+same mask and schedule; the mean per-period excess carries a Hansen-Hodrick
+t-stat with `hold - 1` lags, where the hold is the legs' session span
+(`label_t - 1` under the default legs, so 3 lags for the recipe).
+Long-only numbers are kept as `top_<k>_abs_*`. `resolved_evaluation_kwargs()`
+derives the defaults: legs and tranches from `label_t`, Newey-West lags for the
+daily Sharpe `hold - 1`. The excess interval, when
+`evaluation.bootstrap_enabled`, is the same HAC-t interval as the IC one, over
+the `hold - 1` lags its t-stat uses; that t-stat's p-value uses the same t
+reference, so a p-value under 5% and a 95% interval excluding zero agree (#356). The book ramps in
+and out over its first and last `hold - 1` sessions, which dilutes absolute
+numbers on short windows; excess numbers net the ramp.
+`evaluate_predictions` is the older matrix-only path that
+`prediction_report.py` still uses; its Sharpe and cumulative return treat
+overlapping returns as daily (#342).
 
 ### Economic saved-prediction replay
 
 `scripts/backtest_sp500.py` is a thin CLI over
-`mci_gru/evaluation/backtest_engine.py`. The engine consumes dated prediction
-files plus market data, models T-close scoring with T+1-open entry and
-open-to-open returns, supports daily, staggered, and block rebalancing, and can
-apply costs and a rank-drop gate.
+`mci_gru/evaluation/backtest_engine.py`, which reads its inputs from the run it
+replays (`replay_inputs.py`, #339) and trades one book,
+`mci_gru/evaluation/replay_book.py` (#340). The default strategy buys at close
+`D+1` and sells at close `D+label_t` in staggered tranches, one per held session,
+the same schedule as the in-run tranche book; the paper's open `D+1` to open `D+2`
+hold, with its staggered and block variants, is a labelled `open_to_open`
+strategy on the same book. Returns, exits and ties come from the evaluation core;
+a missing exit is sold at the last close and logged. Inside a tranche weights
+drift buy-and-hold, costs are charged on the trade session against the drifted
+holdings, and at most one share class per issuer is held. The benchmark is the
+equal-weight PIT universe with each issuer weighted once, on the same schedule.
+Every metric and output file reads the book's one daily series: Sharpe beside the
+paper's ASR, MDD from 1.0, annualised IR, compounded months, Holm by default and
+BHY only with a trial ledger. Outputs record the SHA-256 of every input. On a
+synthetic run the default replay's top-k excess equals the in-run summary's.
 
 ### Selection-research evidence
 
@@ -681,9 +722,10 @@ mci_gru/
 │   └── metrics.py                ← compatibility shim to evaluation.metrics
 ├── evaluation/
 │   ├── metrics.py                ← prediction metrics
-│   ├── statistics.py             ← IC, Newey-West, bootstrap primitives
+│   ├── statistics.py             ← IC, HAC (Newey-West, Hansen-Hodrick), bootstrap primitives
 │   ├── experiment_summary.py     ← in-run evaluation policy, resolved-config provenance
-│   ├── backtest_engine.py        ← economic saved-prediction replay
+│   ├── backtest_engine.py        ← economic saved-prediction replay (CLI, metrics, outputs)
+│   ├── replay_book.py            ← the replay's tranche book, issuers, costs
 │   ├── portfolio.py              ← ranking, top-K, turnover, rank-drop gate
 │   ├── capacity.py               ← capacity diagnostics
 │   ├── selection_audit.py        ← selection-evidence protocol and decisions
@@ -716,9 +758,6 @@ These are properties of the code as written, not intended guarantees:
 - `run_metadata.json` serializes z-score means and standard deviations but not a
   fitted rank-Gaussian reference, so frozen inference from `run_metadata.json`
   is not self-contained for a `rank_gauss` training run.
-- `EvaluationConfig.sharpe_method` is validated but is not passed by
-  `resolved_evaluation_kwargs()`; headline Sharpe selection follows `label_t` as
-  described above.
 - Index-level mode always uses z-score normalization regardless of
   `data.normalisation`, and builds labels from the normalized frame, whereas
   stock-level labels come from the raw engineered price frame.

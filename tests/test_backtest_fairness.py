@@ -1,28 +1,21 @@
 """
-Test script to verify backtest fairness fixes.
+Backtest fairness of the replay's open-to-open variant (#340 kept it as a labelled variant).
 
-This script creates synthetic data to test that:
-1. Return columns are computed consistently
-2. Portfolio simulation follows open-to-open timing
-3. Prediction dates map correctly to realized holding windows
+Synthetic data with known overnight gaps and intraday moves checks that:
+1. The open_to_open variant buys at open D+1 and sells at open D+2
+2. Prediction dates map to the hold that starts the session after them
+3. The rank-drop gate keeps a holding until its rank falls far enough
+4. Holdings, trades and saved outputs come from the same book
 """
 
 import os
-import sys
 import tempfile
-import traceback
 
 import numpy as np
 import pandas as pd
 
-from mci_gru.evaluation import backtest_engine as _backtest_engine
-
-# Set UTF-8 encoding for Windows console
-if sys.platform == "win32":
-    import codecs
-
-    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")
-    sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")
+from mci_gru.evaluation import backtest_engine
+from mci_gru.evaluation.replay_book import ReplayStrategy, build_replay_book
 
 
 def create_synthetic_test_data():
@@ -106,448 +99,144 @@ def create_synthetic_test_data():
     return stock_data_df, predictions_df, expected_results
 
 
-def test_return_calculation():
-    """Test that calculate_forward_returns adds the correct columns."""
-    print("=" * 70)
-    print("TEST 1: Return Calculation")
-    print("=" * 70)
-
-    stock_data_df, predictions_df, expected = create_synthetic_test_data()
-
-    bp = _import_backtest()
-    # Calculate returns
-    stock_data_df = bp.calculate_forward_returns(stock_data_df, label_t=5)
-
-    # Check that required columns exist
-    required_cols = ["tradeable_return", "overnight_gap", "next_day_return"]
-    for col in required_cols:
-        assert col in stock_data_df.columns, f"Missing column: {col}"
-        print(f"  ✓ Column '{col}' exists")
-
-    # Verify tradeable_return calculation
-    sample = stock_data_df[stock_data_df["kdcode"] == "AAPL"].iloc[0]
-    expected_tradeable = (sample["close"] - sample["open"]) / sample["open"]
-    actual_tradeable = sample["tradeable_return"]
-
-    assert abs(expected_tradeable - actual_tradeable) < 1e-6, (
-        f"Tradeable return mismatch: {expected_tradeable} != {actual_tradeable}"
+def _open_book(predictions_df, stock_data_df, top_k=2, min_rank_drop=None):
+    dates = sorted(predictions_df["dt"].unique())
+    kdcodes = sorted(stock_data_df["kdcode"].unique())
+    scores = (
+        predictions_df.pivot(index="dt", columns="kdcode", values="score")
+        .reindex(index=dates, columns=kdcodes)
+        .to_numpy(dtype=float)
     )
-    print(f"  ✓ Tradeable return calculation correct: {actual_tradeable:.6f}")
-
-    # Verify overnight_gap calculation
-    sample2 = stock_data_df[stock_data_df["kdcode"] == "AAPL"].iloc[1]
-    prev_close = stock_data_df[stock_data_df["kdcode"] == "AAPL"].iloc[0]["close"]
-    expected_gap = (sample2["open"] - prev_close) / prev_close
-    actual_gap = sample2["overnight_gap"]
-
-    assert abs(expected_gap - actual_gap) < 1e-6, (
-        f"Overnight gap mismatch: {expected_gap} != {actual_gap}"
+    return build_replay_book(
+        stock_data_df,
+        scores,
+        dates,
+        kdcodes,
+        strategy=ReplayStrategy.open_to_open(),
+        top_k=top_k,
+        min_rank_drop=min_rank_drop,
     )
-    print(f"  ✓ Overnight gap calculation correct: {actual_gap:.6f}")
-
-    print("  ✓ TEST 1 PASSED\n")
 
 
 def test_simulation_timing():
-    """Test that simulation uses correct timing (next-day open-to-open returns)."""
-    print("=" * 70)
-    print("TEST 2: Simulation Timing")
-    print("=" * 70)
-
+    """The open_to_open variant earns the open D+1 to open D+2 move."""
     stock_data_df, predictions_df, expected = create_synthetic_test_data()
 
-    bp = _import_backtest()
-    # Prepare data
-    stock_data_df = bp.calculate_forward_returns(stock_data_df, label_t=5)
+    book = _open_book(predictions_df, stock_data_df)
 
-    # Run simulation
-    sim_results = bp.simulate_trading_strategy(
-        predictions_df=predictions_df,
-        stock_data_df=stock_data_df,
-        top_k=2,
-        label_t=5,
-        transaction_costs=None,
-        rank_drop_gate=None,
-    )
-
-    # Check results
-    portfolio_returns = sim_results["portfolio_returns"]
-
-    print(f"  Number of trading days: {len(portfolio_returns)}")
-    print(f"  Expected: {expected['num_days']}")
-
-    # Calculate average return
-    avg_return = np.mean(portfolio_returns)
-    print(f"  Average daily return: {avg_return:.6f}")
-    print(f"  Expected: {expected['avg_daily_return']:.6f}")
-
-    # Verify open-to-open expectation
-    tolerance = 0.001  # 0.1% tolerance
-    assert abs(avg_return - expected["avg_daily_return"]) < tolerance, (
-        f"Average return mismatch! Got {avg_return}, expected {expected['avg_daily_return']}"
-    )
-
-    print(f"  ✓ Returns match open-to-open expectation (within {tolerance * 100}%)")
-
-    # Verify we're not mistakenly using intraday-only returns
-    assert abs(avg_return - expected["intraday_only_return"]) > tolerance, (
-        "Unexpected intraday-only behavior detected"
-    )
-    print("  ✓ Not using intraday-only returns")
-
-    print("  ✓ TEST 2 PASSED\n")
+    assert len(book.period_returns) == expected["num_days"]
+    avg_return = float(np.mean(book.period_returns))
+    assert abs(avg_return - expected["avg_daily_return"]) < 1e-9
+    assert abs(avg_return - expected["intraday_only_return"]) > 0.001
 
 
 def test_prediction_date_mapping():
-    """Test that predictions on day t map to day t+1 entry open-to-open returns."""
-    print("=" * 70)
-    print("TEST 3: Prediction-to-Return Date Mapping")
-    print("=" * 70)
-
-    # Create simple 3-day dataset
+    """A prediction on day t is held from the open of t+1 to the open of t+2."""
     dates = ["2025-01-01", "2025-01-02", "2025-01-03"]
-
-    data = []
     opens = [100.0, 102.0, 104.0]
+    data = []
     for i, date in enumerate(dates):
         for stock in ["AAPL", "MSFT"]:
-            # Distinct opens so open-to-open mapping is identifiable
-            intraday_return_pct = (i + 1) * 0.01  # Day 0: 1%, Day 1: 2%, Day 2: 3%
-
-            open_price = opens[i]
-            close_price = open_price * (1 + intraday_return_pct)
-
-            data.append(
-                {
-                    "kdcode": stock,
-                    "dt": date,
-                    "open": open_price,
-                    "high": close_price,
-                    "low": open_price,
-                    "close": close_price,
-                    "volume": 1000000,
-                }
-            )
-
+            close_price = opens[i] * (1 + (i + 1) * 0.01)
+            data.append({"kdcode": stock, "dt": date, "open": opens[i], "close": close_price})
     stock_data_df = pd.DataFrame(data)
-
-    # Predictions on Jan 1 and Jan 2
-    pred_data = [
-        {"kdcode": "AAPL", "dt": "2025-01-01", "score": 0.1},
-        {"kdcode": "MSFT", "dt": "2025-01-01", "score": 0.1},
-        {"kdcode": "AAPL", "dt": "2025-01-02", "score": 0.1},
-        {"kdcode": "MSFT", "dt": "2025-01-02", "score": 0.1},
-    ]
-    predictions_df = pd.DataFrame(pred_data)
-
-    bp = _import_backtest()
-    # Prepare data
-    stock_data_df = bp.calculate_forward_returns(stock_data_df, label_t=5)
-
-    # Run simulation
-    sim_results = bp.simulate_trading_strategy(
-        predictions_df=predictions_df,
-        stock_data_df=stock_data_df,
-        top_k=2,
-        label_t=5,
-        transaction_costs=None,
-        rank_drop_gate=None,
+    predictions_df = pd.DataFrame(
+        [
+            {"kdcode": k, "dt": d, "score": 0.1}
+            for d in ["2025-01-01", "2025-01-02"]
+            for k in ["AAPL", "MSFT"]
+        ]
     )
 
-    portfolio_returns = sim_results["portfolio_returns"]
-    sim_dates = sim_results["dates"]
+    book = _open_book(predictions_df, stock_data_df)
 
-    print(f"  Prediction dates: {predictions_df['dt'].unique().tolist()}")
-    print(f"  Simulation dates (actual trading): {sim_dates}")
+    # Jan 1 is held Jan 2 open to Jan 3 open; Jan 2 has no Jan 4 open, so no hold.
+    assert book.signal_dates == ["2025-01-01"]
+    assert abs(book.period_returns[0] - (opens[2] / opens[1] - 1.0)) < 1e-12
 
-    # With open-to-open holding windows and only 3 dates:
-    # - Prediction on Jan 1 maps to entry Jan 2 and realizes Jan2->Jan3 open-to-open return
-    # - Prediction on Jan 2 has no Jan4 open, so no second realizable return
-    assert len(portfolio_returns) == 1, (
-        f"Expected 1 realizable return, got {len(portfolio_returns)}"
+
+def _flat_panel(stocks, dates):
+    return pd.DataFrame(
+        [{"kdcode": s, "dt": d, "open": 100.0, "close": 100.0} for d in dates for s in stocks]
     )
-    expected_ret = opens[2] / opens[1] - 1.0
-    print(f"  Return for Jan 2 entry (from Jan 1 prediction): {portfolio_returns[0]:.6f}")
-    print(f"    Expected open-to-open: {expected_ret:.6f}")
-    assert abs(portfolio_returns[0] - expected_ret) < 0.0001, "Date mapping error!"
-    print("  ✓ Date mapping correct: predictions use next-day entry open-to-open window")
-
-    print("  ✓ TEST 3 PASSED\n")
-
-
-def _import_backtest():
-    """Return the backtest engine module (moved to mci_gru.evaluation in WS-C)."""
-    return _backtest_engine
 
 
 def test_rank_drop_gate_eligible():
-    """With rank-drop gate: stock that fell >= 10 ranks is eligible and can be selected."""
-    print("=" * 70)
-    print("TEST 4: Rank-Drop Gate - Eligible (rank fell >= 10)")
-    print("=" * 70)
-    bp = _import_backtest()
-    # 3 dates, 15 stocks. Day1: S0=rank1. Day2: S0=rank11 (10 stocks with higher score) -> rank_drop=10
-    dates = ["2025-01-01", "2025-01-02", "2025-01-03"]
-    stocks = [f"S{i}" for i in range(15)]
-    data = []
-    for dt in dates:
-        for s in stocks:
-            data.append(
-                {
-                    "kdcode": s,
-                    "dt": dt,
-                    "open": 100.0,
-                    "high": 101.0,
-                    "low": 99.0,
-                    "close": 100.0,
-                    "volume": 1e6,
-                }
-            )
-    stock_df = pd.DataFrame(data)
-    stock_df = bp.calculate_forward_returns(stock_df, label_t=5)
+    """A holding whose rank fell by >= min_rank_drop is sold and its slot refilled."""
+    dates = ["2025-01-01", "2025-01-02", "2025-01-03", "2025-01-06"]
+    stocks = [f"S{i:02d}" for i in range(15)]
     preds = []
-    for dt in dates:
+    for dt in dates[:3]:
         for r, s in enumerate(stocks):
-            if dt == "2025-01-01":
-                score = 1.0 - r * 0.01  # S0=1, S1=0.99, ... S14=0.86
-            elif dt == "2025-01-02":
-                # S0 at rank 11: give S1..S10 scores above S0, S0=0.0, rest below
-                if s == "S0":
-                    score = 0.0
-                elif stocks.index(s) < 10:
-                    score = 0.5 - stocks.index(s) * 0.01  # S1=0.49 .. S10=0.41
-                else:
-                    score = -0.1 - stocks.index(s) * 0.01
+            if dt == "2025-01-02":
+                # S00 falls from rank 1 to rank 11: S01..S10 score above it
+                score = 0.0 if s == "S00" else (0.5 - r * 0.01 if r < 11 else -0.1 - r * 0.01)
             else:
                 score = 1.0 - r * 0.01
             preds.append({"kdcode": s, "dt": dt, "score": score})
-    pred_df = pd.DataFrame(preds)
-    gate = {"enabled": True, "min_rank_drop": 10}
-    sim = bp.simulate_trading_strategy(
-        pred_df, stock_df, top_k=2, label_t=5, transaction_costs=None, rank_drop_gate=gate
-    )
-    assert sim["rank_gate_enabled"] is True
-    assert len(sim["portfolio_returns"]) >= 1, (
-        "Should have at least one trading day when gate allows"
-    )
-    print(
-        "  ✓ Rank-drop gate enabled; simulation produced trading days when stock had rank drop >= 10"
-    )
-    print("  ✓ TEST 4 PASSED\n")
+
+    book = _open_book(pd.DataFrame(preds), _flat_panel(stocks, dates), top_k=2, min_rank_drop=10)
+
+    held = pd.DataFrame(book.holdings)
+    assert book.rank_gate["enabled"] is True and book.rank_gate["gate_exits"] == 1
+    assert "S00" not in set(held.loc[held["signal_date"] == "2025-01-02", "kdcode"])
 
 
 def test_rank_drop_gate_excluded():
-    """With rank-drop gate: when no stock fell >= 10 ranks, holdings persist."""
-    print("=" * 70)
-    print("TEST 5: Rank-Drop Gate - Excluded (rank fell < 10)")
-    print("=" * 70)
-    bp = _import_backtest()
-    dates = ["2025-01-01", "2025-01-02", "2025-01-03"]
-    stocks = [f"S{i}" for i in range(12)]
-    data = []
-    for dt in dates:
-        for s in stocks:
-            data.append(
-                {
-                    "kdcode": s,
-                    "dt": dt,
-                    "open": 100.0,
-                    "high": 101.0,
-                    "low": 99.0,
-                    "close": 100.0,
-                    "volume": 1e6,
-                }
-            )
-    stock_df = pd.DataFrame(data)
-    stock_df = bp.calculate_forward_returns(stock_df, label_t=5)
-    # Same rank order both days -> rank_drop=0 for all; no one eligible on day2
-    preds = []
-    for dt in dates:
-        for r, s in enumerate(stocks):
-            score = 1.0 - r * 0.01
-            preds.append({"kdcode": s, "dt": dt, "score": score})
-    pred_df = pd.DataFrame(preds)
-    gate = {"enabled": True, "min_rank_drop": 10}
-    sim = bp.simulate_trading_strategy(
-        pred_df, stock_df, top_k=2, label_t=5, transaction_costs=None, rank_drop_gate=gate
-    )
-    assert sim["rank_gate_enabled"] is True
-    assert sim["days_skipped_by_rank_gate"] == 0, "No skip expected when holdings persist"
-    assert len(sim["portfolio_returns"]) >= 1, "Simulation should continue with persisted holdings"
-    print("  ✓ No day skipped when no stock had rank drop >= 10; holdings persisted")
-    print("  ✓ TEST 5 PASSED\n")
+    """With no rank drop >= min_rank_drop, holdings persist."""
+    dates = ["2025-01-01", "2025-01-02", "2025-01-03", "2025-01-06"]
+    stocks = [f"S{i:02d}" for i in range(12)]
+    preds = [
+        {"kdcode": s, "dt": dt, "score": 1.0 - r * 0.01}
+        for dt in dates[:3]
+        for r, s in enumerate(stocks)
+    ]
+
+    book = _open_book(pd.DataFrame(preds), _flat_panel(stocks, dates), top_k=2, min_rank_drop=10)
+
+    held = pd.DataFrame(book.holdings).groupby("signal_date")["kdcode"].apply(set)
+    assert book.rank_gate["gate_exits"] == 0
+    assert all(names == {"S00", "S01"} for names in held)
 
 
 def test_rank_drop_gate_disabled_regression():
-    """With rank-drop gate disabled, behavior matches no-gate (same number of trading days as without gate)."""
-    print("=" * 70)
-    print("TEST 6: Rank-Drop Gate Disabled - Regression")
-    print("=" * 70)
-    bp = _import_backtest()
+    """With the gate off, the book is the plain top-k book."""
     stock_data_df, predictions_df, _ = create_synthetic_test_data()
-    stock_data_df = bp.calculate_forward_returns(stock_data_df, label_t=5)
-    sim_no_gate = bp.simulate_trading_strategy(
-        predictions_df,
-        stock_data_df,
-        top_k=2,
-        label_t=5,
-        transaction_costs=None,
-        rank_drop_gate=None,
-    )
-    sim_gate_off = bp.simulate_trading_strategy(
-        predictions_df,
-        stock_data_df,
-        top_k=2,
-        label_t=5,
-        transaction_costs=None,
-        rank_drop_gate={"enabled": False, "min_rank_drop": 10},
-    )
-    assert sim_no_gate["rank_gate_enabled"] is False
-    assert sim_gate_off["rank_gate_enabled"] is False
-    assert len(sim_no_gate["portfolio_returns"]) == len(sim_gate_off["portfolio_returns"]), (
-        "Disabled gate should give same number of trading days as no gate"
-    )
-    np.testing.assert_array_almost_equal(
-        sim_no_gate["portfolio_returns"],
-        sim_gate_off["portfolio_returns"],
-        err_msg="Disabled gate should match no-gate returns",
-    )
-    print("  ✓ Disabled gate matches no-gate (same returns and days)")
-    print("  ✓ TEST 6 PASSED\n")
+
+    plain = _open_book(predictions_df, stock_data_df)
+    gate_off = _open_book(predictions_df, stock_data_df, min_rank_drop=None)
+
+    assert plain.rank_gate["enabled"] is False
+    np.testing.assert_array_equal(plain.net_returns, gate_off.net_returns)
 
 
 def test_portfolio_tracking_outputs_nonregression():
-    """Validate additive portfolio tracking outputs and core output preservation."""
-    print("=" * 70)
-    print("TEST 7: Portfolio Tracking Outputs + Non-Regression")
-    print("=" * 70)
-    bp = _import_backtest()
-
+    """Holdings and trades come from the same book, and every output file is written."""
     stock_data_df, predictions_df, _ = create_synthetic_test_data()
-    stock_data_df = bp.calculate_forward_returns(stock_data_df, label_t=5)
-    sim = bp.simulate_trading_strategy(
-        predictions_df=predictions_df,
-        stock_data_df=stock_data_df,
-        top_k=2,
-        label_t=5,
-        transaction_costs=None,
-        rank_drop_gate=None,
-    )
+    book = _open_book(predictions_df, stock_data_df)
 
-    # 1) New keys exist and are populated
-    assert "daily_holdings" in sim, "Missing daily_holdings in simulation payload"
-    assert "trade_records" in sim, "Missing trade_records in simulation payload"
-    assert len(sim["daily_holdings"]) > 0, "daily_holdings should not be empty"
-    assert len(sim["trade_records"]) > 0, "trade_records should not be empty"
-    print("  ✓ Simulation payload includes daily_holdings and trade_records")
+    assert book.holdings and book.trades
+    holdings = pd.DataFrame(book.holdings)
+    contribution = holdings.groupby("signal_date")["contribution"].sum()
+    np.testing.assert_allclose(contribution.to_numpy(), book.period_returns, rtol=1e-12)
 
-    # 2) Accounting check: sum(contribution) per date ~= gross portfolio return
-    holdings_df = pd.DataFrame(sim["daily_holdings"])
-    gross_by_date = pd.Series(sim["gross_portfolio_returns"], index=sim["dates"])
-    contrib_by_date = holdings_df.groupby("entry_date")["contribution"].sum()
-    aligned = contrib_by_date.reindex(gross_by_date.index)
-    max_err = float((aligned - gross_by_date).abs().max())
-    assert max_err < 1e-10, f"Contribution accounting mismatch (max_err={max_err})"
-    print("  ✓ Per-day contribution sums match gross portfolio return")
-
-    # 3) Save outputs and verify additive files + existing core files
+    config = {"top_k": 2, "label_t": 5, "transaction_costs": {"enabled": False}}
+    results = backtest_engine.replay_metrics(book, config)
     with tempfile.TemporaryDirectory() as tmp_dir:
-        results_stub = {
-            "ARR": 0.1,
-            "AVoL": 0.2,
-            "MDD": -0.1,
-            "ASR": 0.5,
-            "CR": 1.0,
-            "IR": 0.1,
-            "MSE": 0.01,
-            "MAE": 0.02,
-            "num_trading_days": max(len(sim["dates"]), 1),
-            "rank_gate_enabled": False,
-        }
-        bp.save_backtest_results(results_stub, tmp_dir, sim_results=sim, config=None)
-
-        # Existing core files must remain available
-        core_files = [
+        backtest_engine.save_backtest_results(results, tmp_dir, book=book, config=config)
+        for name in [
             "backtest_results.csv",
             "backtest_metrics.json",
             "daily_returns.csv",
             "cumulative_performance.csv",
             "monthly_performance.csv",
             "summary.txt",
-        ]
-        for name in core_files:
-            path = os.path.join(tmp_dir, name)
-            assert os.path.exists(path), f"Missing core output file: {name}"
-        print("  ✓ Core backtest output files are preserved")
-
-        # New additive files
-        new_files = [
-            "daily_holdings.csv",
-            "trade_journal.csv",
-            "portfolio_composition.csv",
-            "return_attribution.csv",
+            "holdings.csv",
             "holdings_summary.csv",
-        ]
-        for name in new_files:
-            path = os.path.join(tmp_dir, name)
-            assert os.path.exists(path), f"Missing new output file: {name}"
-        print("  ✓ All five additive portfolio tracking files are generated")
-
-        # First trading day should have only BUY actions
-        trades_df = pd.read_csv(os.path.join(tmp_dir, "trade_journal.csv"))
-        first_date = trades_df["date"].min()
-        first_day_actions = set(trades_df[trades_df["date"] == first_date]["action"].unique())
-        assert first_day_actions == {"BUY"}, f"Unexpected first-day actions: {first_day_actions}"
-        print("  ✓ First trade day contains BUY actions only")
-
-    print("  ✓ TEST 7 PASSED\n")
-
-
-def main():
-    """Run all tests as a standalone script (pytest is the primary runner)."""
-    print("\n" + "=" * 70)
-    print("BACKTEST FAIRNESS VERIFICATION TESTS")
-    print("=" * 70 + "\n")
-
-    tests = [
-        ("Return Calculation", test_return_calculation),
-        ("Simulation Timing", test_simulation_timing),
-        ("Date Mapping", test_prediction_date_mapping),
-        ("Rank-Drop Gate Eligible", test_rank_drop_gate_eligible),
-        ("Rank-Drop Gate Excluded", test_rank_drop_gate_excluded),
-        ("Rank-Drop Gate Disabled Regression", test_rank_drop_gate_disabled_regression),
-        ("Portfolio Tracking Outputs", test_portfolio_tracking_outputs_nonregression),
-    ]
-
-    results = []
-    for test_name, test_func in tests:
-        try:
-            test_func()
-            results.append((test_name, True))
-        except Exception as e:
-            print(f"✗ {test_name} FAILED: {e}\n")
-            traceback.print_exc()
-            results.append((test_name, False))
-
-    # Summary
-    print("=" * 70)
-    print("TEST SUMMARY")
-    print("=" * 70)
-    for test_name, passed in results:
-        status = "✓ PASSED" if passed else "✗ FAILED"
-        print(f"  {test_name:<30} {status}")
-
-    all_passed = all(passed for _, passed in results)
-    print("=" * 70)
-    if all_passed:
-        print("✓ ALL TESTS PASSED - Backtest fairness verified!")
-    else:
-        print("✗ SOME TESTS FAILED - Review issues above")
-    print("=" * 70 + "\n")
-
-    return all_passed
-
-
-if __name__ == "__main__":
-    success = main()
-    sys.exit(0 if success else 1)
+            "trade_journal.csv",
+            "missing_close_events.csv",
+        ]:
+            assert os.path.exists(os.path.join(tmp_dir, name)), name
+        trades = pd.read_csv(os.path.join(tmp_dir, "trade_journal.csv"))
+        first = trades["date"].min()
+        assert set(trades.loc[trades["date"] == first, "action"]) == {"BUY"}

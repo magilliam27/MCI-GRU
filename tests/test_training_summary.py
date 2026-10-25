@@ -227,49 +227,33 @@ def _window_with_evaluation(evaluation: dict) -> dict:
     return window
 
 
-def test_walkforward_evaluation_mean_skips_nan_windows_and_reports_coverage() -> None:
-    """A NaN evaluation metric in one window is left out and counted, not averaged in."""
+def test_walkforward_evaluation_is_never_a_mean_of_windows() -> None:
+    """Window Sharpes, CI bounds and cumulative returns do not average (#342)."""
     windows = [
-        _window_with_evaluation({"ic": 0.1, "sharpe_top_10": math.nan, "label": "w0"}),
-        _window_with_evaluation({"ic": 0.3, "sharpe_top_10": 1.5}),
-        _window_with_evaluation({"ic": math.nan, "sharpe_top_10": math.nan}),
-        _window_with_evaluation({"ic": math.nan, "never_defined": math.nan}),
-    ]
-
-    merged = merge_walkforward_summary(windows)
-    evaluation = _strict_json(merged["evaluation"])
-    coverage = _strict_json(merged["evaluation_window_coverage"])
-
-    assert evaluation == {
-        "mean_ic_across_windows": pytest.approx(0.2),
-        "mean_never_defined_across_windows": None,
-        "mean_sharpe_top_10_across_windows": pytest.approx(1.5),
-    }
-    assert coverage == {
-        "ic": {"available": 2, "total": 4},
-        "never_defined": {"available": 0, "total": 4},
-        "sharpe_top_10": {"available": 1, "total": 4},
-    }
-
-
-def test_walkforward_evaluation_mean_is_unchanged_without_nan_windows() -> None:
-    """With every window available, each aggregate is the plain equal-weight mean."""
-    windows = [
-        _window_with_evaluation({"ic": 0.1, "hit_rate": 0.52}),
-        _window_with_evaluation({"ic": 0.25, "hit_rate": 0.49}),
-        _window_with_evaluation({"ic": -0.05, "hit_rate": 0.55}),
+        _window_with_evaluation({"avg_ic": 0.1, "top_10_abs_sharpe": 1.5}),
+        _window_with_evaluation({"avg_ic": 0.3, "top_10_abs_sharpe": -0.5}),
     ]
 
     merged = merge_walkforward_summary(windows)
 
-    assert merged["evaluation"] == {
-        "mean_hit_rate_across_windows": pytest.approx((0.52 + 0.49 + 0.55) / 3, abs=1e-15),
-        "mean_ic_across_windows": pytest.approx((0.1 + 0.25 - 0.05) / 3, abs=1e-15),
-    }
-    assert merged["evaluation_window_coverage"] == {
-        "hit_rate": {"available": 3, "total": 3},
-        "ic": {"available": 3, "total": 3},
-    }
+    assert "evaluation" not in merged
+    assert not any(key.startswith("mean_avg_ic") for key in _strict_json(merged))
+    assert merged["evaluation_pooling"] == "NOT_POOLED"
+    assert [window["evaluation"] for window in merged["windows"]] == [
+        {"avg_ic": 0.1, "top_10_abs_sharpe": 1.5},
+        {"avg_ic": 0.3, "top_10_abs_sharpe": -0.5},
+    ]
+
+
+def test_walkforward_evaluation_is_the_pooled_summary_when_given() -> None:
+    windows = [_window_with_evaluation({"avg_ic": 0.1}), _window_with_evaluation({"avg_ic": 0.3})]
+    pooled = {"schema_version": "v2", "metrics": {"avg_ic": 0.25}}
+
+    merged = merge_walkforward_summary(windows, pooled_evaluation=pooled)
+
+    assert merged["evaluation"] == {"avg_ic": 0.25}  # the windows' shape
+    assert merged["evaluation_summary"] == {"schema_version": "v2"}
+    assert merged["evaluation_pooling"] == "POOLED_TEST_DATES"
 
 
 def test_walkforward_without_evaluation_adds_no_evaluation_keys() -> None:
@@ -277,4 +261,4 @@ def test_walkforward_without_evaluation_adds_no_evaluation_keys() -> None:
     merged = merge_walkforward_summary([_summary(_result(0.5, 0.1, 0.2))])
 
     assert "evaluation" not in merged
-    assert "evaluation_window_coverage" not in merged
+    assert "evaluation_pooling" not in merged

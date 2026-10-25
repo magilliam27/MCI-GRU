@@ -118,6 +118,7 @@ class TrainingResult:
     epochs_trained: int
     best_model_path: str
     predictions: np.ndarray | None = None
+    eval_autocast: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -291,7 +292,7 @@ class Trainer:
         scheduler = _build_lr_scheduler(optimizer, training_cfg, steps_per_epoch)
 
         use_amp = training_cfg.use_amp and self.device.type == "cuda"
-        eval_amp = self._eval_amp_enabled()
+        eval_amp = self.eval_autocast_enabled()
         scaler = GradScaler("cuda", enabled=use_amp)
 
         output_path = self.output_path
@@ -430,7 +431,7 @@ class Trainer:
             best_model_path=best_model_path,
         )
 
-    def _eval_amp_enabled(self) -> bool:
+    def eval_autocast_enabled(self) -> bool:
         """Whether validation and prediction run under CUDA autocast.
 
         Training AMP does not carry over: under autocast a member's scores sit on
@@ -617,7 +618,7 @@ class Trainer:
         Returns:
             Predictions array of shape (n_dates, n_stocks)
         """
-        use_amp = self._eval_amp_enabled()
+        use_amp = self.eval_autocast_enabled()
         self.model.eval()
         all_predictions = []
 
