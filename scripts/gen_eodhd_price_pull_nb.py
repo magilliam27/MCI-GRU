@@ -66,7 +66,7 @@ def build_cells() -> list[dict]:
         code(
             """
             # Parameters
-            BRANCH = "claude/project-thread-8nunwe"  # "main" once #347's pull request is merged
+            BRANCH = "main"
             EXPECTED_COMMIT = ""  # optional: the full commit SHA to run
 
             LSEG_PACKAGE_DRIVE_DIR = "/content/drive/MyDrive/MCI_GRU_shared/preservation/2026-10-02-110-universe-2016"

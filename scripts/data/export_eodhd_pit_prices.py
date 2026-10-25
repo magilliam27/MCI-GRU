@@ -8,7 +8,7 @@ network refuses it), with the key in the environment only::
         --reference-panel <package>/market/<prefix>_lseg_20150101_20260731.csv \\
         --package-root /content/eodhd_package \\
         --cache-dir /content/eodhd_cache \\
-        --manifest-output /content/<prefix>_eodhd.r2.json \\
+        --manifest-output /content/<prefix>_eodhd.r3.json \\
         --package-revision r2
 
 What it writes under ``--package-root``, as a package beside the LSEG one:
