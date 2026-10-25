@@ -60,7 +60,6 @@ from mci_gru.data.eodhd_prices import (
     SymbolPlan,
     SymbolSegment,
     adjustment_basis_summary,
-    adjustments_on_split_dates,
     agreement_passes,
     apply_adjustments,
     assemble_panel,
@@ -324,8 +323,8 @@ def read_symbol(
 def basis_findings(
     plan: SymbolPlan, symbol: str, basis: VendorBasis, segment: SymbolSegment
 ) -> list[Finding]:
-    """Findings about the symbol a segment chose: a declared event the vendor now records, and later splits."""
-    findings = adjustments_on_split_dates(plan.kdcode, symbol, basis.splits, plan.adjustments)
+    """Findings about the symbol a segment chose: the later splits taken out of its volume."""
+    findings = []
     if len(basis.later):
         findings.append(
             Finding(

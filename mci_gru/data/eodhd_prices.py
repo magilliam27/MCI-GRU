@@ -114,10 +114,8 @@ class PriceAdjustment:
     date. That close is split-adjusted to the end of the pull, so ``cash`` must be
     stated on the same basis: divide the nominal amount by any later split ratio.
     ``share_conversion`` marks a change in share count, such as a merger
-    exchange ratio, so volume before the date is divided by the factor too. That
-    is right only because the vendor's volume does not carry an event its split
-    records lack: an adjustment dated on one of the symbol's split records
-    blocks (see ``adjustments_on_split_dates``).
+    exchange ratio, so volume before the date is divided by the factor too: the
+    vendor's volume does not carry the conversion (checked for CHTR, #347).
     """
 
     date: str
@@ -481,32 +479,6 @@ def split_adjust(
         out[column] = out[column] / factor
     out["volume"] = out["volume"] / _split_factor(dates, later_splits)
     return out
-
-
-def adjustments_on_split_dates(
-    kdcode: str, symbol: str, splits: pd.DataFrame, adjustments: Iterable[PriceAdjustment]
-) -> list[Finding]:
-    """Declared adjustments dated on one of the symbol's own split records; these block.
-
-    The map declares an event because the split records miss it. Once the vendor
-    records it as a split, prices would be restated twice, and a share conversion
-    would rescale volume the vendor may already have rescaled.
-    """
-    split_dates = set(splits["dt"])
-    clashes = sorted({a.date for a in adjustments if a.date in split_dates})
-    if not clashes:
-        return []
-    ratios = {str(d): float(r) for d, r in zip(splits["dt"], splits["ratio"], strict=True)}
-    return [
-        Finding(
-            kdcode,
-            "adjustment_on_split_date",
-            True,
-            f"{symbol}: the map declares an adjustment on a date the vendor's split records "
-            "now carry; review the map entry before this pull is used",
-            {"symbol": symbol, "dates": clashes, "split_ratios": {d: ratios[d] for d in clashes}},
-        )
-    ]
 
 
 def adjustment_steps(adjusted: pd.DataFrame) -> pd.DataFrame:

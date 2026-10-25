@@ -115,9 +115,9 @@
       ]
     },
     "CHTR.OQ": {
-      "note": "Charter Communications. When the Time Warner Cable merger closed on 2016-05-18, each legacy Charter share became 0.9042 shares of the new Charter; EODHD's split records of 2026-10-08 did not carry the conversion. By 2026-10-24 EODHD had added it as a 4521/5000 split record, so a fresh pull stops on adjustment_on_split_date until this entry is reviewed against the vendor's new basis (#347).",
+      "note": "Charter Communications. When the Time Warner Cable merger closed on 2016-05-18, each legacy Charter share became 0.9042 shares of the new Charter. EODHD's pre-merger closes are the legacy closes times 0.9042 and its 4521/5000 split record on that date only divides that back out, so its split records do not carry the conversion itself (#347).",
       "adjustments": [
-        {"date": "2016-05-18", "factor": 1.1059500110595002, "share_conversion": true, "reason": "Legacy Charter shares converted 0.9042 for 1 (5000/4521) in the Time Warner Cable merger, so earlier prices are restated per new share and earlier volume, counted in legacy shares, is converted to new shares. EODHD +11.85% against LSEG +1.11% that day in the first EODHD pull of 2026-10-08; 0.9042 reproduces LSEG's +1.11% exactly (r1 and r2 used 0.9). The vendor's volume does not carry the conversion: its 21,642,600 on 2016-05-17 equals Yahoo's, which records no split there (#347)."}
+        {"date": "2016-05-18", "factor": 1.1059500110595002, "share_conversion": true, "reason": "Legacy Charter shares converted 0.9042 for 1 (5000/4521) in the Time Warner Cable merger, so earlier prices are restated per new share and earlier volume, counted in legacy shares, is converted to new shares. EODHD +11.85% against LSEG +1.11% that day in the first EODHD pull of 2026-10-08; 0.9042 reproduces LSEG's +1.11% (r1 and r2 used 0.9). The vendor's volume does not carry the conversion or the split record: its 21,642,600 on 2016-05-17 equals Yahoo's, which records no split there (#347)."}
       ]
     },
     "COST.OQ": {

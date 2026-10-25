@@ -27,7 +27,6 @@ from mci_gru.config import create_config_from_dict
 from mci_gru.data.eodhd_prices import (
     PriceAdjustment,
     SymbolMapError,
-    adjustments_on_split_dates,
     agreement_passes,
     apply_adjustments,
     build_symbol_plans,
@@ -64,6 +63,7 @@ import gen_eodhd_price_pull_nb as generator  # noqa: E402
 
 COMMITTED_MAP = REPO_ROOT / "data" / "mappings" / "eodhd_symbols_gics_top10_110_2016.json"
 AAPL_2020_SPLIT = REPO_ROOT / "tests" / "fixtures" / "eodhd" / "aapl_2020_split.json"
+CHTR_2016_MERGER = REPO_ROOT / "tests" / "fixtures" / "eodhd" / "chtr_2016_merger.json"
 
 
 def _sessions(start: str, periods: int) -> list[str]:
@@ -272,24 +272,32 @@ def test_splits_frame_keeps_only_the_dates_between_after_and_as_of():
     assert later["ratio"].tolist() == pytest.approx([2.0, 6.665])
 
 
-def test_an_adjustment_the_vendor_now_records_as_a_split_blocks():
-    """A declared conversion on a vendor split date would restate prices (and volume) twice.
+def test_chtrs_real_vendor_rows_restate_to_new_shares_across_the_merger():
+    """Issue 347: CHTR's own vendor rows around the 2016-05-18 conversion, through the map's entry.
 
-    EODHD added a 4521/5000 record for CHTR on 2016-05-18 after the map declared the
-    Time Warner Cable conversion on that date.
+    EODHD's pre-merger closes are the legacy closes times 0.9042, and its 4521/5000
+    split record divides that back out; the map's conversion then restates prices per
+    new share. The vendor's volume is the legacy share count (21,642,600 on 2016-05-17,
+    the same as Yahoo's), so only the conversion rescales it.
     """
-    splits = splits_frame(
-        [{"date": "2016-05-18", "split": "4521.000000/5000.000000"}], as_of="2026-07-31"
+    vendor = json.loads(CHTR_2016_MERGER.read_text(encoding="utf-8"))
+    eod = eod_rows_frame(vendor["eod"])
+    splits = splits_frame(vendor["splits"], as_of="2026-07-31")
+    assert splits["dt"].tolist() == ["2016-05-18"]
+    (conversion,) = load_symbol_map(COMMITTED_MAP)["CHTR.OQ"].adjustments
+
+    out, applied, findings = apply_adjustments("CHTR.OQ", split_adjust(eod, splits), [conversion])
+
+    assert not findings and applied[0]["share_conversion"]
+    day = out.set_index("dt")
+    # LSEG's return that day is +1.11%; with a 0.9 ratio it would read +0.65%.
+    assert day.loc["2016-05-18", "close"] / day.loc["2016-05-17", "close"] - 1 == pytest.approx(
+        0.0111, abs=5e-4
     )
-    conversion = PriceAdjustment("2016-05-18", "merger", factor=5000 / 4521, share_conversion=True)
-    elsewhere = PriceAdjustment("2017-06-01", "spin-off", factor=0.9)
-
-    (finding,) = adjustments_on_split_dates("CHTR.OQ", "CHTR.US", splits, [conversion, elsewhere])
-
-    assert (finding.code, finding.blocking) == ("adjustment_on_split_date", True)
-    assert finding.evidence["dates"] == ["2016-05-18"]
-    assert finding.evidence["split_ratios"] == {"2016-05-18": pytest.approx(0.9042)}
-    assert adjustments_on_split_dates("CHTR.OQ", "CHTR.US", splits, [elsewhere]) == []
+    before = eod.set_index("dt").loc["2016-05-17", "volume"]
+    assert before == 21_642_600
+    assert day.loc["2016-05-17", "volume"] == pytest.approx(before * 4521 / 5000)
+    assert day.loc["2016-05-18", "volume"] == eod.set_index("dt").loc["2016-05-18", "volume"]
 
 
 def test_splits_after_the_panel_end_are_not_applied():
@@ -848,22 +856,6 @@ def test_a_response_with_no_serving_time_blocks(vendor):
     meta = json.loads(next((vendor["tmp"] / "package" / "market").glob("*.meta.json")).read_text())
     codes = {(f["kdcode"], f["code"], f["blocking"]) for f in meta["findings"]}
     assert ("GOOD.OQ", "vendor_serve_time_unknown", True) in codes
-
-
-def test_export_blocks_when_the_vendor_records_a_declared_adjustment_as_a_split(vendor):
-    """GOOD's map declares a spin-off on session 300; the vendor now lists a split that day."""
-    dates = vendor["dates"]
-    FakeClient.split_rows["GOOD.US"] = [
-        *FakeClient.split_rows["GOOD.US"],
-        {"date": dates[300], "split": "5.000000/4.000000"},
-    ]
-
-    assert export.main(_argv(vendor)) == 1
-
-    meta = json.loads(next((vendor["tmp"] / "package" / "market").glob("*.meta.json")).read_text())
-    (clash,) = [f for f in meta["findings"] if f["code"] == "adjustment_on_split_date"]
-    assert clash["kdcode"] == "GOOD.OQ" and clash["blocking"]
-    assert clash["evidence"]["dates"] == [dates[300]]
 
 
 def test_export_stops_without_a_manifest_when_no_candidate_matches(vendor):
