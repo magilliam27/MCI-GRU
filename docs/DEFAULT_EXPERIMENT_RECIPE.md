@@ -219,8 +219,11 @@ features.regime_min_history_months=24
   (#323) were added on 2026-10-24, with the same reasoning: the base defaults
   stay `legacy` and `levels` so earlier run directories rebuild. The relative
   volume inputs divide by the stock's own trailing mean and treat zero or
-  negative volume as missing; the check of the panel's volume column for bad
-  rows is #322.
+  negative volume as missing. The check of the panel's volume column (#322)
+  found r2's volume split-adjusted twice; r3 corrects it at source (#347), and
+  the recipe reads r3. On r2 the relative volume inputs would have shown a
+  false collapse in the 20 sessions after every split, because the extra
+  factor steps down on the split date.
 - `training.eval_amp=false` (#321) is the base default too. It is pinned so a
   move of that default cannot put prediction back under autocast. It applies to
   validation and `Trainer.predict` only; `training.use_amp` still governs
