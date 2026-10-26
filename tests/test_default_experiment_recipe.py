@@ -36,7 +36,7 @@ FIRST_RUN_SLUG = (
     "static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble"
     "__drop-edge-0p1__latents-data__xsec-residual__gru-32-10"
 )
-#: One slug part per #319 fix the recipe adopts (#325).
+#: One slug part for each #319 change the recipe adopts (#325).
 FIX_SLUG_PARTS = ("gat-residual", "inputs-relative", "eval-fp32")
 
 

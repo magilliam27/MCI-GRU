@@ -100,20 +100,22 @@ runs unless an experiment is explicitly testing one of these factors.
 > split-adjusted as of its last date, so a row before a split already encoded
 > that split. Prediction also ran under half-precision autocast, which rounds
 > scores onto a coarse grid. The recipe now pins the fixed forms, each behind a
-> key whose base default keeps the old behaviour, and the slug gains one part per
-> fix (#325).
+> key whose base default keeps the old behaviour, and the slug gains one part
+> for each of the three (#325).
 >
 > | | before 2026-10-24 | from 2026-10-24 |
 > |---|---|---|
-> | `model.gat_layer_form` | `legacy` (inherited): every graph layer sees a stock's own features only as one neighbour, so linked names tie (#320) | `residual` (pinned): `GATConv(residual=True)` in both layers of all three graph blocks, an own-feature path for every stock |
+> | `model.gat_layer_form` | `legacy` (inherited): every graph layer sees a stock's own features only as one neighbour, so linked names tie (#320) | `residual` (pinned): `GATConv(residual=True)` in both layers of every graph block the model builds, an own-feature path for every stock |
 > | `features.base_inputs` | `levels` (inherited): raw close, open, high, low, volume and turnover, rescaled by splits that happen after the row (#323) | `relative` (pinned): log return, overnight and intraday returns, high-low range over close, and log volume and turnover against the stock's own 20-session mean |
 > | `training.eval_amp` | no such key: validation and prediction ran under CUDA autocast whenever `training.use_amp` did | `false` (pinned): validation and prediction run in full precision; training keeps AMP (#321) |
 > | slug | `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10` | `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32` |
 >
-> The residual layers hold parameters the legacy ones do not, and the relative
-> inputs change the input width, so a checkpoint trained under the earlier slug
-> does not load into this recipe's model. Such a checkpoint still rebuilds from
-> its own run directory, because the base defaults keep the legacy forms.
+> The residual layers hold parameters the legacy ones do not, so a checkpoint
+> trained under the earlier slug does not load into this recipe's model. The
+> relative inputs keep the input width (six columns replace six), so on their
+> own they would not stop such a load; only the run's config tells the two input
+> forms apart. A checkpoint from the earlier slug still rebuilds from its own run
+> directory, because the base defaults keep the legacy forms.
 >
 > The first admitted run, `20261010T044328Z-full-ec77f4b7`, stays on record under
 > the earlier slug as the result of the model with these faults. It is not the
