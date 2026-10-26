@@ -83,14 +83,15 @@ class PublishedPackage:
 LSEG_PACKAGE = PublishedPackage(
     PACKAGE_MANIFEST, PACKAGE_MANIFEST_SHA256, PACKAGE_DRIVE_DIR, "historical_inventory"
 )
-#: The same 110-name membership priced from EODHD (#281, #282), r2, published
-#: 2026-10-09. Its Drive folder carries a byte copy of the manifest at its top.
-#: The r1 package it replaced must never be staged, so it has no entry.
+#: The same 110-name membership priced from EODHD (#281, #282), r3, published
+#: 2026-10-25. Its Drive folder carries a byte copy of the manifest at its top.
+#: The r1 and r2 packages it replaced must never be staged, so they have no entry:
+#: r2 split-adjusted volume twice (#347).
 EODHD_PACKAGE = PublishedPackage(
-    "data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_eodhd.r2.json",
-    "dcebb8ef9f1f3105c2f925d76c468fba32c220642908bf1a96b6f123f569d1c0",
+    "data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_eodhd.r3.json",
+    "1e2b41a2f552d556e81417e4e9def1db8439e1d47652e76673b5076c43edc4ee",
     "/content/drive/MyDrive/MCI_GRU_shared/preservation/"
-    "eodhd_sp500_pit_gics_top10_mcap_monthly_20160104_20260731_r2",
+    "eodhd_sp500_pit_gics_top10_mcap_monthly_20160104_20260731_r3",
     "manifest_copy",
 )
 PUBLISHED_PACKAGES = {package.manifest_sha256: package for package in (LSEG_PACKAGE, EODHD_PACKAGE)}
