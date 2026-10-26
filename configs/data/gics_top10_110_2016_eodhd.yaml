@@ -3,7 +3,7 @@
 #
 # Same universe as gics_top10_110_2016.yaml: the PIT membership file is the
 # LSEG-derived one, byte-identical (same name, same sha256 in both manifests).
-# Only the price panel differs. It was pulled from EODHD on 2026-10-09 (r2) by
+# Only the price panel differs. It was pulled from EODHD (r3, 2026-10-25) by
 # scripts/data/export_eodhd_pit_prices.py and accepted only after every name's
 # daily returns agreed with the preserved LSEG panel over the span the universe
 # needs it. Prices are split-adjusted from EODHD's split records, plus the
@@ -33,12 +33,15 @@ pit_export_cutoff: "2026-07-31"
 # Must match the names in the manifest's provenance.unknowns (a test pins this).
 pit_absent_kdcodes: ["DD.N^I17"]
 # The published EODHD package the two files above belong to. It lives on Drive
-# at MCI_GRU_shared/preservation/eodhd_sp500_pit_gics_top10_mcap_monthly_20160104_20260731_r2/.
+# at MCI_GRU_shared/preservation/eodhd_sp500_pit_gics_top10_mcap_monthly_20160104_20260731_r3/.
 # Revision r1 (2026-10-08) kept a carried zero-volume row after the ATVI, HES and
-# WBA delistings; r2 drops them and is the one to stage. r1 stays on Drive, unpinned.
-input_package_manifest: data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_eodhd.r2.json
+# WBA delistings; r2 (2026-10-09) dropped them but split-adjusted volume twice, since
+# the vendor's volume already carries its splits (#322, #347). r3 takes volume as
+# delivered; its rows and prices are r2's, except CHTR before 2016-05-18 (merger
+# ratio 0.9042, not 0.9). r3 is the one to stage. r1 and r2 stay on Drive, unpinned.
+input_package_manifest: data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_eodhd.r3.json
 # Quoted so YAML can never read a digest as a number.
-input_package_manifest_sha256: "dcebb8ef9f1f3105c2f925d76c468fba32c220642908bf1a96b6f123f569d1c0"
+input_package_manifest_sha256: "1e2b41a2f552d556e81417e4e9def1db8439e1d47652e76673b5076c43edc4ee"
 input_package_root: data/raw
 
 # 104 still clears breadth with DD.N^I17 absent: at most 109 names are scoreable

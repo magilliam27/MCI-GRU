@@ -52,7 +52,7 @@ runs unless an experiment is explicitly testing one of these factors.
 > |---|---|---|
 > | data config | `configs/data/gics_top10_110_2016.yaml` | `configs/data/gics_top10_110_2016_eodhd.yaml` |
 > | price panel | LSEG export, `..._lseg_20150101_20260731.csv` | EODHD pull of 2026-10-08, `..._eodhd_20150101_20260731.csv` |
-> | input package | LSEG r1 manifest | `data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_eodhd.r2.json` |
+> | input package | LSEG r1 manifest | `data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_eodhd.r3.json` (r3, 2026-10-25; r2 split-adjusted volume twice, #347) |
 > | names scored in 2016-01..2017-08 | at most 110 | at most 109: the pre-merger DuPont (`DD.N^I17`) has no EODHD history |
 >
 > Before the package was accepted, each name in the panel had its EODHD daily
@@ -224,6 +224,9 @@ features.regime_min_history_months=24
     2025-08-27). With `--all` it exits 1 on one name only. PSKY.OQ, a live
     name, ends in two zero-volume repeats in its last rows to 2026-07-31. That
     is after the test window and its labels, so it does not touch this run.
+    The result carries over to r3 (#347) without a re-run there. r3 has r2's
+    rows, the same prices apart from CHTR before 2016-05-18, and volume only
+    divided by split ratios, so it is zero on exactly the sessions it was in r2.
   - A cessation dated on a name's final session and known by 20:00 New York that
     day would also drop that one session from the cross-section. Its own loss is
     unchanged, but other names' scores on that date move slightly. The likely
