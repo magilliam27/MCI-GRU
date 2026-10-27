@@ -142,10 +142,18 @@ runs unless an experiment is explicitly testing one of these factors.
 > The data config keeps its eight-year window, because it is the first run's
 > provenance. Features are still computed on the whole panel, which starts
 > 2015-01-01, before the training mask, so the first training date has its full
-> lookback. The PIT union axis, the static graph's start and the regime request
-> (train start minus 15 years) follow the new start. Earlier windows of the same
-> design (train 2016 to 2019, validate 2020, test 2021, and so on) are separate
-> runs under this slug with their dates overridden.
+> lookback. Everything fit on training data now follows the window's own years:
+> the PIT union axis, the static graph's start, and the normalisation
+> statistics, which until now were fit on every panel row up to `train_end`
+> (#367). For the first run's window that changes nothing, because its
+> membership file starts on its first training day. The regime inputs are
+> requested from the train start minus 15 years, so each window's regime
+> similarity pool is its own 15 years too. Regime scores on a given date
+> therefore differ slightly between this window and the first run, which drew on
+> history from 2001. Earlier windows of the same design (train 2016 to 2019,
+> validate 2020, test 2021, and so on) are separate runs under this slug, with
+> their dates overridden. The DuPont note below applies only to windows that
+> train on 2016 or 2017.
 
 Recipe slug:
 

@@ -1871,6 +1871,18 @@ Stock inputs on a date never reflect a split that happens after it (#323, PRD #3
 | `test_normaliser_fits_the_relative_inputs_on_train_rows_only` |  |  |
 | `test_normaliser_statistics_ignore_rows_after_train_end` |  |  |
 
+## `tests/test_normalisation_window.py`
+
+Issue 367: the pipeline fits normalisation on the training window, not the panel.
+
+**Exercises:** `mci_gru.pipeline`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_zscore_fit_ignores_rows_before_train_start` |  |  |
+| `test_zscore_fit_with_an_earlier_start_takes_those_rows_in` | Control: the bound is what keeps them out, not the shape of the panel. |  |
+| `test_rank_gauss_fit_ignores_rows_before_train_start` |  |  |
+
 ## `tests/test_notebook_eodhd_staging.py`
 
 EODHD S&P 500 staging in the regime-enabled Colab notebooks (#278).
@@ -2717,6 +2729,7 @@ Unit tests for mci_gru.data.transforms.
 |---|---|---|
 | `test_impute_feature_nans_by_day_mean_then_zero_fill` |  |  |
 | `test_compute_zscore_norm_stats_train_period_only` |  |  |
+| `test_compute_zscore_norm_stats_train_start_bounds_the_fit` | Issue 367: a window's statistics come from its own training years only. |  |
 | `test_normalize_features_zscore_clip_and_scale` |  |  |
 | `test_normalize_features_zscore_default_fallback_vs_keyerror` |  |  |
 | `test_build_single_date_tensors_shapes` |  |  |
