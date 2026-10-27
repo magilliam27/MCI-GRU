@@ -271,7 +271,10 @@ def test_the_total_basis_changes_labels_and_returns_but_not_inputs(tmp_path):
     got = total["df"].set_index(["kdcode", "dt"])["close"]
     want = expected.set_index(["kdcode", "dt"])["close"]
     np.testing.assert_allclose(got.loc[want.index].to_numpy(), want.to_numpy(), rtol=1e-12)
-    assert (price["df"]["close"].to_numpy() == panel["close"].to_numpy()).all()
+    # The panel went through a CSV, so compare to float precision, not bit for bit.
+    np.testing.assert_allclose(
+        price["df"]["close"].to_numpy(), panel["close"].to_numpy(), rtol=1e-12
+    )
 
 
 def test_the_total_basis_stops_on_a_panel_without_dividends(tmp_path):
