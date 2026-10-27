@@ -83,6 +83,7 @@ from scripts.rescore_run import (  # noqa: E402
     RescoreError,
     ScoringInputs,
     _check_code_root,
+    _check_stored_summary,
     _code_identity,
     _read_json,
     check_consumed,
@@ -253,12 +254,18 @@ def paired_comparison(
         for arm in daily:
             if arm == MODEL_ARM:
                 continue
-            frame = align_daily_series(
-                {
-                    MODEL_ARM: daily[MODEL_ARM].set_index("dt")[column],
-                    arm: daily[arm].set_index("dt")[column],
-                }
-            )
+            try:
+                frame = align_daily_series(
+                    {
+                        MODEL_ARM: daily[MODEL_ARM].set_index("dt")[column],
+                        arm: daily[arm].set_index("dt")[column],
+                    }
+                )
+            except ValueError:  # no date both scored: nothing to compare
+                rows.append(
+                    {"metric": column, "n_common_dates": 0, "arm": MODEL_ARM, "control": arm}
+                )
+                continue
             inference = paired_mean_inference(
                 frame[MODEL_ARM] - frame[arm],
                 arm=MODEL_ARM,
@@ -336,9 +343,6 @@ def score_baselines(
         raise BaselineError("the rebuilt stock axis differs from the run's kdcode_list")
     model = load_saved_predictions(saved.inputs.predictions_dir, scoring.kdcodes, scoring.dates)
 
-    linear = linear_baseline(config, metadata, saved.recorded, scoring) if include_linear else None
-    arms = {MODEL_ARM: model, **baseline_scores(scoring, linear)}
-
     def summarise(scores: np.ndarray) -> dict[str, Any]:
         return compute_evaluation_summary(
             scores,
@@ -350,11 +354,19 @@ def score_baselines(
             rankable_mask=scoring.rankable_mask,
         )
 
-    summaries = {arm: summarise(scores) for arm, scores in arms.items()}
-    stored = _read_json(run / STORED_SUMMARY_FILENAME)
+    # The cheap control first: the labels and mask are the run's only if its own
+    # predictions give back the IC its receipt-bound summary stored.
+    stored_path = run / STORED_SUMMARY_FILENAME
+    stored_sha256 = _check_stored_summary(run, metadata, stored_path)
+    summaries = {MODEL_ARM: summarise(model)}
     ic_check = check_ic_reproduced(
-        stored.get("metrics", {}), summaries[MODEL_ARM]["metrics"], tolerance
+        _read_json(stored_path).get("metrics", {}), summaries[MODEL_ARM]["metrics"], tolerance
     )
+    ic_check["stored_summary_sha256"] = stored_sha256
+
+    linear = linear_baseline(config, metadata, saved.recorded, scoring) if include_linear else None
+    arms = {MODEL_ARM: model, **baseline_scores(scoring, linear)}
+    summaries.update({arm: summarise(s) for arm, s in arms.items() if arm != MODEL_ARM})
     daily = {
         arm: dated_ic_frame(scores, scoring.labels, scoring.dates) for arm, scores in arms.items()
     }
@@ -448,8 +460,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     for row in summary["paired_daily_difference"]:
         print(
-            f"model - {row['control']} ({row['metric']}): mean {row['mean_delta']}, "
-            f"HAC t {row['hac_t']}, p {row['hac_p']}"
+            f"model - {row['control']} ({row['metric']}): mean {row.get('mean_delta')}, "
+            f"HAC t {row.get('hac_t')}, p {row.get('hac_p')}, dates {row['n_common_dates']}"
         )
     print(f"Baseline summary written to {path}")
     return 0
