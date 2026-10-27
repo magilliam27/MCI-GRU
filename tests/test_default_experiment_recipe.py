@@ -38,6 +38,8 @@ FIRST_RUN_SLUG = (
 )
 #: One slug part for each #319 change the recipe adopts (#325).
 FIX_SLUG_PARTS = ("gat-residual", "inputs-relative", "eval-fp32")
+#: The slug part for the four-year training window (#367).
+WINDOW_SLUG_PART = "train-4y"
 
 
 def _pinned_data_group(text: str) -> str | None:
@@ -207,7 +209,8 @@ def _recipe_slug() -> str:
 def test_the_slug_names_each_fix_the_recipe_adopts():
     """PRD 319 D6: the fixed model gets its own id, so its results never mix with the first run's."""
     slug = _recipe_slug()
-    assert slug == FIRST_RUN_SLUG + "".join(f"__{part}" for part in FIX_SLUG_PARTS)
+    fixed = FIRST_RUN_SLUG + "".join(f"__{part}" for part in FIX_SLUG_PARTS)
+    assert slug == f"{fixed}__{WINDOW_SLUG_PART}"
     assert slug != FIRST_RUN_SLUG
 
 
@@ -262,7 +265,36 @@ def test_the_recipe_trains_on_the_eodhd_price_panel():
     # Same universe as the LSEG config: only the price panel and its manifest move.
     lseg = OmegaConf.load(REPO_ROOT / "configs/data/gics_top10_110_2016.yaml")
     assert data.pit_universe_csv == lseg.pit_universe_csv
-    assert (data.train_start, data.test_end) == (lseg.train_start, lseg.test_end)
+    assert (data.val_start, data.test_end) == (lseg.val_start, lseg.test_end)
+
+
+def test_the_recipe_trains_on_four_years():
+    """Issue 367: train 2020 to 2023, validate 2024, test 2025, the last window before 2026."""
+    data = _compose(_recipe_overrides()).data
+    assert (data.train_start, data.train_end) == ("2020-01-02", "2023-12-31")
+    assert (data.val_start, data.val_end) == ("2024-01-22", "2024-12-31")
+    assert (data.test_start, data.test_end) == ("2025-01-22", "2025-12-31")
+    train_years = int(data.train_end[:4]) - int(data.train_start[:4]) + 1
+    assert train_years == 4
+    # The validation year follows the last training year, and the test year follows it.
+    assert int(data.val_start[:4]) == int(data.train_end[:4]) + 1
+    assert int(data.test_start[:4]) == int(data.val_start[:4]) + 1
+
+
+def test_without_its_window_line_the_recipe_would_train_on_eight_years():
+    """Control: the four-year window comes from the recipe's line, not from the data config."""
+    without = [line for line in _recipe_overrides() if not line.startswith("data.train_start=")]
+    assert len(without) == len(_recipe_overrides()) - 1
+    data = _compose(without).data
+    assert (data.train_start, data.train_end) == ("2016-01-04", "2023-12-31")
+
+
+def test_recipe_records_the_training_window_change():
+    """The 8-year first run and the 4-year runs must not be read as one recipe."""
+    text = RECIPE.read_text(encoding="utf-8")
+    assert "The training window changed on 2026-10-27" in text
+    match = re.search(r"^Last updated:\s*(\d{4}-\d{2}-\d{2})$", text, re.M)
+    assert match and match.group(1) >= "2026-10-27"
 
 
 def test_without_its_data_line_the_recipe_would_read_the_lseg_panel():
