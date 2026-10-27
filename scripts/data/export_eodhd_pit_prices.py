@@ -15,7 +15,8 @@ What it writes under ``--package-root``, as a package beside the LSEG one:
 
 - ``constituents/<prefix>_pit_universe.csv``: the membership file, byte-copied.
 - ``market/<prefix>_eodhd_<start>_<end>.csv``: the ``kdcode, dt, open, high,
-  low, close, volume`` panel the CSV loader reads, keyed by the same RICs.
+  low, close, volume, dividend`` panel the CSV loader reads, keyed by the same
+  RICs.
 - ``..._coverage.csv``, ``..._reference_check.csv``, ``..._symbols.json``,
   ``..._symbol_map.json``, ``..._raw.jsonl`` and ``.meta.json``: the evidence.
   That is per-name coverage, agreement with the reference panel, the symbol each
@@ -25,7 +26,9 @@ What it writes under ``--package-root``, as a package beside the LSEG one:
 Prices are split-adjusted from EODHD's split records, plus the corporate actions
 the reviewed symbol map declares. Volume arrives already split-adjusted, up to
 the day the vendor served it, so only splits after the panel end are taken back
-out of it (#347). A name with an LSEG delisted code (``^``)
+out of it (#347). Dividends come from EODHD's dividend records: cash per share
+on the ex-date row, on the prices' basis, less any part a declared corporate
+action already restates in the prices (#361). A name with an LSEG delisted code (``^``)
 stops at its last trade: a final run of rows that repeat the previous close at
 zero volume is dropped and listed per name as ``carried_tail_dropped``.
 
@@ -63,11 +66,14 @@ from mci_gru.data.eodhd_prices import (
     agreement_passes,
     apply_adjustments,
     assemble_panel,
+    attach_dividends,
     build_symbol_plans,
     check_window,
     clean_values,
     clip_segment,
     coverage_table,
+    dividend_basis_findings,
+    dividends_frame,
     eod_rows_frame,
     is_delisted,
     load_symbol_map,
@@ -173,6 +179,10 @@ class EodhdClient:
 
     def splits(self, symbol: str, start: str, end: str) -> list[dict[str, Any]]:
         body = self._get("splits", symbol, f"splits/{symbol}", {"from": start, "to": end})
+        return body if isinstance(body, list) else []
+
+    def dividends(self, symbol: str, start: str, end: str) -> list[dict[str, Any]]:
+        body = self._get("div", symbol, f"div/{symbol}", {"from": start, "to": end})
         return body if isinstance(body, list) else []
 
     def listing(self, delisted: bool) -> list[dict[str, Any]]:
@@ -289,9 +299,10 @@ def read_symbol(
 
     The vendor's volume carries every split it had recorded when it served the
     rows, so the splits between the panel end and that day are read too and
-    taken back out of volume. A response with no serving time cannot be put on
-    a known basis, so it blocks, as do vendor rows that cannot be read; both
-    come back with no rows.
+    taken back out of volume. Dividends go on their ex-date rows before the split
+    adjustment, which rescales them with the prices. A response with no serving
+    time cannot be put on a known basis, so it blocks, as do vendor rows that
+    cannot be read; both come back with no rows.
     """
     try:
         eod = eod_rows_frame(client.eod(symbol, args.start, args.end))
@@ -307,6 +318,7 @@ def read_symbol(
                 None,
             )
         served = str(retrieved_at)[:10]
+        dividends = dividends_frame(client.dividends(symbol, args.start, args.end))
         splits = splits_frame(client.splits(symbol, args.start, args.end), as_of=args.end)
         later = splits_frame([], as_of=args.end)
         if served > args.end:
@@ -317,7 +329,8 @@ def read_symbol(
         detail = f"{symbol}: vendor rows could not be read ({error})"
         return eod_rows_frame([]), [Finding(kdcode, "vendor_rows_invalid", True, detail)], None
     basis = VendorBasis(splits, later, served)
-    return split_adjust(eod, splits, later).reset_index(drop=True), [], basis
+    eod, findings = attach_dividends(kdcode, symbol, eod.reset_index(drop=True), dividends)
+    return split_adjust(eod, splits, later).reset_index(drop=True), findings, basis
 
 
 def basis_findings(
@@ -392,6 +405,7 @@ def resolve_segment(
             findings.extend(symbol_findings)
             continue
         symbol_findings += split_basis_findings(plan.kdcode, symbol, rows, exempt)
+        symbol_findings += dividend_basis_findings(plan.kdcode, symbol, rows, exempt)
         symbol_findings += basis_findings(plan, symbol, basis, segment)
         rows, blanked = clean_values(rows)
         if fallback is None:
@@ -594,10 +608,12 @@ def main(argv: list[str] | None = None) -> int:
     acquired_at = datetime.now(timezone.utc).isoformat()
     meta = {
         "created_at_utc": acquired_at,
-        "source": "eodhd.com /api/eod, /api/splits, /api/exchange-symbol-list",
+        "source": "eodhd.com /api/eod, /api/splits, /api/div, /api/exchange-symbol-list",
         "adjustment": "prices split-adjusted from EODHD split records as of the panel end; "
         "volume as the vendor delivers it (already split-adjusted), less splits after the "
-        "panel end; dividends not applied",
+        "panel end; dividends not applied to prices but carried in the dividend column, "
+        "cash per share on the ex-date row on the prices' basis, less any part a declared "
+        "adjustment restates",
         "repository_commit": _git_commit(),
         "start": args.start,
         "end": args.end,
@@ -616,6 +632,10 @@ def main(argv: list[str] | None = None) -> int:
         "date_min": str(panel["dt"].min()) if len(panel) else None,
         "date_max": str(panel["dt"].max()) if len(panel) else None,
         "values_blanked": blanked_total,
+        "dividend_rows": int((panel["dividend"] > 0).sum()) if len(panel) else 0,
+        "names_with_dividends": int(panel.loc[panel["dividend"] > 0, "kdcode"].nunique())
+        if len(panel)
+        else 0,
         "vendor_calls": client.calls,
         "vendor_responses_cached": sum(1 for r in raw_log if r.get("from_cache")),
         "reference_check_failures": int((check.get("verdict") == "fail").sum())
@@ -641,7 +661,9 @@ def main(argv: list[str] | None = None) -> int:
                 f"constituents/{args.pit_universe.name}",
                 "Point-in-time membership used by the model",
             ),
-            InputFileSpec(f"market/{panel_path.name}", "Price/volume panel and warmup history"),
+            InputFileSpec(
+                f"market/{panel_path.name}", "Price/volume/dividend panel and warmup history"
+            ),
             InputFileSpec(f"market/{meta_path.name}", "Market pull provenance and findings"),
             InputFileSpec(f"market/{coverage_path.name}", "Export coverage"),
             InputFileSpec(f"market/{check_path.name}", "Agreement with the reference panel"),
@@ -667,8 +689,8 @@ def main(argv: list[str] | None = None) -> int:
                 ],
             },
             metadata={
-                "description": "EODHD daily prices for the preserved 110-name PIT universe "
-                "(#281); membership is the LSEG-derived file, byte-identical.",
+                "description": "EODHD daily prices and dividends for the preserved 110-name "
+                "PIT universe (#281, #361); membership is the LSEG-derived file, byte-identical.",
                 "repository_commit": meta["repository_commit"],
             },
         )

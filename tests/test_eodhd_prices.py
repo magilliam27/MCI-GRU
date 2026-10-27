@@ -21,17 +21,22 @@ import yaml
 from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 
+import scripts.data.check_eodhd_dividends as dividend_check
 import scripts.data.check_eodhd_volume_basis as volume_check
 import scripts.data.export_eodhd_pit_prices as export
 from mci_gru.config import create_config_from_dict
 from mci_gru.data.eodhd_prices import (
+    DIVIDEND,
     PriceAdjustment,
     SymbolMapError,
     agreement_passes,
     apply_adjustments,
+    attach_dividends,
     build_symbol_plans,
     clean_values,
     default_symbol,
+    dividend_basis_findings,
+    dividends_frame,
     eod_rows_frame,
     is_delisted,
     load_symbol_map,
@@ -420,6 +425,189 @@ def test_rows_with_nothing_before_the_date_need_no_adjustment():
     assert out["close"].tolist() == frame["close"].tolist()
 
 
+# ---------------------------------------------------------------------------
+# Dividends (#361)
+# ---------------------------------------------------------------------------
+
+
+def _div(date: str, amount: float, adjusted: float | None = None) -> dict:
+    """An EODHD /div record; ``value`` is restated for later splits, ``unadjustedValue`` is not."""
+    return {
+        "date": date,
+        "value": amount if adjusted is None else adjusted,
+        "unadjustedValue": amount,
+        "period": "Quarterly",
+        "currency": "USD",
+    }
+
+
+def _with_dividends(dates, closes, dividends, **kwargs) -> pd.DataFrame:
+    """Raw vendor rows whose adjusted_close takes the step each dividend implies."""
+    paid = dict(dividends)
+    factor, adjusted = 1.0, []
+    for i in range(len(dates) - 1, -1, -1):
+        adjusted.append(closes[i] * factor)
+        if dates[i] in paid and i > 0:
+            factor *= 1 - paid[dates[i]] / closes[i - 1]
+    frame = eod_rows_frame(_raw_rows(dates, closes, adjusted=adjusted[::-1], **kwargs))
+    records = dividends_frame([_div(d, a) for d, a in dividends])
+    out, findings = attach_dividends("X.N", "X.US", frame, records)
+    assert not findings
+    return out
+
+
+def test_dividends_are_read_as_paid_and_summed_on_one_ex_date():
+    frame = dividends_frame(
+        [
+            _div("2020-08-07", 0.82, adjusted=0.205),  # before AAPL's 4-for-1
+            _div("2023-02-10", 0.15),
+            _div("2023-02-10", 0.65),  # a supplemental listed as its own record
+        ]
+    )
+    assert frame.to_dict("records") == [
+        {"dt": "2020-08-07", "amount": 0.82},
+        {"dt": "2023-02-10", "amount": pytest.approx(0.80)},
+    ]
+    with pytest.raises(ValueError, match="nonnegative"):
+        dividends_frame([_div("2023-02-10", -0.15)])
+
+
+def test_a_dividend_sits_on_its_ex_date_and_a_missing_session_moves_it_to_the_next():
+    dates = _sessions("2024-03-04", 5)
+    frame = eod_rows_frame(_raw_rows(dates, [10.0, 11.0, 12.0, 13.0, 14.0]))
+    gap = frame.drop(index=2).reset_index(drop=True)  # no vendor row on dates[2]
+    records = dividends_frame([_div(dates[1], 0.25), _div(dates[2], 0.5), _div("2024-03-29", 0.75)])
+
+    out, findings = attach_dividends("X.N", "X.US", gap, records)
+
+    assert out[DIVIDEND].tolist() == [0.0, 0.25, 0.5, 0.0]
+    assert out.loc[out[DIVIDEND] == 0.5, "dt"].item() == dates[3]
+    assert [(f.code, f.blocking) for f in findings] == [
+        ("dividend_off_session", False),
+        ("dividend_after_last_row", False),
+    ]
+    assert findings[0].evidence["moved_to"] == {dates[2]: dates[3]}
+    assert findings[1].evidence["dividends"] == {"2024-03-29": 0.75}
+
+
+def test_a_split_rescales_dividends_before_it_as_it_rescales_prices():
+    """AAPL paid $0.82 on 2020-08-07, before its 4-for-1; on the panel's basis that is $0.205."""
+    dates = _sessions("2020-08-05", 6)
+    raw = [440.0, 455.0, 444.0, 450.0, 125.0, 126.0]  # ex-dividend on 2, 4-for-1 on 4
+    frame = eod_rows_frame(_raw_rows(dates, raw))
+    records = dividends_frame([_div(dates[2], 0.82, adjusted=0.205), _div(dates[5], 0.205)])
+    frame, _ = attach_dividends("AAPL.OQ", "AAPL.US", frame, records)
+    splits = splits_frame([{"date": dates[4], "split": "4.000000/1.000000"}], as_of=dates[-1])
+
+    adjusted = split_adjust(frame, splits)
+
+    assert adjusted[DIVIDEND].tolist() == pytest.approx([0, 0, 0.205, 0, 0, 0.205])
+    assert adjusted["close"].tolist() == pytest.approx([110, 113.75, 111, 112.5, 125, 126])
+
+
+def test_dividends_agree_with_the_vendors_adjusted_close_step():
+    dates = _sessions("2024-03-04", 6)
+    closes = [50.0, 50.5, 49.8, 50.2, 50.4, 50.1]
+    frame = _with_dividends(dates, closes, [(dates[2], 0.5), (dates[4], 0.25)])
+    assert dividend_basis_findings("X.N", "X.US", frame) == []
+
+    missing = frame.assign(**{DIVIDEND: frame[DIVIDEND].where(frame["dt"] != dates[4], 0.0)})
+    doubled = frame.assign(**{DIVIDEND: frame[DIVIDEND] * 2})
+    early = frame.assign(**{DIVIDEND: frame[DIVIDEND].shift(-1, fill_value=0.0)})
+
+    (finding,) = dividend_basis_findings("X.N", "X.US", missing)
+    assert (finding.code, finding.blocking) == ("dividend_disagrees_with_adjusted_close", False)
+    assert list(finding.evidence["dates"]) == [dates[4]]
+    assert finding.evidence["dates"][dates[4]]["adjusted_close_yield"] == pytest.approx(
+        0.25 / 50.2, abs=1e-6
+    )
+    assert dividend_basis_findings("X.N", "X.US", doubled)[0].evidence["sessions"] == 2
+    assert list(dividend_basis_findings("X.N", "X.US", early)[0].evidence["dates"]) == [
+        dates[1],
+        dates[2],
+        dates[3],
+        dates[4],
+    ]
+    # A date the map declares is the declared action's step, not a dividend's.
+    assert dividend_basis_findings("X.N", "X.US", missing, exempt=[dates[4]]) == []
+
+
+def test_a_vendor_step_adjustment_leaves_no_dividend_on_its_date():
+    """LYB 2022-06-03: one $6.39 record (special plus regular); the step restates both."""
+    dates = _sessions("2022-05-31", 5)
+    closes = [100.0, 101.0, 102.0, 96.0, 97.0]
+    frame = _with_dividends(dates, closes, [(dates[0], 1.0), (dates[3], 6.39)])
+
+    out, applied, findings = apply_adjustments(
+        "LYB.N", frame, [PriceAdjustment(dates[3], "special dividend")]
+    )
+
+    factor = 1 - 6.39 / 102.0
+    assert applied[0]["basis"] == "vendor_adjusted_close"
+    assert applied[0]["factor"] == pytest.approx(factor)
+    assert (applied[0]["dividend_vendor"], applied[0]["dividend_kept"]) == (6.39, 0.0)
+    assert out[DIVIDEND].tolist() == pytest.approx([factor, 0, 0, 0, 0])  # earlier ones rescale
+    assert out["close"].tolist() == pytest.approx([c * factor for c in closes[:3]] + closes[3:])
+    assert not findings
+
+
+def test_a_cash_adjustment_keeps_the_dividend_above_the_declared_cash():
+    """Ford 2023-02-10: one $0.80 record; the map restates the $0.65 supplemental only."""
+    dates = _sessions("2023-02-08", 4)
+    closes = [13.0, 13.2, 12.4, 12.5]
+    frame = _with_dividends(dates, closes, [(dates[2], 0.80)])
+
+    out, applied, findings = apply_adjustments(
+        "F.N", frame, [PriceAdjustment(dates[2], "supplemental", cash=0.65)]
+    )
+
+    assert applied[0]["basis"] == "declared_cash"
+    assert applied[0]["dividend_kept"] == pytest.approx(0.15)
+    assert out[DIVIDEND].tolist() == pytest.approx([0, 0, 0.15, 0])
+    assert not findings
+    # The price-only return across the date plus the dividend kept is the total return.
+    total = (out["close"].iloc[2] + out[DIVIDEND].iloc[2]) / out["close"].iloc[1]
+    assert total == pytest.approx((12.4 + 0.80) / 13.2)
+
+
+def test_merger_cash_listed_as_a_dividend_is_not_counted_twice():
+    """BKR 2017-07-05: /api/div lists the $17.50 merger cash the map already restates."""
+    dates = _sessions("2017-06-30", 4)
+    frame = _with_dividends(dates, [54.0, 54.6, 35.3, 35.0], [(dates[2], 17.5)])
+    out, applied, findings = apply_adjustments(
+        "BKR.OQ", frame, [PriceAdjustment(dates[2], "merger cash", cash=17.5)]
+    )
+    assert out[DIVIDEND].tolist() == [0.0] * 4
+    assert applied[0]["dividend_kept"] == 0.0 and not findings
+
+    short = frame.assign(**{DIVIDEND: frame[DIVIDEND] / 2})
+    out, _, findings = apply_adjustments(
+        "BKR.OQ", short, [PriceAdjustment(dates[2], "merger cash", cash=17.5)]
+    )
+    assert out[DIVIDEND].tolist() == [0.0] * 4
+    assert [(f.code, f.blocking) for f in findings] == [("dividend_below_declared_cash", False)]
+
+
+def test_a_share_conversion_keeps_the_dividend_on_its_date():
+    dates = _sessions("2016-05-13", 4)
+    frame = _with_dividends(dates, [180.0, 182.0, 205.0, 206.0], [(dates[0], 1.0), (dates[2], 0.5)])
+    out, applied, _ = apply_adjustments(
+        "CHTR.OQ",
+        frame,
+        [PriceAdjustment(dates[2], "merger", factor=1 / 0.9, share_conversion=True)],
+    )
+    assert out[DIVIDEND].tolist() == pytest.approx([1 / 0.9, 0, 0.5, 0])
+    assert "dividend_kept" not in applied[0]
+
+
+def test_clean_values_reads_a_bad_dividend_as_no_payment():
+    frame = eod_rows_frame(_raw_rows(_sessions("2024-01-02", 3), [10.0, 11.0, 12.0]))
+    frame[DIVIDEND] = [np.nan, -0.1, 0.2]
+    out, blanked = clean_values(frame)
+    assert out[DIVIDEND].tolist() == [0.0, 0.0, 0.2]
+    assert blanked == 2
+
+
 def _tail_frame(closes, volumes):
     dates = _sessions("2023-10-09", len(closes))
     rows = _raw_rows(dates, closes)
@@ -666,6 +854,7 @@ class FakeClient:
 
     eod_rows: dict[str, list[dict]] = {}
     split_rows: dict[str, list[dict]] = {}
+    div_rows: dict[str, list[dict]] = {}
     listings: dict[bool, list[dict]] = {}
     #: When the canned vendor "served" its rows.
     served_at = "2016-10-03T12:00:00+00:00"
@@ -689,6 +878,10 @@ class FakeClient:
         self.calls += 1
         self.split_requests.append((symbol, start, end))
         return [r for r in self.split_rows.get(symbol, []) if start <= r["date"] <= end]
+
+    def dividends(self, symbol, start, end):
+        self.calls += 1
+        return [r for r in self.div_rows.get(symbol, []) if start <= r["date"] <= end]
 
     def listing(self, delisted):
         self.calls += 1
@@ -737,16 +930,22 @@ def vendor(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     # GOOD: raw prices carry a 2-for-1 split on session 100 that the split record undoes,
-    # and a spin-off on session 300 that only adjusted_close carries (step 0.8).
+    # and a spin-off on session 300 that only adjusted_close carries (step 0.8). It pays
+    # $1.00 a share on session 50, before both, and $0.60 on session 350; adjusted_close
+    # steps by each one's yield on the prices' basis.
     raw_good = np.where(np.arange(400) < 100, good * 2, good)
     raw_good = np.where(np.arange(400) < 300, raw_good / 0.8, raw_good)
+    adjusted_good = good.copy()
+    adjusted_good[:350] *= 1 - 0.6 / good[349]
+    adjusted_good[:50] *= 1 - (1.0 / 2) / (good[49] / 0.8)
     FakeClient.eod_rows = {
-        "GOOD.US": _raw_rows(dates, list(raw_good), adjusted=list(good)),
+        "GOOD.US": _raw_rows(dates, list(raw_good), adjusted=list(adjusted_good)),
         # OLD.US is now someone else; the old company sits under OLD_old in the delisted list.
         "OLD.US": _raw_rows(dates, list(impostor)),
         "OLD_OLD.US": _raw_rows(dates[:280], list(old[:280])),
     }
     FakeClient.split_rows = {"GOOD.US": [{"date": dates[100], "split": "2.000000/1.000000"}]}
+    FakeClient.div_rows = {"GOOD.US": [_div(dates[50], 1.0, adjusted=0.5), _div(dates[350], 0.6)]}
     FakeClient.listings = {
         True: [{"Code": "OLD_OLD", "Name": "Old Company Inc", "Type": "Common Stock"}],
         False: [],
@@ -787,7 +986,9 @@ def test_export_proves_each_mapping_and_publishes_a_verifiable_package(vendor):
     root = vendor["tmp"] / "package"
     stem = f"{vendor['prefix']}_eodhd_20150101_20160729"
     panel = pd.read_csv(root / "market" / f"{stem}.csv", dtype={"dt": str})
-    assert list(panel.columns) == ["kdcode", "dt", "open", "high", "low", "close", "volume"]
+    assert list(panel.columns) == [
+        "kdcode", "dt", "open", "high", "low", "close", "volume", "dividend"
+    ]  # fmt: skip
     findings, _ = assess_market_panel(panel, role="data.filename", configured_path=None)
     assert not [f for f in findings if f.verdict is Verdict.INVALID]
 
@@ -809,6 +1010,109 @@ def test_export_proves_each_mapping_and_publishes_a_verifiable_package(vendor):
     validate_input_package(snapshot, root, expected_paths=paths)
     pit_copy = root / "constituents" / vendor["pit"].name
     assert pit_copy.read_bytes() == vendor["pit"].read_bytes()
+
+
+def test_export_carries_dividends_on_the_prices_basis_without_moving_the_prices(vendor):
+    """Issue 361: the dividend column is the only change; with it the closes give total return.
+
+    GOOD's $1.00 on session 50 sits before a 2-for-1 split and a spin-off restated at
+    0.8, so on the panel's basis it is $0.40; its $0.60 on session 350 is after both.
+    The same pull with no dividend records writes the same prices and volume.
+    """
+    dates = vendor["dates"]
+    assert export.main(_argv(vendor)) == 0
+    root = vendor["tmp"] / "package" / "market"
+    panel = pd.read_csv(next(root.glob("*_20160729.csv")), dtype={"dt": str})
+    good = panel[panel["kdcode"] == "GOOD.OQ"].set_index("dt")
+    paid = good.loc[good["dividend"] > 0, "dividend"]
+    assert paid.to_dict() == pytest.approx({dates[50]: 0.4, dates[350]: 0.6})
+    assert (panel.loc[panel["kdcode"] == "OLD.N^A16", "dividend"] == 0).all()
+
+    # Close plus dividend over the previous close is the vendor's total return. On an
+    # ex-date the vendor reinvests at the previous close less the dividend, so the two
+    # differ by the yield times the day's return: under 1e-3 here.
+    raw = pd.DataFrame(FakeClient.eod_rows["GOOD.US"]).set_index("date")["adjusted_close"]
+    vendor_total = raw / raw.shift(1) - 1
+    total = (good["close"] + good["dividend"]) / good["close"].shift(1) - 1
+    assert total[dates[51]] == pytest.approx(vendor_total[dates[51]], abs=1e-12)
+    for day in (dates[50], dates[350]):
+        assert total[day] == pytest.approx(vendor_total[day], abs=1e-3)
+        assert total[day] - good["close"].pct_change()[day] > 0.003  # the dividend counts
+    meta = json.loads(next(root.glob("*.meta.json")).read_text())
+    assert not [f for f in meta["findings"] if f["code"].startswith("dividend")]
+    assert (meta["dividend_rows"], meta["names_with_dividends"]) == (2, 1)
+    assert "/api/div" in meta["source"]
+
+    FakeClient.div_rows = {}
+    other = vendor["tmp"] / "no_dividends"
+    assert export.main([*_argv(vendor)[:-4], "--package-root", str(other / "package"),
+                        "--cache-dir", str(other / "cache")]) == 0  # fmt: skip
+    without = pd.read_csv(next((other / "package" / "market").glob("*_20160729.csv")))
+    assert (without["dividend"] == 0).all()
+    columns = ["kdcode", "dt", "open", "high", "low", "close", "volume"]
+    pd.testing.assert_frame_equal(without[columns], panel[columns], check_exact=True)
+
+
+def _dividend_check(root: Path, previous: Path, out: Path) -> dict:
+    code = dividend_check.main(
+        ["--package-root", str(root), "--previous-root", str(previous), "--out-dir", str(out)]
+    )
+    return {"code": code, **json.loads((out / "summary.json").read_text())}
+
+
+def test_the_dividend_check_passes_a_revision_that_only_adds_dividends(vendor):
+    """Issue 361: r4 against r3 is the export with dividends against the one without."""
+    tmp = vendor["tmp"]
+    assert export.main(_argv(vendor)) == 0
+    dividends = FakeClient.div_rows
+    FakeClient.div_rows = {}
+    previous = tmp / "previous"
+    assert export.main([*_argv(vendor)[:-4], "--package-root", str(previous),
+                        "--cache-dir", str(tmp / "cache_previous")]) == 0  # fmt: skip
+    FakeClient.div_rows = dividends
+    # The previous revision's CSV, as r3 wrote it: no dividend column.
+    (old_panel,) = (previous / "market").glob("*_20160729.csv")
+    pd.read_csv(old_panel).drop(columns="dividend").to_csv(old_panel, index=False)
+
+    result = _dividend_check(tmp / "package", previous, tmp / "check")
+
+    assert result["code"] == 0
+    assert (result["changed_rows"], result["dividend_rows"], result["names_with_dividends"]) == (
+        0, 2, 1
+    )  # fmt: skip
+    by_name = pd.read_csv(tmp / "check" / "dividends_by_name.csv")
+    assert by_name["kdcode"].tolist() == ["GOOD.OQ"]
+
+
+def test_the_dividend_check_fails_any_other_change(vendor):
+    tmp = vendor["tmp"]
+    assert export.main(_argv(vendor)) == 0
+    (panel_path,) = (tmp / "package" / "market").glob("*_20160729.csv")
+    (meta_path,) = (tmp / "package" / "market").glob("*.meta.json")
+    previous = tmp / "previous" / "market"
+    previous.mkdir(parents=True)
+    panel = pd.read_csv(panel_path, dtype={"dt": str})
+    panel.drop(columns="dividend").to_csv(previous / panel_path.name, index=False)
+    assert _dividend_check(tmp / "package", tmp / "previous", tmp / "c0")["code"] == 0
+
+    moved = panel.copy()
+    moved.loc[5, "close"] *= 1.0000001
+    moved.to_csv(panel_path, index=False)
+    result = _dividend_check(tmp / "package", tmp / "previous", tmp / "c1")
+    assert (result["code"], result["changed_rows"]) == (1, 1)
+
+    negative = panel.copy()
+    negative.loc[5, "dividend"] = -0.1
+    negative.to_csv(panel_path, index=False)
+    result = _dividend_check(tmp / "package", tmp / "previous", tmp / "c2")
+    assert (result["code"], result["invalid_dividends"]) == (1, 1)
+
+    panel.to_csv(panel_path, index=False)
+    meta = json.loads(meta_path.read_text())
+    meta["findings"].append({"code": "dividend_disagrees_with_adjusted_close", "kdcode": "X.N"})
+    meta_path.write_text(json.dumps(meta))
+    result = _dividend_check(tmp / "package", tmp / "previous", tmp / "c3")
+    assert (result["code"], result["names_with_adjusted_close_disagreements"]) == (1, ["X.N"])
 
 
 def test_export_takes_splits_after_the_panel_end_out_of_volume_only(vendor):
@@ -1088,6 +1392,7 @@ def _cached_package(tmp_path: Path, *, x_close_shift: float = 0.0) -> dict[str, 
             _raw_rows(dates, closes, volume=1000.0),
         )
         _put(cache, "splits", symbol, {"from": _CHECK_START, "to": _CHECK_END}, [])
+        _put(cache, "div", symbol, {"from": _CHECK_START, "to": _CHECK_END}, [])
     later = [{"date": "2020-02-10", "split": "2.000000/1.000000"}]
     _put(cache, "splits", "X.US", {"from": _CHECK_END, "to": _CHECK_SERVED}, later)
     _put(cache, "splits", "Y.US", {"from": _CHECK_END, "to": _CHECK_SERVED}, [])
