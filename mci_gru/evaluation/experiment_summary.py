@@ -150,6 +150,7 @@ def resolved_evaluation_kwargs(config: ExperimentConfig) -> dict[str, Any]:
         "sharpe_method": eval_cfg.sharpe_method,
         "bootstrap_enabled": eval_cfg.bootstrap_enabled,
         "ci_level": eval_cfg.ci_level,
+        "return_basis": config.data.return_basis,
         # Lags for the Sharpe of the daily book. The label spans hold_sessions
         # close-to-close intervals (label_t - 1), not label_t.
         "newey_west_lags": eval_cfg.newey_west_lags

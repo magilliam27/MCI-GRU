@@ -34,6 +34,7 @@ import torch
 from hydra import compose, initialize_config_dir
 
 import run_experiment
+from mci_gru.data.preprocessing import return_basis_panel
 from mci_gru.evaluation.metrics import SUMMARY_SCHEMA_VERSION
 from mci_gru.evaluation.replay_inputs import ReplayInputError
 from mci_gru.training import ensemble
@@ -308,6 +309,42 @@ def test_the_pit_run_is_scored_on_its_rebuilt_tradable_mask(run_copy):
     assert not tradable.loc["2020-03-16", "F.N"] and tradable.loc["2020-03-12", "F.N"]
     # The run saved a score exactly where the rebuilt mask allows one.
     np.testing.assert_array_equal(np.isfinite(saved), scoring.rankable_mask)
+
+
+def test_the_rebuild_reads_labels_and_closes_on_the_runs_return_basis(run_copy, tmp_path):
+    """Issue 361: a total-return run is rescored on total returns, labels and book alike."""
+    metadata = json.loads((run_copy / "run_metadata.json").read_text())
+    resolved = json.loads((run_copy / "resolved_config.json").read_text())
+    inputs = metadata["data_inputs"]
+    panel = pd.read_csv(inputs["data.filename"]["resolved_path"], dtype={"dt": str})
+    # A.N pays 2% of its close on every fifth row: some fall inside each test hold.
+    panel["dividend"] = 0.0
+    paying = (panel["kdcode"] == "A.N") & (panel.groupby("kdcode").cumcount() % 5 == 0)
+    panel.loc[paying, "dividend"] = 0.02 * panel.loc[paying, "close"]
+    panel_csv = tmp_path / "panel_with_dividends.csv"
+    panel.to_csv(panel_csv, index=False)
+
+    def rebuilt(basis):
+        data = {
+            **resolved["data"],
+            "filename": str(panel_csv),
+            "pit_universe_csv": inputs["data.pit_universe_csv"]["resolved_path"],
+            "pit_cessation_events_csv": inputs["data.pit_cessation_events_csv"]["resolved_path"],
+            "return_basis": basis,
+        }
+        config = rescore_run.create_config_from_dict({**resolved, "data": data})
+        return rescore_run.rebuild_scoring_inputs(config)
+
+    price, total = rebuilt("price"), rebuilt("total")
+
+    column = total.kdcodes.index("A.N")
+    gap = total.labels[:, column] - price.labels[:, column]
+    assert np.nanmax(gap) > 0.015 and np.nanmin(gap) >= 0
+    others = [j for j in range(len(total.kdcodes)) if j != column]
+    np.testing.assert_array_equal(total.labels[:, others], price.labels[:, others])
+    expected = return_basis_panel(panel, "total").set_index(["kdcode", "dt"])["close"]
+    got = total.panel.set_index(["kdcode", "dt"])["close"]
+    np.testing.assert_allclose(got.loc[expected.index], expected, rtol=1e-12)
 
 
 def test_a_rescore_whose_ic_does_not_reproduce_writes_nothing(run_copy, monkeypatch):

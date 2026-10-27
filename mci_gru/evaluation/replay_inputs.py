@@ -56,6 +56,8 @@ class ReplayInputs:
     top_k: int
     top_k_values: tuple[int, ...]
     members: tuple[str, ...]
+    #: What the run's labels and returns measured; the replay reads closes on it (#361).
+    return_basis: str = "price"
 
     def backtest_config(self) -> dict[str, Any]:
         """The input keys of the replay engine's config dict."""
@@ -71,6 +73,7 @@ class ReplayInputs:
             "label_t": self.label_t,
             "top_k": self.top_k,
             "members": list(self.members),
+            "return_basis": self.return_basis,
         }
 
 
@@ -179,6 +182,8 @@ def resolve_replay_inputs(
         top_k=k,
         top_k_values=top_k_values,
         members=members,
+        # Runs before #361 had no return basis; they measured prices.
+        return_basis=str(data_cfg.get("return_basis", "price")),
     )
 
 

@@ -412,8 +412,12 @@ def evaluate_run(
     newey_west_lags: int | None = None,
     bootstrap_enabled: bool = False,
     ci_level: float = 0.95,
+    return_basis: str = "price",
 ) -> dict[str, Any]:
     """The in-run summary body: IC on ``labels``, portfolio numbers from the tranche book.
+
+    ``return_basis`` names what the labels and ``panel``'s closes measure (``price`` or
+    ``total``, #361); the summary records it so every number says what it is.
 
     ``predictions`` and ``labels`` are ``(dates, kdcodes)``; ``labels`` are the training
     labels the IC has always been scored against. ``panel`` (``kdcode``, ``dt``,
@@ -512,7 +516,7 @@ def evaluate_run(
         "legs": {"entry_session": legs.entry_session, "exit_session": legs.exit_session},
         "tranches": tranches,
         "top_k_values": list(top_k_values),
-        "return_basis": "price",
+        "return_basis": return_basis,
         "benchmark": benchmark,
         "periods_per_year": PERIODS_PER_YEAR,
         "sharpe_method": sharpe_method,

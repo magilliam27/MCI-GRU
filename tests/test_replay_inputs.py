@@ -80,6 +80,21 @@ def _write_panel(path: Path) -> None:
     pd.DataFrame(rows).to_csv(path, index=False)
 
 
+#: AAA pays 3% of its close on session 4, CCC 2% on session 7: inside the hold of
+#: several tranches, so a total-return book differs from a price one.
+DIVIDENDS = {("AAA", 4): 0.03, ("CCC", 7): 0.02}
+
+
+def _add_dividends(path: Path) -> None:
+    panel = pd.read_csv(path)
+    session = panel["dt"].map(SESSIONS.index)
+    panel["dividend"] = 0.0
+    for (kdcode, i), share in DIVIDENDS.items():
+        row = (panel["kdcode"] == kdcode) & (session == i)
+        panel.loc[row, "dividend"] = panel.loc[row, "close"] * share
+    panel.to_csv(path, index=False)
+
+
 def _write_pit(path: Path) -> None:
     # AAA and BBB are open-ended (blank valid_to), as current members are in the
     # run's own PIT file. CCC leaves after session 5; DDD joins on session 6.
@@ -115,13 +130,18 @@ def _write_predictions(directory: Path) -> None:
         )
 
 
-def _build_run(root: Path, *, use_pit: bool = True) -> Path:
-    """A run directory shaped like ``run_experiment.py``'s output, data under ``root/data``."""
+def _build_run(root: Path, *, use_pit: bool = True, return_basis: str | None = None) -> Path:
+    """A run directory shaped like ``run_experiment.py``'s output, data under ``root/data``.
+
+    With a ``return_basis``, the run records it and its panel carries a dividend column.
+    """
     data_dir = root / "data"
     data_dir.mkdir(parents=True)
     data_file = data_dir / "panel.csv"
     pit_file = data_dir / "pit_universe.csv"
     _write_panel(data_file)
+    if return_basis is not None:
+        _add_dividends(data_file)
     _write_pit(pit_file)
 
     run = root / "run"
@@ -135,6 +155,7 @@ def _build_run(root: Path, *, use_pit: bool = True) -> Path:
             "pit_export_cutoff": CUTOFF,
             "test_start": TEST_START,
             "test_end": TEST_END,
+            **({"return_basis": return_basis} if return_basis is not None else {}),
         },
         "model": {"label_t": LABEL_T},
         "evaluation": {"top_k_values": TOP_K_VALUES},
@@ -435,11 +456,15 @@ def _replay(predictions_dir: Path, config: dict):
     return backtest_engine.replay(str(predictions_dir), config)[1]
 
 
-def _expected_benchmark(run_dir: Path, book, members_on) -> list[float]:
+def _expected_benchmark(run_dir: Path, book, members_on, *, total: bool = False) -> list[float]:
     """Equal-weight hold return (close D+1 to close D+label_t) for each signal date,
-    over the members on that date: the date its candidates were ranked."""
+    over the members on that date: the date its candidates were ranked. With ``total``,
+    each dividend in the hold is reinvested at its ex-date close."""
     panel = pd.read_csv(run_dir.parent / "data" / "panel.csv")
     close = panel.pivot(index="dt", columns="kdcode", values="close")
+    if total:
+        dividend = panel.pivot(index="dt", columns="kdcode", values="dividend")
+        close = close * (1.0 + dividend / close).cumprod()
     out = []
     for date in book.signal_dates:
         i = SESSIONS.index(date)
@@ -481,6 +506,28 @@ def test_benchmark_without_a_pit_file_is_the_runs_scored_members(tmp_path: Path)
     expected = _expected_benchmark(run, book, lambda dt: [k for k in MEMBERS if _active(k, dt)])
     np.testing.assert_allclose(book.benchmark_period_returns, expected, rtol=1e-12)
     assert np.all(book.benchmark_returns < 0.05), "the +10%/session outsider leaked in"
+
+
+def test_a_total_return_run_is_replayed_on_total_returns(tmp_path: Path) -> None:
+    """Issue 361: the replay reads closes on the run's return basis, like its labels."""
+    run = _build_run(tmp_path, return_basis="total")
+    inputs = resolve_replay_inputs(run, top_k=K)
+    assert inputs.return_basis == "total"
+    assert inputs.backtest_config()["return_basis"] == "total"
+
+    book = _replay(inputs.predictions_dir, inputs.backtest_config())
+
+    members_on = lambda dt: [k for k in MEMBERS if _active(k, dt)]  # noqa: E731
+    total = _expected_benchmark(run, book, members_on, total=True)
+    price = _expected_benchmark(run, book, members_on)
+    np.testing.assert_allclose(book.benchmark_period_returns, total, rtol=1e-12)
+    assert not np.allclose(total, price), "the dividends fall inside no hold"
+
+
+def test_a_run_before_return_basis_existed_replays_on_prices(run_dir: Path) -> None:
+    inputs = resolve_replay_inputs(run_dir, top_k=K)
+    assert inputs.return_basis == "price"
+    assert inputs.backtest_config()["return_basis"] == "price"
 
 
 def test_numeric_kdcodes_match_a_string_universe(run_dir: Path) -> None:

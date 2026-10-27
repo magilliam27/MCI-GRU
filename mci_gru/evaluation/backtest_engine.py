@@ -73,6 +73,7 @@ warnings.filterwarnings("ignore")
 
 from mci_gru.data.path_resolver import resolve_project_data_path  # noqa: E402
 from mci_gru.data.pit import normalise_pit_intervals  # noqa: E402
+from mci_gru.data.preprocessing import return_basis_panel  # noqa: E402
 from mci_gru.data.quality_contract import fill_open_valid_to  # noqa: E402
 from mci_gru.evaluation.paired_inference import bhy_adjusted_p_values  # noqa: E402
 from mci_gru.evaluation.replay_book import (  # noqa: E402
@@ -699,6 +700,8 @@ def replay(predictions_dir: str, config: dict) -> tuple[dict[str, Any], ReplayBo
     # session axis is the universe's own, as in training and the in-run summary.
     panel = load_stock_data(config["data_file"], start_date=start)
     panel = panel[panel["kdcode"].astype(str).isin(kdcodes)]
+    # Closes on the run's return basis, so the book measures what its labels did (#361).
+    panel = return_basis_panel(panel, config.get("return_basis", "price"))
     scores = (
         predictions.pivot_table(index="dt", columns="kdcode", values="score", aggfunc="mean")
         .reindex(index=dates, columns=kdcodes)

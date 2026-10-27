@@ -12,6 +12,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+#: What labels and reported returns can measure (``DataConfig.return_basis``, #361).
+RETURN_BASES = ("price", "total")
+
 
 @dataclass
 class DataConfig:
@@ -55,6 +58,11 @@ class DataConfig:
         pit_export_cutoff: Export cutoff (YYYY-MM-DD) of ``pit_universe_csv``. A blank
             ``valid_to`` means membership through this date; with none declared, a
             blank ``valid_to`` stops preparation (#223).
+        return_basis: What labels and every reported return measure (#361). ``price``
+            (the default) reads the panel's ``close``; ``total`` reads a total-return
+            index built from ``close`` and the panel's ``dividend`` column, which the
+            EODHD package carries from revision r4. Model inputs stay on prices either
+            way.
         pit_absent_kdcodes: PIT members the market panel declares it does not carry
             (#281). Admission accepts their missing rows and records the gap; any
             other member with no rows still stops the run, and a declared name that
@@ -107,6 +115,7 @@ class DataConfig:
     pit_breadth_policy: str = "error"
     pit_export_cutoff: str | None = None
     pit_absent_kdcodes: list[str] = field(default_factory=list)
+    return_basis: str = "price"
     pit_cessation_events_csv: str | None = None
     prediction_clock_time: str = "20:00"
     prediction_clock_timezone: str = "America/New_York"
@@ -156,6 +165,15 @@ class DataConfig:
                 raise ValueError(
                     f"pit_export_cutoff must be a YYYY-MM-DD date, got {self.pit_export_cutoff!r}"
                 ) from exc
+        if self.return_basis not in RETURN_BASES:
+            raise ValueError(
+                f"data.return_basis must be one of {RETURN_BASES}, got {self.return_basis!r}"
+            )
+        if self.return_basis == "total" and self.experiment_mode == "index_level":
+            raise ValueError(
+                "data.return_basis=total needs a stock panel's dividend column; "
+                "index_level mode reads an index series with none"
+            )
         if isinstance(self.pit_absent_kdcodes, str):
             raise ValueError(
                 "data.pit_absent_kdcodes must be a list of identifiers, "
