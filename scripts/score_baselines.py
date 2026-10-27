@@ -246,25 +246,38 @@ def baseline_scores(scoring: ScoringInputs, linear: LinearBaseline | None) -> di
 
 
 def paired_comparison(
-    daily: dict[str, pd.DataFrame], label_t: int, ci_level: float
+    arms: dict[str, np.ndarray],
+    labels: np.ndarray,
+    dates: list[str],
+    label_t: int,
+    ci_level: float,
 ) -> list[dict[str, Any]]:
-    """The run minus each baseline, per date, on the dates both scored."""
+    """The run minus each baseline, per date, on the cells and dates both scored.
+
+    A baseline can leave a name unscored (a joiner without a year of history, a missing
+    bar), so on that date the run is scored on the baseline's cells only: the two daily
+    ICs then rank the same names.
+    """
     rows = []
-    for column in ("ic", "rank_ic"):
-        for arm in daily:
-            if arm == MODEL_ARM:
-                continue
+    model = arms[MODEL_ARM]
+    for arm, scores in arms.items():
+        if arm == MODEL_ARM:
+            continue
+        scored = np.isfinite(scores)
+        matched = dated_ic_frame(np.where(scored, model, np.nan), labels, dates).set_index("dt")
+        daily = dated_ic_frame(scores, labels, dates).set_index("dt")
+        for column in ("ic", "rank_ic"):
+            row = {
+                "metric": column,
+                "arm": MODEL_ARM,
+                "control": arm,
+                "model_cells": "cells_the_control_scored",
+                "model_cells_left_out": int((np.isfinite(model) & ~scored).sum()),
+            }
             try:
-                frame = align_daily_series(
-                    {
-                        MODEL_ARM: daily[MODEL_ARM].set_index("dt")[column],
-                        arm: daily[arm].set_index("dt")[column],
-                    }
-                )
+                frame = align_daily_series({MODEL_ARM: matched[column], arm: daily[column]})
             except ValueError:  # no date both scored: nothing to compare
-                rows.append(
-                    {"metric": column, "n_common_dates": 0, "arm": MODEL_ARM, "control": arm}
-                )
+                rows.append({**row, "n_common_dates": 0})
                 continue
             inference = paired_mean_inference(
                 frame[MODEL_ARM] - frame[arm],
@@ -273,9 +286,8 @@ def paired_comparison(
                 label_horizon=label_t,
                 ci_level=ci_level,
             )
-            rows.append(
-                {"metric": column, "n_common_dates": len(frame), **dataclasses.asdict(inference)}
-            )
+            rows.append({**row, "n_common_dates": len(frame), **dataclasses.asdict(inference)})
+    rows.sort(key=lambda r: r["metric"] != "ic")
     return rows
 
 
@@ -294,10 +306,14 @@ def _coverage(scores: np.ndarray, scoring: ScoringInputs) -> dict[str, Any]:
 
 
 def _long_scores(scores: np.ndarray, dates: list[str], kdcodes: list[str]) -> pd.DataFrame:
-    frame = pd.DataFrame(scores, index=dates, columns=kdcodes).rename_axis("dt")
-    long = frame.stack(future_stack=True).rename("score").reset_index()
-    long.columns = ["dt", "kdcode", "score"]
-    return long[np.isfinite(long["score"])]
+    rows, columns = np.nonzero(np.isfinite(scores))
+    return pd.DataFrame(
+        {
+            "dt": np.asarray(dates, dtype=object)[rows],
+            "kdcode": np.asarray(kdcodes, dtype=object)[columns],
+            "score": scores[rows, columns],
+        }
+    )
 
 
 def _strict_json(value: Any) -> Any:
@@ -310,6 +326,22 @@ def _strict_json(value: Any) -> Any:
     if isinstance(value, np.generic):
         return _strict_json(value.item())
     return value
+
+
+def _check_target(target: Path, run: Path, *, force: bool) -> None:
+    """Write only to a new folder, or with ``force`` over an earlier baseline result."""
+    resolved, run_resolved = target.resolve(), run.resolve()
+    if run_resolved == resolved or run_resolved.is_relative_to(resolved):
+        raise BaselineError(f"the output folder {target} holds the run itself")
+    if not target.exists():
+        return
+    if not force:
+        raise FileExistsError(f"Refusing to overwrite existing artifact: {target}")
+    summary = target / SUMMARY_FILENAME
+    if not summary.is_file() or _read_json(summary).get("schema") != BASELINES_SCHEMA:
+        raise BaselineError(
+            f"--force replaces only an earlier baseline result, and {target} is not one"
+        )
 
 
 def score_baselines(
@@ -327,8 +359,7 @@ def score_baselines(
     _check_code_root()
     run = Path(run_dir)
     target = Path(out_dir) if out_dir is not None else run / DEFAULT_OUT_DIRNAME
-    if target.exists() and not force:
-        raise FileExistsError(f"Refusing to overwrite existing artifact: {target}")
+    _check_target(target, run, force=force)
 
     saved = resolve_run_config(
         run,
@@ -398,7 +429,9 @@ def score_baselines(
             }
             for arm, scores in arms.items()
         },
-        "paired_daily_difference": paired_comparison(daily, label_t, config.evaluation.ci_level),
+        "paired_daily_difference": paired_comparison(
+            arms, scoring.labels, scoring.dates, label_t, config.evaluation.ci_level
+        ),
         "note": "Evidence, not a gate. Every arm is scored by compute_evaluation_summary on the "
         "run's labels, dates, names and PIT tradable mask. Paired rows are the run minus the "
         "baseline per date, on the dates both scored.",
@@ -407,7 +440,7 @@ def score_baselines(
     # Everything goes to a pending folder first, so a failure leaves no partial result.
     pending = target.with_name(f".{target.name}.pending")
     if pending.exists():
-        shutil.rmtree(pending)
+        raise BaselineError(f"{pending} is left from an interrupted scoring; move it aside first")
     (pending / "daily_ic").mkdir(parents=True)
     (pending / "scores").mkdir()
     try:

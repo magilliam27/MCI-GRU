@@ -18,9 +18,10 @@ Past returns read closes on the panel's own session axis, as labels do
 close at either end has no score that date.
 
 The linear model sees every stock-level input the run's encoder sees. Global inputs
-(regime scores, VIX, credit spreads) hold one value per date for every stock, so a
-linear score shifts by the same amount for all names and its ranking cannot use
-them; the fit demeans each date's rows, which removes them exactly.
+(regime scores, VIX, credit spreads) are meant to hold one value per date for every
+stock, so a linear score shifts by the same amount for all names and its ranking
+cannot use them; the fit demeans each date's rows, which removes any such input
+exactly. The caller leaves them out of the inputs it rebuilds.
 """
 
 from __future__ import annotations

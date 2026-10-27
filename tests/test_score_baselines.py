@@ -35,6 +35,7 @@ from hydra import compose, initialize_config_dir
 
 import run_experiment
 from mci_gru.config import ExperimentConfig
+from mci_gru.evaluation.dated_ic import dated_ic_frame
 from mci_gru.evaluation.metrics import SUMMARY_SCHEMA_VERSION
 from mci_gru.features import FeatureEngineer
 from mci_gru.training import ensemble
@@ -285,24 +286,39 @@ def test_the_reversal_scores_are_minus_the_last_weeks_return_from_the_panel(pit_
         assert row.score == pytest.approx(-(closes.loc[row.dt, row.kdcode] / past - 1.0))
 
 
-def test_the_run_is_compared_with_each_baseline_day_by_day(pit_result):
+def _scores(result: Path, arm: str, scoring) -> np.ndarray:
+    frame = pd.read_csv(result.parent / "scores" / f"{arm}.csv", dtype={"dt": str})
+    wide = frame.pivot(index="dt", columns="kdcode", values="score")
+    return wide.reindex(index=scoring.dates, columns=scoring.kdcodes).to_numpy()
+
+
+def test_the_run_is_compared_with_each_baseline_on_the_same_names_day_by_day(pit_run, pit_result):
     summary = _summary(pit_result)
     rows = summary["paired_daily_difference"]
-    daily = {
-        arm: pd.read_csv(pit_result.parent / "daily_ic" / f"{arm}.csv", dtype={"dt": str})
-        for arm in summary["arms"]
-    }
+    scoring = _rebuilt_scoring(pit_run)
+    model = _scores(pit_result, "model", scoring)
 
     assert [(r["metric"], r["control"]) for r in rows] == [
         (metric, arm) for metric in ("ic", "rank_ic") for arm in BASELINES
     ]
+    left_out = {}
     for row in rows:
-        both = daily["model"].merge(daily[row["control"]], on="dt").dropna()
+        control = _scores(pit_result, row["control"], scoring)
+        # The run is scored only on the cells the baseline scored.
+        matched = dated_ic_frame(
+            np.where(np.isfinite(control), model, np.nan), scoring.labels, scoring.dates
+        )
+        both = matched.merge(
+            dated_ic_frame(control, scoring.labels, scoring.dates), on="dt"
+        ).dropna()
         delta = both[f"{row['metric']}_x"] - both[f"{row['metric']}_y"]
         assert row["arm"] == "model"
         assert row["n_common_dates"] == len(both)
         assert row["mean_delta"] == pytest.approx(delta.mean(), abs=1e-12)
         assert row["hac_lags"] == 1  # label_t 3: consecutive outcomes share one session
+        left_out[row["control"]] = row["model_cells_left_out"]
+    # The missing bar leaves C.N unscored by the one-week reversal a week later.
+    assert left_out["reversal_1w"] == 1
 
 
 def test_a_run_without_pit_is_scored_on_every_name_with_a_close(plain_run, tmp_path):
@@ -422,3 +438,20 @@ def test_inputs_staged_at_another_path_are_read_from_there(tmp_path):
     summary = _summary(path)
     assert summary["controls"]["linear_inputs"]["normalisation_matches_run"] is True
     assert set(summary["inputs"]) == {"data.filename", "data.pit_universe_csv"}
+
+
+def test_force_replaces_only_an_earlier_baseline_result(run_copy, tmp_path):
+    other = tmp_path / "other_work"
+    other.mkdir()
+    (other / "keep.txt").write_text("not a baseline result", encoding="utf-8")
+
+    with pytest.raises(BaselineError, match="not one"):
+        score_baselines.score_baselines(run_copy, out_dir=other, include_linear=False, force=True)
+    assert (other / "keep.txt").read_text(encoding="utf-8") == "not a baseline result"
+
+    for target in (run_copy, run_copy.parent):
+        with pytest.raises(BaselineError, match="holds the run"):
+            score_baselines.score_baselines(
+                run_copy, out_dir=target, include_linear=False, force=True
+            )
+    assert (run_copy / "run_metadata.json").is_file()

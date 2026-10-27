@@ -2531,7 +2531,7 @@ Regression tests for the isolated pytest launcher.
 
 Simple baselines are scored on a saved run's own axis by the run's own evaluation (#360).
 
-**Exercises:** `mci_gru.config`, `mci_gru.evaluation.metrics`, `mci_gru.features`, `mci_gru.training`, `run_experiment`, `scripts`, `scripts.rescore_run`, `scripts.score_baselines`
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation.dated_ic`, `mci_gru.evaluation.metrics`, `mci_gru.features`, `mci_gru.training`, `run_experiment`, `scripts`, `scripts.rescore_run`, `scripts.score_baselines`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -2540,7 +2540,7 @@ Simple baselines are scored on a saved run's own axis by the run's own evaluatio
 | `test_every_baseline_is_scored_by_the_runs_summary_where_the_run_could_rank` |  |  |
 | `test_each_arms_dated_ic_agrees_with_its_summary` |  |  |
 | `test_the_reversal_scores_are_minus_the_last_weeks_return_from_the_panel` |  |  |
-| `test_the_run_is_compared_with_each_baseline_day_by_day` |  |  |
+| `test_the_run_is_compared_with_each_baseline_on_the_same_names_day_by_day` |  |  |
 | `test_a_run_without_pit_is_scored_on_every_name_with_a_close` |  |  |
 | `test_the_linear_models_inputs_carry_the_runs_normalisation` |  |  |
 | `test_inputs_not_normalised_as_the_run_was_are_refused` |  |  |
@@ -2549,6 +2549,7 @@ Simple baselines are scored on a saved run's own axis by the run's own evaluatio
 | `test_an_earlier_result_is_kept_unless_forced` |  |  |
 | `test_the_command_line_scores_a_run_and_prints_each_arm` |  |  |
 | `test_inputs_staged_at_another_path_are_read_from_there` | How Colab runs it: the run's data and PIT files copied elsewhere, the originals gone. |  |
+| `test_force_replaces_only_an_earlier_baseline_result` |  |  |
 
 ## `tests/test_selection_research_artifacts.py`
 
