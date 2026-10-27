@@ -201,6 +201,10 @@ RUN_ARMS = {
     "levels_inputs": RunArm(
         slug_suffix="inputs-levels", replace=(("features.base_inputs", "levels"),)
     ),
+    # The recipe itself on another seed base: member i uses 2729 + i, none of the
+    # recipe's 1729 + i for a 20-model ensemble. The paired difference against the
+    # recipe arm is the seed noise floor the other arms' differences are read against.
+    "other_seeds": RunArm(slug_suffix="seed-2729", replace=(("seed", "2729"),)),
 }
 
 

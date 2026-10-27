@@ -1038,7 +1038,7 @@ def test_every_arm_composes_into_the_typed_config(arm):
     assert config.features.base_inputs == ("levels" if arm == "levels_inputs" else "relative")
     assert config.experiment_name == frc.arm_experiment_name("slug", arm)
     # Same seed, budget and data whichever arm runs.
-    assert config.seed == 1729
+    assert config.seed == (2729 if arm == "other_seeds" else 1729)
     assert config.training.num_models == 20
     assert config.training.num_epochs == 100
     assert config.features.include_global_regime is True
@@ -1401,3 +1401,14 @@ def test_the_notebook_checks_every_arm_before_any_trains():
     sources = _notebook_sources()
     assert sources.index('"check-arms", *RUN_ARMS') < sources.index('"run",')
     assert "for arm, tag in RUN_TAGS.items():" in sources
+
+
+def test_the_seed_arm_shares_no_member_seed_with_the_recipe():
+    """The noise-floor arm is the recipe on seeds none of the recipe's members used."""
+    recipe = _recipe_with_fixed_inputs()
+    other = frc.apply_arm(recipe, "other_seeds")
+    assert [o for o in other if o not in recipe] == ["seed=2729"]
+    members = int(frc.override_value(recipe, "training.num_models"))
+    recipe_seeds = set(range(int(frc.override_value(recipe, "seed")), 1729 + members))
+    other_seeds = set(range(2729, 2729 + members))
+    assert recipe_seeds and not recipe_seeds & other_seeds

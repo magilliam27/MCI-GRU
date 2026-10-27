@@ -50,10 +50,11 @@ def build_cells() -> list[dict]:
             *not evidence*.
 
             **Arms (#326).** `RUN_ARMS` lists what to train, one after another, on the
-            same commit, data and seeds. `recipe` is the recipe itself and the only arm
-            that can be an admitted-run candidate. `graph_zeroed` is the recipe with the
+            same commit and data. `recipe` is the recipe itself and the only arm that can
+            be an admitted-run candidate. `graph_zeroed` is the recipe with the
             correlation edges empty; `levels_inputs` is the recipe on the old raw price
-            and volume levels. With more than one arm, the last cell writes their
+            and volume levels; `other_seeds` is the recipe on another seed base, whose
+            difference from the recipe arm is the seed noise floor. With more than one arm, the last cell writes their
             comparison: each arm's IC and rank IC, its linked-name ties, and the recipe
             arm's paired daily IC difference against each of the others. The recipe arm
             comes first, and every arm is checked against the recipe before any trains.
@@ -78,7 +79,8 @@ def build_cells() -> list[dict]:
             """
             # Parameters
             RUN_MODE = "full"  # "full" = admitted-run candidate; "smoke" = 1 model x 2 epochs, not evidence
-            # The model-fix rerun (#326) sets ["recipe", "graph_zeroed", "levels_inputs"]
+            # The model-fix rerun (#326) sets
+            # ["recipe", "graph_zeroed", "levels_inputs", "other_seeds"]
             # and DRIVE_OUTPUT_ROOT to ".../runs/model_fix_rerun".
             RUN_ARMS = ["recipe"]
             BRANCH = "main"

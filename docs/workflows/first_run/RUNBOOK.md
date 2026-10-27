@@ -59,14 +59,19 @@ draft is [`ADMISSION_RECEIPT_AND_CHARTER_DRAFT.md`](ADMISSION_RECEIPT_AND_CHARTE
 
 ## The model-fix rerun (#326)
 
-Three arms on one commit, one data package and the recipe's seed, so they differ
-only by what each arm names (`RUN_ARMS` in `scripts/first_run_colab.py`):
+Four arms on one commit and one data package, so they differ only by what each
+arm names (`RUN_ARMS` in `scripts/first_run_colab.py`):
 
 | Arm | What changes from the recipe | Run tag |
 | --- | --- | --- |
 | `recipe` | nothing | `<time>-full-<commit>` |
 | `graph_zeroed` | `+experiment=graph_zeroed`: the GAT layers stay, the correlation edges are empty | `<time>-full-graph-zeroed-<commit>` |
 | `levels_inputs` | `features.base_inputs=levels`: the fixed graph layers on the old raw price and volume levels | `<time>-full-inputs-levels-<commit>` |
+| `other_seeds` | `seed=2729`: the recipe on member seeds 2729 + i, none of which the recipe's 1729 + i uses | `<time>-full-seed-2729-<commit>` |
+
+The first three share the recipe's seed. The recipe arm's paired difference against
+`other_seeds` is the seed noise floor: a difference against `graph_zeroed` or
+`levels_inputs` no larger than it is not evidence of an effect.
 
 An arm refuses to start if its change would change nothing, so `levels_inputs`
 cannot run until the recipe pins `features.base_inputs=relative` (#325). Each arm
@@ -75,14 +80,14 @@ files its results under its own experiment name, the recipe slug plus
 candidate.
 
 In the parameters cell set
-`RUN_ARMS = ["recipe", "graph_zeroed", "levels_inputs"]` and
+`RUN_ARMS = ["recipe", "graph_zeroed", "levels_inputs", "other_seeds"]` and
 `DRIVE_OUTPUT_ROOT = "/content/drive/MyDrive/MCI_GRU_shared/runs/model_fix_rerun"`,
-then Run all. The three arms train one after another in the same runtime.
+then Run all. The four arms train one after another in the same runtime.
 
 The comparison folder holds `arm_comparison.json` and `daily_ic_by_arm.csv`. For each
 arm: IC and rank IC with their intervals and the linked-name tie counts from #324.
 Then the recipe arm's paired daily IC and rank IC difference against each of the
-other two, computed over the dates every arm scored, with the same HAC and block
+others, computed over the dates every arm scored, with the same HAC and block
 bootstrap the graph ablation used. It reads each run's `daily_ic.csv` and refuses
 a run whose dated series does not average to its own summary's `avg_ic`, or arms
 from different commits or packages. It is evidence, not a pass/fail gate (PRD #319,
