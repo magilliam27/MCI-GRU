@@ -88,6 +88,26 @@ Backtest fairness of the replay's open-to-open variant (#340 kept it as a labell
 |---|---|---|
 | `test_plot_equity_curve_uses_agg_backend_when_saving` |  |  |
 
+## `tests/test_baselines.py`
+
+Simple baseline signals read only what was known at the signal date's close (#360).
+
+**Exercises:** `mci_gru.evaluation.baselines`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_past_return_is_the_ratio_of_the_two_closes_counted_in_sessions` |  |  |
+| `test_reversal_is_minus_the_recent_return_and_momentum_skips_the_last_month` |  |  |
+| `test_a_missing_bar_empties_that_score_and_never_moves_an_endpoint` |  |  |
+| `test_no_close_after_the_signal_date_changes_its_score` |  |  |
+| `test_a_date_without_enough_history_or_off_the_axis_has_no_score` |  |  |
+| `test_past_return_refuses_lags_that_do_not_look_back` |  |  |
+| `test_the_ridge_recovers_a_planted_linear_signal_and_scores_with_it` |  |  |
+| `test_the_ridge_reads_only_the_training_rows_its_mask_allows` |  |  |
+| `test_an_input_that_is_the_same_for_every_stock_on_a_date_is_ignored` | Global inputs (regime, VIX, credit) cannot rank stocks; demeaning removes them. |  |
+| `test_the_penalty_with_the_best_validation_ic_is_kept_and_ties_go_to_the_larger` |  |  |
+| `test_validation_ic_reads_only_scores_the_validation_mask_allows` |  |  |
+
 ## `tests/test_capability_marker_guard.py`
 
 No test CI deselects by capability marker may pass without that capability.
@@ -2566,6 +2586,30 @@ Regression tests for the isolated pytest launcher.
 | `test_selection_audit_flags_insufficient_evidence_when_alignment_is_empty` |  |  |
 | `test_selection_audit_cli_uses_requested_top_k_without_default_duplicates` |  |  |
 | `test_write_selection_audit_strict_json_and_overwrite_guard` |  |  |
+
+## `tests/test_score_baselines.py`
+
+Simple baselines are scored on a saved run's own axis by the run's own evaluation (#360).
+
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation.dated_ic`, `mci_gru.evaluation.metrics`, `mci_gru.features`, `mci_gru.training`, `run_experiment`, `scripts`, `scripts.rescore_run`, `scripts.score_baselines`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_the_runs_own_predictions_give_back_every_stored_metric` |  |  |
+| `test_a_run_whose_ic_does_not_reproduce_writes_nothing` |  |  |
+| `test_every_baseline_is_scored_by_the_runs_summary_where_the_run_could_rank` |  |  |
+| `test_each_arms_dated_ic_agrees_with_its_summary` |  |  |
+| `test_the_reversal_scores_are_minus_the_last_weeks_return_from_the_panel` |  |  |
+| `test_the_run_is_compared_with_each_baseline_on_the_same_names_day_by_day` |  |  |
+| `test_a_run_without_pit_is_scored_on_every_name_with_a_close` |  |  |
+| `test_the_linear_models_inputs_carry_the_runs_normalisation` |  |  |
+| `test_inputs_not_normalised_as_the_run_was_are_refused` |  |  |
+| `test_only_the_global_columns_are_left_out_of_the_linear_models_inputs` |  |  |
+| `test_results_go_to_a_new_folder_and_the_run_is_untouched` |  |  |
+| `test_an_earlier_result_is_kept_unless_forced` |  |  |
+| `test_the_command_line_scores_a_run_and_prints_each_arm` |  |  |
+| `test_inputs_staged_at_another_path_are_read_from_there` | How Colab runs it: the run's data and PIT files copied elsewhere, the originals gone. |  |
+| `test_force_replaces_only_an_earlier_baseline_result` |  |  |
 
 ## `tests/test_selection_research_artifacts.py`
 

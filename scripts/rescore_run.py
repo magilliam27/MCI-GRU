@@ -71,7 +71,11 @@ from mci_gru.evaluation.experiment_summary import (  # noqa: E402
     REDACTED_ABSOLUTE_PATH,
     compute_evaluation_summary,
 )
-from mci_gru.evaluation.replay_inputs import DATA_ROLE, resolve_replay_inputs  # noqa: E402
+from mci_gru.evaluation.replay_inputs import (  # noqa: E402
+    DATA_ROLE,
+    ReplayInputs,
+    resolve_replay_inputs,
+)
 from mci_gru.pipeline import resolve_pit_context, select_universe  # noqa: E402
 from mci_gru.utils.hashing import sha256_file  # noqa: E402
 
@@ -123,34 +127,16 @@ def rescore_run(
             if path.exists():
                 raise FileExistsError(f"Refusing to overwrite existing artifact: {path}")
 
-    metadata = _read_json(run / "run_metadata.json")
-    resolved = _read_json(run / metadata.get("resolved_config_path", "resolved_config.json"))
-    top_k_values = resolved.get("evaluation", {}).get("top_k_values") or [None]
-    # k plays no part in a re-score (every k is scored); the replay asks for one.
-    inputs = resolve_replay_inputs(
+    saved = resolve_run_config(
         run,
         data_file=data_file,
         pit_universe_csv=pit_universe_csv,
-        top_k=top_k_values[0],
+        cessation_events_csv=cessation_events_csv,
     )
-    recorded = metadata.get("data_inputs") or {}
-    if not recorded and resolved["data"].get("source") == "csv":
-        # Runs before data_inputs existed fingerprinted the configured CSV directly,
-        # the record resolve_replay_inputs has just checked the data file against.
-        recorded = {DATA_ROLE: {"sha256": metadata.get("data_file_sha256")}}
-
-    data_cfg = dict(resolved["data"])
-    data_cfg["filename"] = str(inputs.data_file)
-    if inputs.pit_universe_csv is not None:
-        data_cfg["pit_universe_csv"] = str(inputs.pit_universe_csv)
-    if data_cfg.get("pit_cessation_events_csv"):
-        data_cfg["pit_cessation_events_csv"] = cessation_events_csv or _recorded_path(
-            recorded, CESSATION_EVENTS_ROLE, data_cfg["pit_cessation_events_csv"]
-        )
-    config = create_config_from_dict({**resolved, "data": data_cfg})
+    config, inputs, metadata, recorded = saved.config, saved.inputs, saved.metadata, saved.recorded
 
     scoring = rebuild_scoring_inputs(config)
-    consumed = _check_consumed(scoring.consumed, recorded)
+    consumed = check_consumed(scoring.consumed, recorded)
     if scoring.kdcodes != list(inputs.members):
         raise RescoreError(
             f"the rebuilt stock axis ({len(scoring.kdcodes)} names) differs from the run's "
@@ -212,6 +198,59 @@ def rescore_run(
         raise
     pending.replace(daily_ic_path)
     return path
+
+
+@dataclass(frozen=True)
+class SavedRunConfig:
+    """A saved run's resolved config, its inputs pointed at files with the recorded bytes."""
+
+    config: ExperimentConfig
+    inputs: ReplayInputs
+    metadata: dict[str, Any]
+    recorded: dict[str, Any]  # role -> the identity the run recorded for that input
+
+
+def resolve_run_config(
+    run_dir: str | Path,
+    *,
+    data_file: str | None = None,
+    pit_universe_csv: str | None = None,
+    cessation_events_csv: str | None = None,
+) -> SavedRunConfig:
+    """The run's resolved config, rebuilt to read its own inputs from where they are now.
+
+    ``resolve_replay_inputs`` (#339) proves the resolved config, the data file, the PIT
+    file and every saved prediction file carry the bytes the run recorded. Any other
+    input a rebuild reads (a cessation event file) is checked by ``check_consumed``
+    against ``recorded`` once it has been read.
+    """
+    run = Path(run_dir)
+    metadata = _read_json(run / "run_metadata.json")
+    resolved = _read_json(run / metadata.get("resolved_config_path", "resolved_config.json"))
+    top_k_values = resolved.get("evaluation", {}).get("top_k_values") or [None]
+    # k plays no part in a re-score (every k is scored); the replay asks for one.
+    inputs = resolve_replay_inputs(
+        run,
+        data_file=data_file,
+        pit_universe_csv=pit_universe_csv,
+        top_k=top_k_values[0],
+    )
+    recorded = metadata.get("data_inputs") or {}
+    if not recorded and resolved["data"].get("source") == "csv":
+        # Runs before data_inputs existed fingerprinted the configured CSV directly,
+        # the record resolve_replay_inputs has just checked the data file against.
+        recorded = {DATA_ROLE: {"sha256": metadata.get("data_file_sha256")}}
+
+    data_cfg = dict(resolved["data"])
+    data_cfg["filename"] = str(inputs.data_file)
+    if inputs.pit_universe_csv is not None:
+        data_cfg["pit_universe_csv"] = str(inputs.pit_universe_csv)
+    if data_cfg.get("pit_cessation_events_csv"):
+        data_cfg["pit_cessation_events_csv"] = cessation_events_csv or _recorded_path(
+            recorded, CESSATION_EVENTS_ROLE, data_cfg["pit_cessation_events_csv"]
+        )
+    config = create_config_from_dict({**resolved, "data": data_cfg})
+    return SavedRunConfig(config, inputs, metadata, recorded)
 
 
 def rebuild_scoring_inputs(config: ExperimentConfig) -> ScoringInputs:
@@ -315,7 +354,7 @@ def check_ic_reproduced(
     return check
 
 
-def _check_consumed(consumed: dict[str, set[str]], recorded: dict[str, Any]) -> dict[str, str]:
+def check_consumed(consumed: dict[str, set[str]], recorded: dict[str, Any]) -> dict[str, str]:
     """Every read the rebuild made must carry the bytes the run consumed for that role."""
     if DATA_ROLE not in consumed:
         raise RescoreError(f"the rebuild read no {DATA_ROLE}, so nothing ties it to the run")
