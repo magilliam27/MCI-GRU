@@ -32,6 +32,7 @@ from mci_gru.config import (
     ProtocolConfig,
     create_config_from_dict,
 )
+from mci_gru.evaluation import backtest_engine
 from mci_gru.evaluation.replay_inputs import resolve_replay_inputs
 from mci_gru.evaluation.selection_audit import SelectionResearchProtocol
 from mci_gru.protocol import (
@@ -359,6 +360,39 @@ def test_the_replay_guard_does_not_stop_a_legal_window(tmp_path):
     run = _replay_run(tmp_path, test_start="2025-01-22", test_end="2025-12-31")
     with pytest.raises(Exception) as caught:
         resolve_replay_inputs(run)
+    assert not isinstance(caught.value, HoldoutError)
+
+
+def _explicit_backtest(test_start: str, test_end: str) -> list[str]:
+    """The backtest CLI with every input named, so no run's records are read."""
+    return [
+        "--predictions_dir",
+        "no-such-predictions",
+        "--data_file",
+        "no-such-panel.csv",
+        "--test_start",
+        test_start,
+        "--test_end",
+        test_end,
+        "--top_k",
+        "10",
+        "--label_t",
+        "5",
+    ]
+
+
+def test_the_backtest_with_explicit_inputs_refuses_the_holdout():
+    """The no-run_dir branch takes its window from flags, so it needs its own guard."""
+    with pytest.raises(HoldoutError, match="This backtest"):
+        backtest_engine.main(_explicit_backtest("2026-01-22", "2026-07-24"))
+    with pytest.raises(HoldoutError, match="may exit as late as"):
+        backtest_engine.main(_explicit_backtest("2025-01-22", "2026-01-15"))
+
+
+def test_the_backtest_guard_does_not_stop_a_legal_window():
+    """Control: a 2025 window gets past the guard and fails later, on the missing files."""
+    with pytest.raises(BaseException) as caught:
+        backtest_engine.main(_explicit_backtest("2025-01-22", "2025-12-31"))
     assert not isinstance(caught.value, HoldoutError)
 
 

@@ -90,6 +90,7 @@ from mci_gru.evaluation.replay_inputs import (  # noqa: E402
     resolve_replay_inputs,
 )
 from mci_gru.evaluation.statistics import hansen_hodrick_mean_inference  # noqa: E402
+from mci_gru.protocol import require_outside_holdout  # noqa: E402
 from mci_gru.tracking import (  # noqa: E402
     MLflowTrackingManager,
     load_run_metadata_from_predictions_dir,
@@ -1507,6 +1508,11 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
             args.test_start, args.test_end = iso_date(args.test_start), iso_date(args.test_end)
         except ReplayInputError as error:
             parser.error(str(error))
+        require_outside_holdout(
+            {"test_start": args.test_start, "test_end": args.test_end},
+            label_t=int(args.label_t),
+            what="This backtest",
+        )
         print(
             "WARNING: no --run_dir, so the inputs below are not checked against any run's records."
         )

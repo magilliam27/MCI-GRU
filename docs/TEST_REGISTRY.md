@@ -2247,7 +2247,7 @@ Contract tests for the repository's own skills under .claude/skills/.
 
 The locked 2026 holdout and the window schedule (#370, PRD #369).
 
-**Exercises:** `mci_gru.config`, `mci_gru.evaluation.replay_inputs`, `mci_gru.evaluation.selection_audit`, `mci_gru.protocol`
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation`, `mci_gru.evaluation.replay_inputs`, `mci_gru.evaluation.selection_audit`, `mci_gru.protocol`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -2275,6 +2275,8 @@ The locked 2026 holdout and the window schedule (#370, PRD #369).
 | `test_the_replay_refuses_a_run_that_scored_the_holdout` |  |  |
 | `test_the_replay_refuses_a_window_whose_last_label_reaches_the_holdout` |  |  |
 | `test_the_replay_guard_does_not_stop_a_legal_window` | Control: a 2025 window gets past the guard and fails later, on the missing data. |  |
+| `test_the_backtest_with_explicit_inputs_refuses_the_holdout` | The no-run_dir branch takes its window from flags, so it needs its own guard. |  |
+| `test_the_backtest_guard_does_not_stop_a_legal_window` | Control: a 2025 window gets past the guard and fails later, on the missing files. |  |
 | `test_selection_research_refuses_a_holdout_window` |  |  |
 | `test_selection_research_reads_data_as_of_as_a_vintage_not_a_scored_date` | Control: a 2025 window on data pulled in 2026 is legal. |  |
 
