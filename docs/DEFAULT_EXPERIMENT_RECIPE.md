@@ -1,6 +1,6 @@
 # Default Frozen Experiment Recipe
 
-Last updated: 2026-10-24
+Last updated: 2026-10-27
 
 Use this recipe for production-style confirmation notebooks and PIT validation
 runs unless an experiment is explicitly testing one of these factors.
@@ -122,16 +122,50 @@ runs unless an experiment is explicitly testing one of these factors.
 > baseline for this recipe; the rerun of this recipe with its control arms
 > (#326) is.
 
+> **The training window changed on 2026-10-27, before the rerun (#326).**
+>
+> The model is meant to train on four years, validate on the next year and test
+> on the year after; each such window is its own full run with the same config
+> and only the dates shifted (the owner, 2026-10-27, #367). Through its data
+> config the recipe trained on eight years instead, and the first admitted run
+> did the same. The recipe now starts training on the first session of 2020, so
+> it is the last window before the 2026 holdout. Validation and test are
+> unchanged.
+>
+> | | before 2026-10-27 | from 2026-10-27 |
+> |---|---|---|
+> | train | 2016-01-04 to 2023-12-31 (eight years, from `data=gics_top10_110_2016_eodhd`) | 2020-01-02 to 2023-12-31 (four years, `data.train_start=2020-01-02` pinned here) |
+> | validation | 2024-01-22 to 2024-12-31 | unchanged |
+> | test | 2025-01-22 to 2025-12-31 | unchanged |
+> | slug | `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32` | `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32__train-4y` |
+>
+> The data config keeps its eight-year window, because it is the first run's
+> provenance. Features are still computed on the whole panel, which starts
+> 2015-01-01, before the training mask, so the first training date has its full
+> lookback. Everything fit on training data now follows the window's own years:
+> the PIT union axis, the static graph's start, and the normalisation
+> statistics, which until now were fit on every panel row up to `train_end`
+> (#367). For the first run's window that changes nothing, because its
+> membership file starts on its first training day. The regime inputs are
+> requested from the train start minus 15 years, so each window's regime
+> similarity pool is its own 15 years too. Regime scores on a given date
+> therefore differ slightly between this window and the first run, which drew on
+> history from 2001. Earlier windows of the same design (train 2016 to 2019,
+> validate 2020, test 2021, and so on) are separate runs under this slug, with
+> their dates overridden. The DuPont note below applies only to windows that
+> train on 2016 or 2017.
+
 Recipe slug:
 
 ```text
-static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32
+static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32__train-4y
 ```
 
 ## Hydra Overrides
 
 ```text
 data=gics_top10_110_2016_eodhd
+data.train_start=2020-01-02
 data.auxiliary_snapshot_mode=capture
 
 seed=1729
@@ -203,6 +237,10 @@ features.regime_min_history_months=24
   `pit_breadth_policy: error`. Confirmation runs must supply that CSV. Runs that
   bring their own panel instead must pass `data.use_pit_universe=false`, as
   `scripts/ci_smoke.py` does.
+- `data.train_start=2020-01-02` is pinned here rather than in the data config
+  (#367). The data config's eight-year window is the first run's provenance and
+  stays as it was; the recipe's four-year window is what every later run trains
+  on. `tests/test_default_experiment_recipe.py` pins the composed window.
 - `FRED_API_KEY` is required when `features.include_global_regime=true` and
   `features.regime_strict=true`.
 - The eight `model.*` keys after `model.label_t` are pinned for the same reason

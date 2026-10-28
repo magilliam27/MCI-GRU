@@ -322,6 +322,9 @@ Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
 | `test_the_override_block_parser_reads_the_block` | Control: an empty parse would make every composition test vacuous. |  |
 | `test_recipe_captures_its_provider_inputs` | The owner chose capture for the first run (2026-10-04); source leaves inputs unverifiable. |  |
 | `test_the_recipe_trains_on_the_eodhd_price_panel` | Issue 283: the first run reads the EODHD package, not the LSEG one (owner, 2026-10-08). |  |
+| `test_the_recipe_trains_on_four_years` | Issue 367: train 2020 to 2023, validate 2024, test 2025, the last window before 2026. |  |
+| `test_without_its_window_line_the_recipe_would_train_on_eight_years` | Control: the four-year window comes from the recipe's line, not from the data config. |  |
+| `test_recipe_records_the_training_window_change` | The 8-year first run and the 4-year runs must not be read as one recipe. |  |
 | `test_without_its_data_line_the_recipe_would_read_the_lseg_panel` | Control: the test above must come from the recipe's selector, not the base default. |  |
 | `test_recipe_records_the_price_panel_change` | The 2026-10-08 EODHD switch is dated, so LSEG- and EODHD-panel evidence stay apart. |  |
 
@@ -1868,6 +1871,18 @@ Stock inputs on a date never reflect a split that happens after it (#323, PRD #3
 | `test_normaliser_fits_the_relative_inputs_on_train_rows_only` |  |  |
 | `test_normaliser_statistics_ignore_rows_after_train_end` |  |  |
 
+## `tests/test_normalisation_window.py`
+
+Issue 367: the pipeline fits normalisation on the training window, not the panel.
+
+**Exercises:** `mci_gru.pipeline`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_zscore_fit_ignores_rows_before_train_start` |  |  |
+| `test_zscore_fit_with_an_earlier_start_takes_those_rows_in` | Control: the bound is what keeps them out, not the shape of the panel. |  |
+| `test_rank_gauss_fit_ignores_rows_before_train_start` |  |  |
+
 ## `tests/test_notebook_eodhd_staging.py`
 
 EODHD S&P 500 staging in the regime-enabled Colab notebooks (#278).
@@ -2714,6 +2729,7 @@ Unit tests for mci_gru.data.transforms.
 |---|---|---|
 | `test_impute_feature_nans_by_day_mean_then_zero_fill` |  |  |
 | `test_compute_zscore_norm_stats_train_period_only` |  |  |
+| `test_compute_zscore_norm_stats_train_start_bounds_the_fit` | Issue 367: a window's statistics come from its own training years only. |  |
 | `test_normalize_features_zscore_clip_and_scale` |  |  |
 | `test_normalize_features_zscore_default_fallback_vs_keyerror` |  |  |
 | `test_build_single_date_tensors_shapes` |  |  |

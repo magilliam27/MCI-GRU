@@ -31,9 +31,18 @@ def compute_zscore_norm_stats(
     df: pd.DataFrame,
     feature_cols: Sequence[str],
     train_end: str,
+    *,
+    train_start: str | None = None,
 ) -> tuple[dict[str, float], dict[str, float]]:
-    """Train-period-only mean/std. Moved verbatim from pipeline._compute_norm_stats."""
-    train_df = df[df["dt"] <= train_end]
+    """Train-period-only mean/std. Moved verbatim from pipeline._compute_norm_stats.
+
+    ``train_start`` bounds the fit from below, so a window's statistics come from its
+    own training years and not from every earlier row the panel carries (#367).
+    """
+    in_train = df["dt"] <= train_end
+    if train_start is not None:
+        in_train &= df["dt"] >= train_start
+    train_df = df[in_train]
     means: dict[str, float] = {}
     stds: dict[str, float] = {}
     for col in feature_cols:

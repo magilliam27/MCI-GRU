@@ -63,6 +63,24 @@ def test_compute_zscore_norm_stats_train_period_only() -> None:
     assert compute_zscore_norm_stats(df, ["missing"], "2020-01-02") == ({}, {})
 
 
+def test_compute_zscore_norm_stats_train_start_bounds_the_fit() -> None:
+    """Issue 367: a window's statistics come from its own training years only."""
+    df = pd.DataFrame(
+        {
+            "dt": ["2019-12-30", "2019-12-31", "2020-01-02", "2020-01-03", "2020-01-06"],
+            "feat": [1000.0, 1000.0, 0.0, 2.0, 50.0],
+        }
+    )
+    means, stds = compute_zscore_norm_stats(
+        df, ["feat"], train_end="2020-01-03", train_start="2020-01-02"
+    )
+    assert means["feat"] == pytest.approx(1.0)
+    assert stds["feat"] == pytest.approx(np.std([0.0, 2.0], ddof=1))
+    # Control: without the lower bound the earlier rows are in the fit.
+    unbounded, _ = compute_zscore_norm_stats(df, ["feat"], train_end="2020-01-03")
+    assert unbounded["feat"] == pytest.approx(np.mean([1000.0, 1000.0, 0.0, 2.0]))
+
+
 def test_normalize_features_zscore_clip_and_scale() -> None:
     df = pd.DataFrame({"dt": ["2020-01-01"], "feat": [10.0]})
     means = {"feat": 0.0}
