@@ -50,6 +50,7 @@ from mci_gru.evaluation.statistics import (
 )
 from mci_gru.evaluation.tranche_book import TrancheBook, signal_date_closes, tranche_book
 from mci_gru.evaluation.trial_ledger import validate_trial_family
+from mci_gru.protocol import require_outside_holdout
 
 MIN_RESEARCH_NULL_DRAWS = 1_000
 MIN_PRELIMINARY_DATES = 60
@@ -173,6 +174,12 @@ class SelectionResearchProtocol:
             raise ValueError("test_start must not be after test_end")
         if data_as_of < start:
             raise ValueError("data_as_of must not be before test_start")
+        # data_as_of is the inputs' vintage, not a scored date, so only the window counts.
+        require_outside_holdout(
+            {"test_start": str(self.test_start), "test_end": str(self.test_end)},
+            label_t=self.label_horizon,
+            what=f"Selection research {self.study_name!r}",
+        )
 
 
 @dataclass(frozen=True)

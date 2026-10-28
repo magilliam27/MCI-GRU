@@ -2243,6 +2243,41 @@ Contract tests for the repository's own skills under .claude/skills/.
 | `test_the_retired_one_ticket_per_session_cap_is_stated_nowhere` | The flat cap was the most-violated rule here; it must not return beside its replacement. | parametrize |
 | `test_the_prose_normaliser_ignores_wrapping_and_emphasis_but_not_words` | Control for `_normalised`: without it, both guards above could pass on a normaliser that erases text. |  |
 
+## `tests/test_protocol_holdout.py`
+
+The locked 2026 holdout and the window schedule (#370, PRD #369).
+
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation.replay_inputs`, `mci_gru.evaluation.selection_audit`, `mci_gru.protocol`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_the_holdout_dates_are_pinned` | Moving the holdout takes a reviewed change to this test, by design. |  |
+| `test_the_window_schedule_is_pinned` |  |  |
+| `test_each_window_trains_four_calendar_years_then_validates_then_tests` |  | parametrize |
+| `test_each_window_starts_training_on_its_first_session` | January 1 is never a session; the training start is the first one after it. |  |
+| `test_w5_is_the_recipe_as_written` | The recipe (#367) and the schedule must not drift apart. |  |
+| `test_every_window_run_passes_the_guard` |  | parametrize |
+| `test_the_holdout_window_is_refused` |  |  |
+| `test_any_single_date_inside_the_holdout_is_refused` | Each of the six dates is checked, not just test_end. | parametrize |
+| `test_a_date_after_the_holdout_is_refused_too` | Decision 3: the data after the holdout is the next holdout, not open ground. |  |
+| `test_a_label_that_may_exit_inside_the_holdout_is_refused` | 2026-01-15 is before the holdout, but its 5-session label can end inside it. |  |
+| `test_the_label_check_follows_label_t` | The same end date passes a 1-session label and fails a 10-session one. |  |
+| `test_the_label_check_reads_the_latest_date_not_the_last_key` |  |  |
+| `test_the_bound_never_falls_before_the_real_exit` | The slack must cover every closure a label can cross, the densest cluster included. |  |
+| `test_the_last_legal_signal_date_for_the_recipe_label_is_open` | The test year's real last label (2026-01-08 exit) is far from the guard. |  |
+| `test_label_t_below_one_is_rejected` |  |  |
+| `test_an_empty_span_is_rejected` |  |  |
+| `test_holdout_error_is_not_a_value_error` | The walk-forward builder catches ValueError to skip a window; this must escape it. |  |
+| `test_the_base_config_names_no_promotion` |  |  |
+| `test_any_promotion_is_refused_until_the_promotion_path_lands` |  |  |
+| `test_a_promotion_does_not_open_the_holdout_either` | Not even a promotion key alongside a holdout window composes today. |  |
+| `test_a_hydra_override_into_the_holdout_is_refused` | The runner composes this way; a data.test_end override must not get through. |  |
+| `test_the_replay_refuses_a_run_that_scored_the_holdout` |  |  |
+| `test_the_replay_refuses_a_window_whose_last_label_reaches_the_holdout` |  |  |
+| `test_the_replay_guard_does_not_stop_a_legal_window` | Control: a 2025 window gets past the guard and fails later, on the missing data. |  |
+| `test_selection_research_refuses_a_holdout_window` |  |  |
+| `test_selection_research_reads_data_as_of_as_a_vintage_not_a_scored_date` | Control: a 2025 window on data pulled in 2026 is legal. |  |
+
 ## `tests/test_readme_figure.py`
 
 Contract tests for scripts/gen_readme_figure.py and the README evidence figure.

@@ -28,6 +28,7 @@ from typing import Any
 import pandas as pd
 
 from mci_gru.data.path_resolver import resolve_project_data_path
+from mci_gru.protocol import require_outside_holdout
 from mci_gru.utils.hashing import sha256_file
 
 DATA_ROLE = "data.filename"
@@ -116,6 +117,9 @@ def resolve_replay_inputs(
         raise ReplayInputError(f"test_end override {end} is after the run's {run_end}")
     if start > end:
         raise ReplayInputError(f"test_start {start} is after test_end {end}")
+    require_outside_holdout(
+        {"test_start": start, "test_end": end}, label_t=run_label_t, what=f"Scoring {run}"
+    )
 
     top_k_values = tuple(int(k) for k in resolved.get("evaluation", {}).get("top_k_values", ()))
     if top_k is None and len(top_k_values) != 1:

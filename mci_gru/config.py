@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from mci_gru.protocol import HoldoutError, require_outside_holdout
+
 
 @dataclass
 class DataConfig:
@@ -1099,6 +1101,26 @@ class TrackingConfig:
 
 
 @dataclass
+class ProtocolConfig:
+    """Where a run stands under the experiment protocol (PRD #369).
+
+    Attributes:
+        holdout_promotion: Id of the committed promotion record that may unlock the
+            locked 2026 holdout for one run. The promotion path is #374; until it
+            lands no record exists, so every value is refused.
+    """
+
+    holdout_promotion: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.holdout_promotion is not None:
+            raise HoldoutError(
+                f"protocol.holdout_promotion={self.holdout_promotion!r}: no promotion "
+                "record can unlock the holdout yet; the promotion path is #374"
+            )
+
+
+@dataclass
 class ExperimentConfig:
     """
     Complete experiment configuration.
@@ -1124,6 +1146,7 @@ class ExperimentConfig:
     training: TrainingConfig = field(default_factory=TrainingConfig)
     evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
+    protocol: ProtocolConfig = field(default_factory=ProtocolConfig)
     experiment_name: str = "baseline"
     output_dir: str = "results"
     seed: int = 1729
@@ -1131,9 +1154,27 @@ class ExperimentConfig:
     def __post_init__(self) -> None:
         if isinstance(self.evaluation, Mapping):
             self.evaluation = EvaluationConfig(**self.evaluation)
+        if isinstance(self.protocol, Mapping):
+            self.protocol = ProtocolConfig(**self.protocol)
+        self._validate_holdout()
         self._validate_embargo()
         self._validate_sector_relation()
         self._validate_evaluation_tranches()
+
+    def _validate_holdout(self) -> None:
+        """Refuse a run whose spans or labels reach the locked 2026 holdout (#370)."""
+        spans = {
+            f"data.{key}": getattr(self.data, key)
+            for key in (
+                "train_start",
+                "train_end",
+                "val_start",
+                "val_end",
+                "test_start",
+                "test_end",
+            )
+        }
+        require_outside_holdout(spans, label_t=self.model.label_t, what="This run")
 
     def _validate_evaluation_tranches(self) -> None:
         """Legs stay inside the embargoed horizon; tranches evenly divide the hold."""
@@ -1369,6 +1410,7 @@ def create_config_from_dict(config_dict: dict[str, Any]) -> ExperimentConfig:
     training_dict = config_dict.get("training", {})
     evaluation_dict = config_dict.get("evaluation", {})
     tracking_dict = config_dict.get("tracking", {})
+    protocol_dict = config_dict.get("protocol", {})
 
     return ExperimentConfig(
         data=DataConfig(**data_dict) if data_dict else DataConfig(),
@@ -1378,6 +1420,7 @@ def create_config_from_dict(config_dict: dict[str, Any]) -> ExperimentConfig:
         training=TrainingConfig(**training_dict) if training_dict else TrainingConfig(),
         evaluation=EvaluationConfig(**evaluation_dict) if evaluation_dict else EvaluationConfig(),
         tracking=TrackingConfig(**tracking_dict) if tracking_dict else TrackingConfig(),
+        protocol=ProtocolConfig(**protocol_dict) if protocol_dict else ProtocolConfig(),
         experiment_name=config_dict.get("experiment_name", "baseline"),
         output_dir=config_dict.get("output_dir", "results"),
         seed=config_dict.get("seed", 1729),
