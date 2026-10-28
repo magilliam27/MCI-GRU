@@ -45,6 +45,7 @@ from mci_gru.protocol import (
     latest_label_end_bound,
     require_outside_holdout,
 )
+from scripts import rescore_run, score_baselines
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RECIPE = REPO_ROOT / "docs" / "DEFAULT_EXPERIMENT_RECIPE.md"
@@ -361,6 +362,18 @@ def test_the_replay_guard_does_not_stop_a_legal_window(tmp_path):
     with pytest.raises(Exception) as caught:
         resolve_replay_inputs(run)
     assert not isinstance(caught.value, HoldoutError)
+
+
+@pytest.mark.parametrize(
+    "score",
+    [rescore_run.rescore_run, score_baselines.score_baselines],
+    ids=["rescore_run", "score_baselines"],
+)
+def test_the_run_scoring_scripts_refuse_a_run_that_scored_the_holdout(tmp_path, score):
+    """Both read the run through the replay resolver, so its guard stops them first."""
+    run = _replay_run(tmp_path, test_start="2026-01-22", test_end="2026-07-24")
+    with pytest.raises(HoldoutError, match="Scoring"):
+        score(run)
 
 
 def _explicit_backtest(test_start: str, test_end: str) -> list[str]:
