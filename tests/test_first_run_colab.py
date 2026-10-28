@@ -152,14 +152,23 @@ _PR_275_LINES = [
     "model.cross_section_block=residual",
     "model.gru_attn_layer_widths=per_layer",
 ]
+#: The #319 fixes the recipe pins under #325, one line per fix, by the fix's issue.
+_FIX_LINES = {
+    "#320": "model.gat_layer_form=residual",
+    "#321": "training.eval_amp=false",
+    "#323": "features.base_inputs=relative",
+}
 
 
-def _fake_repo(tmp_path, *, pr270=True, pr274_capture=True, pr274_role=True, pr275=True):
+def _fake_repo(
+    tmp_path, *, pr270=True, pr274_capture=True, pr274_role=True, pr275=True, without_fix=()
+):
     lines = list(_BASE_RECIPE)
     if pr274_capture:
         lines.append(_PR_274_LINE)
     if pr275:
         lines += _PR_275_LINES
+    lines += [line for fix, line in _FIX_LINES.items() if fix not in without_fix]
     recipe = tmp_path / frc.RECIPE_PATH
     recipe.parent.mkdir(parents=True)
     recipe.write_text(
@@ -206,6 +215,10 @@ def test_every_prerequisite_present_reads_as_ready(tmp_path):
         ({"pr274_capture": False}, ["#274"]),
         ({"pr274_role": False}, ["#274"]),
         ({"pr275": False}, ["#275"]),
+        ({"without_fix": ("#320",)}, ["#320"]),
+        ({"without_fix": ("#321",)}, ["#321"]),
+        ({"without_fix": ("#323",)}, ["#323"]),
+        ({"without_fix": tuple(_FIX_LINES)}, list(_FIX_LINES)),
     ],
 )
 def test_each_missing_prerequisite_is_named_by_its_pull_request(tmp_path, missing, expected_pr):
@@ -221,6 +234,25 @@ def test_one_of_three_model_pins_is_not_enough_for_275(tmp_path):
         encoding="utf-8",
     )
     assert [pr for pr, _ in _missing(repo)] == ["#275"]
+
+
+@pytest.mark.parametrize(
+    ("fix", "legacy_line"),
+    [
+        ("#320", "model.gat_layer_form=legacy"),
+        ("#321", "training.eval_amp=true"),
+        ("#323", "features.base_inputs=levels"),
+    ],
+)
+def test_a_fix_key_set_to_its_legacy_value_is_missing(tmp_path, fix, legacy_line):
+    """Naming the key is not enough: the pin must select the fixed form."""
+    repo = _fake_repo(tmp_path)
+    recipe = repo / frc.RECIPE_PATH
+    recipe.write_text(
+        recipe.read_text(encoding="utf-8").replace(_FIX_LINES[fix], legacy_line),
+        encoding="utf-8",
+    )
+    assert [pr for pr, _ in _missing(repo)] == [fix]
 
 
 def test_a_digest_without_a_pin_is_named_as_the_pin_not_as_270(tmp_path):
@@ -314,8 +346,13 @@ def test_prerequisite_check_runs_on_this_checkout():
         "#270",
         "#274",
         "#275",
+        "#320",
+        "#321",
+        "#323",
         frc.PACKAGE_PIN_PREREQUISITE,
     }
+    missing = [p.pull_request for p in prerequisites if not p.present]
+    assert missing == [], f"the recipe on this checkout is not ready for a full run: {missing}"
 
 
 def test_full_mode_cli_refuses_when_a_prerequisite_is_missing(tmp_path, monkeypatch, capsys):
@@ -893,9 +930,8 @@ def test_sync_skips_capture_staging_files(tmp_path):
 SECRET = "fixture-fred-key-0123456789"
 
 
-@pytest.fixture
-def run_repo(tmp_path, monkeypatch):
-    repo = _fake_repo(tmp_path / "repo")
+def _make_run_repo(tmp_path, monkeypatch, **fake):
+    repo = _fake_repo(tmp_path / "repo", **fake)
     _git(repo, "init", "-q")
     _git(repo, "config", "user.email", "t@example.com")
     _git(repo, "config", "user.name", "t")
@@ -905,6 +941,17 @@ def run_repo(tmp_path, monkeypatch):
     monkeypatch.setattr(frc, "_stage_inputs", lambda *_: {"package": "stub"})
     monkeypatch.setenv("FRED_API_KEY", SECRET)
     return repo
+
+
+@pytest.fixture
+def run_repo(tmp_path, monkeypatch):
+    return _make_run_repo(tmp_path, monkeypatch)
+
+
+@pytest.fixture
+def pre_325_run_repo(tmp_path, monkeypatch):
+    """A recipe from before #325: it does not pin the relative inputs."""
+    return _make_run_repo(tmp_path, monkeypatch, without_fix=("#323",))
 
 
 def _run(tmp_path, mode="full", tag="t1"):
@@ -1068,10 +1115,13 @@ def test_a_control_arm_records_itself_and_is_never_an_admitted_run_candidate(tmp
 
 
 def test_an_arm_the_recipe_cannot_take_is_refused_before_anything_is_written(
-    tmp_path, run_repo, capsys
+    tmp_path, pre_325_run_repo, capsys
 ):
     # The fake recipe predates #325, so it does not pin the fixed inputs to undo.
+    # A full run stops earlier, at the #323 prerequisite; smoke skips that check.
     assert _run_arm(tmp_path, "levels_inputs") == 1
+    assert "Refusing a full run" in capsys.readouterr().out
+    assert _run_arm(tmp_path, "levels_inputs", mode="smoke") == 1
     assert "which the recipe does not set" in capsys.readouterr().out
     assert not (tmp_path / "local").exists()
     assert not (tmp_path / "drive").exists()
@@ -1385,7 +1435,7 @@ def test_compare_writes_strict_json_and_never_writes_over_a_folder(tmp_path, cap
 
 
 def test_check_arms_refuses_before_training_an_arm_the_recipe_cannot_take(
-    tmp_path, run_repo, capsys
+    tmp_path, pre_325_run_repo, capsys
 ):
     # The fake recipe predates #325: levels_inputs has nothing to undo.
     assert frc.main(["check-arms", "recipe", "graph_zeroed"]) == 0
@@ -1395,6 +1445,14 @@ def test_check_arms_refuses_before_training_an_arm_the_recipe_cannot_take(
     assert "REFUSED 'levels_inputs'" in out
     assert frc.main(["check-arms", "recipe", "recipe"]) == 1
     assert frc.main(["check-arms", "no_such_arm"]) == 1
+
+
+def test_check_arms_accepts_the_levels_arm_once_the_recipe_pins_relative_inputs(
+    tmp_path, run_repo, capsys
+):
+    """Control for the refusal above: the #325 recipe gives levels_inputs a pin to undo."""
+    assert frc.main(["check-arms", "recipe", "graph_zeroed", "levels_inputs"]) == 0
+    assert "REFUSED" not in capsys.readouterr().out
 
 
 def test_the_notebook_checks_every_arm_before_any_trains():
