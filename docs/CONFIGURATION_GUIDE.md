@@ -211,7 +211,7 @@ inference, or notebook runs.
 Production-style confirmation notebooks and PIT validation runs should use the
 frozen recipe documented in
 [`DEFAULT_EXPERIMENT_RECIPE.md`](DEFAULT_EXPERIMENT_RECIPE.md):
-`static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10`.
+`static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32__train-4y`.
 
 Core overrides:
 
@@ -226,17 +226,20 @@ Core overrides:
 | Training | label_type | `returns` |
 | Training | selection_metric | `val_ic` |
 | Training | shuffle_train | `true` |
+| Training | eval_amp | `false` (pinned since 2026-10-24; also the base default) |
 | Model | label_t | `5` |
 | Model | temporal_encoder / use_nn_multihead_attention | `gru_attn` / `true` |
 | Model | market_latent_mode | `data_dependent` (since 2026-10-04; base default is `static`) |
 | Model | cross_section_block | `residual` (since 2026-10-04; base default is `legacy`) |
 | Model | gru_attn_layer_widths | `per_layer` (since 2026-10-04; base default is `shared`) |
+| Model | gat_layer_form | `residual` (since 2026-10-24; base default is `legacy`) |
 | Graph | update_frequency_months | `0` |
 | Graph | corr_lookback_days | `252` |
 | Graph | top_k / top_k_metric | `0` / `corr` |
 | Graph | use_multi_feature_edges | `true` |
 | Graph | drop_edge_p | `0.1` |
 | Graph | lead-lag / snapshot-age | disabled |
+| Features | base_inputs | `relative` (since 2026-10-24; base default is `levels`) |
 | Features | momentum | `features=with_momentum`, weekly momentum on, static 50/50 blend |
 | Features | global regime | `include_global_regime=true`, `regime_strict=true`, `regime_include_subsequent_returns=false` |
 
