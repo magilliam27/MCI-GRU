@@ -33,8 +33,9 @@ def build_cells() -> list[dict]:
 
             **Before you start**
 
-            1. Pull requests #270, #274 and #275 are merged to `main`. In `full` mode
-               the notebook checks for each one and refuses to run without it.
+            1. Pull requests #270, #274 and #275 are merged to `main`, and the recipe
+               pins the #319 changes (#320, #321, #323). In `full` mode the notebook
+               checks for each one and refuses to run without it.
             2. The EODHD S&P 500 file is on Drive at
                `MCI_GRU_shared/preservation/eodhd_sp500_2010_20260919/sp500_index.csv`,
                in its own folder beside the LSEG package
@@ -46,7 +47,7 @@ def build_cells() -> list[dict]:
 
             **Modes.** `full` is the admitted-run candidate: 20 models x 100 epochs.
             `smoke` keeps every recipe setting except the budget (1 model x 2 epochs),
-            runs even before the three pull requests land, and is labelled
+            runs even before those prerequisites are met, and is labelled
             *not evidence*.
 
             **Arms (#326).** `RUN_ARMS` lists what to train, one after another, on the

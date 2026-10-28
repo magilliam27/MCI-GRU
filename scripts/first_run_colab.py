@@ -11,7 +11,8 @@ What it does:
   at the cloned commit, so the notebook runs whatever recipe that commit freezes
   instead of a copy that can drift from it.
 - Says which open pull request a recipe still lacks before an admitted run
-  (#270, #274, #275), so a run on a commit without them is refused by name.
+  (#270, #274, #275, and the three #319 changes #320, #321 and #323 that #325
+  pins), so a run on a commit without them is refused by name.
 - Stages, from Drive into ``data/raw``, the published package the recipe's data
   config declares, and verifies it. The Drive copy must prove it is that package
   (a historical ``MANIFEST.txt`` whose digest the manifest records, or a copy of
@@ -316,6 +317,21 @@ def admitted_run_prerequisites(repo_dir: Path) -> list[Prerequisite]:
             override_value(overrides, "model.market_latent_mode") == "data_dependent"
             and override_value(overrides, "model.cross_section_block") == "residual"
             and override_value(overrides, "model.gru_attn_layer_widths") == "per_layer",
+        ),
+        Prerequisite(
+            "#320",
+            "the recipe pins residual graph layers (model.gat_layer_form=residual)",
+            override_value(overrides, "model.gat_layer_form") == "residual",
+        ),
+        Prerequisite(
+            "#321",
+            "the recipe pins full-precision validation and prediction (training.eval_amp=false)",
+            override_value(overrides, "training.eval_amp") == "false",
+        ),
+        Prerequisite(
+            "#323",
+            "the recipe pins per-stock relative base inputs (features.base_inputs=relative)",
+            override_value(overrides, "features.base_inputs") == "relative",
         ),
     ]
 

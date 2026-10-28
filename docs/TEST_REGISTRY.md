@@ -319,7 +319,7 @@ Dated daily IC: each test date keeps its own IC, and the means equal the summary
 
 Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
 
-**Exercises:** `mci_gru.config`, `mci_gru.graph.utils`, `mci_gru.models`
+**Exercises:** `mci_gru.config`, `mci_gru.features.base`, `mci_gru.features.registry`, `mci_gru.graph.utils`, `mci_gru.models`, `mci_gru.models.graph`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -332,10 +332,19 @@ Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
 | `test_the_recipe_builds_data_dependent_market_latents` | Issue 198: static latents cannot see the date, so the first run must not use them. |  |
 | `test_the_recipe_builds_the_residual_cross_stock_block` | Issue 197: the legacy block replaces z and discards most cross-sectional variation. |  |
 | `test_the_recipe_builds_gru_attn_layers_at_32_then_10` | Issue 131: [32, 10] must mean a 32-wide layer then a 10-wide one. |  |
+| `test_the_recipe_builds_residual_graph_layers` | Issue 320: legacy graph layers tie linked names; every layer needs an own-feature path. |  |
+| `test_the_recipe_feeds_relative_base_inputs` | Issue 323: raw split-adjusted levels encode later splits; the recipe must not feed them. |  |
+| `test_the_recipe_scores_in_full_precision` | Issue 321: the first run scored under autocast, so its scores sat on an fp16 grid. |  |
 | `test_the_base_config_alone_still_builds_the_legacy_forms` | Control: the two tests above must come from the recipe's own pins. |  |
+| `test_the_slug_names_each_fix_the_recipe_adopts` | PRD 319 D6: the fixed model gets its own id, so its results never mix with the first run's. |  |
+| `test_every_document_naming_the_current_slug_names_this_one` | The slug is quoted outside the recipe; a stale copy would label new runs with the old id. |  |
+| `test_recipe_records_the_model_fix_and_keeps_the_first_run_apart` | PRD 319 D7: the first run stays on record under its own slug and is not this baseline. |  |
 | `test_the_override_block_parser_reads_the_block` | Control: an empty parse would make every composition test vacuous. |  |
 | `test_recipe_captures_its_provider_inputs` | The owner chose capture for the first run (2026-10-04); source leaves inputs unverifiable. |  |
 | `test_the_recipe_trains_on_the_eodhd_price_panel` | Issue 283: the first run reads the EODHD package, not the LSEG one (owner, 2026-10-08). |  |
+| `test_the_recipe_trains_on_four_years` | Issue 367: train 2020 to 2023, validate 2024, test 2025, the last window before 2026. |  |
+| `test_without_its_window_line_the_recipe_would_train_on_eight_years` | Control: the four-year window comes from the recipe's line, not from the data config. |  |
+| `test_recipe_records_the_training_window_change` | The 8-year first run and the 4-year runs must not be read as one recipe. |  |
 | `test_without_its_data_line_the_recipe_would_read_the_lseg_panel` | Control: the test above must come from the recipe's selector, not the base default. |  |
 | `test_recipe_records_the_price_panel_change` | The 2026-10-08 EODHD switch is dated, so LSEG- and EODHD-panel evidence stay apart. |  |
 
@@ -1225,6 +1234,7 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_every_prerequisite_present_reads_as_ready` |  |  |
 | `test_each_missing_prerequisite_is_named_by_its_pull_request` |  | parametrize |
 | `test_one_of_three_model_pins_is_not_enough_for_275` |  |  |
+| `test_a_fix_key_set_to_its_legacy_value_is_missing` | Naming the key is not enough: the pin must select the fixed form. | parametrize |
 | `test_a_digest_without_a_pin_is_named_as_the_pin_not_as_270` |  |  |
 | `test_270_needs_the_package_declaration_in_the_data_config` |  |  |
 | `test_the_recipe_data_config_chooses_the_package_to_stage` |  | parametrize |
@@ -1294,6 +1304,7 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_compare_flags_auxiliary_inputs_that_differ_from_the_recipe_arms` |  |  |
 | `test_compare_writes_strict_json_and_never_writes_over_a_folder` |  |  |
 | `test_check_arms_refuses_before_training_an_arm_the_recipe_cannot_take` |  |  |
+| `test_check_arms_accepts_the_levels_arm_once_the_recipe_pins_relative_inputs` | Control for the refusal above: the #325 recipe gives levels_inputs a pin to undo. |  |
 | `test_the_notebook_checks_every_arm_before_any_trains` |  |  |
 
 ## `tests/test_gat_own_signal.py`
@@ -1879,6 +1890,18 @@ Stock inputs on a date never reflect a split that happens after it (#323, PRD #3
 | `test_base_default_keeps_the_legacy_levels` |  |  |
 | `test_normaliser_fits_the_relative_inputs_on_train_rows_only` |  |  |
 | `test_normaliser_statistics_ignore_rows_after_train_end` |  |  |
+
+## `tests/test_normalisation_window.py`
+
+Issue 367: the pipeline fits normalisation on the training window, not the panel.
+
+**Exercises:** `mci_gru.pipeline`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_zscore_fit_ignores_rows_before_train_start` |  |  |
+| `test_zscore_fit_with_an_earlier_start_takes_those_rows_in` | Control: the bound is what keeps them out, not the shape of the panel. |  |
+| `test_rank_gauss_fit_ignores_rows_before_train_start` |  |  |
 
 ## `tests/test_notebook_eodhd_staging.py`
 
@@ -2750,6 +2773,7 @@ Unit tests for mci_gru.data.transforms.
 |---|---|---|
 | `test_impute_feature_nans_by_day_mean_then_zero_fill` |  |  |
 | `test_compute_zscore_norm_stats_train_period_only` |  |  |
+| `test_compute_zscore_norm_stats_train_start_bounds_the_fit` | Issue 367: a window's statistics come from its own training years only. |  |
 | `test_normalize_features_zscore_clip_and_scale` |  |  |
 | `test_normalize_features_zscore_default_fallback_vs_keyerror` |  |  |
 | `test_build_single_date_tensors_shapes` |  |  |
