@@ -50,7 +50,7 @@ from mci_gru.evaluation.statistics import (
 )
 from mci_gru.evaluation.tranche_book import TrancheBook, signal_date_closes, tranche_book
 from mci_gru.evaluation.trial_ledger import validate_trial_family
-from mci_gru.protocol import require_outside_holdout
+from mci_gru.protocol import require_outside_holdout, require_predictions_outside_holdout
 
 MIN_RESEARCH_NULL_DRAWS = 1_000
 MIN_PRELIMINARY_DATES = 60
@@ -176,7 +176,7 @@ class SelectionResearchProtocol:
             raise ValueError("data_as_of must not be before test_start")
         # data_as_of is the inputs' vintage, not a scored date, so only the window counts.
         require_outside_holdout(
-            {"test_start": str(self.test_start), "test_end": str(self.test_end)},
+            {"test_start": self.test_start, "test_end": self.test_end},
             label_t=self.label_horizon,
             what=f"Selection research {self.study_name!r}",
         )
@@ -1212,6 +1212,9 @@ def build_selection_audit(
 ) -> dict[str, Any]:
     """Compute no-retraining selection evidence from saved prediction CSVs."""
     predictions = load_prediction_files(predictions_dir)
+    require_predictions_outside_holdout(
+        predictions["dt"], label_t=label_t, what=f"Selection audit of {predictions_dir}"
+    )
     market_data = pd.read_csv(market_data_path)
     realized = realized_returns_from_market_data(market_data, label_t=label_t)
     aligned = align_prediction_comparison(predictions, realized)

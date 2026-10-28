@@ -15,13 +15,16 @@ path lands (#374). These tests pin:
 
 from __future__ import annotations
 
+import datetime as dt
 import hashlib
 import json
 import re
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
+from dateutil.easter import easter
 from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 
@@ -33,8 +36,10 @@ from mci_gru.config import (
     create_config_from_dict,
 )
 from mci_gru.evaluation import backtest_engine
+from mci_gru.evaluation.capacity import compute_capacity_replay
+from mci_gru.evaluation.prediction_report import write_tsfm_prediction_report
 from mci_gru.evaluation.replay_inputs import resolve_replay_inputs
-from mci_gru.evaluation.selection_audit import SelectionResearchProtocol
+from mci_gru.evaluation.selection_audit import SelectionResearchProtocol, build_selection_audit
 from mci_gru.protocol import (
     HOLDOUT_END,
     HOLDOUT_START,
@@ -44,6 +49,7 @@ from mci_gru.protocol import (
     Window,
     latest_label_end_bound,
     require_outside_holdout,
+    require_predictions_outside_holdout,
 )
 from scripts import rescore_run, score_baselines
 
@@ -251,23 +257,66 @@ def test_the_label_check_reads_the_latest_date_not_the_last_key():
         require_outside_holdout(spans, label_t=5, what="probe")
 
 
-def test_the_bound_never_falls_before_the_real_exit():
-    """The slack must cover every closure a label can cross, the densest cluster included.
+def _nth_weekday(year: int, month: int, weekday: int, n: int) -> dt.date:
+    first = dt.date(year, month, 1)
+    return first + dt.timedelta(days=(weekday - first.weekday()) % 7 + 7 * (n - 1))
 
-    Signal dates run from the 2024 Christmas run-up, whose 15-session labels cross four
-    closures, to the holdout's front edge.
+
+def _last_weekday(year: int, month: int, weekday: int) -> dt.date:
+    last = dt.date(year, month + 1, 1) - dt.timedelta(days=1)
+    return last - dt.timedelta(days=(last.weekday() - weekday) % 7)
+
+
+def _observed(day: dt.date) -> dt.date:
+    shift = {5: -1, 6: 1}.get(day.weekday(), 0)
+    return day + dt.timedelta(days=shift)
+
+
+def _nyse_closures(first_year: int, last_year: int) -> np.ndarray:
+    """NYSE full-day closures by rule, plus the two days of mourning since 2016."""
+    days = {dt.date(2018, 12, 5), dt.date(2025, 1, 9)}
+    for year in range(first_year, last_year + 1):
+        if dt.date(year, 1, 1).weekday() != 5:  # a Saturday New Year is not moved
+            days.add(_observed(dt.date(year, 1, 1)))
+        days |= {
+            _nth_weekday(year, 1, 0, 3),  # Martin Luther King Jr. Day
+            _nth_weekday(year, 2, 0, 3),  # Washington's Birthday
+            easter(year) - dt.timedelta(days=2),  # Good Friday
+            _last_weekday(year, 5, 0),  # Memorial Day
+            _observed(dt.date(year, 7, 4)),
+            _nth_weekday(year, 9, 0, 1),  # Labor Day
+            _nth_weekday(year, 11, 3, 4),  # Thanksgiving
+            _observed(dt.date(year, 12, 25)),
+        }
+        if year >= 2022:
+            days.add(_observed(dt.date(year, 6, 19)))
+    return np.array(sorted(d for d in days if d.weekday() < 5), dtype="datetime64[D]")
+
+
+def test_the_closure_calendar_matches_the_known_closures():
+    """Control: the rule-built calendar holds every closure listed by hand above."""
+    assert set(NYSE_CLOSURES) <= set(_nyse_closures(2024, 2026))
+    in_2025 = [day for day in _nyse_closures(2025, 2025) if str(day).startswith("2025")]
+    assert len(in_2025) == 11  # ten holidays and the day of mourning
+
+
+@pytest.mark.parametrize("label_t", range(1, 90))
+def test_the_bound_never_falls_before_the_real_exit(label_t):
+    """The slack must cover every closure a label can cross, on every signal date.
+
+    Every calendar day from 2016 to the holdout's front edge, on the NYSE calendar.
+    The tightest case is four closures inside a 15-session label (late 2024).
     """
-    signal = np.datetime64("2024-12-02", "D")
-    while signal < np.datetime64(HOLDOUT_START, "D"):
-        for label_t in (1, 2, 5, 10, 19, 21, 42, 63):
-            day = str(signal)
-            if _real_exit(day, label_t) > "2026-01-30":
-                continue  # past the closures listed above
-            assert latest_label_end_bound(day, label_t) >= _real_exit(day, label_t), (
-                day,
-                label_t,
-            )
-        signal += np.timedelta64(1, "D")
+    closures = _nyse_closures(2015, 2027)
+    signals = np.arange(
+        np.datetime64("2016-01-01"), np.datetime64(HOLDOUT_START), dtype="datetime64[D]"
+    )
+    real = np.busday_offset(signals, label_t, roll="forward", holidays=closures)
+    bound = np.array(
+        [latest_label_end_bound(str(day), label_t) for day in signals], dtype="datetime64[D]"
+    )
+    short = signals[bound < real]
+    assert short.size == 0, f"bound before the real exit on {short[:5]}"
 
 
 def test_the_last_legal_signal_date_for_the_recipe_label_is_open():
@@ -289,6 +338,28 @@ def test_an_empty_span_is_rejected():
 def test_holdout_error_is_not_a_value_error():
     """The walk-forward builder catches ValueError to skip a window; this must escape it."""
     assert not issubclass(HoldoutError, ValueError)
+
+
+@pytest.mark.parametrize("written", ["03/01/2026", "1 March 2026", "20260301", "2026-3-1"])
+def test_a_date_written_another_way_is_still_refused(written):
+    """A non-ISO date must not sort below the holdout start as text."""
+    with pytest.raises(HoldoutError, match="2026-03-01"):
+        require_outside_holdout(
+            {"test_start": "2025-01-22", "test_end": written}, label_t=5, what="probe"
+        )
+
+
+def test_a_value_that_is_not_a_date_is_rejected():
+    with pytest.raises(ValueError, match="not a date"):
+        require_outside_holdout({"test_end": "soon"}, label_t=5, what="probe")
+
+
+def test_saved_predictions_reaching_the_holdout_are_refused():
+    require_predictions_outside_holdout(["2025-01-22", "2025-12-31"], label_t=5, what="probe")
+    with pytest.raises(HoldoutError, match="last signal date"):
+        require_predictions_outside_holdout(["2025-12-31", "2026-02-02"], label_t=5, what="probe")
+    with pytest.raises(HoldoutError, match="may exit as late as"):
+        require_predictions_outside_holdout(["2026-01-15"], label_t=5, what="probe")
 
 
 # -- Promotion stays closed until #374 ------------------------------------------------
@@ -452,3 +523,75 @@ def test_selection_research_refuses_a_holdout_window():
 def test_selection_research_reads_data_as_of_as_a_vintage_not_a_scored_date():
     """Control: a 2025 window on data pulled in 2026 is legal."""
     _selection_protocol("2025-01-22", "2025-12-31", "2026-07-31")
+
+
+def _write_predictions(directory: Path, dates: list[str]) -> Path:
+    directory.mkdir(parents=True)
+    for day in dates:
+        pd.DataFrame({"dt": day, "kdcode": ["AAA", "BBB"], "score": [0.1, 0.2]}).to_csv(
+            directory / f"{day}.csv", index=False
+        )
+    return directory
+
+
+def test_the_selection_audit_refuses_predictions_in_the_holdout(tmp_path):
+    predictions = _write_predictions(tmp_path / "preds", ["2025-12-31", "2026-02-02"])
+    with pytest.raises(HoldoutError, match="Selection audit"):
+        build_selection_audit(
+            predictions_dir=predictions,
+            market_data_path=tmp_path / "no-such-market.csv",
+            label_t=5,
+            top_k_values=[1],
+            trial_count=1,
+        )
+
+
+def test_the_prediction_report_refuses_predictions_in_the_holdout(tmp_path):
+    predictions = _write_predictions(tmp_path / "preds", ["2025-12-31"])
+    baseline = _write_predictions(tmp_path / "baseline", ["2026-02-02"])
+    with pytest.raises(HoldoutError, match="baseline predictions"):
+        write_tsfm_prediction_report(
+            predictions,
+            tmp_path / "no-such-market.csv",
+            tmp_path / "out",
+            label_t=5,
+            baseline_prediction_paths={"baseline": baseline},
+        )
+
+
+def test_the_capacity_replay_refuses_predictions_in_the_holdout():
+    predictions = pd.DataFrame({"dt": ["2026-01-21"], "kdcode": ["AAA"], "score": [0.1]})
+    market = pd.DataFrame(columns=["dt", "kdcode", "open", "close", "volume"])
+    with pytest.raises(HoldoutError, match="capacity replay"):
+        compute_capacity_replay(
+            predictions,
+            market,
+            aum_values=[1.0],
+            top_k_values=[1],
+            adv_lookback_days=5,
+            max_adv_participation=0.1,
+        )
+
+
+def test_the_backtest_guard_reads_the_strategy_exit_not_only_the_label():
+    """An open_to_open hold sells at open D+1+holding_period, which can pass the label."""
+    flags = _explicit_backtest("2025-01-22", "2026-01-07")
+    # Control: with the default strategy, a 2026-01-07 end clears the guard.
+    with pytest.raises(BaseException) as caught:
+        backtest_engine.main(flags)
+    assert not isinstance(caught.value, HoldoutError)
+    with pytest.raises(HoldoutError, match="11-session label"):
+        backtest_engine.main([*flags, "--strategy", "open_to_open", "--holding_period", "10"])
+
+
+def test_the_replay_library_call_reads_the_strategy_exit():
+    """W5's window with a 20-session hold sells inside the holdout."""
+    config = {
+        "test_start": "2025-01-22",
+        "test_end": "2025-12-31",
+        "label_t": 5,
+        "strategy": "open_to_open",
+        "holding_period": 20,
+    }
+    with pytest.raises(HoldoutError, match="21-session label"):
+        backtest_engine.replay("no-such-predictions", config)

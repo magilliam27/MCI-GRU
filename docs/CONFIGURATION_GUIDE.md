@@ -264,9 +264,18 @@ are the locked holdout, and everything after them is the next holdout. Any
 `ExperimentConfig` whose dates reach 2026-01-22, or whose last `label_t`-session
 label may exit on or after it, is refused with `HoldoutError`. The guard counts
 weekdays with slack for exchange closures, so it refuses a few days early rather
-than ever late. The replay's input resolver (behind `scripts/rescore_run.py` and
-`scripts/backtest_sp500.py --run_dir`), the backtest's explicit-flags path and
-`SelectionResearchProtocol` apply the same check to the span they score.
+than ever late. The same check guards the span every scorer reads:
+
+- the replay's input resolver, behind `scripts/rescore_run.py`,
+  `scripts/score_baselines.py` and `scripts/backtest_sp500.py --run_dir`;
+- the backtest itself, bounded by its strategy's sell session, which an
+  `open_to_open --holding_period` can push past the label;
+- `SelectionResearchProtocol`;
+- the saved-prediction scorers (the legacy selection audit, the TSFM report and the
+  capacity replay), which check the signal dates in the prediction files.
+
+Dates in any form `pd.Timestamp` reads are normalised first, so `03/01/2026` is
+refused like `2026-03-01`.
 
 `protocol.holdout_promotion` is the one key that will unlock the holdout, for a
 single promotion run per candidate. Until the promotion path lands (#374), every

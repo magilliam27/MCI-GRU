@@ -20,9 +20,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
+import pandas as pd
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterable, Mapping
 
 HOLDOUT_START = "2026-01-22"
 HOLDOUT_END = "2026-07-24"
@@ -113,26 +114,54 @@ def latest_label_end_bound(signal_date: str, label_t: int) -> str:
     return str(bound)
 
 
-def require_outside_holdout(spans: Mapping[str, str], *, label_t: int, what: str) -> None:
+def _iso_date(name: str, value: object) -> str:
+    """``value`` as YYYY-MM-DD, so a date written another way cannot sort past the guard."""
+    try:
+        stamp = pd.Timestamp(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"{name}={value!r} is not a date") from error
+    if pd.isna(stamp):
+        raise ValueError(f"{name}={value!r} is not a date")
+    return stamp.strftime("%Y-%m-%d")
+
+
+def require_outside_holdout(spans: Mapping[str, object], *, label_t: int, what: str) -> None:
     """Refuse ``spans`` if any date, or the label of the latest one, reaches the holdout.
 
-    ``spans`` maps a name (a config key, say) to an ISO date. ``what`` names the caller
-    in the error, so a refusal says which run or score was stopped.
+    ``spans`` maps a name (a config key, say) to a date in any form ``pd.Timestamp``
+    reads. ``label_t`` is the furthest session after a signal date that is read, the
+    label's exit or a trade's. ``what`` names the caller in the error, so a refusal
+    says which run or score was stopped.
     """
     if not spans:
         raise ValueError("require_outside_holdout needs at least one date")
-    inside = {name: value for name, value in spans.items() if str(value) >= HOLDOUT_START}
+    dates = {name: _iso_date(name, value) for name, value in spans.items()}
+    inside = {name: value for name, value in dates.items() if value >= HOLDOUT_START}
     if inside:
         listed = ", ".join(f"{name}={value}" for name, value in sorted(inside.items()))
         raise HoldoutError(
             f"{what} reaches the locked holdout ({HOLDOUT_START} onward, PRD #369): {listed}. "
             "Only a promotion run may read it (#374)."
         )
-    last_name, last = max(spans.items(), key=lambda item: str(item[1]))
-    bound = latest_label_end_bound(str(last), label_t)
+    last_name, last = max(dates.items(), key=lambda item: item[1])
+    bound = latest_label_end_bound(last, label_t)
     if bound >= HOLDOUT_START:
         raise HoldoutError(
             f"{what}: the {label_t}-session label of {last_name}={last} may exit as late as "
             f"{bound}, inside the locked holdout ({HOLDOUT_START} onward, PRD #369). End the "
             f"span earlier, so that its labels close before {HOLDOUT_START}."
         )
+
+
+def require_predictions_outside_holdout(
+    signal_dates: Iterable[object], *, label_t: int, what: str
+) -> None:
+    """Refuse saved predictions whose signal dates, or their labels, reach the holdout."""
+    stamps = pd.to_datetime(pd.Series(list(signal_dates)), errors="raise").dropna()
+    if stamps.empty:
+        return
+    require_outside_holdout(
+        {"first signal date": stamps.min(), "last signal date": stamps.max()},
+        label_t=label_t,
+        what=what,
+    )

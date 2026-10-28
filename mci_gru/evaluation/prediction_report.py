@@ -15,6 +15,7 @@ from mci_gru.config import Legs
 from mci_gru.evaluation.metrics import compute_ic_metrics, evaluate_run
 from mci_gru.evaluation.outcomes import realized_returns
 from mci_gru.evaluation.tranche_book import signal_date_closes
+from mci_gru.protocol import require_predictions_outside_holdout
 
 KEY_COLUMNS = ["dt", "kdcode"]
 DEFAULT_MODEL_NAME = "mci_gru"
@@ -247,12 +248,16 @@ def write_tsfm_prediction_report(
 ) -> dict[str, Any]:
     """Generate JSON, Markdown, and aligned-row outputs from saved predictions."""
     primary = load_prediction_files(predictions_dir)
-    market_data = pd.read_csv(market_data_path)
-    realized = realized_returns_from_market_data(market_data, label_t=label_t)
     baselines = {
         name: load_prediction_input(path)
         for name, path in (baseline_prediction_paths or {}).items()
     }
+    for name, frame in {"primary": primary, **baselines}.items():
+        require_predictions_outside_holdout(
+            frame["dt"], label_t=label_t, what=f"The {name} predictions in this report"
+        )
+    market_data = pd.read_csv(market_data_path)
+    realized = realized_returns_from_market_data(market_data, label_t=label_t)
     aligned = align_prediction_comparison(
         primary_predictions=primary,
         realized_returns=realized,

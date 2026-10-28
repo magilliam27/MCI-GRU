@@ -2267,7 +2267,7 @@ Contract tests for the repository's own skills under .claude/skills/.
 
 The locked 2026 holdout and the window schedule (#370, PRD #369).
 
-**Exercises:** `mci_gru.config`, `mci_gru.evaluation`, `mci_gru.evaluation.replay_inputs`, `mci_gru.evaluation.selection_audit`, `mci_gru.protocol`, `scripts`
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation`, `mci_gru.evaluation.capacity`, `mci_gru.evaluation.prediction_report`, `mci_gru.evaluation.replay_inputs`, `mci_gru.evaluation.selection_audit`, `mci_gru.protocol`, `scripts`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -2283,11 +2283,15 @@ The locked 2026 holdout and the window schedule (#370, PRD #369).
 | `test_a_label_that_may_exit_inside_the_holdout_is_refused` | 2026-01-15 is before the holdout, but its 5-session label can end inside it. |  |
 | `test_the_label_check_follows_label_t` | The same end date passes a 1-session label and fails a 10-session one. |  |
 | `test_the_label_check_reads_the_latest_date_not_the_last_key` |  |  |
-| `test_the_bound_never_falls_before_the_real_exit` | The slack must cover every closure a label can cross, the densest cluster included. |  |
+| `test_the_closure_calendar_matches_the_known_closures` | Control: the rule-built calendar holds every closure listed by hand above. |  |
+| `test_the_bound_never_falls_before_the_real_exit` | The slack must cover every closure a label can cross, on every signal date. | parametrize |
 | `test_the_last_legal_signal_date_for_the_recipe_label_is_open` | The test year's real last label (2026-01-08 exit) is far from the guard. |  |
 | `test_label_t_below_one_is_rejected` |  |  |
 | `test_an_empty_span_is_rejected` |  |  |
 | `test_holdout_error_is_not_a_value_error` | The walk-forward builder catches ValueError to skip a window; this must escape it. |  |
+| `test_a_date_written_another_way_is_still_refused` | A non-ISO date must not sort below the holdout start as text. | parametrize |
+| `test_a_value_that_is_not_a_date_is_rejected` |  |  |
+| `test_saved_predictions_reaching_the_holdout_are_refused` |  |  |
 | `test_the_base_config_names_no_promotion` |  |  |
 | `test_any_promotion_is_refused_until_the_promotion_path_lands` |  |  |
 | `test_a_promotion_does_not_open_the_holdout_either` | Not even a promotion key alongside a holdout window composes today. |  |
@@ -2300,6 +2304,11 @@ The locked 2026 holdout and the window schedule (#370, PRD #369).
 | `test_the_backtest_guard_does_not_stop_a_legal_window` | Control: a 2025 window gets past the guard and fails later, on the missing files. |  |
 | `test_selection_research_refuses_a_holdout_window` |  |  |
 | `test_selection_research_reads_data_as_of_as_a_vintage_not_a_scored_date` | Control: a 2025 window on data pulled in 2026 is legal. |  |
+| `test_the_selection_audit_refuses_predictions_in_the_holdout` |  |  |
+| `test_the_prediction_report_refuses_predictions_in_the_holdout` |  |  |
+| `test_the_capacity_replay_refuses_predictions_in_the_holdout` |  |  |
+| `test_the_backtest_guard_reads_the_strategy_exit_not_only_the_label` | An open_to_open hold sells at open D+1+holding_period, which can pass the label. |  |
+| `test_the_replay_library_call_reads_the_strategy_exit` | W5's window with a 20-session hold sells inside the holdout. |  |
 
 ## `tests/test_readme_figure.py`
 
