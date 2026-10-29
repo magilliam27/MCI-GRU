@@ -90,6 +90,7 @@ from mci_gru.evaluation.replay_inputs import (  # noqa: E402
     resolve_replay_inputs,
 )
 from mci_gru.evaluation.statistics import hansen_hodrick_mean_inference  # noqa: E402
+from mci_gru.protocol import require_outside_holdout  # noqa: E402
 from mci_gru.tracking import (  # noqa: E402
     MLflowTrackingManager,
     load_run_metadata_from_predictions_dir,
@@ -673,6 +674,19 @@ def _min_rank_drop(config: dict) -> int | None:
     return int(gate.get("min_rank_drop", 10)) if gate.get("enabled", False) else None
 
 
+def require_replay_outside_holdout(config: dict, strategy: ReplayStrategy) -> None:
+    """Refuse a replay whose window, or its last trade's exit, reaches the holdout.
+
+    The furthest session read is the later of the label's exit and the strategy's own
+    sell: an open_to_open hold can run past the label (#370).
+    """
+    require_outside_holdout(
+        {"test_start": config["test_start"], "test_end": config["test_end"]},
+        label_t=max(int(config["label_t"]), strategy.legs.exit_session),
+        what="This backtest",
+    )
+
+
 def replay(predictions_dir: str, config: dict) -> tuple[dict[str, Any], ReplayBook]:
     """Trade the saved predictions under ``config`` and score the book.
 
@@ -685,6 +699,7 @@ def replay(predictions_dir: str, config: dict) -> tuple[dict[str, Any], ReplayBo
         )
     strategy = replay_strategy(config)
     start, end = iso_date(config["test_start"]), iso_date(config["test_end"])
+    require_replay_outside_holdout(config, strategy)
 
     predictions = load_predictions(predictions_dir)
     predictions["kdcode"] = predictions["kdcode"].astype(str)
@@ -1539,9 +1554,10 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         },
     }
     try:
-        replay_strategy(config)
+        strategy = replay_strategy(config)
     except ValueError as error:
         parser.error(str(error))
+    require_replay_outside_holdout(config, strategy)
     testing = {
         "num_tests": args.num_tests,
         "adjustment_method": args.adjustment_method,

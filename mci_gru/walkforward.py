@@ -114,6 +114,7 @@ def _one_window_from_train_end(
             training=base.training,
             evaluation=base.evaluation,
             tracking=base.tracking,
+            protocol=base.protocol,
             experiment_name=base.experiment_name,
             output_dir=base.output_dir,
             seed=base.seed,

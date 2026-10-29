@@ -162,6 +162,12 @@ tracking:
   log_checkpoints: true
   log_predictions: false
 
+# Experiment protocol (PRD #369). The 2026 holdout dates live in mci_gru/protocol.py,
+# not here. holdout_promotion names the promotion record that may unlock it for one
+# run; every value is refused until the promotion path lands (#374).
+protocol:
+  holdout_promotion: null
+
 # Experiment metadata
 experiment_name: baseline
 output_dir: results

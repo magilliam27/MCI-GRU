@@ -246,6 +246,41 @@ Core overrides:
 `FRED_API_KEY` is required for the full recipe unless a smoke run explicitly
 disables global regime features.
 
+## Experiment Protocol Windows and the Locked Holdout
+
+The experiment protocol (PRD #369) runs the recipe once per window, changing only
+the six `data.*` dates. The schedule lives in `mci_gru/protocol.py` as `WINDOWS`:
+
+| Window | Train | Validate | Test |
+|--------|-------|----------|------|
+| W1 | 2016-01-04 to 2019-12-31 | 2020-01-22 to 2020-12-31 | 2021-01-22 to 2021-12-31 |
+| W2 | 2017-01-03 to 2020-12-31 | 2021-01-22 to 2021-12-31 | 2022-01-22 to 2022-12-31 |
+| W3 | 2018-01-02 to 2021-12-31 | 2022-01-22 to 2022-12-31 | 2023-01-22 to 2023-12-31 |
+| W4 | 2019-01-02 to 2022-12-31 | 2023-01-22 to 2023-12-31 | 2024-01-22 to 2024-12-31 |
+| W5 | 2020-01-02 to 2023-12-31 | 2024-01-22 to 2024-12-31 | 2025-01-22 to 2025-12-31 |
+
+W5 is the recipe as written. The 2026 signal dates from 2026-01-22 to 2026-07-24
+are the locked holdout, and everything after them is the next holdout. Any
+`ExperimentConfig` whose dates reach 2026-01-22, or whose last `label_t`-session
+label may exit on or after it, is refused with `HoldoutError`. The guard counts
+weekdays with slack for exchange closures, so it refuses a few days early rather
+than ever late. The same check guards the span every scorer reads:
+
+- the replay's input resolver, behind `scripts/rescore_run.py`,
+  `scripts/score_baselines.py` and `scripts/backtest_sp500.py --run_dir`;
+- the backtest itself, bounded by its strategy's sell session, which an
+  `open_to_open --holding_period` can push past the label;
+- `SelectionResearchProtocol`;
+- the saved-prediction scorers (the legacy selection audit, the TSFM report and the
+  capacity replay), which check the signal dates in the prediction files.
+
+Dates in any form `pd.Timestamp` reads are normalised first, so `03/01/2026` is
+refused like `2026-03-01`.
+
+`protocol.holdout_promotion` is the one key that will unlock the holdout, for a
+single promotion run per candidate. Until the promotion path lands (#374), every
+value is refused.
+
 ## Hydra Base Defaults
 
 Values below reflect **`configs/config.yaml`** merged with **`configs/data/gics_top10_110_2016.yaml`** (Hydra `defaults`). Python dataclass defaults in `mci_gru/config.py` do **not** all match these: the data-group values below come from the YAML and override the dataclass.
