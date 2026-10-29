@@ -11,11 +11,16 @@ and #369 win.
 
 - **Pre-registered.** `protocol.experiment_id=<id> protocol.arm=<arm>
   protocol.window=<W1..W5>` names a committed
-  `docs/research/experiments/<id>.yaml` (below). The runner reads the file as
-  committed at the run's checkout and refuses it if it is missing, untracked or
-  edited. It also refuses a run that is not exactly the declared arm on the
-  declared window. `run_metadata.json` records the id, arm, window, the file's
-  SHA-256 and the commit.
+  `docs/research/experiments/<id>.yaml` (below). The run must start from a git
+  checkout whose tracked files all match its commit, with none marked
+  assume-unchanged or skip-worktree; untracked files such as data pulls are
+  fine. The runner reads the file and the recipe from that commit, and refuses
+  the file if it is missing, untracked or edited. It composes only from the
+  checkout's `configs/`, so `--config-path`, `--config-dir` and
+  `hydra.searchpath` elsewhere are refused. It also refuses a run that is not
+  exactly the declared arm on the declared window. `run_metadata.json` records
+  the id, arm, window, the file's path, SHA-256 and commit, the recipe slug,
+  and the SHA-256 of the recipe's override lines.
 - **Exploratory.** `protocol.exploratory=true`. Smoke runs, debugging, a
   W5-only run, and any run whose design was not written down first all go here.
   The run is stamped `exploratory` and never gets a verdict (decision 6).
@@ -92,9 +97,12 @@ declared runs (#373).
 Commit `docs/research/experiments/<id>.yaml` before the experiment's first run.
 The file's name is its id: lower-case letters, digits and hyphens. Every field
 is required and no other field is allowed. The control arm lists no changes.
-Every other arm lists exactly one Hydra override. An arm may not change the
-window's dates or a launcher key such as `experiment_name`, `output_dir`,
-`tracking.*` or `protocol.*`.
+Every other arm lists exactly one Hydra override, and no two arms make the same
+change (`++key=value` and `key=value` count as the same). An arm may not change
+the window's dates, `training.walkforward.*`, `hydra.*`, or a launcher key such
+as `experiment_name`, `output_dir`, `tracking.*` or `protocol.*`. An arm whose
+change composes to the same config as the control, such as one setting a value
+the recipe already sets, is refused when it runs.
 
 The runner composes the declared run from these parts, in order:
 

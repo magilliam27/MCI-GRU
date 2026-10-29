@@ -127,8 +127,21 @@ def main(cfg: DictConfig):
     try:
         hydra_cfg = HydraConfig.get()
         output_path = hydra_cfg.runtime.output_dir
+        config_sources = [dict(source) for source in hydra_cfg.runtime.config_sources]
     except Exception:
         output_path = os.getcwd()
+        config_sources = None
+
+    resolved_cfg = OmegaConf.to_container(cfg, resolve=True)
+    config = create_config_from_dict(resolved_cfg)
+    # Before any run file: a protocol run must be declared, or say it is not (#372).
+    protocol_standing = resolve_run_standing(
+        config.protocol,
+        resolved_cfg,
+        repo_root=REPO_ROOT,
+        compose=compose_declared,
+        config_sources=config_sources,
+    )
 
     logger = setup_logging(output_path, cfg.get("experiment_name", "baseline"))
 
@@ -137,12 +150,6 @@ def main(cfg: DictConfig):
     logger.info("=" * 80)
     logger.info("\nConfiguration:")
     logger.info("\n" + OmegaConf.to_yaml(cfg))
-    resolved_cfg = OmegaConf.to_container(cfg, resolve=True)
-    config = create_config_from_dict(resolved_cfg)
-    # Before anything is written: a protocol run must be declared, or say it is not (#372).
-    protocol_standing = resolve_run_standing(
-        config.protocol, resolved_cfg, repo_root=REPO_ROOT, compose=compose_declared
-    )
     logger.info(f"Protocol standing: {protocol_standing}")
     snapshot_directory = keep_captures_with_run(config.data, output_path)
     if snapshot_directory is not None:

@@ -56,6 +56,9 @@ OPERATIONAL_KEYS = (
 )
 #: Keys an arm may not change: the window sets the dates, and the rest is operational.
 _WINDOW_KEYS = tuple(WINDOWS["W1"].spans())
+#: Prefixes an arm may not change either: walk-forward would replace the window's one
+#: train/validate/test split, and ``hydra.*`` changes the run, not the model.
+_ARM_FORBIDDEN_PREFIXES = ("training.walkforward", "hydra")
 
 _ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _ARM = re.compile(r"^[a-z0-9][a-z0-9_]*$")
@@ -171,6 +174,11 @@ def _override_key(override: str) -> str:
     return override.partition("=")[0].lstrip("+~")
 
 
+def _normalized(override: str) -> str:
+    """``key=value`` without Hydra's ``+``/``++``/``~`` prefixes, for spotting repeats."""
+    return f"{_override_key(override)}={override.partition('=')[2].strip()}"
+
+
 def _validate_arms(arms: Any, control: Any) -> dict[str, tuple[str, ...]]:
     if not isinstance(arms, dict) or len(arms) < 2:
         raise PreregistrationError("arms must map at least the control and one arm to changes")
@@ -199,11 +207,17 @@ def _validate_arms(arms: Any, control: Any) -> dict[str, tuple[str, ...]]:
                 raise PreregistrationError(
                     f"arm {name!r} changes {key}, which the window or the launcher sets"
                 )
-            if change in seen:
+            if _has_prefix(key, _ARM_FORBIDDEN_PREFIXES):
                 raise PreregistrationError(
-                    f"arms {seen[change]!r} and {name!r} make the same change {change!r}"
+                    f"arm {name!r} changes {key}; an arm may not change walk-forward "
+                    "or Hydra itself"
                 )
-            seen[change] = name
+            normalized = _normalized(change)
+            if normalized in seen:
+                raise PreregistrationError(
+                    f"arms {seen[normalized]!r} and {name!r} make the same change {change!r}"
+                )
+            seen[normalized] = name
         result[name] = tuple(changes)
     return result
 
@@ -238,8 +252,12 @@ def _validate_rule(rule: Any) -> DecisionRule:
     return DecisionRule(adjustment=rule["adjustment"], seed_floor_multiple=float(multiple))
 
 
+def _has_prefix(key: str, prefixes: Sequence[str]) -> bool:
+    return any(key == prefix or key.startswith(f"{prefix}.") for prefix in prefixes)
+
+
 def _is_operational(key: str) -> bool:
-    return any(key == prefix or key.startswith(f"{prefix}.") for prefix in OPERATIONAL_KEYS)
+    return _has_prefix(key, OPERATIONAL_KEYS)
 
 
 # -- Loading at the run's commit ------------------------------------------------------
@@ -247,18 +265,20 @@ def _is_operational(key: str) -> bool:
 
 @dataclass(frozen=True)
 class LoadedPreregistration:
-    """A validated file and where it was read: its path, digest and the commit."""
+    """A validated file and where it was read: its path, digest, the commit, and the
+    recipe text at that commit."""
 
     preregistration: Preregistration
     path: str
     sha256: str
     commit: str
+    recipe_text: str
 
 
-def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
     try:
         return subprocess.run(
-            ["git", "-C", str(repo_root), *args], capture_output=True, text=True, check=False
+            ["git", "-C", str(repo_root), *args], capture_output=True, check=False
         )
     except OSError as error:
         raise PreregistrationError(
@@ -266,11 +286,26 @@ def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
         ) from error
 
 
+def _committed_bytes(repo_root: Path, relative: str) -> bytes:
+    shown = _git(repo_root, "show", f"HEAD:{relative}")
+    if shown.returncode != 0:
+        raise PreregistrationError(f"{relative} is not in the commit at {repo_root}")
+    return shown.stdout
+
+
+def _hidden_paths(repo_root: Path) -> list[str]:
+    """Tracked paths git is told not to compare: assume-unchanged or skip-worktree."""
+    listing = _git(repo_root, "ls-files", "-v").stdout.decode("utf-8", "replace")
+    return [line[2:] for line in listing.splitlines() if line[:1].islower() or line[:1] == "S"]
+
+
 def load_preregistration(experiment_id: str, repo_root: str | Path) -> LoadedPreregistration:
     """Load ``<id>.yaml`` as committed at ``repo_root``'s HEAD; refuse it otherwise.
 
-    The file must be tracked and identical to HEAD, so that what the run read is what
-    the commit recorded in ``run_metadata.json`` holds.
+    The file must be tracked and identical to HEAD, and so must every other tracked
+    file, with none hidden from git's comparison: the run's code, configs and recipe are
+    then what the commit recorded in ``run_metadata.json`` holds. The file and the recipe
+    are read from the commit itself.
     """
     if not isinstance(experiment_id, str) or not _ID.match(experiment_id):
         raise PreregistrationError(f"protocol.experiment_id {experiment_id!r} is not an id")
@@ -282,16 +317,32 @@ def load_preregistration(experiment_id: str, repo_root: str | Path) -> LoadedPre
             f"protocol.experiment_id={experiment_id}: {relative} does not exist. Commit the "
             "pre-registration before the first run, or run with protocol.exploratory=true."
         )
+    head = _git(repo_root, "rev-parse", "--verify", "HEAD")
+    if head.returncode != 0:
+        raise PreregistrationError(
+            f"{repo_root} is not a git checkout with a commit; a declared run records the "
+            "commit it ran, so it runs from one"
+        )
     if _git(repo_root, "ls-files", "--error-unmatch", "--", relative).returncode != 0:
         raise PreregistrationError(f"{relative} is not committed; commit it before the run")
+    hidden = _hidden_paths(repo_root)
+    if hidden:
+        raise PreregistrationError(
+            f"git is told not to compare {len(hidden)} tracked file(s), e.g. {hidden[0]} "
+            "(assume-unchanged or skip-worktree); clear the flag before a declared run"
+        )
     if _git(repo_root, "diff", "--quiet", "HEAD", "--", relative).returncode != 0:
         raise PreregistrationError(
             f"{relative} differs from the commit; a run reads the committed declaration only"
         )
-    head = _git(repo_root, "rev-parse", "HEAD")
-    if head.returncode != 0:
-        raise PreregistrationError(f"cannot read the commit at {repo_root}: {head.stderr.strip()}")
-    raw = path.read_bytes()
+    changed = _git(repo_root, "status", "--porcelain", "--untracked-files=no").stdout
+    if changed.strip():
+        first = changed.decode("utf-8", "replace").splitlines()[0][3:]
+        raise PreregistrationError(
+            f"tracked files differ from the commit, e.g. {first}; a declared run is the "
+            "commit it records, so commit or set aside the change first"
+        )
+    raw = _committed_bytes(repo_root, relative)
     try:
         data = yaml.safe_load(raw.decode("utf-8"))
     except yaml.YAMLError as error:
@@ -300,8 +351,30 @@ def load_preregistration(experiment_id: str, repo_root: str | Path) -> LoadedPre
         preregistration=Preregistration.from_mapping(data, expected_id=experiment_id),
         path=relative,
         sha256=hashlib.sha256(raw).hexdigest(),
-        commit=head.stdout.strip(),
+        commit=head.stdout.decode("ascii").strip(),
+        recipe_text=_committed_bytes(repo_root, RECIPE_PATH.as_posix()).decode("utf-8"),
     )
+
+
+def foreign_config_sources(
+    sources: Sequence[Mapping[str, Any]], config_dir: str | Path
+) -> list[str]:
+    """Hydra config sources other than Hydra's own, the schema, and ``config_dir``.
+
+    A declared run must compose from this checkout's ``configs/`` only. ``--config-path``,
+    ``--config-dir`` or ``hydra.searchpath`` elsewhere would let the run and its check
+    both read the same foreign tree, and the check would pass.
+    """
+    home = Path(config_dir).resolve()
+    foreign = []
+    for source in sources:
+        provider, schema, path = source.get("provider"), source.get("schema"), source.get("path")
+        if provider == "hydra" or schema == "structured":
+            continue
+        if schema == "file" and path and Path(path).resolve() == home:
+            continue
+        foreign.append(f"{schema}://{path} ({provider})")
+    return foreign
 
 
 # -- Checking a run against its declaration -------------------------------------------
@@ -385,15 +458,21 @@ def check_declared_run(
             f"{experiment} was registered on recipe {preregistration.recipe!r}, but this "
             f"commit's recipe is {slug!r}; a changed recipe needs a new pre-registration"
         )
-    expected = compose(
-        declared_overrides(preregistration, recipe_overrides(recipe_text), arm=arm, window=window)
+    recipe = recipe_overrides(recipe_text)
+    want = _flatten(
+        dict(compose(declared_overrides(preregistration, recipe, arm=arm, window=window)))
     )
-    got, want = _flatten(dict(resolved)), _flatten(dict(expected))
-    differ = sorted(
-        key
-        for key in set(got) | set(want)
-        if not _is_operational(key) and got.get(key, _MISSING) != want.get(key, _MISSING)
-    )
+    if arm != preregistration.control:
+        control = declared_overrides(
+            preregistration, recipe, arm=preregistration.control, window=window
+        )
+        if not _differing_keys(want, _flatten(dict(compose(control)))):
+            raise PreregistrationError(
+                f"{experiment}: arm {arm!r} composes the same config as the control "
+                f"{preregistration.control!r}, so it tests nothing"
+            )
+    got = _flatten(dict(resolved))
+    differ = _differing_keys(got, want)
     if differ:
         shown = ", ".join(
             f"{key}={got.get(key, '<unset>')!r} (declared {want.get(key, '<unset>')!r})"
@@ -406,6 +485,15 @@ def check_declared_run(
 
 
 _MISSING = object()
+
+
+def _differing_keys(got: Mapping[str, Any], want: Mapping[str, Any]) -> list[str]:
+    """The non-operational flattened keys whose values differ, sorted."""
+    return sorted(
+        key
+        for key in set(got) | set(want)
+        if not _is_operational(key) and got.get(key, _MISSING) != want.get(key, _MISSING)
+    )
 
 
 def protocol_stamp(
@@ -422,6 +510,10 @@ def protocol_stamp(
         "preregistration_path": loaded.path,
         "preregistration_sha256": loaded.sha256,
         "preregistration_commit": loaded.commit,
+        "recipe_slug": recipe_slug(loaded.recipe_text),
+        "recipe_overrides_sha256": hashlib.sha256(
+            "\n".join(recipe_overrides(loaded.recipe_text)).encode("utf-8")
+        ).hexdigest(),
     }
 
 
@@ -431,12 +523,15 @@ def resolve_run_standing(
     *,
     repo_root: str | Path,
     compose: Callable[[list[str]], Mapping[str, Any]],
+    config_sources: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """The runner's gate: the run's stamp, or a refusal (#372).
 
     ``protocol`` is the run's :class:`~mci_gru.config.ProtocolConfig`. A run must name
     a committed pre-registration and be exactly one of its arms on one of its windows,
-    or set ``protocol.exploratory=true``.
+    or set ``protocol.exploratory=true``. ``config_sources`` is Hydra's
+    ``runtime.config_sources`` for the run; a declared run with any source outside
+    ``repo_root/configs`` is refused.
     """
     if protocol.exploratory:
         return protocol_stamp(None, arm=None, window=None)
@@ -447,13 +542,20 @@ def resolve_run_standing(
             "protocol.arm=<arm> protocol.window=<W1..W5>, or pass protocol.exploratory=true "
             "for a run that never gets a verdict (docs/research/EXPERIMENT_PROTOCOL.md)."
         )
+    foreign = foreign_config_sources(config_sources or [], Path(repo_root) / "configs")
+    if foreign:
+        raise PreregistrationError(
+            f"{protocol.experiment_id}: a declared run composes from this checkout's configs "
+            f"only, but Hydra also reads {foreign}; drop --config-path, --config-dir and "
+            "hydra.searchpath"
+        )
     loaded = load_preregistration(protocol.experiment_id, repo_root)
     check_declared_run(
         loaded.preregistration,
         resolved,
         arm=protocol.arm,
         window=protocol.window,
-        recipe_text=(Path(repo_root) / RECIPE_PATH).read_text(encoding="utf-8"),
+        recipe_text=loaded.recipe_text,
         compose=compose,
     )
     return protocol_stamp(loaded, arm=protocol.arm, window=protocol.window)

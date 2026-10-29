@@ -1300,6 +1300,7 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_the_notebook_runs_one_recipe_arm_unless_told_otherwise` |  |  |
 | `test_compare_refuses_a_control_that_differs_by_more_than_its_arm` |  | parametrize |
 | `test_compare_accepts_the_same_package_bytes_however_they_were_staged` |  |  |
+| `test_compare_pairs_runs_recorded_before_and_after_the_protocol_stamp` | A run launched before #372 has no ``protocol.*`` override; one launched after it |  |
 | `test_compare_refuses_an_arm_given_twice_or_a_reference_other_than_the_recipe` |  |  |
 | `test_compare_flags_auxiliary_inputs_that_differ_from_the_recipe_arms` |  |  |
 | `test_compare_writes_strict_json_and_never_writes_over_a_folder` |  |  |
@@ -2263,6 +2264,11 @@ Pre-registered experiments and the runner's standing gate (#372, PRD #369).
 | `test_a_missing_preregistration_is_refused` |  |  |
 | `test_an_uncommitted_preregistration_is_refused` |  |  |
 | `test_a_preregistration_edited_after_its_commit_is_refused` |  |  |
+| `test_the_declaration_and_recipe_are_read_from_the_commit` |  |  |
+| `test_a_tracked_file_edited_after_the_commit_is_refused` | The run's code, configs and recipe must be the commit's, not only the file. |  |
+| `test_an_untracked_file_does_not_block_a_declared_run` | Data pulls land untracked; they are not the code the commit records. |  |
+| `test_a_tracked_file_hidden_from_git_is_refused` | With either flag git status reports no change, so an edit would go unseen. | parametrize |
+| `test_a_directory_that_is_not_a_checkout_is_refused` |  |  |
 | `test_an_experiment_id_that_is_a_path_is_refused` |  |  |
 | `test_a_declared_arm_on_a_declared_window_is_accepted` |  | parametrize, parametrize |
 | `test_the_declared_run_carries_the_windows_dates_and_the_seed_base` |  |  |
@@ -2275,12 +2281,15 @@ Pre-registered experiments and the runner's standing gate (#372, PRD #369).
 | `test_the_declared_seed_base_is_the_one_checked` | A base other than the recipe's: its runs pass, a run on the recipe's 1729 does not. |  |
 | `test_a_seed_floor_arm_may_change_the_seed` |  |  |
 | `test_the_launcher_keys_are_free` | Where a run writes and how it records itself are not part of the arm. |  |
+| `test_an_arm_that_changes_nothing_is_refused` | The recipe already sets graph.drop_edge_p=0.1, so this arm is the control. |  |
 | `test_a_changed_recipe_is_refused` |  |  |
 | `test_an_exploratory_run_is_stamped_exploratory` |  |  |
 | `test_a_run_with_no_standing_is_refused` |  |  |
 | `test_a_declared_run_is_stamped_with_its_declaration` |  |  |
+| `test_a_declared_run_composed_from_another_config_tree_is_refused` | ``--config-path`` elsewhere would feed the run and its check the same tree. |  |
 | `test_an_incoherent_protocol_section_is_refused` |  | parametrize |
 | `test_a_saved_run_without_a_protocol_section_still_loads` | Rescoring rebuilds old runs' configs; only the runner demands a standing. |  |
+| `test_a_saved_run_from_before_the_standing_fields_still_loads` | A #370-era run saved only ``holdout_promotion`` under ``protocol``. |  |
 | `test_the_runner_refuses_a_run_with_no_standing_before_writing_anything` |  |  |
 | `test_the_runner_stamps_a_declared_run` | A tiny recipe and a stand-in W1 in a scratch checkout, through the real runner. |  |
 | `test_the_runner_stamps_an_exploratory_run` |  |  |

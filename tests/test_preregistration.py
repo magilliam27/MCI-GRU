@@ -135,6 +135,13 @@ def test_the_template_names_the_current_recipe():
         ),
         ({"arms": {"recipe": [], "none": []}}, "one change"),
         ({"arms": {"recipe": [], "a": ["graph.top_k=5"], "b": ["graph.top_k=5"]}}, "same change"),
+        (
+            {"arms": {"recipe": [], "a": ["graph.top_k=5"], "b": ["++graph.top_k= 5"]}},
+            "same change",
+        ),
+        ({"arms": {"recipe": [], "wf": ["training.walkforward.enabled=true"]}}, "walk-forward"),
+        ({"arms": {"recipe": [], "wf": ["training.walkforward=x"]}}, "walk-forward"),
+        ({"arms": {"recipe": [], "hy": ["hydra.job.chdir=true"]}}, "Hydra itself"),
         ({"arms": {"recipe": [], "dates": ["data.test_end=2025-06-30"]}}, "window or the launcher"),
         ({"arms": {"recipe": [], "name": ["experiment_name=x"]}}, "window or the launcher"),
         ({"arms": {"recipe": [], "stamp": ["protocol.window=W2"]}}, "window or the launcher"),
@@ -239,6 +246,49 @@ def test_a_preregistration_edited_after_its_commit_is_refused(repo):
         load_preregistration("graph-zeroed-control", repo)
 
 
+def test_the_declaration_and_recipe_are_read_from_the_commit(repo):
+    _write(repo, _template())
+    _commit(repo)
+    loaded = load_preregistration("graph-zeroed-control", repo)
+    assert loaded.recipe_text == RECIPE_TEXT
+
+
+def test_a_tracked_file_edited_after_the_commit_is_refused(repo):
+    """The run's code, configs and recipe must be the commit's, not only the file."""
+    _write(repo, _template())
+    _commit(repo)
+    recipe = repo / "docs" / "DEFAULT_EXPERIMENT_RECIPE.md"
+    recipe.write_text(RECIPE_TEXT + "\nextra\n", encoding="utf-8")
+    with pytest.raises(PreregistrationError, match="tracked files differ from the commit"):
+        load_preregistration("graph-zeroed-control", repo)
+
+
+def test_an_untracked_file_does_not_block_a_declared_run(repo):
+    """Data pulls land untracked; they are not the code the commit records."""
+    _write(repo, _template())
+    _commit(repo)
+    (repo / "panel.csv").write_text("dt\n", encoding="utf-8")
+    assert load_preregistration("graph-zeroed-control", repo).recipe_text == RECIPE_TEXT
+
+
+@pytest.mark.parametrize("flag", ["--assume-unchanged", "--skip-worktree"])
+def test_a_tracked_file_hidden_from_git_is_refused(repo, flag):
+    """With either flag git status reports no change, so an edit would go unseen."""
+    _write(repo, _template())
+    _commit(repo)
+    _git(repo, "update-index", flag, "docs/DEFAULT_EXPERIMENT_RECIPE.md")
+    with pytest.raises(PreregistrationError, match="assume-unchanged or skip-worktree"):
+        load_preregistration("graph-zeroed-control", repo)
+
+
+def test_a_directory_that_is_not_a_checkout_is_refused(tmp_path):
+    folder = tmp_path / "copy"
+    (folder / "docs" / "research" / "experiments").mkdir(parents=True)
+    _write(folder, _template())
+    with pytest.raises(PreregistrationError, match="not a git checkout"):
+        load_preregistration("graph-zeroed-control", folder)
+
+
 def test_an_experiment_id_that_is_a_path_is_refused(repo):
     with pytest.raises(PreregistrationError, match="not an id"):
         load_preregistration("../../secrets", repo)
@@ -328,6 +378,13 @@ def test_the_launcher_keys_are_free():
     _check(prereg, resolved, "recipe", "W1")
 
 
+def test_an_arm_that_changes_nothing_is_refused():
+    """The recipe already sets graph.drop_edge_p=0.1, so this arm is the control."""
+    prereg = _prereg(_valid(arms={"recipe": [], "same": ["graph.drop_edge_p=0.1"]}))
+    with pytest.raises(PreregistrationError, match="tests nothing"):
+        _check(prereg, _run_config(prereg, "same", "W1"), "same", "W1")
+
+
 def test_a_changed_recipe_is_refused():
     prereg = _prereg(_valid(recipe="an-older-recipe-slug"))
     with pytest.raises(PreregistrationError, match="needs a new pre-registration"):
@@ -349,6 +406,10 @@ def test_a_run_with_no_standing_is_refused(repo):
         resolve_run_standing(ProtocolConfig(), {}, repo_root=repo, compose=_compose)
 
 
+def _recipe_digest(text: str) -> str:
+    return hashlib.sha256("\n".join(recipe_overrides(text)).encode("utf-8")).hexdigest()
+
+
 def test_a_declared_run_is_stamped_with_its_declaration(repo):
     _write(repo, _template())
     _commit(repo)
@@ -366,7 +427,39 @@ def test_a_declared_run_is_stamped_with_its_declaration(repo):
         "preregistration_path": loaded.path,
         "preregistration_sha256": loaded.sha256,
         "preregistration_commit": loaded.commit,
+        "recipe_slug": recipe_slug(RECIPE_TEXT),
+        "recipe_overrides_sha256": _recipe_digest(RECIPE_TEXT),
     }
+
+
+def test_a_declared_run_composed_from_another_config_tree_is_refused(repo):
+    """``--config-path`` elsewhere would feed the run and its check the same tree."""
+    _write(repo, _template())
+    _commit(repo)
+    prereg = _prereg()
+    protocol = ProtocolConfig(experiment_id=prereg.id, arm="graph_zeroed", window="W2")
+    sources = [
+        {"path": "hydra.conf", "schema": "pkg", "provider": "hydra"},
+        {"path": str(repo / "configs"), "schema": "file", "provider": "main"},
+        {"path": "", "schema": "structured", "provider": "schema"},
+    ]
+    resolved = _run_config(prereg, "graph_zeroed", "W2")
+    resolve_run_standing(
+        protocol, resolved, repo_root=repo, compose=_compose, config_sources=sources
+    )
+    for foreign in (
+        {"path": "/elsewhere/configs", "schema": "file", "provider": "main"},
+        {"path": "/elsewhere", "schema": "file", "provider": "command-line"},
+        {"path": "my_pkg.conf", "schema": "pkg", "provider": "hydra.searchpath in command-line"},
+    ):
+        with pytest.raises(PreregistrationError, match="configs only"):
+            resolve_run_standing(
+                protocol,
+                resolved,
+                repo_root=repo,
+                compose=_compose,
+                config_sources=[*sources, foreign],
+            )
 
 
 @pytest.mark.parametrize(
@@ -387,6 +480,11 @@ def test_an_incoherent_protocol_section_is_refused(fields, message):
 
 def test_a_saved_run_without_a_protocol_section_still_loads():
     """Rescoring rebuilds old runs' configs; only the runner demands a standing."""
+    assert create_config_from_dict({}).protocol == ProtocolConfig()
+
+
+def test_a_saved_run_from_before_the_standing_fields_still_loads():
+    """A #370-era run saved only ``holdout_promotion`` under ``protocol``."""
     config = create_config_from_dict({"protocol": {"holdout_promotion": None}})
     assert config.protocol == ProtocolConfig()
 
@@ -470,6 +568,7 @@ def test_the_runner_refuses_a_run_with_no_standing_before_writing_anything(tmp_p
     with pytest.raises(PreregistrationError, match="names no pre-registration"):
         _runner(out, [*RUNNER_OVERRIDES, f"data.filename={panel.as_posix()}"])
     assert not (out / "config.yaml").exists()
+    assert not list(out.glob("training_*.log"))
     assert not list(out.rglob("run_metadata.json"))
 
 
@@ -510,6 +609,8 @@ def test_the_runner_stamps_a_declared_run(tmp_path, repo, monkeypatch):
         "preregistration_path": loaded.path,
         "preregistration_sha256": loaded.sha256,
         "preregistration_commit": loaded.commit,
+        "recipe_slug": slug,
+        "recipe_overrides_sha256": _recipe_digest(tiny_recipe),
     }
 
     # Control: the same run stamped as the control arm is refused before it trains.
