@@ -445,7 +445,7 @@ Ensemble invariant: prediction = mean of independently trained models.
 
 EODHD daily prices for the point-in-time universe (#281).
 
-**Exercises:** `mci_gru.config`, `mci_gru.data.eodhd_prices`, `mci_gru.data.input_manifest`, `mci_gru.data.input_observations`, `mci_gru.data.quality_contract`, `mci_gru.evaluation.run_input_declarations`, `scripts.data.check_eodhd_volume_basis`, `scripts.data.export_eodhd_pit_prices`
+**Exercises:** `mci_gru.config`, `mci_gru.data.eodhd_prices`, `mci_gru.data.input_manifest`, `mci_gru.data.input_observations`, `mci_gru.data.quality_contract`, `mci_gru.evaluation.run_input_declarations`, `scripts.data.check_eodhd_dividends`, `scripts.data.check_eodhd_volume_basis`, `scripts.data.export_eodhd_pit_prices`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -469,6 +469,15 @@ EODHD daily prices for the point-in-time universe (#281).
 | `test_a_cash_distribution_above_the_prior_close_blocks` |  |  |
 | `test_a_share_conversion_rescales_volume_as_well_as_prices` |  |  |
 | `test_rows_with_nothing_before_the_date_need_no_adjustment` |  |  |
+| `test_dividends_are_read_as_paid_and_summed_on_one_ex_date` |  |  |
+| `test_a_dividend_sits_on_its_ex_date_and_a_missing_session_moves_it_to_the_next` |  |  |
+| `test_a_split_rescales_dividends_before_it_as_it_rescales_prices` | AAPL paid $0.82 on 2020-08-07, before its 4-for-1; on the panel's basis that is $0.205. |  |
+| `test_dividends_agree_with_the_vendors_adjusted_close_step` |  |  |
+| `test_a_vendor_step_adjustment_leaves_no_dividend_on_its_date` | LYB 2022-06-03: one $6.39 record (special plus regular); the step restates both. |  |
+| `test_a_cash_adjustment_keeps_the_dividend_above_the_declared_cash` | Ford 2023-02-10: one $0.80 record; the map restates the $0.65 supplemental only. |  |
+| `test_merger_cash_listed_as_a_dividend_is_not_counted_twice` | BKR 2017-07-05: /api/div lists the $17.50 merger cash the map already restates. |  |
+| `test_a_share_conversion_keeps_the_dividend_on_its_date` |  |  |
+| `test_clean_values_reads_a_bad_dividend_as_no_payment` |  |  |
 | `test_a_carried_close_at_zero_volume_is_trimmed_from_the_tail` |  |  |
 | `test_only_a_final_zero_volume_repeat_counts_as_carried` |  | parametrize |
 | `test_only_lseg_delisted_codes_are_trimmed` |  |  |
@@ -486,6 +495,9 @@ EODHD daily prices for the point-in-time universe (#281).
 | `test_reference_check_only_judges_the_span_the_universe_needs` |  |  |
 | `test_rows_for_a_name_declared_unavailable_block` |  |  |
 | `test_export_proves_each_mapping_and_publishes_a_verifiable_package` |  |  |
+| `test_export_carries_dividends_on_the_prices_basis_without_moving_the_prices` | Issue 361: the dividend column is the only change; with it the closes give total return. |  |
+| `test_the_dividend_check_passes_a_revision_that_only_adds_dividends` | Issue 361: r4 against r3 is the export with dividends against the one without. |  |
+| `test_the_dividend_check_fails_any_other_change` |  |  |
 | `test_export_takes_splits_after_the_panel_end_out_of_volume_only` | Issue 347: volume comes through as delivered, less splits from the panel end to serving. |  |
 | `test_a_response_with_no_serving_time_blocks` | Without a serving time the later splits in the vendor's volume cannot be known. |  |
 | `test_export_stops_without_a_manifest_when_no_candidate_matches` |  |  |
@@ -2375,6 +2387,8 @@ The replay reads its inputs from the run it replays (#339).
 | `test_open_ended_pit_rows_without_a_cutoff_are_refused_not_dropped` |  |  |
 | `test_benchmark_uses_the_candidates_membership_date` | DDD joins on session 6: it is out of the benchmark for the tranche ranked on |  |
 | `test_benchmark_without_a_pit_file_is_the_runs_scored_members` |  |  |
+| `test_a_total_return_run_is_replayed_on_total_returns` | Issue 361: the replay reads closes on the run's return basis, like its labels. |  |
+| `test_a_run_before_return_basis_existed_replays_on_prices` |  |  |
 | `test_numeric_kdcodes_match_a_string_universe` |  |  |
 | `test_explicit_mode_without_a_pit_file_benchmarks_the_scored_names` |  |  |
 | `test_cli_replays_a_run_from_its_directory_alone` |  |  |
@@ -2424,13 +2438,14 @@ Prevent retired repository surfaces from being reintroduced.
 
 A saved run is re-scored from its own inputs, without retraining (#337).
 
-**Exercises:** `mci_gru.evaluation.metrics`, `mci_gru.evaluation.replay_inputs`, `mci_gru.training`, `run_experiment`, `scripts`, `scripts.rescore_run`
+**Exercises:** `mci_gru.data.preprocessing`, `mci_gru.evaluation.metrics`, `mci_gru.evaluation.replay_inputs`, `mci_gru.training`, `run_experiment`, `scripts`, `scripts.rescore_run`
 
 | Test | Description | Markers |
 |---|---|---|
 | `test_rescoring_reproduces_the_stored_ic_and_rank_ic` |  | parametrize |
 | `test_every_stored_metric_comes_back_when_the_code_has_not_changed` | The run was scored by this code, so the portfolio numbers must come back too. | parametrize |
 | `test_the_pit_run_is_scored_on_its_rebuilt_tradable_mask` | The fixture's leaver, joiner, missing bar and cessation all move the mask. |  |
+| `test_the_rebuild_reads_labels_and_closes_on_the_runs_return_basis` | Issue 361: a total-return run is rescored on total returns, labels and book alike. |  |
 | `test_a_rescore_whose_ic_does_not_reproduce_writes_nothing` |  |  |
 | `test_the_rescore_is_a_new_file_and_the_run_is_untouched` |  |  |
 | `test_the_dated_ic_means_are_the_rescored_summary_means` |  |  |
@@ -2732,6 +2747,26 @@ Strictness of the threshold comparison in `build_edges` (issue 170).
 | `test_a_pair_one_ulp_above_the_threshold_is_kept` | Control. Without it, the test above passes for any rule that drops everything. | parametrize |
 | `test_the_floor_drops_the_pair_sitting_on_it_and_keeps_the_rest` | Issue 162 documented `-1` as a floor, not a literal "every pair". This is that. |  |
 | `test_graphbuilder_build_edges_preserves_the_strict_comparison` | `GraphBuilder.build_edges` is what `build_graph` calls; it must not soften this. |  |
+
+## `tests/test_total_return_labels.py`
+
+Labels and reported returns can measure total return, from the panel's dividends (#361).
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.preprocessing`, `mci_gru.evaluation.experiment_summary`, `mci_gru.features`, `mci_gru.pipeline`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_one_session_across_an_ex_date_returns_close_plus_dividend_over_the_previous_close` |  |  |
+| `test_the_index_follows_each_stocks_dates_whatever_the_row_order` |  |  |
+| `test_a_missing_close_keeps_no_value_and_passes_nothing_on` |  |  |
+| `test_a_dividend_that_cannot_be_reinvested_stops` |  |  |
+| `test_the_price_basis_is_the_panel_itself_and_total_needs_dividends` |  |  |
+| `test_total_return_labels_count_a_dividend_inside_the_hold` | Label for D is close D+1 to close D+label_t; a dividend on D+2 is inside it. |  |
+| `test_return_basis_defaults_to_price_and_rejects_anything_else` |  |  |
+| `test_the_in_run_summary_records_its_return_basis` |  |  |
+| `test_a_dividend_column_changes_nothing_on_the_price_basis` | r4 on prices reproduces r3: the column reaches neither inputs nor labels. |  |
+| `test_the_total_basis_changes_labels_and_returns_but_not_inputs` |  |  |
+| `test_the_total_basis_stops_on_a_panel_without_dividends` |  |  |
 
 ## `tests/test_training_efficiency_config.py`
 

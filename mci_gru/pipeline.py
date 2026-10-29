@@ -47,6 +47,7 @@ from mci_gru.data.preprocessing import (
     purge_training_sessions_for_embargo,
     resolve_label_endpoints,
     resolve_labels,
+    return_basis_panel,
 )
 from mci_gru.data.quality_contract import (
     AdmissionError,
@@ -81,6 +82,13 @@ class PipelineFrames:
     raw: pd.DataFrame  # post-engineer, pre-impute (labels, PIT masks, graph)
     normalized: pd.DataFrame  # pre-universe-filter
     filtered: pd.DataFrame  # post-universe-filter (windows/tensors)
+    #: ``raw`` with ``close`` on ``data.return_basis``: what labels and reported
+    #: returns read (#361). ``None`` means the price basis, ``raw`` itself.
+    returns: pd.DataFrame | None = None
+
+    @property
+    def for_returns(self) -> pd.DataFrame:
+        return self.raw if self.returns is None else self.returns
 
 
 @dataclass(frozen=True)
@@ -688,7 +696,7 @@ def build_tensors(
         his_t,
         label_t,
         label_type,
-        frames.raw,
+        frames.for_returns,
         train_df,
         val_df,
         test_df,
@@ -745,7 +753,7 @@ def apply_pit_masks_to_tensors(
                 dates,
                 kdcode_list,
                 masks,
-                resolve_labels(frames.raw, kdcode_list, dates, label_t),
+                resolve_labels(frames.for_returns, kdcode_list, dates, label_t),
             )
             for name, dates, masks in (
                 ("train", tensors.train_dates, train_masks),
@@ -997,7 +1005,13 @@ def prepare_data(
     gc.collect()
 
     df_filtered, kdcode_list = select_universe(df_norm, data_manager, config, pit)
-    frames = PipelineFrames(raw=df, normalized=df_norm, filtered=df_filtered)
+    # Labels and the returns the run reports read these closes; inputs stay on prices.
+    frames = PipelineFrames(
+        raw=df,
+        normalized=df_norm,
+        filtered=df_filtered,
+        returns=return_basis_panel(df, config.data.return_basis),
+    )
 
     train_df, val_df, test_df = data_manager.split_by_period(df_filtered)
     feature_reference = _build_feature_reference(train_df, feature_cols)
@@ -1082,7 +1096,8 @@ def prepare_data(
         "edge_weight": graphs.edge_weight,
         "feature_cols": feature_cols,
         "graph_schedule": graphs.graph_schedule,
-        "df": df,
+        # The panel the run's evaluation reads closes from, on data.return_basis.
+        "df": frames.for_returns,
         "norm_means": norm_fit.means,
         "norm_stds": norm_fit.stds,
         "graph_static_valid_from": config.data.train_start,

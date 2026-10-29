@@ -21,8 +21,15 @@ What this module decides:
   Volume is left as delivered for those splits, and is divided by the ratio of
   any split after the panel end, so both sit on the panel end's share basis.
   EODHD's ``adjusted_close`` (splits and dividends) is kept only to check the
-  split handling. A wrong split would show as a jump in the ratio between the
-  two.
+  split handling and the dividends. A wrong split would show as a jump in the
+  ratio between the two.
+- **Dividends (#361).** Cash per share from EODHD's dividend records sits on its
+  ex-date row in a ``dividend`` column, on the same basis as the prices: split
+  records and declared corporate actions rescale it as they rescale a close.
+  The prices stay price-only, so the other columns are what they were without
+  it. Where a declared action already restates a distribution in the prices,
+  the column keeps only the part it does not take out, so nothing counts twice.
+  Each ex-date is checked against the step EODHD's ``adjusted_close`` takes there.
 - **Corporate actions the split records miss.** A spin-off changes the price
   basis without a split. The map can declare one per identifier: prices before
   its date are multiplied by a stated factor, or by the step EODHD's
@@ -48,7 +55,9 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
     from pathlib import Path
 
-PANEL_COLUMNS = ("kdcode", "dt", "open", "high", "low", "close", "volume")
+PANEL_COLUMNS = ("kdcode", "dt", "open", "high", "low", "close", "volume", "dividend")
+#: Cash per share paid to holders at the previous close, on the ex-date's row (#361).
+DIVIDEND = "dividend"
 PRICE_FIELDS = ("open", "high", "low", "close")
 DELISTED_MARKER = "^"
 DATE_FORMAT = "%Y-%m-%d"
@@ -67,6 +76,13 @@ SPLIT_JUMP_LOG_LIMIT = 0.18
 #: A step in that ratio beyond this is larger than an ordinary dividend. It is
 #: reported (not blocking) as a possible spin-off or special dividend.
 LARGE_ADJUSTMENT_LOG = 0.03
+
+#: A dividend may differ from the one implied by EODHD's ``adjusted_close`` step on
+#: its ex-date by this share of the previous close before it is reported. The two
+#: conventions differ by the dividend yield times the day's return, well inside it.
+DIVIDEND_YIELD_TOLERANCE = 0.001
+#: Cash amounts that differ by less than this are the same amount.
+CASH_TOLERANCE = 0.005
 
 #: Identity and coverage thresholds for agreement with the reference panel.
 MIN_RETURN_CORRELATION = 0.95
@@ -431,6 +447,72 @@ def eod_rows_frame(rows: Iterable[Mapping[str, Any]]) -> pd.DataFrame:
     return frame.sort_values("dt").reset_index(drop=True)
 
 
+def dividends_frame(rows: Iterable[Mapping[str, Any]]) -> pd.DataFrame:
+    """EODHD ``/div`` rows as ``dt, amount``: cash per share as paid, before any split.
+
+    Reads ``unadjustedValue``, since the vendor's ``value`` is restated for every
+    split up to when it served the rows. Records on one ex-date are summed.
+    """
+    records = []
+    for row in rows:
+        amount = float(row["unadjustedValue"])
+        if not (math.isfinite(amount) and amount >= 0):
+            raise ValueError(f"Dividend on {row.get('date')} is not a nonnegative amount")
+        records.append({"dt": str(row["date"]), "amount": amount})
+    frame = pd.DataFrame(records, columns=["dt", "amount"])
+    if frame.empty:
+        return frame.astype({"dt": str, "amount": float})
+    frame["dt"] = pd.to_datetime(frame["dt"], format=DATE_FORMAT).dt.strftime(DATE_FORMAT)
+    return frame.groupby("dt", as_index=False)["amount"].sum().sort_values("dt")
+
+
+def attach_dividends(
+    kdcode: str, symbol: str, eod: pd.DataFrame, dividends: pd.DataFrame
+) -> tuple[pd.DataFrame, list[Finding]]:
+    """Put each dividend on its ex-date's row of raw vendor rows, in a ``dividend`` column.
+
+    An ex-date with no vendor row goes on the next row, as the first close that
+    trades without it, and is reported. One after the last row has no session to
+    go on and is reported and left out.
+    """
+    out = eod.copy()
+    out[DIVIDEND] = 0.0
+    if dividends.empty or out.empty:
+        return out, []
+    dates = out["dt"].to_numpy()
+    moved, dropped = {}, {}
+    for dt, amount in zip(dividends["dt"], dividends["amount"], strict=True):
+        position = int(np.searchsorted(dates, dt, side="left"))
+        if position >= len(dates):
+            dropped[str(dt)] = float(amount)
+            continue
+        if dates[position] != dt:
+            moved[str(dt)] = str(dates[position])
+        out.iloc[position, out.columns.get_loc(DIVIDEND)] += float(amount)
+    findings = []
+    if moved:
+        findings.append(
+            Finding(
+                kdcode,
+                "dividend_off_session",
+                False,
+                f"{symbol}: dividend ex-dates with no vendor row; each is on the next row",
+                {"symbol": symbol, "moved_to": dict(list(moved.items())[:EVIDENCE_DATES])},
+            )
+        )
+    if dropped:
+        findings.append(
+            Finding(
+                kdcode,
+                "dividend_after_last_row",
+                False,
+                f"{symbol}: dividend ex-dates after the last vendor row; left out",
+                {"symbol": symbol, "dividends": dict(list(dropped.items())[:EVIDENCE_DATES])},
+            )
+        )
+    return out, findings
+
+
 def splits_frame(
     rows: Iterable[Mapping[str, Any]], *, as_of: str, after: str | None = None
 ) -> pd.DataFrame:
@@ -471,14 +553,21 @@ def split_adjust(
     ``later_splits`` are the records after the panel end, up to when the vendor
     served the rows. The vendor's volume carries those too while the prices do
     not, so volume before each is divided by its ratio.
+
+    A ``dividend`` column, cash per share as paid, is divided like the prices.
     """
     out = eod.copy()
     dates = out["dt"].to_numpy()
     factor = _split_factor(dates, splits)
-    for column in PRICE_FIELDS:
+    for column in _per_share_columns(out):
         out[column] = out[column] / factor
     out["volume"] = out["volume"] / _split_factor(dates, later_splits)
     return out
+
+
+def _per_share_columns(frame: pd.DataFrame) -> list[str]:
+    """The columns a change in share basis rescales: the prices, and dividends when present."""
+    return [*PRICE_FIELDS, *([DIVIDEND] if DIVIDEND in frame.columns else [])]
 
 
 def adjustment_steps(adjusted: pd.DataFrame) -> pd.DataFrame:
@@ -545,13 +634,64 @@ def split_basis_findings(
     return findings
 
 
+def dividend_basis_findings(
+    kdcode: str, symbol: str, adjusted: pd.DataFrame, exempt: Iterable[str] = ()
+) -> list[Finding]:
+    """Ex-dates where the dividend and EODHD's ``adjusted_close`` step disagree.
+
+    The step on a session implies a dividend of ``(1 - step)`` times the previous
+    close. Sessions where either side is more than ``DIVIDEND_YIELD_TOLERANCE`` of
+    that close are compared, so a dividend the records miss, one they double, or
+    one on the wrong date shows. Dates the map declares are exempt: their step
+    is the declared action's. Reported, not blocking; the evidence lists both.
+    """
+    if DIVIDEND not in adjusted.columns:
+        return []
+    usable = adjusted[(adjusted["close"] > 0) & (adjusted["adjusted_close"] > 0)]
+    if len(usable) < 2:
+        return []
+    ratio = (usable["adjusted_close"] / usable["close"]).to_numpy()
+    previous = usable["close"].to_numpy()[:-1]
+    vendor = 1.0 - ratio[:-1] / ratio[1:]
+    mine = usable[DIVIDEND].to_numpy()[1:] / previous
+    dates = usable["dt"].to_numpy()[1:]
+    # A dividend on a row the step skips (no adjusted_close the day before) is not judged.
+    differs = np.abs(mine - vendor) > DIVIDEND_YIELD_TOLERANCE
+    differs &= ~np.isin(dates, list(exempt))
+    if not differs.any():
+        return []
+    evidence = {
+        str(d): {"dividend_yield": round(float(m), 6), "adjusted_close_yield": round(float(v), 6)}
+        for d, m, v in zip(dates[differs], mine[differs], vendor[differs], strict=True)
+    }
+    return [
+        Finding(
+            kdcode,
+            "dividend_disagrees_with_adjusted_close",
+            False,
+            f"{symbol}: the dividend records and EODHD's adjusted_close step disagree on "
+            f"{int(differs.sum())} session(s)",
+            {
+                "symbol": symbol,
+                "sessions": int(differs.sum()),
+                "dates": dict(list(evidence.items())[:EVIDENCE_DATES]),
+            },
+        )
+    ]
+
+
 def apply_adjustments(
     kdcode: str, frame: pd.DataFrame, adjustments: Iterable[PriceAdjustment]
 ) -> tuple[pd.DataFrame, list[dict[str, Any]], list[Finding]]:
     """Apply the map's declared corporate actions to one identifier's rows.
 
-    Prices before each date are multiplied by its factor. Volume is unchanged
-    unless the adjustment is a share conversion. Rows that hold nothing before the
+    Prices before each date are multiplied by its factor, and so are dividends.
+    Volume is unchanged unless the adjustment is a share conversion. Any other
+    adjustment restates a distribution, so the dividend on its date keeps only
+    what the factor does not take out: nothing when the factor is stated or is
+    the vendor's whole ``adjusted_close`` step (which takes out a regular
+    dividend paid the same day too), and the amount above the stated cash when
+    cash is stated (#361). Rows that hold nothing before the
     date, such as a segment that starts on it, need no adjustment; that is recorded
     with basis ``no_rows_before`` and a non-blocking finding, so a mistyped date on
     the whole identifier stays visible. A factor read
@@ -607,26 +747,66 @@ def apply_adjustments(
                 )
             )
             continue
-        for column in PRICE_FIELDS:
+        for column in _per_share_columns(out):
             out.loc[before, column] = out.loc[before, column] * factor
         if adjustment.share_conversion:
             out.loc[before, "volume"] = out.loc[before, "volume"] / factor
-        applied.append(
-            {
-                "date": adjustment.date,
-                "factor": factor,
-                "basis": basis,
-                "share_conversion": adjustment.share_conversion,
-                "reason": adjustment.reason,
-            }
-        )
+        record = {
+            "date": adjustment.date,
+            "factor": factor,
+            "basis": basis,
+            "share_conversion": adjustment.share_conversion,
+            "reason": adjustment.reason,
+        }
+        if DIVIDEND in out.columns and not adjustment.share_conversion:
+            record.update(_restated_dividend(kdcode, out, adjustment, basis, findings))
+        applied.append(record)
     return out, applied, findings
 
 
+def _restated_dividend(
+    kdcode: str,
+    frame: pd.DataFrame,
+    adjustment: PriceAdjustment,
+    basis: str,
+    findings: list[Finding],
+) -> dict[str, float]:
+    """Take out of the dividend on the adjustment's date what the restated prices carry.
+
+    Changes ``frame`` in place; returns the vendor amount and the amount kept.
+    """
+    on = frame["dt"] == adjustment.date
+    paid = float(frame.loc[on, DIVIDEND].sum())
+    kept = 0.0
+    if basis == "declared_cash":
+        kept = max(0.0, paid - float(adjustment.cash))
+        if paid and paid < float(adjustment.cash) - CASH_TOLERANCE:
+            findings.append(
+                Finding(
+                    kdcode,
+                    "dividend_below_declared_cash",
+                    False,
+                    f"The vendor's dividend on {adjustment.date} is below the declared cash",
+                    {"date": adjustment.date, "dividend": paid, "cash": adjustment.cash},
+                )
+            )
+    frame.loc[on, DIVIDEND] = 0.0
+    if on.any():
+        frame.loc[frame.index[on][0], DIVIDEND] = kept
+    return {"dividend_vendor": paid, "dividend_kept": kept}
+
+
 def clean_values(frame: pd.DataFrame) -> tuple[pd.DataFrame, int]:
-    """Blank nonpositive prices and negative volumes; return the count blanked."""
+    """Blank nonpositive prices and negative volumes; return the count blanked.
+
+    A dividend that is not a nonnegative number is blanked to zero: no payment.
+    """
     out = frame.copy()
     blanked = 0
+    if DIVIDEND in out.columns:
+        bad = ~(np.isfinite(out[DIVIDEND]) & (out[DIVIDEND] >= 0))
+        blanked += int(bad.sum())
+        out.loc[bad, DIVIDEND] = 0.0
     for column in PRICE_FIELDS:
         bad = out[column].notna() & ~(np.isfinite(out[column]) & (out[column] > 0))
         blanked += int(bad.sum())

@@ -128,6 +128,22 @@ python run_experiment.py +experiment=pit_temporal_2024
 python run_experiment.py +experiment=pit_temporal_2025
 ```
 
+### Return Basis (price or total return)
+
+`data.return_basis` says what labels and every reported return measure (#361).
+`price`, the default, reads the panel's `close`. `total` reads a total-return
+index per stock, `close` times the running product of `1 + dividend / close`,
+so a dividend counts toward the return across its ex-date. It needs a panel with
+a `dividend` column (the EODHD package from revision r4) and stops on one without.
+Labels, the in-run evaluation summary, `scripts/rescore_run.py` and the backtest
+replay all read the same basis, and the summary records it as `return_basis`.
+Model inputs stay on prices either way. `index_level` mode accepts only `price`.
+
+```yaml
+data:
+  return_basis: total
+```
+
 ## Experiment Presets
 
 `configs/experiment/`, added with `+experiment=<name>`. Each is a `@package _global_`

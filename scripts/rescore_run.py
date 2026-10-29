@@ -63,6 +63,7 @@ from mci_gru.data.preprocessing import (  # noqa: E402
     apply_rank_labels,
     compute_labels,
     label_session_axis,
+    return_basis_panel,
 )
 from mci_gru.data.quality_contract import AdmissionLedger  # noqa: E402
 from mci_gru.evaluation.artifacts import write_json_artifact  # noqa: E402
@@ -96,7 +97,7 @@ class RescoreError(ValueError):
 class ScoringInputs:
     """What the in-run summary scored against, rebuilt from the run's own inputs."""
 
-    panel: pd.DataFrame
+    panel: pd.DataFrame  # closes on the run's data.return_basis (#361)
     kdcodes: list[str]
     dates: list[str]
     labels: np.ndarray
@@ -272,6 +273,8 @@ def rebuild_scoring_inputs(config: ExperimentConfig) -> ScoringInputs:
     _, _, test_df = data_manager.split_by_period(filtered)
     dates = sorted(str(d) for d in test_df["dt"].unique())
     his_t, label_t = config.model.his_t, config.model.label_t
+    # Labels and the summary read closes on the run's return basis (#361).
+    returns = return_basis_panel(panel, config.data.return_basis)
 
     if pit.masked_panel:
         assert pit.intervals is not None
@@ -290,13 +293,13 @@ def rebuild_scoring_inputs(config: ExperimentConfig) -> ScoringInputs:
         )
         # A masked panel's returns are unfilled and masked to the loss set before any
         # rank transform, as apply_pit_masks_to_tensors does.
-        labels = compute_labels(panel, kdcodes, dates, label_t, fill_missing=False)
+        labels = compute_labels(returns, kdcodes, dates, label_t, fill_missing=False)
         labels = apply_label_mask(labels, masks.loss)
         if config.training.label_type == "rank":
             labels = apply_rank_labels(labels, masks.loss)
         rankable_mask = np.asarray(masks.tradable, dtype=bool)
     else:
-        labels = compute_labels(panel, kdcodes, dates, label_t, fill_missing=True)
+        labels = compute_labels(returns, kdcodes, dates, label_t, fill_missing=True)
         if config.training.label_type == "rank":
             labels = apply_rank_labels(labels)
         rankable_mask = None
@@ -306,7 +309,7 @@ def rebuild_scoring_inputs(config: ExperimentConfig) -> ScoringInputs:
     for use in sealed["uses"]:
         identity = sealed["observations"][use["observation_id"]].get("identity", {})
         consumed.setdefault(use["role"], set()).add(str(identity.get("sha256")))
-    return ScoringInputs(panel, kdcodes, dates, labels, rankable_mask, consumed)
+    return ScoringInputs(returns, kdcodes, dates, labels, rankable_mask, consumed)
 
 
 def load_saved_predictions(directory: Path, kdcodes: list[str], dates: list[str]) -> np.ndarray:

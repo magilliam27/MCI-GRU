@@ -6,6 +6,8 @@ Contains pure data-transformation functions extracted from run_experiment.py:
 - generate_graph_features: per-day graph node features
 - resolve_label_endpoints / resolve_labels / compute_labels: fixed-session
   forward-return labels (the one endpoint resolver, #225)
+- total_return_closes / return_basis_panel: the closes labels and reported returns
+  read, on the configured return basis (#361)
 - apply_rank_labels: cross-sectional rank percentile conversion
 - purge_training_sessions_for_embargo / assert_training_labels_respect_embargo:
   session-level train/val embargo on the same endpoint resolver as the labels
@@ -18,6 +20,11 @@ import pandas as pd
 from numpy.lib.stride_tricks import sliding_window_view
 from scipy import stats
 from tqdm import tqdm
+
+from mci_gru.config import RETURN_BASES
+
+#: Cash per share paid on its ex-date row of the market panel (EODHD package r4, #361).
+DIVIDEND_COLUMN = "dividend"
 
 
 def fit_rank_gaussian_reference(
@@ -170,6 +177,51 @@ def apply_rank_labels(labels: np.ndarray, valid_mask: np.ndarray | None = None) 
             continue
         ranked[i, row_mask] = rankdata(labels[i, row_mask]) / row_mask.sum()
     return ranked.astype(np.float32)
+
+
+def total_return_closes(df: pd.DataFrame) -> pd.Series:
+    """Per stock, ``close`` times the running product of ``1 + dividend / close`` (#361).
+
+    The ratio of two values is the return of holding from one close to the other with
+    every dividend reinvested at its ex-date close: across one session it is
+    ``(close + dividend) / previous close``. A row with no close keeps no value and
+    passes nothing on, so a gap never moves an endpoint, as with price labels. A
+    dividend on a row with no close cannot be reinvested and is an error.
+    """
+    close = pd.to_numeric(df["close"], errors="coerce")
+    dividend = pd.to_numeric(df[DIVIDEND_COLUMN], errors="coerce").fillna(0.0)
+    if (dividend < 0).any():
+        raise ValueError("The market panel's dividend column holds a negative amount")
+    unpriced = (dividend > 0) & ~(close > 0)
+    if unpriced.any():
+        first = df.loc[unpriced].iloc[0]
+        raise ValueError(
+            f"{int(unpriced.sum())} dividend(s) fall on rows with no close, e.g. "
+            f"{first['kdcode']} on {first['dt']}; the total return cannot reinvest them"
+        )
+    growth = (1.0 + dividend / close.where(close > 0)).fillna(1.0)
+    order = df.assign(_growth=growth).sort_values(["kdcode", "dt"], kind="stable")
+    factor = order.groupby("kdcode", sort=False)["_growth"].cumprod()
+    return (close * factor.reindex(df.index)).rename("close")
+
+
+def return_basis_panel(df: pd.DataFrame, basis: str) -> pd.DataFrame:
+    """The panel whose ``close`` labels and reported returns read (``data.return_basis``).
+
+    ``price`` returns ``df`` itself. ``total`` returns a copy whose ``close`` is
+    :func:`total_return_closes`, and needs the panel's ``dividend`` column: a panel
+    without one cannot give total returns, so it stops rather than fall back to prices.
+    """
+    if basis not in RETURN_BASES:
+        raise ValueError(f"return basis must be one of {RETURN_BASES}, got {basis!r}")
+    if basis == "price":
+        return df
+    if DIVIDEND_COLUMN not in df.columns:
+        raise ValueError(
+            "data.return_basis=total needs a market panel with a dividend column "
+            "(the EODHD package from revision r4, #361); this panel has none"
+        )
+    return df.assign(close=total_return_closes(df))
 
 
 def label_session_axis(df: pd.DataFrame, kdcode_list: list[str]) -> list[str]:

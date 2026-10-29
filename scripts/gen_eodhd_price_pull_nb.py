@@ -56,11 +56,13 @@ def build_cells() -> list[dict]:
             spends calls only on what changed. Nothing on Drive is ever overwritten or
             deleted.
 
-            **Revision r3 (#347).** r2 split-adjusted volume twice: the vendor's volume
-            already carries its splits. r3 is rebuilt from the same cached responses, so
-            its prices match r2's; only the splits after the panel end are new requests.
-            Before anything is copied, the new panel's volume is checked against those
-            responses and against r2. A failed check publishes nothing.
+            **Revision r4 (#361).** r4 is r3 with one more column, `dividend`: cash per
+            share on each ex-date, on the prices' basis, from EODHD's dividend records.
+            It is rebuilt from the same cached responses, so its prices and volume match
+            r3's; only the dividend records are new requests. Before anything is copied,
+            the volume is checked against those responses and against r3, and the panel is
+            checked to differ from r3 in the dividend column alone, with every dividend
+            matching EODHD's `adjusted_close` step. A failed check publishes nothing.
             """
         ),
         code(
@@ -77,16 +79,17 @@ def build_cells() -> list[dict]:
             REFERENCE_MANIFEST_SHA256 = "1e2043dcb4f00a88de128985cc94423c122e480034c16ec741710a2460653ecf"
 
             START, END = "2015-01-01", "2026-07-31"  # the LSEG panel's span
-            # r1 kept carried rows after three delistings; r2 split-adjusted volume twice (#347).
-            # Never reuse a revision.
-            REVISION = "r3"
+            # r1 kept carried rows after three delistings; r2 split-adjusted volume twice (#347);
+            # r3 had no dividends (#361). Never reuse a revision.
+            REVISION = "r4"
             OUTPUT_NAME = f"eodhd_{PREFIX}_{REVISION}"
             OUTPUT_DRIVE_DIR = f"/content/drive/MyDrive/MCI_GRU_shared/preservation/{OUTPUT_NAME}"
             # The revision this one replaces, read only to compare against.
-            PREVIOUS_DRIVE_DIR = f"/content/drive/MyDrive/MCI_GRU_shared/preservation/eodhd_{PREFIX}_r2"
+            PREVIOUS_DRIVE_DIR = f"/content/drive/MyDrive/MCI_GRU_shared/preservation/eodhd_{PREFIX}_r3"
             CHECK_DRIVE_DIR = f"{OUTPUT_DRIVE_DIR}_volume_check"
-            # The one deliberate price change from r2: CHTR's merger conversion is 0.9042, not 0.9.
-            ALLOWED_PRICE_CHANGES = ["CHTR.OQ:2016-05-18"]
+            DIVIDEND_CHECK_DRIVE_DIR = f"{OUTPUT_DRIVE_DIR}_dividend_check"
+            # r4 changes no price from r3.
+            ALLOWED_PRICE_CHANGES = []
             CACHE_DRIVE_DIR = "/content/drive/MyDrive/MCI_GRU_shared/eodhd_cache/gics_top10_110_2016"
             LOCAL_PACKAGE = "/content/eodhd_package"
             LOCAL_MANIFEST = f"/content/{PREFIX}_eodhd.{REVISION}.json"
@@ -203,6 +206,28 @@ def build_cells() -> list[dict]:
         ),
         code(
             """
+            # Check that the panel differs from the previous revision in its dividends alone,
+            # and that every dividend matches EODHD's adjusted_close step (#361). A failed
+            # check counts as a failed pull: nothing is published.
+            LOCAL_DIVIDEND_CHECK = "/content/eodhd_dividend_check"
+            dividend_check_code = None
+            if exit_code == 0:
+                dividend_check_code = stream(
+                    [
+                        sys.executable, "-m", "scripts.data.check_eodhd_dividends",
+                        "--package-root", LOCAL_PACKAGE,
+                        "--previous-root", PREVIOUS_DRIVE_DIR,
+                        "--out-dir", LOCAL_DIVIDEND_CHECK,
+                    ],
+                    cwd=REPO_DIR,
+                    check=False,
+                )
+                print("Dividend check exit code:", dividend_check_code)
+                exit_code = exit_code or dividend_check_code
+            """
+        ),
+        code(
+            """
             # Copy the package (and its manifest, when one was published) to Drive. Every
             # destination is checked before anything is copied: a file already there with other
             # bytes stops the copy, and nothing is overwritten. A failed pull goes to its own
@@ -216,18 +241,24 @@ def build_cells() -> list[dict]:
             if exit_code != 0:
                 stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
                 target = target.with_name(f"{target.name}_FAILED_{stamp}")
-            # The check's evidence goes beside the package, never inside it, and first, so a
+            # The checks' evidence goes beside the package, never inside it, and first, so a
             # clash there stops before any package file is copied.
-            if check_code is not None:
-                check_target = Path(CHECK_DRIVE_DIR if exit_code == 0 else f"{target}_volume_check")
+            checks = [
+                (check_code, LOCAL_CHECK, CHECK_DRIVE_DIR, "_volume_check"),
+                (dividend_check_code, LOCAL_DIVIDEND_CHECK, DIVIDEND_CHECK_DRIVE_DIR, "_dividend_check"),
+            ]
+            for ran, local, drive, suffix in checks:
+                if ran is None:
+                    continue
+                check_target = Path(drive if exit_code == 0 else f"{target}{suffix}")
                 check_target.mkdir(parents=True, exist_ok=True)
-                for source in sorted(Path(LOCAL_CHECK).glob("*")):
+                for source in sorted(Path(local).glob("*")):
                     destination = check_target / source.name
                     if destination.exists() and not filecmp.cmp(source, destination, shallow=False):
                         raise RuntimeError(f"{destination} already on Drive with other bytes")
                     if not destination.exists():
                         shutil.copyfile(source, destination)
-                print("Volume check evidence:", check_target)
+                print("Check evidence:", check_target)
             sources = [p for p in sorted(Path(LOCAL_PACKAGE).rglob("*")) if p.is_file()]
             pairs = [(p, target / p.relative_to(LOCAL_PACKAGE)) for p in sources]
             manifest = Path(LOCAL_MANIFEST)
