@@ -375,6 +375,9 @@ def build_run_overrides(
     overrides += [
         f"hydra.run.dir={run_dir}",
         f"experiment_name={experiment_name}",
+        # No arm here is pre-registered: #326 runs W5 only, which the protocol counts
+        # as exploratory (PRD #369, decision 7). The runner refuses an unstamped run.
+        "protocol.exploratory=true",
     ]
     return overrides
 
