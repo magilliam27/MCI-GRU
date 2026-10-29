@@ -1306,6 +1306,7 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_check_arms_refuses_before_training_an_arm_the_recipe_cannot_take` |  |  |
 | `test_check_arms_accepts_the_levels_arm_once_the_recipe_pins_relative_inputs` | Control for the refusal above: the #325 recipe gives levels_inputs a pin to undo. |  |
 | `test_the_notebook_checks_every_arm_before_any_trains` |  |  |
+| `test_the_seed_arm_shares_no_member_seed_with_the_recipe` | The noise-floor arm is the recipe on seeds none of the recipe's members used. |  |
 
 ## `tests/test_gat_own_signal.py`
 
