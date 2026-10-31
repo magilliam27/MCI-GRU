@@ -61,6 +61,7 @@ from mci_gru.data.transforms import (
 )
 from mci_gru.graph import GraphBuilder
 from mci_gru.graph.builder import admissible_mask_for_date
+from mci_gru.graph.link_scores import load_link_scores_csv
 from mci_gru.graph.sector_edges import build_sector_edges, load_sector_map_csv
 
 if TYPE_CHECKING:
@@ -886,6 +887,11 @@ def build_correlation_graph(
         )
 
     logger.info("Building correlation graph...")
+    link_scores = (
+        load_link_scores_csv(graph_config.link_scores_csv, input_observations=input_observations)
+        if graph_config.link_scores_csv
+        else None
+    )
     graph_builder = GraphBuilder(
         judge_value=graph_config.judge_value,
         update_frequency_months=graph_config.update_frequency_months,
@@ -896,6 +902,7 @@ def build_correlation_graph(
         use_lead_lag_features=graph_config.use_lead_lag_features,
         lead_lag_days=graph_config.lead_lag_days,
         exclude_edge_pairs=graph_config.exclude_edge_pairs or None,
+        link_scores=link_scores,
     )
     # Static graph: PIT-restrict selection at its single build date. This is a
     # coarser guarantee than the dynamic path gets - one graph built at

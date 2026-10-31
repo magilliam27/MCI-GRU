@@ -90,6 +90,7 @@ graph:
   use_sector_relation: false
   sector_map_csv: null
   zero_edges: false             # true = ablation control arm A0: suppress all correlation edges
+  link_scores_csv: null         # pairwise company-link scores ranking top-K neighbours instead of correlation (#377)
 
 # Training configuration
 training:

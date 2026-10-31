@@ -520,6 +520,12 @@ class GraphConfig:
             candidate set. Each entry names two distinct non-empty kdcodes;
             names absent from a run's node axis are a logged no-op. Default
             empty: shipped behaviour is unchanged.
+        link_scores_csv: Pairwise company-link scores (``kdcode_a, kdcode_b,
+            score, filing_date_a, filing_date_b``) that replace past return
+            correlation as the ranking for top-K neighbour selection (#377).
+            Requires ``top_k > 0`` and a static graph; a score whose filing is
+            dated on or after the graph's valid-from date is refused. Default
+            ``None``: neighbours are ranked on correlation.
     """
 
     judge_value: float = 0.8
@@ -538,6 +544,7 @@ class GraphConfig:
     sector_map_csv: str | None = None
     zero_edges: bool = False
     exclude_edge_pairs: list[list[str]] = field(default_factory=list)
+    link_scores_csv: str | None = None
 
     _VALID_TOP_K_METRICS = ("corr", "abs_corr")
 
@@ -572,6 +579,15 @@ class GraphConfig:
                 f"update_frequency_months={self.update_frequency_months}. "
                 "Set update_frequency_months=0 for the zeroed control arm."
             )
+        if self.link_scores_csv is not None:
+            # A threshold on the score scale has no calibration, and a dynamic
+            # schedule would reuse one set of filings at every snapshot.
+            if self.top_k <= 0:
+                raise ValueError("link_scores_csv requires graph.top_k > 0")
+            if self.update_frequency_months > 0:
+                raise ValueError(
+                    "link_scores_csv requires a static graph (update_frequency_months=0)"
+                )
         for pair in self.exclude_edge_pairs:
             if (
                 not isinstance(pair, (list, tuple))
