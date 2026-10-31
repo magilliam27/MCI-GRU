@@ -1,0 +1,432 @@
+"""Draw the small-caps universe: a random point-in-time sample of Russell 2000 names (#379).
+
+The small-caps test runs the recipe unchanged on Russell 2000 companies instead of
+the S&P 500's largest. Membership comes from the iShares Russell 2000 ETF's SEC
+holdings filings, as ``scripts/data/build_r2k_members.py`` (#317) builds it; this
+script reads that builder's output and writes what the price export and the
+pipeline read::
+
+    python -m scripts.data.build_r2k_sample_universe \\
+        --holdings <r2k>/holdings_matched.csv.gz --membership <r2k>/r2k_membership.csv \\
+        --price-cache <r2k_cache>/eod --output-dir /content/r2k_sample \\
+        --prefix r2k_sample_400_20200102_20251231
+
+Steps:
+
+1. **Frame.** Every company (SEC CIK) with a membership spell that overlaps
+   ``--window-start`` to ``--window-end`` and at least one holdings row whose
+   price agreed with an EODHD close (``how == "price"``). A company with no such
+   row cannot be tied to a price series with confidence, so it is left out and
+   counted.
+2. **Draw.** ``random.Random(seed).sample`` of the frame's sorted CIKs. The draw
+   reads nothing about prices or returns. Its size is the frame's size scaled by
+   ``--target-members`` over the median number of frame companies held per report
+   date in the window, so that about that many are members on a typical day.
+3. **Membership file.** Each drawn company's spells, clipped to the window end,
+   as ``kdcode, valid_from, valid_to`` with ``kdcode = CIK<10 digits>``. The
+   window end is also the file's export cutoff, so no row is open-ended.
+4. **Symbol map.** The symbols the company's price-confirmed holdings rows were
+   matched to, in report-date order, as ``export_eodhd_pit_prices`` segments. When
+   the ticker changes, the earlier symbol's segment ends on its last close before
+   the later symbol's first report date (read from ``--price-cache`` when given),
+   and the later one starts the next day. When one company has two share classes
+   held on the same report date, the larger holding by value is its symbol there.
+
+What it writes under ``--output-dir``: ``constituents/<prefix>_pit_universe.csv``,
+``eodhd_symbols_<prefix>.json`` and ``<prefix>_sample.json`` (the frame, the draw
+and every count above).
+"""
+
+from __future__ import annotations
+
+import argparse
+import gzip
+import hashlib
+import io
+import json
+import random
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+
+#: The symbol map schema ``mci_gru.data.eodhd_prices.parse_symbol_map`` reads.
+SYMBOL_MAP_SCHEMA = 1
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--holdings", type=Path, required=True, help="holdings_matched.csv.gz")
+    parser.add_argument("--membership", type=Path, required=True, help="r2k_membership.csv")
+    parser.add_argument(
+        "--price-cache", type=Path, help="build_r2k_members' eod/ folder of <symbol>.csv.gz"
+    )
+    parser.add_argument(
+        "--review", type=Path, help="Per-identifier decisions on a pull's findings (JSON)"
+    )
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--prefix", required=True)
+    parser.add_argument("--window-start", default="2020-01-02")
+    parser.add_argument("--window-end", default="2025-12-31")
+    parser.add_argument("--target-members", type=int, default=400)
+    parser.add_argument("--seed", type=int, default=379)
+    parser.add_argument(
+        "--check-joins",
+        type=Path,
+        help="An exported panel: report the return across each change of symbol, and exit 1 "
+        f"if one exceeds {JOIN_RETURN_LIMIT:.0%} without a keep_segments review decision",
+    )
+    return parser.parse_args(argv)
+
+
+def parse_spells(text: str) -> list[tuple[str, str | None]]:
+    """``"2019-09-30:2020-06-29;2021-06-30:"`` as ``[(start, end or None), ...]``."""
+    spells = []
+    for part in str(text).split(";"):
+        if not part:
+            continue
+        start, _, end = part.partition(":")
+        spells.append((start, end or None))
+    return spells
+
+
+def overlaps(spells: list[tuple[str, str | None]], start: str, end: str) -> bool:
+    return any(s <= end and (e is None or e >= start) for s, e in spells)
+
+
+def frame_companies(
+    membership: pd.DataFrame, holdings: pd.DataFrame, start: str, end: str
+) -> tuple[list[str], dict[str, int]]:
+    """CIKs with a spell in the window and a price-confirmed holding, and what was left out.
+
+    The holding may be from any report date: the check asks only whether the company
+    can be tied to a price series. In the 2026-10-31 build two frame companies were
+    confirmed only after the window; neither was drawn.
+    """
+    in_window = {
+        str(row.cik).zfill(10)
+        for row in membership.itertuples()
+        if overlaps(parse_spells(row.spells), start, end)
+    }
+    confirmed = set(holdings.loc[holdings["how"] == "price", "cik"])
+    frame = sorted(in_window & confirmed)
+    return frame, {
+        "with_spell_in_window": len(in_window),
+        "left_out_no_price_confirmed_holding": len(in_window - confirmed),
+        "frame": len(frame),
+    }
+
+
+def median_members(holdings: pd.DataFrame, frame: list[str], start: str, end: str) -> float:
+    """Median count of frame companies held per report date inside the window."""
+    held = holdings[holdings["cik"].isin(set(frame))]
+    held = held[(held["snap"] >= start) & (held["snap"] <= end)]
+    counts = held.groupby("snap")["cik"].nunique()
+    if counts.empty:
+        raise SystemExit(f"No report date between {start} and {end} holds a frame company")
+    return float(counts.median())
+
+
+def draw_size(frame_size: int, typical_members: float, target: int) -> int:
+    """How many to draw so that about *target* of them are members on a typical day."""
+    return min(frame_size, round(frame_size * target / typical_members))
+
+
+def draw(ciks: list[str], seed: int, size: int) -> list[str]:
+    """``size`` CIKs drawn with ``seed``, in draw order."""
+    return random.Random(seed).sample(sorted(ciks), size)
+
+
+def kdcode_for(cik: str) -> str:
+    return f"CIK{str(cik).zfill(10)}"
+
+
+def pit_rows(membership: pd.DataFrame, drawn: list[str], end: str) -> pd.DataFrame:
+    """The drawn companies' spells, each clipped to *end*; spells after *end* are dropped."""
+    spells_by_cik = {str(row.cik).zfill(10): row.spells for row in membership.itertuples()}
+    rows = []
+    for cik in sorted(drawn):
+        for start, stop in parse_spells(spells_by_cik[cik]):
+            if start > end:
+                continue
+            stop = end if stop is None or stop > end else stop
+            rows.append({"kdcode": kdcode_for(cik), "valid_from": start, "valid_to": stop})
+    return pd.DataFrame(rows, columns=["kdcode", "valid_from", "valid_to"])
+
+
+def symbol_runs(rows: pd.DataFrame) -> list[dict[str, str]]:
+    """Consecutive report dates on one symbol, from one company's price-confirmed rows.
+
+    Returns ``[{"symbol", "first", "last"}, ...]`` in date order. Symbols held on the
+    same report date are share classes of the company: one class is kept for its whole
+    history, the one with the larger total value held, so the series never flips class.
+    """
+    confirmed = rows[(rows["how"] == "price") & (rows["symbol"] != "")]
+    totals = confirmed.groupby("symbol")["value"].sum()
+    dropped: set[str] = set()
+    for _, symbols in confirmed.groupby("snap")["symbol"]:
+        classes = sorted(set(symbols) - dropped, key=lambda sym: (-totals[sym], sym))
+        dropped |= set(classes[1:])
+    primary = confirmed[~confirmed["symbol"].isin(dropped)].sort_values("snap")
+    runs: list[dict[str, str]] = []
+    for snap, symbol in zip(primary["snap"], primary["symbol"], strict=True):
+        if runs and runs[-1]["symbol"] == symbol:
+            runs[-1]["last"] = snap
+        else:
+            runs.append({"symbol": symbol, "first": snap, "last": snap})
+    return runs
+
+
+def _next_day(day: str) -> str:
+    return (pd.Timestamp(day) + pd.Timedelta(days=1)).date().isoformat()
+
+
+def segments_for(runs: list[dict[str, str]], last_close) -> list[dict[str, Any]]:
+    """``export_eodhd_pit_prices`` segments for one company's symbol runs.
+
+    ``last_close(symbol, before)`` is the symbol's last trading date strictly before
+    *before*, or ``None`` when unknown; the earlier symbol then ends the day before
+    the later symbol's first report date.
+    """
+    segments: list[dict[str, Any]] = []
+    for index, run in enumerate(runs):
+        segment: dict[str, Any] = {"candidates": [run["symbol"]]}
+        if index > 0:
+            segment["start"] = _next_day(segments[-1]["end"])
+        if index < len(runs) - 1:
+            later_first = runs[index + 1]["first"]
+            end = last_close(run["symbol"], later_first)
+            if end is None or end < run["last"]:
+                end = (pd.Timestamp(later_first) - pd.Timedelta(days=1)).date().isoformat()
+            segment["end"] = end
+        segments.append(segment)
+    return segments
+
+
+def price_cache_reader(folder: Path | None):
+    """``last_close(symbol, before)`` over build_r2k_members' cached EOD files."""
+    cache: dict[str, pd.Series | None] = {}
+
+    def dates(symbol: str) -> pd.Series | None:
+        if symbol not in cache:
+            path = folder / f"{symbol}.csv.gz" if folder else None
+            series = None
+            if path is not None and path.exists():
+                body = gzip.decompress(path.read_bytes())
+                if body.strip():
+                    table = pd.read_csv(io.BytesIO(body))
+                    if "Date" in table:
+                        series = table["Date"].astype(str).sort_values()
+            cache[symbol] = series
+        return cache[symbol]
+
+    def last_close(symbol: str, before: str) -> str | None:
+        series = dates(symbol)
+        if series is None:
+            return None
+        earlier = series[series < before]
+        return str(earlier.iloc[-1]) if len(earlier) else None
+
+    return last_close
+
+
+#: What a review entry may set on a generated symbol-map entry.
+REVIEW_FIELDS = {"keep_segments", "start", "end", "adjustments", "drop_sessions", "reason"}
+#: A one-day return across a change of symbol larger than this needs a review decision.
+JOIN_RETURN_LIMIT = 0.20
+
+
+def drop_sessions(segments: list[dict[str, Any]], days: list[str]) -> list[dict[str, Any]]:
+    """Split the segment holding each day around it, so that day has no row."""
+    for day in sorted(days):
+        for index, segment in enumerate(segments):
+            if segment.get("start", "") <= day and day <= segment.get("end", "9999-12-31"):
+                before = {
+                    **segment,
+                    "end": (pd.Timestamp(day) - pd.Timedelta(days=1)).date().isoformat(),
+                }
+                after = {**segment, "start": _next_day(day)}
+                segments[index : index + 1] = [before, after]
+                break
+        else:
+            raise SystemExit(f"No segment holds {day}")
+    return segments
+
+
+def symbol_map(
+    holdings: pd.DataFrame,
+    drawn: list[str],
+    last_close,
+    end: str,
+    review: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The export's symbol map for the drawn companies, from report dates up to *end*.
+
+    *review* holds per-identifier decisions made after reading a pull's findings:
+    ``keep_segments`` keeps only the listed segments, bounds unchanged (by index,
+    applied first; for a ticker change whose two series do not join on one price
+    level, so the company's series starts or stops at the join),
+    ``start`` moves the first segment's start and ``end`` the last segment's end (to
+    drop vendor rows found wrong, such as rows printed after an acquisition closed),
+    ``adjustments`` declares corporate actions the split records miss,
+    ``drop_sessions`` leaves out single vendor rows found wrong, and
+    ``reason`` says why; it is required and is appended to the entry's note.
+    """
+    review = review or {}
+    unknown = sorted(set(review) - {kdcode_for(cik) for cik in drawn})
+    if unknown:
+        raise SystemExit(f"Review entries for identifiers not drawn: {unknown}")
+    overrides = {}
+    rows = holdings[holdings["cik"].isin(set(drawn)) & (holdings["snap"] <= end)]
+    by_cik = dict(tuple(rows.groupby("cik")))
+    for cik in sorted(drawn):
+        runs = symbol_runs(by_cik[cik])
+        if not runs:
+            raise SystemExit(f"{kdcode_for(cik)}: no price-confirmed holding up to {end}")
+        name = by_cik[cik].sort_values("snap")["name"].iloc[-1]
+        entry: dict[str, Any] = {
+            "note": f"{name}; symbols from IWM holdings rows price-matched to EODHD (#317)",
+            "segments": segments_for(runs, last_close),
+        }
+        decision = review.get(kdcode_for(cik))
+        if decision is not None:
+            if set(decision) - REVIEW_FIELDS or not decision.get("reason"):
+                raise SystemExit(
+                    f"{kdcode_for(cik)}: a review entry needs a reason and may set only "
+                    f"{sorted(REVIEW_FIELDS)}"
+                )
+            if "keep_segments" in decision:
+                # Kept segments keep their bounds: the company's series starts or stops
+                # at the join instead of borrowing the other symbol's dates.
+                entry["segments"] = [entry["segments"][i] for i in decision["keep_segments"]]
+            if "start" in decision:
+                entry["segments"][0]["start"] = decision["start"]
+            if "end" in decision:
+                entry["segments"][-1]["end"] = decision["end"]
+            if "adjustments" in decision:
+                entry["adjustments"] = decision["adjustments"]
+            if "drop_sessions" in decision:
+                entry["segments"] = drop_sessions(entry["segments"], decision["drop_sessions"])
+            entry["note"] += f". Reviewed: {decision['reason']}"
+        overrides[kdcode_for(cik)] = entry
+    return {"schema": SYMBOL_MAP_SCHEMA, "overrides": overrides}
+
+
+def join_returns(panel: pd.DataFrame, mapping: dict[str, Any]) -> list[dict[str, Any]]:
+    """The close-to-close return across every change of symbol in the map.
+
+    Neither the export nor any reference panel compares the two series' price levels
+    where one symbol hands over to the next, so a join on two different bases shows
+    up only here, as a large one-day return.
+    """
+    closes = {k: g.set_index("dt")["close"] for k, g in panel.groupby("kdcode")}
+    out = []
+    for kdcode, entry in mapping["overrides"].items():
+        segments = entry["segments"]
+        for before, after in zip(segments, segments[1:], strict=False):
+            if before["candidates"] == after["candidates"] or kdcode not in closes:
+                continue
+            series = closes[kdcode]
+            old, new = series[series.index < after["start"]], series[series.index >= after["start"]]
+            if old.empty or new.empty:
+                continue
+            out.append(
+                {
+                    "kdcode": kdcode,
+                    "join": after["start"],
+                    "from": before["candidates"][0],
+                    "to": after["candidates"][0],
+                    "last_close": float(old.iloc[-1]),
+                    "first_close": float(new.iloc[0]),
+                    "return": float(new.iloc[0] / old.iloc[-1] - 1),
+                }
+            )
+    return out
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    holdings = pd.read_csv(args.holdings, dtype=str, keep_default_na=False)
+    holdings["cik"] = holdings["cik"].map(lambda c: c.zfill(10) if c else "")
+    holdings["value"] = pd.to_numeric(holdings["value"], errors="coerce")
+    membership = pd.read_csv(args.membership, dtype=str, keep_default_na=False)
+    start, end = args.window_start, args.window_end
+
+    frame, counts = frame_companies(membership, holdings, start, end)
+    typical = median_members(holdings, frame, start, end)
+    size = draw_size(len(frame), typical, args.target_members)
+    drawn = draw(frame, args.seed, size)
+
+    out = args.output_dir
+    pit_path = out / "constituents" / f"{args.prefix}_pit_universe.csv"
+    pit_path.parent.mkdir(parents=True, exist_ok=True)
+    pit = pit_rows(membership, drawn, end)
+    pit.to_csv(pit_path, index=False)
+    map_path = out / f"eodhd_symbols_{args.prefix}.json"
+    review = json.loads(args.review.read_text(encoding="utf-8")) if args.review else None
+    mapping = symbol_map(
+        holdings, drawn, price_cache_reader(args.price_cache), end, review and review["entries"]
+    )
+    map_path.write_text(json.dumps(mapping, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    report_joins = None
+    if args.check_joins is not None:
+        panel = pd.read_csv(args.check_joins, usecols=["kdcode", "dt", "close"], dtype={"dt": str})
+        joins = join_returns(panel, mapping)
+        reviewed = {
+            k for k, v in (review["entries"] if review else {}).items() if "keep_segments" in v
+        }
+        flagged = [j for j in joins if abs(j["return"]) > JOIN_RETURN_LIMIT]
+        unresolved = [j for j in flagged if j["kdcode"] not in reviewed]
+        report_joins = {"checked": len(joins), "flagged": flagged, "unresolved": unresolved}
+    sessions = pd.bdate_range(start, end)
+    active = [
+        int(((pit["valid_from"] <= d) & (pit["valid_to"] >= d)).sum())
+        for d in sessions.strftime("%Y-%m-%d")
+    ]
+    report = {
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "source": "scripts/data/build_r2k_members.py output (#317): IWM SEC holdings, "
+        "price-matched to EODHD, CIK-checked against SEC",
+        "holdings": args.holdings.name,
+        "holdings_sha256": _sha256(args.holdings),
+        "membership": args.membership.name,
+        "membership_sha256": _sha256(args.membership),
+        "window": [start, end],
+        "seed": args.seed,
+        "target_members": args.target_members,
+        "counts": counts,
+        "median_frame_members_per_report_date": typical,
+        "drawn": size,
+        "draw_order": [kdcode_for(c) for c in drawn],
+        "members_per_weekday": {
+            "min": min(active),
+            "median": float(pd.Series(active).median()),
+            "max": max(active),
+        },
+        "companies_with_ticker_changes": sum(
+            1 for entry in mapping["overrides"].values() if len(entry["segments"]) > 1
+        ),
+        "symbol_joins": report_joins,
+        "pit_universe_sha256": _sha256(pit_path),
+        "review": args.review.name if args.review else None,
+        "review_sha256": _sha256(args.review) if args.review else None,
+        "symbol_map_sha256": _sha256(map_path),
+    }
+    report_path = out / f"{args.prefix}_sample.json"
+    report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({k: v for k, v in report.items() if k != "draw_order"}, indent=2))
+    if args.check_joins is not None and report_joins["unresolved"]:
+        print(f"{len(report_joins['unresolved'])} symbol joins need a review decision")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

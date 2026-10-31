@@ -1,0 +1,43 @@
+# Small-caps test universe (#379): a seeded random sample of Russell 2000
+# companies, priced from EODHD.
+#
+# Membership is point-in-time, from the iShares Russell 2000 ETF's (IWM's) SEC
+# N-PORT holdings, quarterly from 2019-09-30, as scripts/data/build_r2k_members.py
+# (#317) builds it: a company is a member from a report date to the day before the
+# next report it is missing from. Delisted and acquired companies stay in.
+# scripts/data/build_r2k_sample_universe.py drew 688 of the 3,369 companies with a
+# membership day from 2020-01-02 to 2025-12-31 (seed 379), so that about 400 are
+# members on a typical day (384 to 434 on any weekday, median 402). Identifiers are
+# CIK<10 digits>. See docs/research/current/small_caps_r2k_sample.md for the biases.
+#
+# Prices are EODHD's, split-adjusted from its split records, plus the corporate
+# actions and the dropped vendor rows declared in
+# data/mappings/eodhd_review_r2k_sample_400.json. No reference panel exists for
+# these names. Every name's trailing zero-volume repeats of its last close are
+# trimmed, so a delisted name stops at its last trade.
+#
+# The dates are the recipe's: train 2020 to 2023, validate 2024, test 2025. The
+# panel ends on 2026-01-21, the day before the locked holdout, so the last test
+# dates have their five-session labels.
+universe: russell2000
+source: csv
+filename: data/raw/market/r2k_sample_400_20200102_20251231_eodhd_20150101_20260121.csv
+
+use_pit_universe: true
+pit_universe_csv: data/raw/constituents/r2k_sample_400_20200102_20251231_pit_universe.csv
+pit_universe_mode: masked_panel
+pit_export_cutoff: "2025-12-31"
+input_package_manifest: data/manifests/r2k_sample_400_20200102_20251231_eodhd.r2.json
+# Quoted so YAML can never read a digest as a number.
+input_package_manifest_sha256: "317644ae7e340d1b5e4d7d095a822e161c56f8ac3c4af146e0937326ca7d8a13"
+input_package_root: data/raw
+
+pit_min_scoreable_stocks: 300
+pit_breadth_policy: error
+
+train_start: "2020-01-02"
+train_end: "2023-12-31"
+val_start: "2024-01-22"
+val_end: "2024-12-31"
+test_start: "2025-01-22"
+test_end: "2025-12-31"
