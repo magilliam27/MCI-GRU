@@ -1076,6 +1076,32 @@ def test_the_jev_arm_differs_from_the_top_k_arm_only_by_its_link_scores():
     assert len(by_jev) == len(by_corr) + 1
 
 
+@pytest.mark.parametrize("value", ["0.4", "0.5", "0.6", "0.7", "0.8"])
+def test_each_yearly_threshold_arm_is_its_static_arm_rebuilt_every_year(value):
+    recipe = _recipe_with_fixed_inputs()
+    yearly = frc.apply_arm(recipe, f"graph_yearly_thr_{value.replace('.', 'p')}")
+    static = (
+        recipe if value == "0.8" else frc.apply_arm(recipe, f"graph_thr_{value.replace('.', 'p')}")
+    )
+    assert [o for o in yearly if o not in static] == ["graph.update_frequency_months=12"]
+    assert [o for o in static if o not in yearly] == ["graph.update_frequency_months=0"]
+    assert len(yearly) == len(static)
+
+
+def test_the_yearly_jev_arm_differs_from_the_yearly_top_k_arm_only_by_its_link_scores():
+    recipe = _recipe_with_fixed_inputs()
+    by_corr = frc.apply_arm(recipe, "graph_yearly_topk8")
+    by_jev = frc.apply_arm(recipe, "graph_yearly_jev_topk8")
+    assert [o for o in by_corr if o not in recipe] == [
+        "graph.update_frequency_months=12",
+        "graph.top_k=8",
+    ]
+    assert [o for o in by_jev if o not in by_corr] == [
+        "graph.link_scores_csv=data/raw/graph_links/jev_link_scores_2019_2024_10k.csv"
+    ]
+    assert len(by_jev) == len(by_corr) + 1
+
+
 def test_an_arm_that_would_change_nothing_is_refused():
     with pytest.raises(
         KeyError, match="changes features.base_inputs, which the recipe does not set"
@@ -1103,8 +1129,10 @@ def test_every_arm_composes_into_the_typed_config(arm):
         cfg = compose(config_name="config", overrides=job_overrides)
     config = create_config_from_dict(OmegaConf.to_container(cfg, resolve=True))
     assert config.graph.zero_edges is (arm == "graph_zeroed")
-    thresholds = {f"graph_thr_0p{d}": float(f"0.{d}") for d in range(4, 8)}
-    assert config.graph.judge_value == thresholds.get(arm, 0.8)
+    threshold = arm.rpartition("_thr_")[2].replace("p", ".") if "_thr_" in arm else "0.8"
+    assert config.graph.judge_value == float(threshold)
+    assert config.graph.update_frequency_months == (12 if "_yearly_" in arm else 0)
+    assert config.graph.top_k == (8 if arm.endswith("topk8") else 0)
     assert config.features.base_inputs == ("levels" if arm == "levels_inputs" else "relative")
     assert config.experiment_name == frc.arm_experiment_name("slug", arm)
     # Same seed, budget and data whichever arm runs.

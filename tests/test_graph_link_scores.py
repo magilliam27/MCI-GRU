@@ -1,4 +1,4 @@
-"""Company-link scores as the neighbour ranking for the static graph (#377)."""
+"""Company-link scores as the neighbour ranking for the correlation graph (#377)."""
 
 import numpy as np
 import pandas as pd
@@ -10,6 +10,7 @@ from mci_gru.graph.link_scores import link_score_matrix, load_link_scores_csv
 from mci_gru.pipeline import PipelineFrames, build_correlation_graph
 
 HEADER = "kdcode_a,kdcode_b,score,filing_date_a,filing_date_b,jev_version\n"
+YEARLY_HEADER = "score_year," + HEADER
 
 
 def _write(tmp_path, body, header=HEADER):
@@ -21,6 +22,13 @@ def _write(tmp_path, body, header=HEADER):
 def _scores(rows):
     return pd.DataFrame(
         rows, columns=["kdcode_a", "kdcode_b", "score", "filing_date_a", "filing_date_b"]
+    )
+
+
+def _yearly(rows):
+    return pd.DataFrame(
+        rows,
+        columns=["score_year", "kdcode_a", "kdcode_b", "score", "filing_date_a", "filing_date_b"],
     )
 
 
@@ -50,6 +58,12 @@ def test_a_valid_file_loads_with_float_scores(tmp_path):
         ("A,B,-0.1,2019-02-01,2019-03-01,v\n", HEADER, "negative or non-finite"),
         ("A,B,1.0,2019-2-1,2019-03-01,v\n", HEADER, "YYYY-MM-DD"),
         ("A,B,,2019-02-01,2019-03-01,v\n", HEADER, "blank cells"),
+        (
+            "2020,A,B,1.0,2020-02-01,2020-03-01,v\n2020,B,A,2.0,2020-02-01,2020-03-01,v\n",
+            YEARLY_HEADER,
+            "more than once in one score_year",
+        ),
+        ("2020.5,A,B,1.0,2020-02-01,2020-03-01,v\n", YEARLY_HEADER, "whole years"),
     ],
 )
 def test_a_malformed_file_is_refused(tmp_path, body, header, match):
@@ -73,16 +87,62 @@ def test_the_matrix_is_symmetric_scaled_and_leaves_unscored_pairs_empty():
     assert list(matrix.index) == ["A", "B", "C"]
 
 
+def test_a_yearly_file_loads_one_row_per_pair_per_year(tmp_path):
+    path = _write(
+        tmp_path,
+        "2019,A,B,1.0,2019-02-01,2019-03-01,v\n2020,B,A,2.0,2020-02-01,2020-03-01,v\n",
+        YEARLY_HEADER,
+    )
+    scores = load_link_scores_csv(path)
+    assert scores["score_year"].tolist() == [2019, 2020]
+    assert scores["score"].tolist() == [1.0, 2.0]
+
+
 @pytest.mark.parametrize("late", ["2020-01-02", "2020-06-30"])
-def test_a_filing_on_or_after_the_valid_from_date_is_refused(late):
-    scores = _scores([("A", "B", 1.0, "2019-01-02", late)])
-    with pytest.raises(ValueError, match="on or after the graph's valid-from 2020-01-02"):
+def test_a_filing_on_or_after_the_valid_from_date_is_never_used(late):
+    scores = _scores(
+        [("A", "B", 1.0, "2019-01-02", late), ("A", "C", 2.0, "2019-01-02", "2019-05-01")]
+    )
+    matrix = link_score_matrix(scores, ["A", "B", "C"], "2020-01-02")
+    assert np.isnan(matrix.loc["A", "B"])
+    assert matrix.loc["A", "C"] == 1.0
+
+
+def test_a_snapshot_with_no_score_filed_before_it_is_refused():
+    scores = _scores([("A", "B", 1.0, "2019-01-02", "2020-01-02")])
+    with pytest.raises(ValueError, match="dated before the graph.s valid-from 2020-01-02"):
         link_score_matrix(scores, ["A", "B"], "2020-01-02")
 
 
 def test_a_filing_the_day_before_valid_from_is_accepted():
     scores = _scores([("A", "B", 1.0, "2019-01-02", "2020-01-01")])
     assert link_score_matrix(scores, ["A", "B"], "2020-01-02").loc["A", "B"] == 1.0
+
+
+def test_each_snapshot_takes_the_newest_scores_filed_before_it():
+    """2020's 10-Ks reach the graph only once both are public; until then 2019's stand."""
+    scores = _yearly(
+        [
+            (2019, "A", "B", 4.0, "2019-02-01", "2019-03-01"),
+            (2019, "A", "C", 2.0, "2019-02-01", "2019-03-01"),
+            (2020, "B", "A", 1.0, "2020-02-01", "2020-03-01"),
+            (2020, "A", "C", 8.0, "2020-02-01", "2021-03-01"),
+            (2020, "B", "C", 3.0, "2020-02-01", "2020-03-01"),
+        ]
+    )
+    codes = ["A", "B", "C"]
+    early = link_score_matrix(scores, codes, "2020-01-02")
+    assert early.loc["A", "B"] == 1.0 and early.loc["A", "C"] == 0.5
+    assert np.isnan(early.loc["B", "C"])
+
+    later = link_score_matrix(scores, codes, "2021-01-02")
+    # A/B and B/C move to 2020's scores; A/C keeps 2019's, its 2020 filing is not out yet.
+    assert later.loc["B", "A"] == pytest.approx(1 / 3)
+    assert later.loc["C", "B"] == 1.0
+    assert later.loc["A", "C"] == pytest.approx(2 / 3)
+
+    latest = link_score_matrix(scores, codes, "2022-01-02")
+    assert latest.loc["A", "C"] == 1.0
 
 
 def _returns_frame():
@@ -122,12 +182,12 @@ def test_link_scores_not_correlation_choose_the_neighbours():
     assert weight_of[0] == pytest.approx(1.0)
 
 
-def test_link_scores_need_top_k_and_a_static_graph():
+def test_link_scores_need_top_k_and_may_update_on_a_schedule():
     with pytest.raises(ValueError, match="requires graph.top_k > 0"):
         GraphConfig(link_scores_csv="links.csv", top_k=0)
-    with pytest.raises(ValueError, match="requires a static graph"):
-        GraphConfig(link_scores_csv="links.csv", top_k=8, update_frequency_months=6)
     assert GraphConfig(link_scores_csv="links.csv", top_k=8).link_scores_csv == "links.csv"
+    yearly = GraphConfig(link_scores_csv="links.csv", top_k=8, update_frequency_months=12)
+    assert yearly.update_frequency_months == 12
 
 
 def test_the_pipeline_builds_the_static_graph_from_the_configured_scores(tmp_path):
@@ -142,3 +202,27 @@ def test_the_pipeline_builds_the_static_graph_from_the_configured_scores(tmp_pat
     art = build_correlation_graph(frames, ["A", "B", "C"], config, "2020-01-02", "2020-06-30")
     assert sorted(art.edge_index.T.tolist()) == [[0, 2], [1, 2], [2, 0]]
     assert art.edge_weight.shape == (3, 4)
+
+
+def test_a_yearly_schedule_rebuilds_from_each_years_filings(tmp_path):
+    df = _returns_frame()
+    frames = PipelineFrames(raw=df, normalized=df, filtered=df)
+    path = _write(
+        tmp_path,
+        "2019,A,C,3.0,2019-02-01,2019-03-01,v\n2019,B,C,1.0,2019-02-01,2019-03-01,v\n"
+        "2019,A,B,0.5,2019-02-01,2019-03-01,v\n"
+        "2020,A,B,3.0,2020-02-01,2020-03-01,v\n2020,B,C,0.5,2020-02-01,2020-03-01,v\n"
+        "2020,A,C,0.2,2020-02-01,2020-03-01,v\n",
+        YEARLY_HEADER,
+    )
+    config = GraphConfig(
+        top_k=1, link_scores_csv=path, update_frequency_months=12, corr_lookback_days=40
+    )
+    art = build_correlation_graph(
+        frames, ["A", "B", "C"], config, "2020-01-02", "2021-06-30", first_sample_date="2020-01-02"
+    )
+    assert art.graph_schedule.num_snapshots == 2
+    first, _ = art.graph_schedule.get_graph_for_date("2020-12-31")
+    second, _ = art.graph_schedule.get_graph_for_date("2021-01-04")
+    assert sorted(first.T.tolist()) == [[0, 2], [1, 2], [2, 0]]
+    assert sorted(second.T.tolist()) == [[0, 1], [1, 0], [2, 1]]

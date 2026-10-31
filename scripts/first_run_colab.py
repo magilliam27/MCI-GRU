@@ -195,6 +195,11 @@ class RunArm:
 #: Jev's 2019 10-K link scores for the four-year recipe's axis (#377). The file is not in
 #: Git: a run stages it here from the project bucket and its bytes are recorded at load.
 JEV_LINK_SCORES_CSV = "data/raw/graph_links/jev_link_scores_2019_10k.csv"
+#: The same scores from the 2019 to 2024 10-Ks, one set per ``score_year``, for a graph
+#: rebuilt every January from the filings public by then. Staged the same way.
+JEV_YEARLY_LINK_SCORES_CSV = "data/raw/graph_links/jev_link_scores_2019_2024_10k.csv"
+#: A graph rebuilt each year on the trailing year's returns (or filings), not built once.
+_YEARLY = ("graph.update_frequency_months", "12")
 
 #: Every arm trains on the recipe's data, seed and budget; only these overrides differ.
 RUN_ARMS = {
@@ -226,6 +231,24 @@ RUN_ARMS = {
         slug_suffix="graph-jev-topk8",
         replace=(("graph.top_k", "8"),),
         add=(f"graph.link_scores_csv={JEV_LINK_SCORES_CSV}",),
+    ),
+    # The same graphs rebuilt every January instead of once (#377): each snapshot uses
+    # the trailing 252 sessions, or the newest 10-K scores filed before it.
+    "graph_yearly_thr_0p8": RunArm(slug_suffix="graph-yearly-thr-0p8", replace=(_YEARLY,)),
+    **{
+        f"graph_yearly_thr_{tag}": RunArm(
+            slug_suffix=f"graph-yearly-thr-{tag}",
+            replace=(_YEARLY, ("graph.judge_value", value)),
+        )
+        for tag, value in (("0p4", "0.4"), ("0p5", "0.5"), ("0p6", "0.6"), ("0p7", "0.7"))
+    },
+    "graph_yearly_topk8": RunArm(
+        slug_suffix="graph-yearly-topk8", replace=(_YEARLY, ("graph.top_k", "8"))
+    ),
+    "graph_yearly_jev_topk8": RunArm(
+        slug_suffix="graph-yearly-jev-topk8",
+        replace=(_YEARLY, ("graph.top_k", "8")),
+        add=(f"graph.link_scores_csv={JEV_YEARLY_LINK_SCORES_CSV}",),
     ),
 }
 

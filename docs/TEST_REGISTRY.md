@@ -1288,6 +1288,8 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_each_control_arm_differs_from_the_recipe_only_by_its_change` |  |  |
 | `test_each_threshold_arm_changes_only_the_correlation_threshold` |  | parametrize |
 | `test_the_jev_arm_differs_from_the_top_k_arm_only_by_its_link_scores` |  |  |
+| `test_each_yearly_threshold_arm_is_its_static_arm_rebuilt_every_year` |  | parametrize |
+| `test_the_yearly_jev_arm_differs_from_the_yearly_top_k_arm_only_by_its_link_scores` |  |  |
 | `test_an_arm_that_would_change_nothing_is_refused` |  |  |
 | `test_every_arm_composes_into_the_typed_config` | Each arm goes through Hydra the way run_experiment.py takes it. | parametrize |
 | `test_a_control_arm_records_itself_and_is_never_an_admitted_run_candidate` |  |  |
@@ -1440,7 +1442,7 @@ Twin-exclusion hygiene rule (issue 164 protocol; harness ticket 166).
 
 ## `tests/test_graph_link_scores.py`
 
-Company-link scores as the neighbour ranking for the static graph (#377).
+Company-link scores as the neighbour ranking for the correlation graph (#377).
 
 **Exercises:** `mci_gru.config`, `mci_gru.graph.builder`, `mci_gru.graph.link_scores`, `mci_gru.pipeline`
 
@@ -1449,11 +1451,15 @@ Company-link scores as the neighbour ranking for the static graph (#377).
 | `test_a_valid_file_loads_with_float_scores` |  |  |
 | `test_a_malformed_file_is_refused` |  | parametrize |
 | `test_the_matrix_is_symmetric_scaled_and_leaves_unscored_pairs_empty` |  |  |
-| `test_a_filing_on_or_after_the_valid_from_date_is_refused` |  | parametrize |
+| `test_a_yearly_file_loads_one_row_per_pair_per_year` |  |  |
+| `test_a_filing_on_or_after_the_valid_from_date_is_never_used` |  | parametrize |
+| `test_a_snapshot_with_no_score_filed_before_it_is_refused` |  |  |
 | `test_a_filing_the_day_before_valid_from_is_accepted` |  |  |
+| `test_each_snapshot_takes_the_newest_scores_filed_before_it` | 2020's 10-Ks reach the graph only once both are public; until then 2019's stand. |  |
 | `test_link_scores_not_correlation_choose_the_neighbours` |  |  |
-| `test_link_scores_need_top_k_and_a_static_graph` |  |  |
+| `test_link_scores_need_top_k_and_may_update_on_a_schedule` |  |  |
 | `test_the_pipeline_builds_the_static_graph_from_the_configured_scores` |  |  |
+| `test_a_yearly_schedule_rebuilds_from_each_years_filings` |  |  |
 
 ## `tests/test_graph_paired_reanalysis_notebook.py`
 
