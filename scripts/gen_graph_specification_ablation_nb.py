@@ -876,7 +876,7 @@ def build_cells() -> list[dict]:
 
                 print("=" * 100)
                 print("Training:", job["name"], "|", job["fold"], "|", job["label"])
-                cmd = [sys.executable, "-u", str(REPO_DIR / "run_experiment.py"), *job["overrides"]]
+                cmd = [sys.executable, "-u", str(REPO_DIR / "run_experiment.py"), *job["overrides"], "protocol.exploratory=true"]
                 logs_dir = RUN_ROOT / "logs" / job["name"]
                 logs_dir.mkdir(parents=True, exist_ok=True)
                 stdout_path = logs_dir / "stdout.log"

@@ -153,6 +153,7 @@ def test_a_static_run_counts_against_its_one_graph():
 
 RUNNER_OVERRIDES = [
     "features=base",
+    "protocol.exploratory=true",
     "data.source=csv",
     "data.use_pit_universe=false",
     "data.train_start=2020-01-01",

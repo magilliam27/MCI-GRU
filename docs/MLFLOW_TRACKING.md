@@ -13,6 +13,11 @@ MLflow is **additive**:
 The existing local filesystem outputs remain the source of truth for downstream workflows.
 MLflow adds searchable experiment history, metrics, and artifact browsing on top.
 
+> Every `run_experiment.py` command below also needs `protocol.exploratory=true`, or a
+> declared `protocol.experiment_id`, `protocol.arm` and `protocol.window`; the runner
+> refuses a run with neither. It is left out of the examples for brevity. See
+> [`research/EXPERIMENT_PROTOCOL.md`](research/EXPERIMENT_PROTOCOL.md).
+
 ## Default behavior
 
 Base **`configs/config.yaml`** sets **`tracking.enabled: true`**, so a normal `python run_experiment.py` run logs to the local store (`tracking_uri`, default `mlruns`).

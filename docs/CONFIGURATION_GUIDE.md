@@ -4,6 +4,11 @@ This guide explains the configuration groups, the presets that exist, and how to
 override them. Feature columns and their flags are in [`FEATURES.md`](FEATURES.md); what
 the model and graph parameters drive is in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
+> Every `run_experiment.py` command below also needs `protocol.exploratory=true`, or a
+> declared `protocol.experiment_id`, `protocol.arm` and `protocol.window`; the runner
+> refuses a run with neither. It is left out of the examples for brevity. See
+> [`research/EXPERIMENT_PROTOCOL.md`](research/EXPERIMENT_PROTOCOL.md).
+
 ## Configuration Files Structure
 
 The configuration system is Hydra-based with typed dataclasses in `mci_gru/config.py`: `DataConfig`, `FeatureConfig`, `GraphConfig`, `ModelConfig`, `TrainingConfig`, `ExperimentConfig`.

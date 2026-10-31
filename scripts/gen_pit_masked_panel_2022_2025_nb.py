@@ -491,6 +491,7 @@ cells = [
                 sys.executable,
                 '-u',
                 str(REPO_DIR / 'run_experiment.py'),
+                'protocol.exploratory=true',
                 f"+experiment={window['experiment']}",
                 f"seed={MODEL_RECIPE['seed']}",
                 'training.lr_scheduler=cosine',

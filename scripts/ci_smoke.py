@@ -78,6 +78,7 @@ def _build_smoke_command(csv_path: Path, run_dir: Path) -> list[str]:
         sys.executable,
         "run_experiment.py",
         "features=base",
+        "protocol.exploratory=true",
         "data.source=csv",
         f"data.filename={_normalise_cli_path(csv_path)}",
         # The base config defaults to the 110-name PIT universe, whose

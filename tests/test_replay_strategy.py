@@ -520,6 +520,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 RUN_STOCKS = ["A.N", "B.N", "C.N", "D.N", "E.N", "F.N"]
 RUN_OVERRIDES = [
     "features=base",
+    "protocol.exploratory=true",
     "data.source=csv",
     "data.input_package_manifest=null",
     "data.input_package_manifest_sha256=null",

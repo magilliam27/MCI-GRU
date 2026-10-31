@@ -572,6 +572,7 @@ def _run_cli(tmp_path: Path, selected: Path, project_root: Path):
         str(project_root),
         str(calls),
         "features=base",
+        "protocol.exploratory=true",
         "data.source=csv",
         f"data.filename={selected.as_posix()}",
         "data.use_pit_universe=false",
