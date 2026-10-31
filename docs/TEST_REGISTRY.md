@@ -2380,6 +2380,10 @@ The small-caps universe draw (#379): frame, draw size, membership file and symbo
 | `test_symbols_after_the_window_end_are_ignored` |  |  |
 | `test_review_moves_the_start_and_declares_adjustments_with_a_reason` |  |  |
 | `test_review_drops_a_single_wrong_session_by_splitting_the_segment` |  |  |
+| `test_a_share_class_is_kept_for_the_whole_history_even_when_the_other_is_larger_once` |  |  |
+| `test_review_keeps_one_segment_with_its_bounds_and_can_end_the_series` |  |  |
+| `test_join_returns_measure_the_close_to_close_move_across_a_symbol_change` |  |  |
+| `test_main_stops_on_a_large_join_return_without_a_keep_segments_decision` |  | parametrize |
 | `test_the_config_binds_its_files_to_the_committed_package` |  |  |
 | `test_the_config_keeps_the_recipe_window` | Only the universe changes: train 2020-2023 (the recipe's start), validate 2024, test 2025. |  |
 

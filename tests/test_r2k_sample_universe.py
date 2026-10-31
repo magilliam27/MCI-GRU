@@ -202,6 +202,99 @@ def test_review_drops_a_single_wrong_session_by_splitting_the_segment():
     )
 
 
+def test_a_share_class_is_kept_for_the_whole_history_even_when_the_other_is_larger_once():
+    rows = pd.DataFrame(
+        [
+            _holding("2020-03-31", CIK_A, "UONE.US", value=10.0),
+            _holding("2020-03-31", CIK_A, "UONEK.US", value=30.0),
+            _holding("2020-06-30", CIK_A, "UONE.US", value=50.0),
+            _holding("2020-06-30", CIK_A, "UONEK.US", value=20.0),
+            _holding("2020-09-30", CIK_A, "UONEK.US", value=40.0),  # only one class held
+        ]
+    )
+    # UONEK has the larger total (90 against 60), so the series never switches to UONE.
+    assert build.symbol_runs(rows) == [
+        {"symbol": "UONEK.US", "first": "2020-03-31", "last": "2020-09-30"}
+    ]
+
+
+def test_review_keeps_one_segment_with_its_bounds_and_can_end_the_series(inputs):
+    def segments(decision):
+        mapping = build.symbol_map(
+            inputs["holdings"], [CIK_A], build.price_cache_reader(inputs["eod"]), "2025-12-31",
+            {"CIK0000000001": {**decision, "reason": "two series on different bases"}},
+        )  # fmt: skip
+        return mapping["overrides"]["CIK0000000001"]["segments"]
+
+    # The kept symbol keeps its own dates rather than taking over the dropped one's.
+    assert segments({"keep_segments": [1]}) == [{"candidates": ["NEWA.US"], "start": "2020-05-16"}]
+    assert segments({"keep_segments": [0]}) == [{"candidates": ["AAA.US"], "end": "2020-05-15"}]
+    # An end stops the series at a last good close, e.g. the day an acquisition closed.
+    assert segments({"end": "2021-07-19"}) == [
+        {"candidates": ["AAA.US"], "end": "2020-05-15"},
+        {"candidates": ["NEWA.US"], "start": "2020-05-16", "end": "2021-07-19"},
+    ]
+
+
+def _join_panel(new_close):
+    return pd.DataFrame(
+        {
+            "kdcode": ["CIK0000000001"] * 3,
+            "dt": ["2020-05-14", "2020-05-15", "2020-05-18"],
+            "close": [9.0, 9.1, new_close],
+        }
+    )
+
+
+def test_join_returns_measure_the_close_to_close_move_across_a_symbol_change(inputs):
+    mapping = build.symbol_map(
+        inputs["holdings"], [CIK_A], build.price_cache_reader(inputs["eod"]), "2025-12-31"
+    )
+    (join,) = build.join_returns(_join_panel(18.2), mapping)
+    assert join == {
+        "kdcode": "CIK0000000001",
+        "join": "2020-05-16",
+        "from": "AAA.US",
+        "to": "NEWA.US",
+        "last_close": 9.1,
+        "first_close": 18.2,
+        "return": pytest.approx(1.0),
+    }
+    kept = build.symbol_map(
+        inputs["holdings"], [CIK_A], build.price_cache_reader(inputs["eod"]), "2025-12-31",
+        {"CIK0000000001": {"keep_segments": [1], "reason": "x"}},
+    )  # fmt: skip
+    assert build.join_returns(_join_panel(18.2), kept) == []  # one symbol left, no join
+
+
+@pytest.mark.parametrize(("new_close", "review", "code"), [
+    (9.2, None, 0),  # a 1% move across the change: no finding
+    (18.2, None, 1),  # +100% with no decision stops the build
+    (18.2, {"CIK0000000001": {"keep_segments": [1], "reason": "x"}}, 0),
+])  # fmt: skip
+def test_main_stops_on_a_large_join_return_without_a_keep_segments_decision(
+    inputs, new_close, review, code
+):
+    panel_path = inputs["tmp"] / "panel.csv"
+    _join_panel(new_close).to_csv(panel_path, index=False)
+    argv = [
+        "--holdings", str(inputs["tmp"] / "holdings_matched.csv.gz"),
+        "--membership", str(inputs["tmp"] / "r2k_membership.csv"),
+        "--price-cache", str(inputs["eod"]),
+        "--output-dir", str(inputs["tmp"] / "out"),
+        "--prefix", "toy",
+        "--target-members", "1",
+        "--check-joins", str(panel_path),
+    ]  # fmt: skip
+    if review is not None:
+        review_path = inputs["tmp"] / "review.json"
+        review_path.write_text(json.dumps({"entries": review}))
+        argv += ["--review", str(review_path)]
+    assert build.main(argv) == code
+    report = json.loads((inputs["tmp"] / "out" / "toy_sample.json").read_text())
+    assert len(report["symbol_joins"]["unresolved"]) == code  # the kept symbol has no join left
+
+
 def test_the_config_binds_its_files_to_the_committed_package():
     config = OmegaConf.load(CONFIG)
     manifest = read_input_manifest(

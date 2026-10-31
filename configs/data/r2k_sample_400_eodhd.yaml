@@ -8,7 +8,7 @@
 # scripts/data/build_r2k_sample_universe.py drew 688 of the 3,369 companies with a
 # membership day from 2020-01-02 to 2025-12-31 (seed 379), so that about 400 are
 # members on a typical day (384 to 434 on any weekday, median 402). Identifiers are
-# CIK<10 digits>. See docs/research/small_caps_r2k_sample.md for the biases.
+# CIK<10 digits>. See docs/research/current/small_caps_r2k_sample.md for the biases.
 #
 # Prices are EODHD's, split-adjusted from its split records, plus the corporate
 # actions and the dropped vendor rows declared in
@@ -27,9 +27,9 @@ use_pit_universe: true
 pit_universe_csv: data/raw/constituents/r2k_sample_400_20200102_20251231_pit_universe.csv
 pit_universe_mode: masked_panel
 pit_export_cutoff: "2025-12-31"
-input_package_manifest: data/manifests/r2k_sample_400_20200102_20251231_eodhd.r1.json
+input_package_manifest: data/manifests/r2k_sample_400_20200102_20251231_eodhd.r2.json
 # Quoted so YAML can never read a digest as a number.
-input_package_manifest_sha256: "2565034ba525bcce04f538ed6bbdd03e60617e006d9cffff5bd241562a4e5c6c"
+input_package_manifest_sha256: "317644ae7e340d1b5e4d7d095a822e161c56f8ac3c4af146e0937326ca7d8a13"
 input_package_root: data/raw
 
 pit_min_scoreable_stocks: 300

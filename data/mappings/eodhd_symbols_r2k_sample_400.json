@@ -257,12 +257,13 @@
       ]
     },
     "CIK0000076321": {
-      "note": "Parker Drilling Co; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "note": "Parker Drilling Co; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: in the extreme-return audit of 2026-10-31 (#379): after 2020-02-07 EODHD's raw close drops from $14.66 to $0.072 while adjusted_close moves from 733 to 3.60, so the split-adjusted series falls -99.5%, with no split record on either date and a seven-day gap in the rows, so the vendor's later rows are on another basis. The series ends at its last close on the old basis",
       "segments": [
         {
           "candidates": [
             "PKD.US"
-          ]
+          ],
+          "end": "2020-02-07"
         }
       ]
     },
@@ -394,14 +395,8 @@
       ]
     },
     "CIK0000315858": {
-      "note": "Bluegreen Vacations Holding Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "note": "Bluegreen Vacations Holding Corp.; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: the symbol change BBX.US to BVH.US on 2020-10-23 joins two series that are not on one price level (one-day return +2109% in the first EODHD pull of 2026-10-31 (#379); BBX Capital's split into two companies). Only the BVH.US segment is kept, the one covering more of the company's membership days (896 kept, 211 without a price)",
       "segments": [
-        {
-          "candidates": [
-            "BBX.US"
-          ],
-          "end": "2020-10-22"
-        },
         {
           "candidates": [
             "BVH.US"
@@ -1052,12 +1047,13 @@
       ]
     },
     "CIK0000803649": {
-      "note": "Equity Commonwealth; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "note": "Equity Commonwealth; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: in the extreme-return audit of 2026-10-31 (#379): Equity Commonwealth paid a $19 liquidating distribution in December 2024, which neither EODHD's close nor its adjusted_close takes out (20.39 to 1.50, -92.6%, the same in both), so the price series would show a loss holders did not take; the series ends at 2024-12-06, the last close before the distribution",
       "segments": [
         {
           "candidates": [
             "EQC.US"
-          ]
+          ],
+          "end": "2024-12-06"
         }
       ]
     },
@@ -1542,14 +1538,8 @@
       ]
     },
     "CIK0000913760": {
-      "note": "StoneX Group, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "note": "StoneX Group, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: the symbol change INTL_old.US to SNEX.US on 2020-07-03 joins two series that are not on one price level (one-day return -52.7% in the first EODHD pull of 2026-10-31 (#379); SNEX.US is restated for 3-for-2 splits that INTL_old.US is not). Only the SNEX.US segment is kept, the one covering more of the company's membership days (1434 kept, 131 without a price)",
       "segments": [
-        {
-          "candidates": [
-            "INTL_old.US"
-          ],
-          "end": "2020-07-02"
-        },
         {
           "candidates": [
             "SNEX.US"
@@ -1655,19 +1645,13 @@
       ]
     },
     "CIK0000929351": {
-      "note": "Starz Entertainment Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "note": "Starz Entertainment Corp.; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: the symbol change LGF-B.US to STRZ.US on 2025-05-07 joins two series that are not on one price level (one-day return +45.6% in the first EODHD pull of 2026-10-31 (#379); the Lionsgate separation, when Starz took over the old Lionsgate registrant). Only the LGF-B.US segment is kept, the one covering more of the company's membership days (1005 kept, 171 without a price)",
       "segments": [
         {
           "candidates": [
             "LGF-B.US"
           ],
           "end": "2025-05-06"
-        },
-        {
-          "candidates": [
-            "STRZ.US"
-          ],
-          "start": "2025-05-07"
         }
       ]
     },
@@ -1732,14 +1716,8 @@
       ]
     },
     "CIK0000945764": {
-      "note": "Denbury, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "note": "Denbury, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: the symbol change DNR.US to DEN.US on 2020-07-31 joins two series that are not on one price level (one-day return +7410% in the first EODHD pull of 2026-10-31 (#379); Denbury's bankruptcy: the old shares were cancelled and new shares issued). Only the DEN.US segment is kept, the one covering more of the company's membership days (653 kept, 128 without a price)",
       "segments": [
-        {
-          "candidates": [
-            "DNR.US"
-          ],
-          "end": "2020-07-30"
-        },
         {
           "candidates": [
             "DEN.US"
@@ -1876,12 +1854,13 @@
       ]
     },
     "CIK0001011570": {
-      "note": "Knoll Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "note": "Knoll Inc; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: in the extreme-return audit of 2026-10-31 (#379): Knoll was acquired by Herman Miller on 2021-07-19, but EODHD keeps printing rows near $0.70 afterwards (a -97.3% one-day return); the series ends at the last close before the acquisition",
       "segments": [
         {
           "candidates": [
             "KNL.US"
-          ]
+          ],
+          "end": "2021-07-19"
         }
       ]
     },
@@ -1991,21 +1970,7 @@
         {
           "candidates": [
             "UONE.US"
-          ],
-          "end": "2023-06-29"
-        },
-        {
-          "candidates": [
-            "UONEK.US"
-          ],
-          "end": "2023-12-29",
-          "start": "2023-06-30"
-        },
-        {
-          "candidates": [
-            "UONE.US"
-          ],
-          "start": "2023-12-30"
+          ]
         }
       ]
     },
@@ -4024,19 +3989,13 @@
       ]
     },
     "CIK0001498710": {
-      "note": "Spirit Aviation Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "note": "Spirit Aviation Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: the symbol change SAVE.US to FLYY.US on 2024-11-19 joins two series that are not on one price level (one-day return +724% in the first EODHD pull of 2026-10-31 (#379); Spirit Airlines' bankruptcy: the old shares were cancelled and new shares issued). Only the SAVE.US segment is kept, the one covering more of the company's membership days (1273 kept, 96 without a price)",
       "segments": [
         {
           "candidates": [
             "SAVE.US"
           ],
           "end": "2024-11-18"
-        },
-        {
-          "candidates": [
-            "FLYY.US"
-          ],
-          "start": "2024-11-19"
         }
       ]
     },
@@ -5229,19 +5188,13 @@
       ]
     },
     "CIK0001679688": {
-      "note": "DigitalBridge Group, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "note": "DigitalBridge Group, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: the symbol change CLNY.US to DBRG.US on 2021-08-24 joins two series that are not on one price level (one-day return -98.5% in the first EODHD pull of 2026-10-31 (#379); the two symbols carry different reverse-split bases). Only the DBRG.US segment is kept, the one covering more of the company's membership days (1137 kept, 300 without a price). Rows before 2022-08-23 are also dropped: in the extreme-return audit of 2026-10-31 (#379) the DBRG.US raw close before its 1-for-4 reverse split of that day reads about $0.08 against the roughly $5.50 the stock traded at, so the split-adjusted series jumps +6298% on the split day; the vendor's earlier rows are on a wrong basis",
       "segments": [
-        {
-          "candidates": [
-            "CLNY.US"
-          ],
-          "end": "2021-08-23"
-        },
         {
           "candidates": [
             "DBRG.US"
           ],
-          "start": "2021-08-24"
+          "start": "2022-08-23"
         }
       ]
     },
@@ -5307,14 +5260,8 @@
       ]
     },
     "CIK0001688476": {
-      "note": "NexTier Oilfield Solutions, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "note": "NexTier Oilfield Solutions, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: the symbol change FRAC.US to NEX.US on 2019-11-07 joins two series that are not on one price level (one-day return +26.5% in the first EODHD pull of 2026-10-31 (#379); Keane's merger with C&J Energy, which exchanged the shares). Only the NEX.US segment is kept, the one covering more of the company's membership days (977 kept, 0 without a price)",
       "segments": [
-        {
-          "candidates": [
-            "FRAC.US"
-          ],
-          "end": "2019-11-06"
-        },
         {
           "candidates": [
             "NEX.US"
@@ -5488,12 +5435,13 @@
       ]
     },
     "CIK0001707178": {
-      "note": "CorePoint Lodging Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "note": "CorePoint Lodging Inc; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: in the extreme-return audit of 2026-10-31 (#379): CorePoint Lodging was taken private for $16 a share in March 2022; EODHD's last row, 2022-03-03 at $3.36 against $15.98 the day before (-79.0%), is not a trade in the old shares, so the series ends on 2022-03-02",
       "segments": [
         {
           "candidates": [
             "CPLG.US"
-          ]
+          ],
+          "end": "2022-03-02"
         }
       ]
     },
@@ -6876,12 +6824,13 @@
       ]
     },
     "CIK0001892492": {
-      "note": "Cryptyde, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "note": "Cryptyde, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: in the extreme-return audit of 2026-10-31 (#379): Cryptyde's rows before 2022-06-30 are when-issued quotes on volumes of 0 to 36 shares, which then fall -67.8% into the first regular-way close; rows before the company's first membership day, 2022-06-30, are dropped",
       "segments": [
         {
           "candidates": [
             "TYDE.US"
-          ]
+          ],
+          "start": "2022-06-30"
         }
       ]
     },
