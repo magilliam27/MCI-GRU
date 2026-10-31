@@ -206,6 +206,14 @@ RUN_ARMS = {
     # recipe's 1729 + i for a 20-model ensemble. The paired difference against the
     # recipe arm is the seed noise floor the other arms' differences are read against.
     "other_seeds": RunArm(slug_suffix="seed-2729", replace=(("seed", "2729"),)),
+    # The correlation threshold swept below the recipe's 0.8 (#377): at 0.8 the static
+    # graph links about four pairs a day, so the graph-zeroed control barely differs.
+    **{
+        f"graph_thr_{tag}": RunArm(
+            slug_suffix=f"graph-thr-{tag}", replace=(("graph.judge_value", value),)
+        )
+        for tag, value in (("0p4", "0.4"), ("0p5", "0.5"), ("0p6", "0.6"), ("0p7", "0.7"))
+    },
 }
 
 

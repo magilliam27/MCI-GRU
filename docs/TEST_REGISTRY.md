@@ -1286,6 +1286,7 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_a_run_records_itself_without_the_key` |  |  |
 | `test_the_recipe_arm_is_the_recipe` |  |  |
 | `test_each_control_arm_differs_from_the_recipe_only_by_its_change` |  |  |
+| `test_each_threshold_arm_changes_only_the_correlation_threshold` |  | parametrize |
 | `test_an_arm_that_would_change_nothing_is_refused` |  |  |
 | `test_every_arm_composes_into_the_typed_config` | Each arm goes through Hydra the way run_experiment.py takes it. | parametrize |
 | `test_a_control_arm_records_itself_and_is_never_an_admitted_run_candidate` |  |  |

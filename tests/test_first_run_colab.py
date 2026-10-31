@@ -1055,6 +1055,16 @@ def test_each_control_arm_differs_from_the_recipe_only_by_its_change():
     assert len(names) == len(frc.RUN_ARMS), "an arm must not file its results under the recipe id"
 
 
+@pytest.mark.parametrize("value", ["0.4", "0.5", "0.6", "0.7"])
+def test_each_threshold_arm_changes_only_the_correlation_threshold(value):
+    recipe = _recipe_with_fixed_inputs()
+    arm = f"graph_thr_{value.replace('.', 'p')}"
+    swept = frc.apply_arm(recipe, arm)
+    assert [o for o in swept if o not in recipe] == [f"graph.judge_value={value}"]
+    assert [o for o in recipe if o not in swept] == ["graph.judge_value=0.8"]
+    assert len(swept) == len(recipe)
+
+
 def test_an_arm_that_would_change_nothing_is_refused():
     with pytest.raises(
         KeyError, match="changes features.base_inputs, which the recipe does not set"
@@ -1082,6 +1092,8 @@ def test_every_arm_composes_into_the_typed_config(arm):
         cfg = compose(config_name="config", overrides=job_overrides)
     config = create_config_from_dict(OmegaConf.to_container(cfg, resolve=True))
     assert config.graph.zero_edges is (arm == "graph_zeroed")
+    thresholds = {f"graph_thr_0p{d}": float(f"0.{d}") for d in range(4, 8)}
+    assert config.graph.judge_value == thresholds.get(arm, 0.8)
     assert config.features.base_inputs == ("levels" if arm == "levels_inputs" else "relative")
     assert config.experiment_name == frc.arm_experiment_name("slug", arm)
     # Same seed, budget and data whichever arm runs.
