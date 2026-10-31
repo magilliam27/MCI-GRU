@@ -1399,6 +1399,20 @@ def test_compare_accepts_the_same_package_bytes_however_they_were_staged(tmp_pat
     assert _compare(tmp_path, [("recipe", recipe), ("graph_zeroed", zeroed)]) == 0
 
 
+def test_compare_pairs_runs_recorded_before_and_after_the_protocol_stamp(tmp_path):
+    """A run launched before #372 has no ``protocol.*`` override; one launched after it
+    has ``protocol.exploratory=true``. That only says how the run is recorded."""
+    ic = [0.01, 0.02] * (len(_DATES) // 2)
+    recipe = _fake_arm_run(tmp_path, "recipe", ic)
+    zeroed = _fake_arm_run(
+        tmp_path,
+        "graph_zeroed",
+        ic,
+        overrides=[*frc.apply_arm(_FAKE_RECIPE, "graph_zeroed"), "protocol.exploratory=true"],
+    )
+    assert _compare(tmp_path, [("recipe", recipe), ("graph_zeroed", zeroed)]) == 0
+
+
 def test_compare_refuses_an_arm_given_twice_or_a_reference_other_than_the_recipe(tmp_path, capsys):
     ic = [0.01] * len(_DATES)
     recipe = _fake_arm_run(tmp_path, "recipe", ic)

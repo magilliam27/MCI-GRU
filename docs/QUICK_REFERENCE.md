@@ -3,14 +3,17 @@
 ## Training
 
 ```bash
-# Local (MLflow on by default; LSEG default data source in sp500.yaml)
-python run_experiment.py
+# Every run is pre-registered or exploratory (docs/research/EXPERIMENT_PROTOCOL.md)
+python run_experiment.py protocol.exploratory=true
 
 # Smoke: CSV data + short run + no MLflow
-python run_experiment.py training.num_epochs=2 training.num_models=1 data.source=csv tracking.enabled=false
+python run_experiment.py protocol.exploratory=true training.num_epochs=2 training.num_models=1 data.source=csv tracking.enabled=false
 
 # Custom output directory
-python run_experiment.py output_dir=/path/to/output
+python run_experiment.py protocol.exploratory=true output_dir=/path/to/output
+
+# A pre-registered run: one declared arm on one declared window
+python run_experiment.py protocol.experiment_id=<id> protocol.arm=<arm> protocol.window=W3
 ```
 
 **Outputs:** `{output_dir}/{experiment_name}/{timestamp}/`

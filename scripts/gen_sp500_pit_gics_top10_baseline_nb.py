@@ -399,7 +399,7 @@ cells = [
                 overrides = base_overrides(year, year_root)
                 write_json(DRIVE_RUN_ROOT / f"hydra_overrides_{year}.json", {"overrides": overrides})
 
-                train_cmd = [sys.executable, "-u", str(REPO_DIR / "run_experiment.py"), *overrides]
+                train_cmd = [sys.executable, "-u", str(REPO_DIR / "run_experiment.py"), *overrides, "protocol.exploratory=true"]
                 run_stream(train_cmd, cwd=REPO_DIR, log_name=f"training_{year}.log", phase=f"training_{year}")
 
                 experiment_name = PIT_WINDOWS[year]["experiment_name"]

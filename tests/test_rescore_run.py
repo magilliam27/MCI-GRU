@@ -49,6 +49,7 @@ STOCKS = ["A.N", "B.N", "C.N", "D.N", "E.N", "F.N"]
 MISSING_BAR = ("C.N", "2020-03-10")
 OVERRIDES = [
     "features=base",
+    "protocol.exploratory=true",
     "data.source=csv",
     "data.input_package_manifest=null",
     "data.input_package_manifest_sha256=null",

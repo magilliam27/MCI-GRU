@@ -499,6 +499,7 @@ def test_recording_refuses_a_second_writer_for_the_same_attempt(tmp_path):
 
 RUNNER_OVERRIDES = [
     "features=base",
+    "protocol.exploratory=true",
     "data.source=csv",
     "data.use_pit_universe=false",
     "data.train_start=2020-01-01",

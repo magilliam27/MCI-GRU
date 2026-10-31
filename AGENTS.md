@@ -8,7 +8,7 @@
 ```powershell
 .\.venv\Scripts\python.exe scripts/run_pytest_isolated.py tests/ -v  # Windows-preferred full suite
 .\.venv\Scripts\python.exe scripts/ci_smoke.py  # end-to-end smoke on a synthetic panel; what CI runs
-.\.venv\Scripts\python.exe run_experiment.py data.use_pit_universe=false training.num_epochs=2 training.num_models=1 tracking.enabled=false  # smoke run against the default CSV group (needs its CSV locally); PIT masks off
+.\.venv\Scripts\python.exe run_experiment.py protocol.exploratory=true data.use_pit_universe=false training.num_epochs=2 training.num_models=1 tracking.enabled=false  # smoke run against the default CSV group (needs its CSV locally); PIT masks off
 ```
 
 ## Default Experiment Recipe
@@ -25,6 +25,16 @@ layers; per-stock relative base inputs in place of raw price and volume levels;
 full-precision validation and prediction (#325); and a four-year training
 window, 2020 to 2023, validated on 2024 and tested on 2025 (#367).
 `FRED_API_KEY` is required unless a smoke run explicitly disables global regime.
+
+## Experiment Protocol
+
+Every training run is either pre-registered or says it is exploratory: the runner
+refuses one that is neither. An experiment is declared in a committed
+`docs/research/experiments/<id>.yaml` and run as
+`protocol.experiment_id=<id> protocol.arm=<arm> protocol.window=W1..W5`; anything
+else passes `protocol.exploratory=true` and never gets a verdict. The 2026 holdout
+(2026-01-22 onward) is refused for every run. See
+`docs/research/EXPERIMENT_PROTOCOL.md` (PRD #369).
 
 ## Agent skills
 
