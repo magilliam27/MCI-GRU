@@ -24,6 +24,7 @@ from mci_gru.graph.correlation import (
 from mci_gru.graph.correlation import (
     compute_correlation_matrix as compute_correlation_matrix_impl,
 )
+from mci_gru.graph.link_scores import link_score_matrix
 from mci_gru.graph.schedule import GraphSchedule
 
 
@@ -62,6 +63,7 @@ class GraphBuilder:
         use_lead_lag_features: bool = False,
         lead_lag_days: list[int] | None = None,
         exclude_edge_pairs: Sequence[Sequence[str]] | None = None,
+        link_scores: pd.DataFrame | None = None,
     ):
         if top_k < 0:
             raise ValueError(f"top_k must be >= 0, got {top_k}")
@@ -81,6 +83,9 @@ class GraphBuilder:
         self.exclude_edge_pairs = (
             [tuple(pair) for pair in exclude_edge_pairs] if exclude_edge_pairs else []
         )
+        # When set, neighbours are ranked on these pairwise scores instead of on
+        # past return correlation (#377); see mci_gru/graph/link_scores.py.
+        self.link_scores = link_scores
         self.last_update_date: str | None = None
         self.current_edge_index: torch.Tensor | None = None
         self.current_edge_weight: torch.Tensor | None = None
@@ -177,7 +182,10 @@ class GraphBuilder:
                     n_feat,
                 )
         pivot = self._daily_returns_pivot(df, kdcode_list, end_date)
-        self.correlation_matrix = pivot.corr()
+        if self.link_scores is not None:
+            self.correlation_matrix = link_score_matrix(self.link_scores, kdcode_list, end_date)
+        else:
+            self.correlation_matrix = pivot.corr()
         rp = pivot if self.use_lead_lag_features else None
         edge_index, edge_weight = self.build_edges(
             self.correlation_matrix,

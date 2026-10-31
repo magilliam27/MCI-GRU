@@ -1065,6 +1065,17 @@ def test_each_threshold_arm_changes_only_the_correlation_threshold(value):
     assert len(swept) == len(recipe)
 
 
+def test_the_jev_arm_differs_from_the_top_k_arm_only_by_its_link_scores():
+    recipe = _recipe_with_fixed_inputs()
+    by_corr = frc.apply_arm(recipe, "graph_topk8")
+    by_jev = frc.apply_arm(recipe, "graph_jev_topk8")
+    assert [o for o in by_corr if o not in recipe] == ["graph.top_k=8"]
+    assert [o for o in by_jev if o not in by_corr] == [
+        "graph.link_scores_csv=data/raw/graph_links/jev_link_scores_2019_10k.csv"
+    ]
+    assert len(by_jev) == len(by_corr) + 1
+
+
 def test_an_arm_that_would_change_nothing_is_refused():
     with pytest.raises(
         KeyError, match="changes features.base_inputs, which the recipe does not set"
