@@ -1,6 +1,6 @@
 # Small-caps universe: a random point-in-time Russell 2000 sample
 
-Status: data built, run not yet made (#379). Exploratory: the run is stamped
+Status: run made 2026-10-31 (#379), results below. Exploratory: the run is stamped
 `protocol.exploratory=true` and gets no verdict.
 
 ## Question
@@ -119,3 +119,20 @@ before the join and extreme-return fixes, is superseded. A CPU check on r2 (one 
 admitted the package, built the graph and scored all 238 test dates. The run is one recipe arm
 on Vertex (g2-standard-8 + L4), after a timing probe, each cleared by the GCP budget
 tracker first.
+
+## Result (2026-10-31)
+
+Run `20261031T221916Z-small-caps-full-4b81d7b2`, the recipe's 20 models at commit
+`4b81d7b`, 61 minutes on one L4. Outputs are in
+`gs://mci-gru-runs-8a195c19-data/runs/small_caps_r2k/`.
+
+- IC 0.0068 (95% interval -0.022 to 0.036) and rank IC 0.0192 (-0.012 to 0.050)
+  over 238 test dates. Neither interval excludes zero. The recipe on the S&P panel
+  in #326 had an IC of 0.0137.
+- The top-50 book returned +8.9% (Sharpe 0.57) from 2025-01-24 to 2026-01-08. The
+  sample universe returned +10.8% (0.60) and IWM +12.6% (0.72). The excess over the
+  universe is -0.04% per signal date (Hansen-Hodrick t -0.30). The top 10, 20 and 100
+  are flat too. The sample universe's daily correlation with IWM is 0.96.
+
+There is no evidence that the recipe picks winners among these small caps in 2025.
+It is one test year and one seed set, and delisting returns are missing.
