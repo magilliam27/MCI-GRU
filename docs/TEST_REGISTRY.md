@@ -1314,6 +1314,8 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_compare_refuses_arms_that_ran_different_windows` |  |  |
 | `test_compare_refuses_a_window_given_twice_for_one_arm` |  |  |
 | `test_compare_refuses_reference_windows_that_differ_beyond_their_dates` |  |  |
+| `test_compare_refuses_runs_that_score_different_label_horizons` |  |  |
+| `test_window_runs_take_their_dates_from_the_data_group_they_select` | The data config comes from the overrides given, not from the checkout's recipe. |  |
 | `test_compare_writes_strict_json_and_never_writes_over_a_folder` |  |  |
 | `test_check_arms_refuses_before_training_an_arm_the_recipe_cannot_take` |  |  |
 | `test_check_arms_accepts_the_levels_arm_once_the_recipe_pins_relative_inputs` | Control for the refusal above: the #325 recipe gives levels_inputs a pin to undo. |  |

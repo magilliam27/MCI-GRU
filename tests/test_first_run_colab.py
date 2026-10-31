@@ -1641,6 +1641,31 @@ def test_compare_refuses_reference_windows_that_differ_beyond_their_dates(tmp_pa
     assert "beyond the window's dates" in capsys.readouterr().out
 
 
+def test_compare_refuses_runs_that_score_different_label_horizons(tmp_path, capsys):
+    runs = _window_runs(tmp_path, {"W1": 0.01})
+    summary_path = runs[1][1] / "outputs" / "evaluation_summary.json"
+    summary = json.loads(summary_path.read_text())
+    summary_path.write_text(json.dumps({**summary, "label_t": 10}))
+    assert _compare(tmp_path, runs) == 1
+    assert "different label horizons: [5, 10]" in capsys.readouterr().out
+
+
+def test_window_runs_take_their_dates_from_the_data_group_they_select():
+    """The data config comes from the overrides given, not from the checkout's recipe."""
+    recipe = frc.recipe_overrides(RECIPE.read_text(encoding="utf-8"))
+    other = frc.replace_override(recipe, "data", "temporal_2016")  # tests on 2022
+    overrides = frc.build_run_overrides(
+        other, run_dir=Path("/tmp/w"), experiment_name="slug", smoke=False, window="W5"
+    )
+    with initialize_config_dir(config_dir=str(REPO_ROOT / "configs"), version_base=None):
+        cfg = compose(
+            config_name="config", overrides=[o for o in overrides if not o.startswith("hydra.")]
+        )
+    data = OmegaConf.to_container(cfg, resolve=True)["data"]
+    spans = frc.WINDOWS["W5"].spans()
+    assert {key: str(data[key.removeprefix("data.")]) for key in spans} == spans
+
+
 def test_compare_writes_strict_json_and_never_writes_over_a_folder(tmp_path, capsys):
     ic = [0.01] * len(_DATES)  # identical arms: every difference is 0, so some stats are NaN
     recipe = _fake_arm_run(tmp_path, "recipe", ic)

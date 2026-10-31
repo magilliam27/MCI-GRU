@@ -282,8 +282,13 @@ def recipe_data_config(repo_dir: Path) -> dict[str, Any]:
     """The data config the recipe selects with ``data=``, or ``{}`` if there is none."""
     repo_dir = Path(repo_dir)
     overrides = recipe_overrides((repo_dir / RECIPE_PATH).read_text(encoding="utf-8"))
+    return selected_data_config(overrides, repo_dir)
+
+
+def selected_data_config(overrides: Sequence[str], repo_dir: Path) -> dict[str, Any]:
+    """The data config *overrides* select with ``data=``, or ``{}`` if there is none."""
     data_group = override_value(overrides, "data")
-    path = repo_dir / "configs" / "data" / f"{data_group}.yaml"
+    path = Path(repo_dir) / "configs" / "data" / f"{data_group}.yaml"
     if not data_group or not path.exists():
         return {}
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -386,9 +391,9 @@ def build_run_overrides(
 
     *arm* applies one of :data:`RUN_ARMS` first, so a control arm differs from the
     recipe only by its named changes. *window* then moves the run onto that window's
-    dates (:func:`window_overrides`); ``data_config`` defaults to the recipe's at
-    :data:`REPO_DIR`. The window is stamped as ``protocol.window``, and the runner
-    refuses the run unless its dates are that window's.
+    dates (:func:`window_overrides`); ``data_config`` defaults to the one *recipe*
+    selects, read at :data:`REPO_DIR`. The window is stamped as ``protocol.window``,
+    and the runner refuses the run unless its dates are that window's.
 
     Capture is added only when the recipe does not already select it (main before
     #274). The folder is named explicitly then, because before #274 capture has no
@@ -397,7 +402,7 @@ def build_run_overrides(
     ``tracking`` extra, and the run's own records do not depend on it.
     """
     if data_config is None:
-        data_config = recipe_data_config(REPO_DIR)
+        data_config = selected_data_config(recipe, REPO_DIR)
     overrides = window_overrides(apply_arm(recipe, arm), data_config, window)
     if smoke:
         for key, value in SMOKE_BUDGET.items():
@@ -1152,11 +1157,13 @@ def read_arm_result(arm: str, run_dir: Path) -> ArmResult:
     summaries = sorted(run_dir.rglob("evaluation_summary.json"))
     if len(summaries) != 1:
         raise ValueError(f"{run_dir} holds {len(summaries)} evaluation summaries; expected one")
-    window = summaries[0].parent
+    summary_dir = summaries[0].parent
     summary = json.loads(summaries[0].read_text(encoding="utf-8"))
-    daily_path = window / "daily_ic.csv"
+    daily_path = summary_dir / "daily_ic.csv"
     if not daily_path.exists():
-        raise ValueError(f"{window} has no daily_ic.csv; it ran on a commit without #326's series")
+        raise ValueError(
+            f"{summary_dir} has no daily_ic.csv; it ran on a commit without #326's series"
+        )
     daily = pd.read_csv(daily_path, dtype={"dt": str}).set_index("dt")
     for column, key in (("ic", "avg_ic"), ("rank_ic", "avg_rank_ic")):
         stored = summary["metrics"][key]
@@ -1286,6 +1293,9 @@ def pooled_daily(runs: Sequence[ArmResult]) -> Any:
 
     ordered = sorted(runs, key=lambda run: RUN_WINDOWS.index(run.window))
     pooled = pd.concat([run.daily[["ic", "rank_ic"]] for run in ordered])
+    # A backstop: read_arm_result keeps each run inside its window's test span, the
+    # spans are disjoint and compare_arms refuses a window twice, so this cannot fire
+    # unless the window schedule changes.
     if not pooled.index.is_unique:
         repeated = pooled.index[pooled.index.duplicated()][0]
         raise ValueError(f"arm {runs[0].arm!r} scores {repeated} in more than one window")
@@ -1430,10 +1440,12 @@ def compare_arms(
         "runs": runs,
         "paired_daily_difference": paired,
         "note": "Evidence, not a pass/fail gate (PRD #319, D1). Paired rows are "
-        "reference minus control, per date, on the dates every arm scored: pooled over "
-        "every window, then one window at a time (#371). Each run fetched its FRED "
-        "inputs itself; auxiliary_inputs_match_reference says whether the captured bytes "
-        "were the same as the recipe arm's run on that window.",
+        "reference minus control, per date, on the dates every arm scored, so a date any "
+        "arm missed drops out of every pair: pooled over every window, then one window "
+        "at a time (#371). Each arm's avg_ic under arms averages that arm's own dates, so "
+        "two arms' avg_ic can differ by other than a paired mean_delta. Each run fetched "
+        "its FRED inputs itself; auxiliary_inputs_match_reference says whether the "
+        "captured bytes were the same as the recipe arm's run on that window.",
     }
 
 
