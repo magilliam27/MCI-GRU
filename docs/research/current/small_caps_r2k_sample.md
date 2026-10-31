@@ -95,8 +95,8 @@ the test should see it.
   report, but a delisted name has no price after its last trade, so it simply
   stops being tradable.
 - **Delisting returns are missing.** A name's last return is its last traded
-  close, not what holders finally received. In a one-model CPU check of the
-  first package, 125 of the test year's book exits found no close. Small caps delist far more often than the S&P 500's largest, so this
+  close, not what holders finally received. In a one-model CPU check of this
+  package, 129 of the test year's book exits found no close. Small caps delist far more often than the S&P 500's largest, so this
   matters more here, and it biases both the book and the universe benchmark.
 - **ETF holdings are not the index file.** IWM tracks the Russell 2000 closely,
   but it can hold a few names the index does not, and miss a few it does.
@@ -115,6 +115,7 @@ The package is at
 `gs://mci-gru-runs-8a195c19-data/preservation/r2k_sample_400_20200102_20251231_eodhd_r2/`,
 with the committed manifest copied beside it (manifest sha256
 `317644ae7e340d1b5e4d7d095a822e161c56f8ac3c4af146e0937326ca7d8a13`). Revision r1,
-before the join and extreme-return fixes, is superseded. The run is one recipe arm
+before the join and extreme-return fixes, is superseded. A CPU check on r2 (one model, three epochs, regime features on)
+admitted the package, built the graph and scored all 238 test dates. The run is one recipe arm
 on Vertex (g2-standard-8 + L4), after a timing probe, each cleared by the GCP budget
 tracker first.
