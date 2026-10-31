@@ -1,0 +1,104 @@
+{
+  "description": "Decisions on findings of the EODHD pull for the small-caps sample (#379), applied by scripts/data/build_r2k_sample_universe.py --review. No reference panel exists for these names, so each decision is read from EODHD's own raw close against its adjusted_close on the flagged date.",
+  "entries": {
+    "CIK0000076267": {
+      "adjustments": [
+        {
+          "date": "2019-02-04",
+          "reason": "A special distribution: the raw close moves -21.1% while adjusted_close moves -3.2%; earlier prices take EODHD's adjusted_close step, as the S&P map does for special dividends and spin-offs"
+        }
+      ],
+      "reason": "split_basis_jump on 2019-02-04 in the first EODHD pull of 2026-10-31 (#379); read as a special distribution"
+    },
+    "CIK0000704562": {
+      "start": "2018-03-16",
+      "reason": "split_basis_jump on 2018-03-16 in the first EODHD pull of 2026-10-31 (#379): adjusted_close steps by +28.6% while the raw close moves only -3.0%, so the vendor's adjustment, not the price, looks wrong; rows before 2018-03-16 are dropped, which is before the company's first membership day"
+    },
+    "CIK0000922864": {
+      "adjustments": [
+        {
+          "date": "2025-10-16",
+          "reason": "A special distribution: the raw close moves -29.3% while adjusted_close moves -1.2%; earlier prices take EODHD's adjusted_close step, as the S&P map does for special dividends and spin-offs"
+        }
+      ],
+      "reason": "split_basis_jump on 2025-10-16 in the first EODHD pull of 2026-10-31 (#379); read as a special distribution"
+    },
+    "CIK0001111335": {
+      "adjustments": [
+        {
+          "date": "2016-01-25",
+          "reason": "A special dividend: the raw close moves -39.8% while adjusted_close moves +4.0%; earlier prices take EODHD's adjusted_close step, as the S&P map does for special dividends and spin-offs"
+        }
+      ],
+      "reason": "split_basis_jump on 2016-01-25 in the first EODHD pull of 2026-10-31 (#379); read as a special dividend"
+    },
+    "CIK0001293971": {
+      "adjustments": [
+        {
+          "date": "2021-11-05",
+          "reason": "A spin-off: the raw close moves -47.8% while adjusted_close moves -19.4%; earlier prices take EODHD's adjusted_close step, as the S&P map does for special dividends and spin-offs"
+        }
+      ],
+      "reason": "split_basis_jump on 2021-11-05 in the first EODHD pull of 2026-10-31 (#379); read as a spin-off"
+    },
+    "CIK0001326190": {
+      "start": "2018-01-01",
+      "reason": "split_basis_jump on 20 or more dates in the first EODHD pull of 2026-10-31 (#379): adjusted_close and the raw close disagree repeatedly in 2015-2017 (thinly traded early history); rows before 2018-01-01 are dropped, which is before the company's first membership day"
+    },
+    "CIK0001402479": {
+      "start": "2018-01-01",
+      "reason": "split_basis_jump on 20 or more dates in the first EODHD pull of 2026-10-31 (#379): adjusted_close and the raw close disagree repeatedly in 2015-2017 (thinly traded early history); rows before 2018-01-01 are dropped, which is before the company's first membership day"
+    },
+    "CIK0001421182": {
+      "adjustments": [
+        {
+          "date": "2020-09-17",
+          "reason": "A special dividend: the raw close moves -24.8% while adjusted_close moves -5.0%; earlier prices take EODHD's adjusted_close step, as the S&P map does for special dividends and spin-offs"
+        }
+      ],
+      "reason": "split_basis_jump on 2020-09-17 in the first EODHD pull of 2026-10-31 (#379); read as a special dividend"
+    },
+    "CIK0001527728": {
+      "drop_sessions": [
+        "2025-09-29"
+      ],
+      "reason": "split_basis_jump in the first EODHD pull of 2026-10-31 (#379): EODHD records the 1-for-10 reverse split on 2025-09-30, but its raw close is already on the new shares on 2025-09-29 (0.1301 to 1.2660, adjusted_close 1.301 to 1.266). That one row is left out rather than restated"
+    },
+    "CIK0001545654": {
+      "adjustments": [
+        {
+          "date": "2017-11-28",
+          "reason": "A special distribution: the raw close moves -36.2% while adjusted_close moves -1.2%; earlier prices take EODHD's adjusted_close step, as the S&P map does for special dividends and spin-offs"
+        }
+      ],
+      "reason": "split_basis_jump on 2017-11-28 in the first EODHD pull of 2026-10-31 (#379); read as a special distribution"
+    },
+    "CIK0001547546": {
+      "start": "2016-11-17",
+      "reason": "split_basis_jump on 2016-11-17 in the first EODHD pull of 2026-10-31 (#379): adjusted_close steps by +8.2% while the raw close moves only -15.6%, so the vendor's adjustment, not the price, looks wrong; rows before 2016-11-17 are dropped, which is before the company's first membership day"
+    },
+    "CIK0001599947": {
+      "start": "2017-10-17",
+      "reason": "split_basis_jump on 2017-10-17 in the first EODHD pull of 2026-10-31 (#379): adjusted_close steps by +34.7% while the raw close moves only +12.1%, so the vendor's adjustment, not the price, looks wrong; rows before 2017-10-17 are dropped, which is before the company's first membership day"
+    },
+    "CIK0001619762": {
+      "adjustments": [
+        {
+          "date": "2025-07-14",
+          "reason": "A special distribution: the raw close moves -18.7% while adjusted_close moves -2.6%; earlier prices take EODHD's adjusted_close step, as the S&P map does for special dividends and spin-offs"
+        }
+      ],
+      "reason": "split_basis_jump on 2025-07-14 in the first EODHD pull of 2026-10-31 (#379); read as a special distribution"
+    },
+    "CIK0001638287": {
+      "drop_sessions": [
+        "2025-12-04"
+      ],
+      "reason": "split_basis_jump in the first EODHD pull of 2026-10-31 (#379): EODHD records the 1-for-11 reverse split on 2025-12-05, but its raw close is already on the new shares on 2025-12-04 (0.599 to 7.315, adjusted_close 6.589 to 7.315). That one row is left out rather than restated"
+    },
+    "CIK0001687932": {
+      "start": "2019-03-18",
+      "reason": "split_basis_jump on 2019-03-18 in the first EODHD pull of 2026-10-31 (#379): adjusted_close steps by +16.6% while the raw close moves only -20.8%, so the vendor's adjustment, not the price, looks wrong; rows before 2019-03-18 are dropped, which is before the company's first membership day"
+    }
+  }
+}

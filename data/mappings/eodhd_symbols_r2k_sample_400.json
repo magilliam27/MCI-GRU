@@ -1,0 +1,7080 @@
+{
+  "overrides": {
+    "CIK0000007789": {
+      "note": "Associated Banc-Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ASB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000008063": {
+      "note": "Astronics Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ATRO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000009326": {
+      "note": "Balchem Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BCPC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000014177": {
+      "note": "Bridgford Foods Corp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BRID.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000014846": {
+      "note": "BRT Apartments Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BRT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000018255": {
+      "note": "Cato Corp. (The); symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CATO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000018926": {
+      "note": "Lumen Technologies, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LUMN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000022444": {
+      "note": "Commercial Metals Co.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CMC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000023197": {
+      "note": "Comtech Telecommunications Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CMTL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000026076": {
+      "note": "Cubic Corp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CUB_old.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000026780": {
+      "note": "Dana, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "DAN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000033488": {
+      "note": "Escalade, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ESCA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000046195": {
+      "note": "Bank of Hawaii Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BOH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000048287": {
+      "note": "HNI Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HNI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000052795": {
+      "note": "Anixter International Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AXE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000056679": {
+      "note": "Korn Ferry; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "KFY.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000059255": {
+      "note": "Valhi, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "VHI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000060714": {
+      "note": "LSB Industries, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LXU.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000060977": {
+      "note": "Lydall Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LDL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000066004": {
+      "note": "Middlesex Water Co.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MSEX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000066756": {
+      "note": "ALLETE, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ALE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000069633": {
+      "note": "Napco Security Technologies, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NSSC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000074046": {
+      "note": "Oil-Dri Corp. of America; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ODC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000075288": {
+      "note": "Oxford Industries, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "OXM.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000076267": {
+      "adjustments": [
+        {
+          "date": "2019-02-04",
+          "reason": "A special distribution: the raw close moves -21.1% while adjusted_close moves -3.2%; earlier prices take EODHD's adjusted_close step, as the S&P map does for special dividends and spin-offs"
+        }
+      ],
+      "note": "Park Aerospace Corp.; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: split_basis_jump on 2019-02-04 in the first EODHD pull of 2026-10-31 (#379); read as a special distribution",
+      "segments": [
+        {
+          "candidates": [
+            "PKE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000076321": {
+      "note": "Parker Drilling Co; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PKD.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000077159": {
+      "note": "Ranger Oil Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PVAC.US"
+          ],
+          "end": "2021-12-17"
+        },
+        {
+          "candidates": [
+            "ROCC.US"
+          ],
+          "start": "2021-12-18"
+        }
+      ]
+    },
+    "CIK0000084129": {
+      "note": "Rite Aid Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RAD.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000090896": {
+      "note": "Champion Homes, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SKY.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000091419": {
+      "note": "J M Smucker Co. (The); symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SJM.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000098677": {
+      "note": "Tootsie Roll Industries, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000102212": {
+      "note": "Univest Financial Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "UVSP.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000103595": {
+      "note": "Village Super Market, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "VLGEA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000104918": {
+      "note": "Avista Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AVA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000108516": {
+      "note": "Worthington Enterprises, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "WOR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000215466": {
+      "note": "Coeur Mining, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CDE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000276720": {
+      "note": "Pure Cycle Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PCYO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000315852": {
+      "note": "Range Resources Corp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RRC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000315858": {
+      "note": "Bluegreen Vacations Holding Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BBX.US"
+          ],
+          "end": "2020-10-22"
+        },
+        {
+          "candidates": [
+            "BVH.US"
+          ],
+          "start": "2020-10-23"
+        }
+      ]
+    },
+    "CIK0000318833": {
+      "note": "Team Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TISI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000320121": {
+      "note": "Telos Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TLS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000351569": {
+      "note": "Ameris Bancorp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ABCB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000351817": {
+      "note": "SilverBow Resources, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SBOW.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000351834": {
+      "note": "SunOpta, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "STKL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000352825": {
+      "note": "L B Foster Co.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FSTR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000353569": {
+      "note": "Quidel Corp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "QDEL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000354707": {
+      "note": "Hawaiian Electric Industries, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000356309": {
+      "note": "New Jersey Resources Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NJR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000357294": {
+      "note": "Hovnanian Enterprises, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HOV.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000357301": {
+      "note": "TrustCo Bank Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TRST.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000701347": {
+      "note": "Central Pacific Financial Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CPF.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000702325": {
+      "note": "First Midwest Bancorp Inc/IL; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FMBI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000704415": {
+      "note": "Tivity Health Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TVTY.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000704562": {
+      "note": "Avid Bioservices, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: split_basis_jump on 2018-03-16 in the first EODHD pull of 2026-10-31 (#379): adjusted_close steps by +28.6% while the raw close moves only -3.0%, so the vendor's adjustment, not the price, looks wrong; rows before 2018-03-16 are dropped, which is before the company's first membership day",
+      "segments": [
+        {
+          "candidates": [
+            "CDMO.US"
+          ],
+          "start": "2018-03-16"
+        }
+      ]
+    },
+    "CIK0000711377": {
+      "note": "Neogen Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NEOG.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000711669": {
+      "note": "Colony Bankcorp, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CBAN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000712534": {
+      "note": "First Merchants Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FRME.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000712770": {
+      "note": "One Liberty Properties, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "OLP.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000712771": {
+      "note": "ConnectOne Bancorp, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CNOB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000713425": {
+      "note": "American Software, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AMSWA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000714256": {
+      "note": "Sanara Medtech, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SMTI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000715072": {
+      "note": "Renasant Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RNST.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000716314": {
+      "note": "Graham Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GHM.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000717538": {
+      "note": "Arrow Financial Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AROW.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000717720": {
+      "note": "Value Line, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "VALU.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000719135": {
+      "note": "Apyx Medical Corp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "APYX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000720672": {
+      "note": "Stifel Financial Corp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SF.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000722830": {
+      "note": "Immunomedics Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "IMMU.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000723646": {
+      "note": "Franklin Financial Services Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FRAF.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000724004": {
+      "note": "Mesa Laboratories, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MLAB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000724910": {
+      "note": "NVE Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NVEC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000729580": {
+      "note": "Bel Fuse, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BELFB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000729986": {
+      "note": "United Bankshares, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "UBSI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000730272": {
+      "note": "Repligen Corp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RGEN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000730464": {
+      "note": "Adtalem Global Education, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CVSA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000733269": {
+      "note": "LiveRamp Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RAMP.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000740663": {
+      "note": "First of Long Island Corp. (The); symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FLIC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000740971": {
+      "note": "Old Point Financial Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "OPOF.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000742278": {
+      "note": "RPC, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RES.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000744187": {
+      "note": "REX American Resources Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "REX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000744218": {
+      "note": "Celldex Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CLDX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000745308": {
+      "note": "St. Joe Co. (The); symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "JOE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000746838": {
+      "note": "Unisys Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "UIS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000748268": {
+      "note": "Red Cat Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RCAT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000750004": {
+      "note": "Light & Wonder, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LNW.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000750577": {
+      "note": "Hancock Whitney Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HWC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000752642": {
+      "note": "UMH Properties, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "UMH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000752714": {
+      "note": "McGrath RentCorp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MGRC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000763907": {
+      "note": "First United Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FUNC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000766011": {
+      "note": "Caledonia Mining Corp. plc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CMCL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000771266": {
+      "note": "Kopin Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "KOPN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000773141": {
+      "note": "MDC Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MDC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000775215": {
+      "note": "HBT Financial, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HBT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000785557": {
+      "note": "DLH Holdings Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "DLHC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000785786": {
+      "note": "Plexus Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PLXS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000789933": {
+      "note": "NACCO Industries, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000790816": {
+      "note": "Brandywine Realty Trust; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BDN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000792966": {
+      "note": "Farmers & Merchants Bancorp, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FMAO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000792977": {
+      "note": "AMAG Pharmaceuticals Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AMAG.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000794367": {
+      "note": "Macy's Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "M.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000795403": {
+      "note": "Watts Water Technologies, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "WTS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000796534": {
+      "note": "National Bankshares, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NKSH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000799288": {
+      "note": "Lands' End, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000803649": {
+      "note": "Equity Commonwealth; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "EQC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000807863": {
+      "note": "Mitek Systems, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MITK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000807882": {
+      "note": "Jack in the Box, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "JACK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000808450": {
+      "note": "Navistar International Corp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NAV.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000810958": {
+      "note": "Citizens & Northern Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CZNC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000812348": {
+      "note": "Century Bancorp Inc/MA; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CNBKA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000814586": {
+      "note": "Lifeway Foods, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LWAY.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000821127": {
+      "note": "Boston Private Financial Holdings Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BPFH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000828944": {
+      "note": "WSFS Financial Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "WSFS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000831547": {
+      "note": "Spectrum Pharmaceuticals Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SPPI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000834285": {
+      "note": "Republic First Bancorp, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FRBK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000834365": {
+      "note": "BioLife Solutions, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BLFS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000836147": {
+      "note": "Middlefield Banc Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MBCN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000837465": {
+      "note": "Topgolf Callaway Brands Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CALY.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000842717": {
+      "note": "Blue Ridge Bankshares, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BRBS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000851310": {
+      "note": "Harmonic, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HLIT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000866368": {
+      "note": "PS Business Parks Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PSB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000868671": {
+      "note": "Glacier Bancorp, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GBCI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000874238": {
+      "note": "Sterling Infrastructure, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "STRL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000874396": {
+      "note": "Lifetime Brands, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LCUT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000874977": {
+      "note": "State Auto Financial Corp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "STFC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000876167": {
+      "note": "Progress Software Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PRGS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000876427": {
+      "note": "Monro, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MNRO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000880432": {
+      "note": "Misonix Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MSON.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000883107": {
+      "note": "Solesence, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SLSN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000883237": {
+      "note": "Virtus Investment Partners, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "VRTS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000883984": {
+      "note": "ICU Medical, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ICUI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000884219": {
+      "note": "Pursuit Attractions & Hospitality, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PRSU.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000884269": {
+      "note": "Alpha Pro Tech Ltd; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "APT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000885978": {
+      "note": "US Physical Therapy, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "USPH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000886136": {
+      "note": "Saga Communications Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SGA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000886158": {
+      "note": "Bed Bath & Beyond, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BBBYQ.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000886206": {
+      "note": "Franklin Covey Co.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000886346": {
+      "note": "Kadant, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "KAI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000886744": {
+      "note": "Geron Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GERN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000887343": {
+      "note": "Columbia Banking System, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "COLB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000887905": {
+      "note": "LTC Properties, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LTC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000891024": {
+      "note": "Patterson Cos., Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PDCO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000896429": {
+      "note": "Cantaloupe, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CTLP.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000897723": {
+      "note": "Sanmina Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SANM.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000899460": {
+      "note": "MannKind Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MNKD.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000899751": {
+      "note": "Titan International, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TWI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000899923": {
+      "note": "Myriad Genetics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MYGN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000902791": {
+      "note": "Barrett Business Services, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BBSI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000909108": {
+      "note": "Diamond Hill Investment Group, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "DHIL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000910073": {
+      "note": "Flagstar Bank NA; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FLG.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000911216": {
+      "note": "Palatin Technologies Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PTN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000912463": {
+      "note": "Guess?, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GES.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000912562": {
+      "note": "Gibraltar Industries, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ROCK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000913760": {
+      "note": "StoneX Group, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "INTL_old.US"
+          ],
+          "end": "2020-07-02"
+        },
+        {
+          "candidates": [
+            "SNEX.US"
+          ],
+          "start": "2020-07-03"
+        }
+      ]
+    },
+    "CIK0000914025": {
+      "note": "Plantronics Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "POLY.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000915840": {
+      "note": "Beazer Homes USA, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BZH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000917251": {
+      "note": "Agree Realty Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ADC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000922864": {
+      "adjustments": [
+        {
+          "date": "2025-10-16",
+          "reason": "A special distribution: the raw close moves -29.3% while adjusted_close moves -1.2%; earlier prices take EODHD's adjusted_close step, as the S&P map does for special dividends and spin-offs"
+        }
+      ],
+      "note": "Apartment Investment & Management Co.; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: split_basis_jump on 2025-10-16 in the first EODHD pull of 2026-10-31 (#379); read as a special distribution",
+      "segments": [
+        {
+          "candidates": [
+            "AIV.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000923571": {
+      "note": "US Xpress Enterprises, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "USX_old.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000923796": {
+      "note": "GEO Group, Inc. (The); symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GEO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000925528": {
+      "note": "Hudson Technologies, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HDSN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000928022": {
+      "note": "Callon Petroleum Co.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CPE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000928054": {
+      "note": "Flotek Industries, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FTK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000929351": {
+      "note": "Starz Entertainment Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LGF-B.US"
+          ],
+          "end": "2025-05-06"
+        },
+        {
+          "candidates": [
+            "STRZ.US"
+          ],
+          "start": "2025-05-07"
+        }
+      ]
+    },
+    "CIK0000930236": {
+      "note": "Redwood Trust, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RWT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000931584": {
+      "note": "Universal Stainless & Alloy Products, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "USAP.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000932696": {
+      "note": "Insight Enterprises, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NSIT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000933034": {
+      "note": "Strattec Security Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "STRT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000933974": {
+      "note": "Azenta, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AZTA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000943861": {
+      "note": "Goodrich Petroleum Corp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GDP.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000945764": {
+      "note": "Denbury, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "DNR.US"
+          ],
+          "end": "2020-07-30"
+        },
+        {
+          "candidates": [
+            "DEN.US"
+          ],
+          "start": "2020-07-31"
+        }
+      ]
+    },
+    "CIK0000945983": {
+      "note": "Climb Global Solutions, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CLMB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000946647": {
+      "note": "Premier Financial Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FDEF.US"
+          ],
+          "end": "2021-01-28"
+        },
+        {
+          "candidates": [
+            "PFC.US"
+          ],
+          "start": "2021-01-29"
+        }
+      ]
+    },
+    "CIK0000948708": {
+      "note": "Smith Micro Software Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SMSI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0000949870": {
+      "note": "Boston Beer Co Inc/The; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SAM.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001000177": {
+      "note": "Nordic American Tankers Ltd.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NAT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001000753": {
+      "note": "Insperity, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NSP.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001005229": {
+      "note": "Columbus McKinnon Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CMCO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001005286": {
+      "note": "Lifecore Biomedical, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LFCR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001005409": {
+      "note": "Dime Community Bancshares, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "DCOM.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001005817": {
+      "note": "Tompkins Financial Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TMP.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001010470": {
+      "note": "Provident Financial Holdings Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PROV.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001010612": {
+      "note": "Sykes Enterprises Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SYKE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001011570": {
+      "note": "Knoll Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "KNL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001013488": {
+      "note": "BJ's Restaurants, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BJRI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001016169": {
+      "note": "Antares Pharma Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ATRS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001016281": {
+      "note": "Carriage Services, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CSV.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001020214": {
+      "note": "Cerus Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CERS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001020710": {
+      "note": "DXP Enterprises, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "DXPE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001021561": {
+      "note": "Nu Skin Enterprises, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NUS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001023459": {
+      "note": "Simulations Plus, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SLP.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001040130": {
+      "note": "PetMed Express, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PETS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001040161": {
+      "note": "Pixelworks Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PXLW.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001041024": {
+      "note": "Rockwell Medical Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RMTI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001041657": {
+      "note": "Urban One, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "UONE.US"
+          ],
+          "end": "2023-06-29"
+        },
+        {
+          "candidates": [
+            "UONEK.US"
+          ],
+          "end": "2023-12-29",
+          "start": "2023-06-30"
+        },
+        {
+          "candidates": [
+            "UONE.US"
+          ],
+          "start": "2023-12-30"
+        }
+      ]
+    },
+    "CIK0001041803": {
+      "note": "PriceSmart, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PSMT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001044777": {
+      "note": "OneSpan, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "OSPN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001049521": {
+      "note": "Mercury Systems, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MRCY.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001049782": {
+      "note": "Brookline Bancorp, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BRKL_old.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001050446": {
+      "note": "MicroStrategy, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MSTR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001051343": {
+      "note": "Community West Bancshares; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CWBC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001053352": {
+      "note": "Heritage Commerce Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HTBK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001056285": {
+      "note": "Kirkland's Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "KIRK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001056903": {
+      "note": "American States Water Co.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AWR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001056943": {
+      "note": "Peoples Financial Services Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PFIS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001058623": {
+      "note": "Cumulus Media, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CMLS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001060349": {
+      "note": "GAMCO Investors, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GAMI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001060822": {
+      "note": "Carter's, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CRI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001061027": {
+      "note": "Viracta Therapeutics Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "VIRX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001064728": {
+      "note": "Peabody Energy Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BTU.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001065332": {
+      "note": "NIC Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "EGOV.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001066605": {
+      "note": "Heidrick & Struggles International, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HSII.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001069530": {
+      "note": "Cassava Sciences, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FLNA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001069533": {
+      "note": "RGC Resources, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RGCO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001070494": {
+      "note": "ACADIA Pharmaceuticals, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ACAD.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001070524": {
+      "note": "Greene County Bancorp, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GCBC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001075706": {
+      "note": "Citizens Holding Co; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CIZN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001076930": {
+      "note": "Novanta, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NOVT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001084991": {
+      "note": "Natural Gas Services Group, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NGS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001092662": {
+      "note": "Chembio Diagnostics Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CEMI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001093672": {
+      "note": "Peoples Bancorp of North Carolina, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PEBK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001093691": {
+      "note": "Plug Power, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PLUG.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001102266": {
+      "note": "CenterState Bank Corp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CSFL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001102993": {
+      "note": "LivePerson, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LPSN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001104657": {
+      "note": "Materion Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MTRN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001107843": {
+      "note": "Qualys, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "QLYS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001108109": {
+      "note": "Community Health Systems, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CYH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001108134": {
+      "note": "Beacon Financial Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BBT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001111335": {
+      "adjustments": [
+        {
+          "date": "2016-01-25",
+          "reason": "A special dividend: the raw close moves -39.8% while adjusted_close moves +4.0%; earlier prices take EODHD's adjusted_close step, as the S&P map does for special dividends and spin-offs"
+        }
+      ],
+      "note": "Visteon Corp.; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: split_basis_jump on 2016-01-25 in the first EODHD pull of 2026-10-31 (#379); read as a special dividend",
+      "segments": [
+        {
+          "candidates": [
+            "VC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001113232": {
+      "note": "Axcelis Technologies, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ACLS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001115128": {
+      "note": "Quotient Technology, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "QUOT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001118417": {
+      "note": "Model N, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MODN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001121484": {
+      "note": "Oil States International, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "OIS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001124198": {
+      "note": "Fluor Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FLR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001124804": {
+      "note": "Veradigm, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MDRX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001127371": {
+      "note": "Central Valley Community Bancorp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CVCY.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001130144": {
+      "note": "Sierra Bancorp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BSRR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001132651": {
+      "note": "Ames National Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ATLO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001133311": {
+      "note": "Travelzoo; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TZOO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001135185": {
+      "note": "Atlas Air Worldwide Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AAWW.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001142596": {
+      "note": "NuVasive, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NUVA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001142750": {
+      "note": "AMN Healthcare Services, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AMN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001145057": {
+      "note": "ForeScout Technologies Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FSCT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001157408": {
+      "note": "Stride, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LRN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001157647": {
+      "note": "Western New England Bancorp, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "WNEB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001158172": {
+      "note": "comScore Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SCOR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001158895": {
+      "note": "LeMaitre Vascular, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LMAT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001160308": {
+      "note": "Savara, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SVRA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001162896": {
+      "note": "Prairie Operating Co.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PROP.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001163739": {
+      "note": "Nabors Industries Ltd.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NBR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001166126": {
+      "note": "JC Penney Co Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CPPRQ.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001166928": {
+      "note": "West BanCorp, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "WTBA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001173281": {
+      "note": "NeuBase Therapeutics Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NBSE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001175483": {
+      "note": "Drive Shack Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "DS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001176948": {
+      "note": "Ares Management Corp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ARES.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001178697": {
+      "note": "Sonim Technologies Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SONM.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001180145": {
+      "note": "Cardiovascular Systems, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CSII.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001200375": {
+      "note": "Codexis, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CDXS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001210677": {
+      "note": "First Advantage Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001211583": {
+      "note": "Fennec Pharmaceuticals, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FENC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001213037": {
+      "note": "Cardiff Oncology, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CRDF.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001220754": {
+      "note": "ModivCare, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MODV.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001222840": {
+      "note": "Retail Properties of America Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RPAI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001227636": {
+      "note": "Neuronetics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "STIM.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001231457": {
+      "note": "Genelux Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GNLX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001232582": {
+      "note": "Ashford Hospitality Trust, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AHT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001234006": {
+      "note": "Gladstone Commercial Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GOOD.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001237746": {
+      "note": "Endurance International Group Holdings Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "EIGI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001253176": {
+      "note": "Vapotherm Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "VAPO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001260968": {
+      "note": "Marlin Business Services Corp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MRLN_old.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001261249": {
+      "note": "Agile Therapeutics Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AGRX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001262976": {
+      "note": "Cimpress plc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CMPR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001263762": {
+      "note": "Select Bancorp Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SLCT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001265131": {
+      "note": "Hilltop Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HTH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001267813": {
+      "note": "Marinus Pharmaceuticals, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MRNS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001275158": {
+      "note": "Noodles & Co.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NDLS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001277902": {
+      "note": "MVB Financial Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MVBF.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001285550": {
+      "note": "ClearPoint Neuro, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CLPT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001288469": {
+      "note": "MaxLinear, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MXL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001289308": {
+      "note": "EnerSys; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ENS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001290149": {
+      "note": "Sierra Oncology Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SRRA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001290900": {
+      "note": "Commercial Vehicle Group, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CVGI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001293310": {
+      "note": "Humanigen Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HGEN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001293971": {
+      "adjustments": [
+        {
+          "date": "2021-11-05",
+          "reason": "A spin-off: the raw close moves -47.8% while adjusted_close moves -19.4%; earlier prices take EODHD's adjusted_close step, as the S&P map does for special dividends and spin-offs"
+        }
+      ],
+      "note": "Bluebird Bio, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: split_basis_jump on 2021-11-05 in the first EODHD pull of 2026-10-31 (#379); read as a spin-off",
+      "segments": [
+        {
+          "candidates": [
+            "BLUE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001294133": {
+      "note": "Inogen, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "INGN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001295810": {
+      "note": "Sunstone Hotel Investors, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SHO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001296445": {
+      "note": "Ormat Technologies, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ORA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001297184": {
+      "note": "Amphastar Pharmaceuticals, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AMPH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001299939": {
+      "note": "Cadence Bank; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BXS.US"
+          ],
+          "end": "2021-12-30"
+        },
+        {
+          "candidates": [
+            "CADE.US"
+          ],
+          "start": "2021-12-31"
+        }
+      ]
+    },
+    "CIK0001300699": {
+      "note": "Athenex Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ATNX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001303313": {
+      "note": "LHC Group, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LHCG.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001305773": {
+      "note": "Conformis Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CFMS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001310114": {
+      "note": "ServiceSource International Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SREV.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001316835": {
+      "note": "Builders FirstSource Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BLDR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001320695": {
+      "note": "TreeHouse Foods, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "THS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001320760": {
+      "note": "TSS, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TSSI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001324948": {
+      "note": "RBC Bearings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RBC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001325964": {
+      "note": "Lightwave Logic, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LWLG.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001326110": {
+      "note": "ImmunityBio, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "IBRX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001326190": {
+      "note": "Altimmune, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: split_basis_jump on 20 or more dates in the first EODHD pull of 2026-10-31 (#379): adjusted_close and the raw close disagree repeatedly in 2015-2017 (thinly traded early history); rows before 2018-01-01 are dropped, which is before the company's first membership day",
+      "segments": [
+        {
+          "candidates": [
+            "ALT.US"
+          ],
+          "start": "2018-01-01"
+        }
+      ]
+    },
+    "CIK0001326380": {
+      "note": "GameStop Corp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GME.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001327607": {
+      "note": "First Western Financial, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MYFW.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001331520": {
+      "note": "Home BancShares, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HOMB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001333493": {
+      "note": "eHealth, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "EHTH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001334036": {
+      "note": "Crocs, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CROX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001339469": {
+      "note": "Chiasma Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CHMA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001339970": {
+      "note": "aTyr Pharma, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ATYR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001340652": {
+      "note": "ChemoCentryx, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CCXI_old.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001341141": {
+      "note": "CatchMark Timber Trust Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CTT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001346302": {
+      "note": "Xeris Pharmaceuticals Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "XERS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001347178": {
+      "note": "Vanda Pharmaceuticals, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "VNDA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001349436": {
+      "note": "SandRidge Energy, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SD.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001350593": {
+      "note": "Mueller Water Products, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MWA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001350653": {
+      "note": "Alphatec Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ATEC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001351285": {
+      "note": "Rosetta Stone Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RST.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001351636": {
+      "note": "SoundThinking, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SSTI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001357615": {
+      "note": "KBR Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "KBR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001357874": {
+      "note": "Precision BioSciences Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "DTIL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001358762": {
+      "note": "Reata Pharmaceuticals, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RETA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001361983": {
+      "note": "ORBCOMM Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ORBC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001362988": {
+      "note": "Aircastle Ltd; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AYR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001367920": {
+      "note": "Concert Pharmaceuticals Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CNCE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001368265": {
+      "note": "Clean Energy Fuels Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CLNE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001368622": {
+      "note": "AeroVironment, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AVAV.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001369290": {
+      "note": "Myomo, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MYO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001370450": {
+      "note": "Willdan Group, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "WLDN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001371285": {
+      "note": "Trupanion, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TRUP.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001375205": {
+      "note": "Ur-Energy, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "URG.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001378453": {
+      "note": "TravelCenters of America, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001378718": {
+      "note": "Wesco Aircraft Holdings Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "WAIR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001380846": {
+      "note": "TriState Capital Holdings Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TSC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001381531": {
+      "note": "Domtar Corp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "UFS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001382101": {
+      "note": "Sutro Biopharma, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "STRO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001384195": {
+      "note": "Ring Energy, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "REI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001385280": {
+      "note": "Cinemark Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CNK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001385818": {
+      "note": "Aytu BioPharma Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AYTU.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001390162": {
+      "note": "Howard Bancorp Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HBMD.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001392972": {
+      "note": "PROS Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PRO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001398987": {
+      "note": "Anywhere Real Estate, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HOUS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001402479": {
+      "note": "MedAvail Holdings Inc; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: split_basis_jump on 20 or more dates in the first EODHD pull of 2026-10-31 (#379): adjusted_close and the raw close disagree repeatedly in 2015-2017 (thinly traded early history); rows before 2018-01-01 are dropped, which is before the company's first membership day",
+      "segments": [
+        {
+          "candidates": [
+            "MDVL.US"
+          ],
+          "start": "2018-01-01"
+        }
+      ]
+    },
+    "CIK0001406587": {
+      "note": "Forestar Group, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FOR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001408100": {
+      "note": "Kennedy-Wilson Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "KW.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001409375": {
+      "note": "Orion Energy Systems Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "OESX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001409493": {
+      "note": "Chimera Investment Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CIM.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001410384": {
+      "note": "Q2 Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "QTWO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001410939": {
+      "note": "IVERIC bio, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ISEE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001411579": {
+      "note": "AMC Entertainment Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AMC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001412707": {
+      "note": "Level One Bancorp Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LEVL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001415404": {
+      "note": "EchoStar Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ECHO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001417663": {
+      "note": "SANUWAVE Health, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SNWV.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001418121": {
+      "note": "Apple Hospitality REIT, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "APLE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001420720": {
+      "note": "iBio Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "IBIO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001421182": {
+      "adjustments": [
+        {
+          "date": "2020-09-17",
+          "reason": "A special dividend: the raw close moves -24.8% while adjusted_close moves -5.0%; earlier prices take EODHD's adjusted_close step, as the S&P map does for special dividends and spin-offs"
+        }
+      ],
+      "note": "Verso Corp; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: split_basis_jump on 2020-09-17 in the first EODHD pull of 2026-10-31 (#379); read as a special dividend",
+      "segments": [
+        {
+          "candidates": [
+            "VRS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001422930": {
+      "note": "PubMatic, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PUBM.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001423221": {
+      "note": "Quanex Building Products Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001423774": {
+      "note": "Zuora, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ZUO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001424182": {
+      "note": "Broadstone Net Lease, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BNL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001425205": {
+      "note": "Iovance Biotherapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "IOVA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001425287": {
+      "note": "Workhorse Group, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "WKHS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001425450": {
+      "note": "OrthoPediatrics Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "KIDS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001436208": {
+      "note": "Legacy Housing Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LEGH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001436425": {
+      "note": "Home Bancorp, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HBCP.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001437352": {
+      "note": "Everbridge, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "EVBG.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001438533": {
+      "note": "Travere Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RTRX.US"
+          ],
+          "end": "2020-11-19"
+        },
+        {
+          "candidates": [
+            "TVTX.US"
+          ],
+          "start": "2020-11-20"
+        }
+      ]
+    },
+    "CIK0001439725": {
+      "note": "Biodesix Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BDSX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001440024": {
+      "note": "Roadrunner Transportation Systems Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RRTS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001447028": {
+      "note": "Arbutus Biopharma Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ABUS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001447362": {
+      "note": "Castle Biosciences, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CSTL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001447599": {
+      "note": "Fitbit Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FIT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001448431": {
+      "note": "OptimizeRx Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "OPRX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001452477": {
+      "note": "Seven Hills Realty Trust; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SEVN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001455684": {
+      "note": "TPI Composites, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TPIC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001459200": {
+      "note": "Alarm.com Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ALRM.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001460329": {
+      "note": "Fluent Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FLNT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001464521": {
+      "note": "HeartFlow, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HTFL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001469367": {
+      "note": "Sunrun, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RUN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001469372": {
+      "note": "MSG Networks Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MSGN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001470099": {
+      "note": "MobileIron Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MOBL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001475115": {
+      "note": "Eventbrite, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "EB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001476034": {
+      "note": "Metropolitan Bank Holding Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MCB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001476045": {
+      "note": "Chatham Lodging Trust; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CLDT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001476840": {
+      "note": "Expensify, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "EXFY.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001477081": {
+      "note": "Kolibri Global Energy, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "KGEI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001477720": {
+      "note": "Asana, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ASAN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001478121": {
+      "note": "Pfenex Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PFNX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001481646": {
+      "note": "Accolade, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ACCD.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001483934": {
+      "note": "Scorpio Tankers, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "STNG.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001488813": {
+      "note": "Customers Bancorp, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CUBI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001488917": {
+      "note": "Electromed, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ELMD.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001494582": {
+      "note": "Boston Omaha Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BOC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001494650": {
+      "note": "Optinose, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "OPTN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001495932": {
+      "note": "eXp World Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AGNT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001496443": {
+      "note": "Paysign, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PAYS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001498710": {
+      "note": "Spirit Aviation Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SAVE.US"
+          ],
+          "end": "2024-11-18"
+        },
+        {
+          "candidates": [
+            "FLYY.US"
+          ],
+          "start": "2024-11-19"
+        }
+      ]
+    },
+    "CIK0001499422": {
+      "note": "RBB Bancorp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RBB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001501078": {
+      "note": "Oconee Federal Financial Corp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "OFED.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001501570": {
+      "note": "Veritex Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "VBTX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001501697": {
+      "note": "X4 Pharmaceuticals, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "XFOR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001501989": {
+      "note": "CytomX Therapeutics Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CTMX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001505155": {
+      "note": "Upland Software, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "UPLD.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001505512": {
+      "note": "Regulus Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RGLS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001512228": {
+      "note": "NioCorp Developments Ltd.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001515673": {
+      "note": "Ultragenyx Pharmaceutical Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RARE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001517396": {
+      "note": "Stratasys Ltd; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SSYS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001519061": {
+      "note": "Trinseo plc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TSE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001519401": {
+      "note": "Regional Management Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RM.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001524025": {
+      "note": "Tilly's, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TLYS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001524223": {
+      "note": "Manning & Napier, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MN_old.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001526113": {
+      "note": "Global Net Lease, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GNL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001527728": {
+      "note": "Renovaro, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: split_basis_jump in the first EODHD pull of 2026-10-31 (#379): EODHD records the 1-for-10 reverse split on 2025-09-30, but its raw close is already on the new shares on 2025-09-29 (0.1301 to 1.2660, adjusted_close 1.301 to 1.266). That one row is left out rather than restated",
+      "segments": [
+        {
+          "candidates": [
+            "RENB.US"
+          ],
+          "end": "2025-09-28"
+        },
+        {
+          "candidates": [
+            "RENB.US"
+          ],
+          "start": "2025-09-30"
+        }
+      ]
+    },
+    "CIK0001529274": {
+      "note": "Alkami Technology, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ALKT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001531048": {
+      "note": "Inari Medical, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NARI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001531177": {
+      "note": "Sight Sciences, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SGHT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001533615": {
+      "note": "Global Medical REIT, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GMRE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001534504": {
+      "note": "PBF Energy, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PBF.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001534969": {
+      "note": "Sera Prognostics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SERA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001538210": {
+      "note": "NexImmune Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NEXI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001538263": {
+      "note": "HomeTrust Bancshares, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HTB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001538379": {
+      "note": "Ibotta, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "IBTA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001543916": {
+      "note": "ForgeRock, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FORG.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001544522": {
+      "note": "Freshworks, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FRSH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001545654": {
+      "adjustments": [
+        {
+          "date": "2017-11-28",
+          "reason": "A special distribution: the raw close moves -36.2% while adjusted_close moves -1.2%; earlier prices take EODHD's adjusted_close step, as the S&P map does for special dividends and spin-offs"
+        }
+      ],
+      "note": "Alexander & Baldwin, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: split_basis_jump on 2017-11-28 in the first EODHD pull of 2026-10-31 (#379); read as a special distribution",
+      "segments": [
+        {
+          "candidates": [
+            "ALEX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001547459": {
+      "note": "Natural Grocers by Vitamin Cottage, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NGVC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001547546": {
+      "note": "Lument Finance Trust, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: split_basis_jump on 2016-11-17 in the first EODHD pull of 2026-10-31 (#379): adjusted_close steps by +8.2% while the raw close moves only -15.6%, so the vendor's adjustment, not the price, looks wrong; rows before 2016-11-17 are dropped, which is before the company's first membership day",
+      "segments": [
+        {
+          "candidates": [
+            "LFT.US"
+          ],
+          "start": "2016-11-17"
+        }
+      ]
+    },
+    "CIK0001548187": {
+      "note": "Soliton Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SOLY.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001549346": {
+      "note": "Shutterstock, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SSTK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001550603": {
+      "note": "Malvern Bancorp Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MLVF.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001551306": {
+      "note": "Progyny, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PGNY.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001551693": {
+      "note": "Sientra Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SIEN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001551986": {
+      "note": "9 Meters Biopharma Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NMTRQ.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001552451": {
+      "note": "MyoKardia Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MYOK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001556727": {
+      "note": "First Northwest Bancorp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FNWB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001556739": {
+      "note": "Thryv Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "THRY.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001557142": {
+      "note": "Kadmon Holdings Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "KDMN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001557746": {
+      "note": "Aclaris Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ACRS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001564824": {
+      "note": "Allakos, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ALLK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001570827": {
+      "note": "Victory Capital Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "VCTR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001571776": {
+      "note": "Cherry Hill Mortgage Investment Corp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CHMI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001574774": {
+      "note": "BioTelemetry Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BEAT_old.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001575515": {
+      "note": "Sprouts Farmers Market, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SFM.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001578732": {
+      "note": "Marcus & Millichap, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MMI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001579428": {
+      "note": "Axsome Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AXSM.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001579733": {
+      "note": "Vital Farms, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "VITL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001579823": {
+      "note": "NewAge Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NBEV.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001579877": {
+      "note": "Outfront Media, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "OUT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001580156": {
+      "note": "Houghton Mifflin Harcourt Co; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HMHC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001581280": {
+      "note": "Twist Bioscience Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TWST.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001585389": {
+      "note": "Smartstop Self Storage REIT, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SMA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001592480": {
+      "note": "Continental Building Products Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CBPX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001593222": {
+      "note": "City Office REIT, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CIO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001593548": {
+      "note": "PlayAGS, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AGS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001596961": {
+      "note": "RumbleON, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RDNW.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001597313": {
+      "note": "ViewRay, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "VRAY.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001598428": {
+      "note": "Metallus, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MTUS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001599901": {
+      "note": "Avidity Biosciences, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RNAM.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001599947": {
+      "note": "TerraForm Power Inc; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: split_basis_jump on 2017-10-17 in the first EODHD pull of 2026-10-31 (#379): adjusted_close steps by +34.7% while the raw close moves only +12.1%, so the vendor's adjustment, not the price, looks wrong; rows before 2017-10-17 are dropped, which is before the company's first membership day",
+      "segments": [
+        {
+          "candidates": [
+            "TERP.US"
+          ],
+          "start": "2017-10-17"
+        }
+      ]
+    },
+    "CIK0001600222": {
+      "note": "Phoenix Education Partners, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PXED.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001601830": {
+      "note": "Recursion Pharmaceuticals, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RXRX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001603923": {
+      "note": "Weatherford International plc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "WFRD.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001604950": {
+      "note": "scPharmaceuticals, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SCPH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001605607": {
+      "note": "Paramount Group, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PGRE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001606498": {
+      "note": "Avanos Medical, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AVNS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001606745": {
+      "note": "Liberty TripAdvisor Holdings Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LTRPA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001607716": {
+      "note": "Vivint Solar Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "VSLR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001609550": {
+      "note": "Inspire Medical Systems, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "INSP.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001610618": {
+      "note": "Cidara Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CDTX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001616533": {
+      "note": "Penguin Solutions, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PENG.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001616543": {
+      "note": "Senseonics Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SENS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001618835": {
+      "note": "Evofem Biosciences Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "EVFM.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001619762": {
+      "adjustments": [
+        {
+          "date": "2025-07-14",
+          "reason": "A special distribution: the raw close moves -18.7% while adjusted_close moves -2.6%; earlier prices take EODHD's adjusted_close step, as the S&P map does for special dividends and spin-offs"
+        }
+      ],
+      "note": "Brightstar Lottery plc; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: split_basis_jump on 2025-07-14 in the first EODHD pull of 2026-10-31 (#379); read as a special distribution",
+      "segments": [
+        {
+          "candidates": [
+            "BRSL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001619856": {
+      "note": "Caribou Biosciences, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CRBU.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001620280": {
+      "note": "Uniti Group, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "UNIT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001627475": {
+      "note": "Upwork, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "UPWK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001631650": {
+      "note": "Aimmune Therapeutics Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AIMT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001632970": {
+      "note": "American Healthcare REIT, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AHR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001633978": {
+      "note": "Lumentum Holdings Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LITE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001634432": {
+      "note": "Strongbridge Biopharma PLC; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SBBP.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001635282": {
+      "note": "Rimini Street, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RMNI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001636422": {
+      "note": "Health Catalyst, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HCAT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001637873": {
+      "note": "ACV Auctions, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ACVA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001638287": {
+      "note": "NeuroBo Pharmaceuticals Inc; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: split_basis_jump in the first EODHD pull of 2026-10-31 (#379): EODHD records the 1-for-11 reverse split on 2025-12-05, but its raw close is already on the new shares on 2025-12-04 (0.599 to 7.315, adjusted_close 6.589 to 7.315). That one row is left out rather than restated",
+      "segments": [
+        {
+          "candidates": [
+            "MTVA.US"
+          ],
+          "end": "2025-12-03"
+        },
+        {
+          "candidates": [
+            "MTVA.US"
+          ],
+          "start": "2025-12-05"
+        }
+      ]
+    },
+    "CIK0001639498": {
+      "note": "AgEagle Aerial Systems Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "UAVS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001639691": {
+      "note": "LivaNova plc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LIVN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001639723": {
+      "note": "Navan, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NAVN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001641614": {
+      "note": "CPI Card Group, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PMTS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001642380": {
+      "note": "Oncocyte Corp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "OCX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001643615": {
+      "note": "Montrose Environmental Group, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MEG.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001645460": {
+      "note": "Cue Biopharma, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CUE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001646188": {
+      "note": "Ondas Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ONDS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001647088": {
+      "note": "WillScot Mobile Mini Holdings Corp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "WSC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001649094": {
+      "note": "Vaxcyte, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PCVX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001649744": {
+      "note": "Duluth Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "DLTH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001649749": {
+      "note": "FB Financial Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FBK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001651235": {
+      "note": "Acacia Communications Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ACIA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001651944": {
+      "note": "DermTech Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "DMTK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001653477": {
+      "note": "Ingevity Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NGVT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001653909": {
+      "note": "Allbirds, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BIRD.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001656634": {
+      "note": "Gritstone bio, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GRTS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001659122": {
+      "note": "Rosehill Resources Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ROSEQ.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001659352": {
+      "note": "Codiak Biosciences Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CDAK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001660280": {
+      "note": "Tenable Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TENB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001664710": {
+      "note": "Keros Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "KROS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001665300": {
+      "note": "Phunware Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PHUN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001666291": {
+      "note": "Claros Mortgage Trust, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CMTG.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001672619": {
+      "note": "Enliven Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ELVN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001672688": {
+      "note": "Absci Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ABSI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001673985": {
+      "note": "AdvanSix, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ASIX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001674416": {
+      "note": "CRISPR Therapeutics AG; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CRSP.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001674930": {
+      "note": "Fulgent Genetics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FLGT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001679063": {
+      "note": "Chicken Soup For The Soul Entertainment, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CSSE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001679688": {
+      "note": "DigitalBridge Group, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CLNY.US"
+          ],
+          "end": "2021-08-23"
+        },
+        {
+          "candidates": [
+            "DBRG.US"
+          ],
+          "start": "2021-08-24"
+        }
+      ]
+    },
+    "CIK0001680048": {
+      "note": "Mustang Bio Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MBIO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001681206": {
+      "note": "NI Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NODK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001682325": {
+      "note": "GTY Technology Holdings Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GTYH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001682639": {
+      "note": "Eyenovia, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "EYEN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001683606": {
+      "note": "Cars.com, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CARS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001687932": {
+      "note": "J Jill, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317). Reviewed: split_basis_jump on 2019-03-18 in the first EODHD pull of 2026-10-31 (#379): adjusted_close steps by +16.6% while the raw close moves only -20.8%, so the vendor's adjustment, not the price, looks wrong; rows before 2019-03-18 are dropped, which is before the company's first membership day",
+      "segments": [
+        {
+          "candidates": [
+            "JILL.US"
+          ],
+          "start": "2019-03-18"
+        }
+      ]
+    },
+    "CIK0001688476": {
+      "note": "NexTier Oilfield Solutions, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FRAC.US"
+          ],
+          "end": "2019-11-06"
+        },
+        {
+          "candidates": [
+            "NEX.US"
+          ],
+          "start": "2019-11-07"
+        }
+      ]
+    },
+    "CIK0001690585": {
+      "note": "Dianthus Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "DNTH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001690666": {
+      "note": "Xperi, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "XPER.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001691337": {
+      "note": "PCSB Financial Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PCSB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001693011": {
+      "note": "Inozyme Pharma, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "INZY.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001693256": {
+      "note": "Select Water Solutions, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "WTTR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001694665": {
+      "note": "Evelo Biosciences Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "EVLO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001695295": {
+      "note": "Hydrofarm Holdings Group, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HYFM.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001699031": {
+      "note": "GRAIL, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GRAL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001699382": {
+      "note": "PMV Pharmaceuticals, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PMVP.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001701732": {
+      "note": "Altair Engineering, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ALTR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001702780": {
+      "note": "Optimum Communications, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ATUS.US"
+          ],
+          "end": "2025-11-18"
+        },
+        {
+          "candidates": [
+            "OPTU.US"
+          ],
+          "start": "2025-11-19"
+        }
+      ]
+    },
+    "CIK0001703644": {
+      "note": "Granite Point Mortgage Trust, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GPMT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001703785": {
+      "note": "Sitio Royalties Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FLMN.US"
+          ],
+          "end": "2022-08-05"
+        },
+        {
+          "candidates": [
+            "STR.US"
+          ],
+          "start": "2022-08-06"
+        }
+      ]
+    },
+    "CIK0001704596": {
+      "note": "Evo Payments, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "EVOP.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001705843": {
+      "note": "Cibus, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CBUS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001707178": {
+      "note": "CorePoint Lodging Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CPLG.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001708599": {
+      "note": "AgeX Therapeutics Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AGE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001710155": {
+      "note": "National Vision Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "EYE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001710482": {
+      "note": "John Marshall Bancorp, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "JMSB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001711754": {
+      "note": "Inmune Bio, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "INMB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001712463": {
+      "note": "Ranpak Holdings Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PACK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001714899": {
+      "note": "Denali Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "DNLI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001718226": {
+      "note": "Piedmont Lithium, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PLL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001723089": {
+      "note": "ChampionX Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "APY.US"
+          ],
+          "end": "2020-10-22"
+        },
+        {
+          "candidates": [
+            "CHX.US"
+          ],
+          "start": "2020-10-23"
+        }
+      ]
+    },
+    "CIK0001723596": {
+      "note": "Columbia Financial, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CLBK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001723866": {
+      "note": "Select Interior Concepts Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SIC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001724521": {
+      "note": "Arcus Biosciences, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RCUS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001725160": {
+      "note": "Zentalis Pharmaceuticals, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ZNTL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001730984": {
+      "note": "BayCom Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BCML.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001731805": {
+      "note": "Hut 8 Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HUT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001733257": {
+      "note": "Finch Therapeutics Group Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FNCH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001734342": {
+      "note": "Amerant Bancorp, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AMTB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001734517": {
+      "note": "Viela Bio Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "VIE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001737287": {
+      "note": "Allogene Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ALLO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001737706": {
+      "note": "Seadrill Ltd.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SDRL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001738021": {
+      "note": "Compass Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CMPX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001738827": {
+      "note": "KLX Energy Services Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "KLXE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001739426": {
+      "note": "Osmotica Pharmaceuticals PLC; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "OSMT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001739445": {
+      "note": "Arcosa, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ACA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001743725": {
+      "note": "Grid Dynamics Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GDYN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001743759": {
+      "note": "Corsair Gaming, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CRSR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001744494": {
+      "note": "Advent Technologies Holdings Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ADN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001745431": {
+      "note": "StoneCo Ltd.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "STNE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001747009": {
+      "note": "Equitrans Midstream Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ETRN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001747068": {
+      "note": "Metrocity Bankshares, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MCBS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001749704": {
+      "note": "Agiliti, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AGTI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001749723": {
+      "note": "New Fortress Energy, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NFE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001750149": {
+      "note": "Inhibikase Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "IKT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001750735": {
+      "note": "Meridian Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MRBK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001753539": {
+      "note": "BlackSky Technology, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BKSY.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001754226": {
+      "note": "Orange County Bancorp, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "OBT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001767837": {
+      "note": "Richmond Mutual BanCorp, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RMBI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001771515": {
+      "note": "Grocery Outlet Holding Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001771910": {
+      "note": "ADC Therapeutics SA; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ADCT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001772695": {
+      "note": "Sunnova Energy International, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NOVA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001773751": {
+      "note": "Hims & Hers Health, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "HIMS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001781983": {
+      "note": "Aprea Therapeutics Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "APRE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001782430": {
+      "note": "Strawberry Fields REIT, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "STRW.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001783032": {
+      "note": "Elevation Oncology, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ELEV.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001783183": {
+      "note": "Phathom Pharmaceuticals, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PHAT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001783328": {
+      "note": "TScan Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TCRX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001784797": {
+      "note": "Broadmark Realty Capital, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BRMK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001786248": {
+      "note": "Nexpoint Real Estate Finance, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NREF.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001787297": {
+      "note": "Passage Bio Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PASG.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001790982": {
+      "note": "Arconic Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ARNC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001796280": {
+      "note": "ORIC Pharmaceuticals, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ORIC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001799332": {
+      "note": "GAN Ltd; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GAN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001799788": {
+      "note": "Greenwich Lifesciences, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GLSI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001801169": {
+      "note": "Opendoor Technologies, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "OPEN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001802255": {
+      "note": "Guardian Pharmacy Services, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GRDN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001803696": {
+      "note": "Adeia, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ADEA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001803737": {
+      "note": "Enhabit, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "EHAB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001803901": {
+      "note": "Talkspace, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TALK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001805077": {
+      "note": "Eos Energy Enterprises, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "EOSE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001808865": {
+      "note": "iTeos Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ITOS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001808997": {
+      "note": "American Outdoor Brands, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AOUT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001810019": {
+      "note": "Rackspace Technology, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RXT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001812173": {
+      "note": "Vicarious Surgical, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RBOT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001816017": {
+      "note": "Spire Global, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SPIR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001817241": {
+      "note": "Artiva Biotherapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ARTV.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001818093": {
+      "note": "Beauty Health Co. (The); symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SKIN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001818331": {
+      "note": "GeneDx Holdings Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SMFR.US"
+          ],
+          "end": "2023-03-10"
+        },
+        {
+          "candidates": [
+            "WGS.US"
+          ],
+          "start": "2023-03-11"
+        }
+      ]
+    },
+    "CIK0001818383": {
+      "note": "MediaAlpha, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MAX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001818502": {
+      "note": "OppFi, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "OPFI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001818794": {
+      "note": "Dyne Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "DYN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001819133": {
+      "note": "Tango Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TNGX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001819253": {
+      "note": "Biote Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BTMD.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001819404": {
+      "note": "Nerdy, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NRDY.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001819438": {
+      "note": "ESS Tech, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GWH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001819574": {
+      "note": "BARK, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BARK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001819584": {
+      "note": "Volta, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "VLTA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001819989": {
+      "note": "Cipher Mining, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CIFR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001821806": {
+      "note": "Leslie's, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LESL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001821850": {
+      "note": "Sunlight Financial Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SUNL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001822145": {
+      "note": "Presto Automation, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PRST.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001822462": {
+      "note": "Foghorn Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FHTX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001822523": {
+      "note": "Advanced Flower Capital, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AFCG.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001822993": {
+      "note": "Jackson Financial, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "JXN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001823593": {
+      "note": "TuSimple Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TSP.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001824814": {
+      "note": "Cognyte Software Ltd; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CGNT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001826000": {
+      "note": "Latch, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LTCH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001826018": {
+      "note": "Rover Group, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ROVR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001826667": {
+      "note": "TriSalus Life Sciences, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TLSI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001826892": {
+      "note": "BioAtla, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BCAB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001828536": {
+      "note": "Energy Vault Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NRGV.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001828791": {
+      "note": "Viant Technology, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "DSP.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001828937": {
+      "note": "Finance of America Cos., Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FOA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001830188": {
+      "note": "United Homes Group, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "UHG.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001831097": {
+      "note": "agilon health, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AGL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001831840": {
+      "note": "SEMrush Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SEMR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001834494": {
+      "note": "Meridianlink, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MLNK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001835378": {
+      "note": "Innovid Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CTV.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001836981": {
+      "note": "BigBear.ai Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BBAI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001837014": {
+      "note": "SmartRent, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SMRT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001837412": {
+      "note": "SomaLogic, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SLGC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001837686": {
+      "note": "Vimeo, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "VMEO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001839341": {
+      "note": "Core Scientific, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CORZQ.US"
+          ],
+          "end": "2024-01-24"
+        },
+        {
+          "candidates": [
+            "CORZ.US"
+          ],
+          "start": "2024-01-25"
+        }
+      ]
+    },
+    "CIK0001839799": {
+      "note": "Gambling.com Group Ltd.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GAMB.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001840199": {
+      "note": "Waldencast plc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "WALD.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001841804": {
+      "note": "Instructure Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "INST.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001842295": {
+      "note": "Maze Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MAZE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001846017": {
+      "note": "Blue Foundry Bancorp; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BLFY.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001846069": {
+      "note": "Nextdoor Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "KIND.US"
+          ],
+          "end": "2025-09-19"
+        },
+        {
+          "candidates": [
+            "NXDR.US"
+          ],
+          "start": "2025-09-20"
+        }
+      ]
+    },
+    "CIK0001846253": {
+      "note": "OmniAb, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "OABI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001847874": {
+      "note": "Mobile Infrastructure Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "BEEP.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001849396": {
+      "note": "Nexxen International Ltd.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NEXN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001850079": {
+      "note": "Codex DNA Inc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "DNAY.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001850270": {
+      "note": "ProKidney Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PROK.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001850906": {
+      "note": "Singular Genomics Systems, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "OMIC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001851961": {
+      "note": "GCT Semiconductor Holding, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GCTS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001852353": {
+      "note": "Dakota Gold Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "DC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001853513": {
+      "note": "Mister Car Wash, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MCW.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001855457": {
+      "note": "KORE Group Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "KORE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001856031": {
+      "note": "Vivid Seats, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SEAT.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001856437": {
+      "note": "Victoria's Secret & Co.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "VSCO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001856485": {
+      "note": "Sylvamo Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SLVM.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001858848": {
+      "note": "Tenaya Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TNYA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001860160": {
+      "note": "Firefly Aerospace, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FLY.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001861107": {
+      "note": "Ceribell, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CBLL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001863127": {
+      "note": "Tyra Biosciences, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TYRA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001865107": {
+      "note": "aka Brands Holding Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AKA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001866175": {
+      "note": "Crescent Energy, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CRGY.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001866550": {
+      "note": "Thoughtworks Holding, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TWKS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001869198": {
+      "note": "Life Time Group Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "LTH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001870940": {
+      "note": "AirSculpt Technologies, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "AIRS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001872789": {
+      "note": "Embecta Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "EMBC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001877184": {
+      "note": "Kestra Medical Technologies Ltd.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "KMTS.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001878057": {
+      "note": "Super Group SGHC Ltd.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SGHC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001880319": {
+      "note": "Perimeter Solutions, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PRM.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001888447": {
+      "note": "Excelerate Energy, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "EE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001888654": {
+      "note": "5E Advanced Materials, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FEAM.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001892492": {
+      "note": "Cryptyde, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "TYDE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001895262": {
+      "note": "Noble Corp plc; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NEBLQ.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001906324": {
+      "note": "QuidelOrtho Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "QDEL.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001923891": {
+      "note": "NANO Nuclear Energy, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "NNE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001930313": {
+      "note": "SBC Medical Group Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SBC.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001943705": {
+      "note": "Revelyst, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "GEAR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001951070": {
+      "note": "McGraw Hill, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MH.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001952073": {
+      "note": "Madison Square Garden Entertainment Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "MSGE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001953366": {
+      "note": "Star Holdings; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "STHO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001958777": {
+      "note": "Fibrobiologics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FBLG.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001963685": {
+      "note": "Richtech Robotics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RR.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001968915": {
+      "note": "Phinia, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "PHIN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001974640": {
+      "note": "Apogee Therapeutics, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "APGE.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001981599": {
+      "note": "Centuri Holdings, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "CTRI.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001999001": {
+      "note": "Six Flags Entertainment Corp.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FUN.US"
+          ]
+        }
+      ]
+    },
+    "CIK0001999480": {
+      "note": "Alto Neuroscience, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "ANRO.US"
+          ]
+        }
+      ]
+    },
+    "CIK0002013639": {
+      "note": "FB Bancorp, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "FBLA.US"
+          ]
+        }
+      ]
+    },
+    "CIK0002019793": {
+      "note": "XCF Global, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "SAFX.US"
+          ]
+        }
+      ]
+    },
+    "CIK0002039497": {
+      "note": "Resolute Holdings Management, Inc.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "RHLD.US"
+          ]
+        }
+      ]
+    },
+    "CIK0002055116": {
+      "note": "Kestrel Group Ltd.; symbols from IWM holdings rows price-matched to EODHD (#317)",
+      "segments": [
+        {
+          "candidates": [
+            "KG.US"
+          ]
+        }
+      ]
+    }
+  },
+  "schema": 1
+}

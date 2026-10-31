@@ -2366,7 +2366,7 @@ The locked 2026 holdout and the window schedule (#370, PRD #369).
 
 The small-caps universe draw (#379): frame, draw size, membership file and symbol map.
 
-**Exercises:** `mci_gru.data.eodhd_prices`, `mci_gru.data.pit`, `scripts.data.build_r2k_sample_universe`
+**Exercises:** `mci_gru.data.eodhd_prices`, `mci_gru.data.input_manifest`, `mci_gru.data.pit`, `scripts.data.build_r2k_sample_universe`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -2377,6 +2377,11 @@ The small-caps universe draw (#379): frame, draw size, membership file and symbo
 | `test_ticker_change_ends_the_old_symbol_on_its_last_close` |  |  |
 | `test_ticker_change_without_prices_ends_the_day_before_the_new_report` |  |  |
 | `test_main_writes_the_three_outputs` |  |  |
+| `test_symbols_after_the_window_end_are_ignored` |  |  |
+| `test_review_moves_the_start_and_declares_adjustments_with_a_reason` |  |  |
+| `test_review_drops_a_single_wrong_session_by_splitting_the_segment` |  |  |
+| `test_the_config_binds_its_files_to_the_committed_package` |  |  |
+| `test_the_config_keeps_the_recipe_window` | Only the universe changes: train 2020-2023 (the recipe's start), validate 2024, test 2025. |  |
 
 ## `tests/test_readme_figure.py`
 

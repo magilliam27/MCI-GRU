@@ -63,6 +63,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--price-cache", type=Path, help="build_r2k_members' eod/ folder of <symbol>.csv.gz"
     )
+    parser.add_argument(
+        "--review", type=Path, help="Per-identifier decisions on a pull's findings (JSON)"
+    )
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--prefix", required=True)
     parser.add_argument("--window-start", default="2020-01-02")
@@ -214,16 +217,71 @@ def price_cache_reader(folder: Path | None):
     return last_close
 
 
-def symbol_map(holdings: pd.DataFrame, drawn: list[str], last_close) -> dict[str, Any]:
+#: What a review entry may set on a generated symbol-map entry.
+REVIEW_FIELDS = {"start", "adjustments", "drop_sessions", "reason"}
+
+
+def drop_sessions(segments: list[dict[str, Any]], days: list[str]) -> list[dict[str, Any]]:
+    """Split the segment holding each day around it, so that day has no row."""
+    for day in sorted(days):
+        for index, segment in enumerate(segments):
+            if segment.get("start", "") <= day and day <= segment.get("end", "9999-12-31"):
+                before = {
+                    **segment,
+                    "end": (pd.Timestamp(day) - pd.Timedelta(days=1)).date().isoformat(),
+                }
+                after = {**segment, "start": _next_day(day)}
+                segments[index : index + 1] = [before, after]
+                break
+        else:
+            raise SystemExit(f"No segment holds {day}")
+    return segments
+
+
+def symbol_map(
+    holdings: pd.DataFrame,
+    drawn: list[str],
+    last_close,
+    end: str,
+    review: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The export's symbol map for the drawn companies, from report dates up to *end*.
+
+    *review* holds per-identifier decisions made after reading a pull's findings:
+    ``start`` moves the first segment's start (to drop vendor rows found wrong),
+    ``adjustments`` declares corporate actions the split records miss,
+    ``drop_sessions`` leaves out single vendor rows found wrong, and
+    ``reason`` says why; it is required and is appended to the entry's note.
+    """
+    review = review or {}
+    unknown = sorted(set(review) - {kdcode_for(cik) for cik in drawn})
+    if unknown:
+        raise SystemExit(f"Review entries for identifiers not drawn: {unknown}")
     overrides = {}
-    by_cik = dict(tuple(holdings[holdings["cik"].isin(set(drawn))].groupby("cik")))
+    rows = holdings[holdings["cik"].isin(set(drawn)) & (holdings["snap"] <= end)]
+    by_cik = dict(tuple(rows.groupby("cik")))
     for cik in sorted(drawn):
         runs = symbol_runs(by_cik[cik])
         name = by_cik[cik].sort_values("snap")["name"].iloc[-1]
-        overrides[kdcode_for(cik)] = {
+        entry: dict[str, Any] = {
             "note": f"{name}; symbols from IWM holdings rows price-matched to EODHD (#317)",
             "segments": segments_for(runs, last_close),
         }
+        decision = review.get(kdcode_for(cik))
+        if decision is not None:
+            if set(decision) - REVIEW_FIELDS or not decision.get("reason"):
+                raise SystemExit(
+                    f"{kdcode_for(cik)}: a review entry needs a reason and may set only "
+                    f"{sorted(REVIEW_FIELDS)}"
+                )
+            if "start" in decision:
+                entry["segments"][0]["start"] = decision["start"]
+            if "adjustments" in decision:
+                entry["adjustments"] = decision["adjustments"]
+            if "drop_sessions" in decision:
+                entry["segments"] = drop_sessions(entry["segments"], decision["drop_sessions"])
+            entry["note"] += f". Reviewed: {decision['reason']}"
+        overrides[kdcode_for(cik)] = entry
     return {"schema": SYMBOL_MAP_SCHEMA, "overrides": overrides}
 
 
@@ -250,7 +308,10 @@ def main(argv: list[str] | None = None) -> int:
     pit = pit_rows(membership, drawn, end)
     pit.to_csv(pit_path, index=False)
     map_path = out / f"eodhd_symbols_{args.prefix}.json"
-    mapping = symbol_map(holdings, drawn, price_cache_reader(args.price_cache))
+    review = json.loads(args.review.read_text(encoding="utf-8")) if args.review else None
+    mapping = symbol_map(
+        holdings, drawn, price_cache_reader(args.price_cache), end, review and review["entries"]
+    )
     map_path.write_text(json.dumps(mapping, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     sessions = pd.bdate_range(start, end)
@@ -282,6 +343,8 @@ def main(argv: list[str] | None = None) -> int:
             1 for entry in mapping["overrides"].values() if len(entry["segments"]) > 1
         ),
         "pit_universe_sha256": _sha256(pit_path),
+        "review": args.review.name if args.review else None,
+        "review_sha256": _sha256(args.review) if args.review else None,
         "symbol_map_sha256": _sha256(map_path),
     }
     report_path = out / f"{args.prefix}_sample.json"
