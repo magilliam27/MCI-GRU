@@ -401,6 +401,46 @@ def test_an_exploratory_run_is_stamped_exploratory(repo):
     assert stamp == {"exploratory": True, "experiment_id": None, "arm": None, "window": None}
 
 
+def _window_run(window: str) -> dict:
+    """The recipe moved onto ``window``'s dates, as the Colab launcher builds it (#371)."""
+    spans = WINDOWS[window].spans()
+    overrides = [*recipe_overrides(RECIPE_TEXT), *LAUNCHER, "protocol.exploratory=true"]
+    for key, value in spans.items():
+        overrides = preregistration._set_override(overrides, f"{key}={value}")
+    return _compose(overrides)
+
+
+@pytest.mark.parametrize("window", ["W1", "W4"])
+def test_an_exploratory_run_records_the_window_its_dates_are(repo, window):
+    stamp = resolve_run_standing(
+        ProtocolConfig(exploratory=True, window=window),
+        _window_run(window),
+        repo_root=repo,
+        compose=_compose,
+    )
+    assert stamp == {"exploratory": True, "experiment_id": None, "arm": None, "window": window}
+
+
+def test_an_exploratory_run_labelled_with_another_windows_name_is_refused(repo):
+    with pytest.raises(PreregistrationError, match="labelled W3 but its dates are not W3's"):
+        resolve_run_standing(
+            ProtocolConfig(exploratory=True, window="W3"),
+            _window_run("W2"),
+            repo_root=repo,
+            compose=_compose,
+        )
+
+
+def test_no_run_may_name_the_holdout_as_its_window(repo):
+    with pytest.raises(PreregistrationError, match="the holdout is never a window"):
+        resolve_run_standing(
+            ProtocolConfig(exploratory=True, window="holdout"),
+            _window_run("W5"),
+            repo_root=repo,
+            compose=_compose,
+        )
+
+
 def test_a_run_with_no_standing_is_refused(repo):
     with pytest.raises(PreregistrationError, match="names no pre-registration"):
         resolve_run_standing(ProtocolConfig(), {}, repo_root=repo, compose=_compose)
@@ -468,8 +508,9 @@ def test_a_declared_run_composed_from_another_config_tree_is_refused(repo):
         ({"exploratory": True, "experiment_id": "x", "arm": "a", "window": "W1"}, "two standings"),
         ({"experiment_id": "x"}, "needs protocol.arm"),
         ({"experiment_id": "x", "arm": "a"}, "needs protocol.arm"),
-        ({"arm": "a"}, "need a protocol.experiment_id"),
-        ({"window": "W1", "exploratory": True}, "need a protocol.experiment_id"),
+        ({"arm": "a"}, "arm needs a protocol.experiment_id"),
+        ({"arm": "a", "exploratory": True}, "arm needs a protocol.experiment_id"),
+        ({"window": "W1"}, "or protocol.exploratory=true"),
         ({"exploratory": "yes"}, "true or false"),
     ],
 )

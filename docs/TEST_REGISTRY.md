@@ -1221,13 +1221,16 @@ The first run declares no cessation file; this pins why that is safe, and when n
 
 Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 
-**Exercises:** `mci_gru.config`, `mci_gru.data.input_manifest`, `scripts`
+**Exercises:** `mci_gru.config`, `mci_gru.data.input_manifest`, `mci_gru.preregistration`, `scripts`
 
 | Test | Description | Markers |
 |---|---|---|
 | `test_recipe_overrides_are_read_from_the_recipe_document` |  |  |
 | `test_recipe_parsing_refuses_a_missing_block_or_a_key_set_twice` |  |  |
 | `test_smoke_replaces_the_budget_in_place_and_full_keeps_it` |  |  |
+| `test_the_recipe_on_its_own_window_gains_no_override` | W5 is the recipe (#367), so moving the recipe onto W5 changes nothing. |  |
+| `test_a_window_run_composes_onto_that_windows_dates_and_passes_the_runner_gate` |  | parametrize |
+| `test_the_holdout_is_never_a_window_a_run_may_name` |  |  |
 | `test_capture_is_added_only_when_the_recipe_does_not_select_it` |  |  |
 | `test_replace_override_refuses_a_key_the_recipe_does_not_set` |  |  |
 | `test_run_overrides_compose_into_the_typed_config` | The notebook's overrides go through Hydra the way run_experiment.py takes them. | parametrize |
@@ -1289,6 +1292,7 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_an_arm_that_would_change_nothing_is_refused` |  |  |
 | `test_every_arm_composes_into_the_typed_config` | Each arm goes through Hydra the way run_experiment.py takes it. | parametrize |
 | `test_a_control_arm_records_itself_and_is_never_an_admitted_run_candidate` |  |  |
+| `test_a_window_run_records_its_window_in_its_folder_name_and_record` |  |  |
 | `test_an_arm_the_recipe_cannot_take_is_refused_before_anything_is_written` |  |  |
 | `test_junit_outcome_reads_the_cuda_test` |  | parametrize |
 | `test_the_gpu_check_passes_only_when_the_cuda_test_ran_and_passed` |  | parametrize |
@@ -1303,6 +1307,15 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_compare_pairs_runs_recorded_before_and_after_the_protocol_stamp` | A run launched before #372 has no ``protocol.*`` override; one launched after it |  |
 | `test_compare_refuses_an_arm_given_twice_or_a_reference_other_than_the_recipe` |  |  |
 | `test_compare_flags_auxiliary_inputs_that_differ_from_the_recipe_arms` |  |  |
+| `test_compare_pools_each_arms_windows_and_reports_each_window` |  |  |
+| `test_compare_reads_a_run_from_before_window_records_by_its_dates` |  |  |
+| `test_compare_refuses_a_run_whose_window_is_not_what_it_scored` |  | parametrize |
+| `test_a_run_on_dates_that_are_no_window_is_refused` |  |  |
+| `test_compare_refuses_arms_that_ran_different_windows` |  |  |
+| `test_compare_refuses_a_window_given_twice_for_one_arm` |  |  |
+| `test_compare_refuses_reference_windows_that_differ_beyond_their_dates` |  |  |
+| `test_compare_refuses_runs_that_score_different_label_horizons` |  |  |
+| `test_window_runs_take_their_dates_from_the_data_group_they_select` | The data config comes from the overrides given, not from the checkout's recipe. |  |
 | `test_compare_writes_strict_json_and_never_writes_over_a_folder` |  |  |
 | `test_check_arms_refuses_before_training_an_arm_the_recipe_cannot_take` |  |  |
 | `test_check_arms_accepts_the_levels_arm_once_the_recipe_pins_relative_inputs` | Control for the refusal above: the #325 recipe gives levels_inputs a pin to undo. |  |
@@ -2284,6 +2297,9 @@ Pre-registered experiments and the runner's standing gate (#372, PRD #369).
 | `test_an_arm_that_changes_nothing_is_refused` | The recipe already sets graph.drop_edge_p=0.1, so this arm is the control. |  |
 | `test_a_changed_recipe_is_refused` |  |  |
 | `test_an_exploratory_run_is_stamped_exploratory` |  |  |
+| `test_an_exploratory_run_records_the_window_its_dates_are` |  | parametrize |
+| `test_an_exploratory_run_labelled_with_another_windows_name_is_refused` |  |  |
+| `test_no_run_may_name_the_holdout_as_its_window` |  |  |
 | `test_a_run_with_no_standing_is_refused` |  |  |
 | `test_a_declared_run_is_stamped_with_its_declaration` |  |  |
 | `test_a_declared_run_composed_from_another_config_tree_is_refused` | ``--config-path`` elsewhere would feed the run and its check the same tree. |  |

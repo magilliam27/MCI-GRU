@@ -499,9 +499,12 @@ def _differing_keys(got: Mapping[str, Any], want: Mapping[str, Any]) -> list[str
 def protocol_stamp(
     loaded: LoadedPreregistration | None, *, arm: str | None, window: str | None
 ) -> dict[str, Any]:
-    """What a run records about its standing under the protocol."""
+    """What a run records about its standing under the protocol.
+
+    An exploratory run records the window its dates were checked against, or None.
+    """
     if loaded is None:
-        return {"exploratory": True, "experiment_id": None, "arm": None, "window": None}
+        return {"exploratory": True, "experiment_id": None, "arm": None, "window": window}
     return {
         "exploratory": False,
         "experiment_id": loaded.preregistration.id,
@@ -517,6 +520,29 @@ def protocol_stamp(
     }
 
 
+def check_window_dates(resolved: Mapping[str, Any], window: str) -> None:
+    """Refuse a run labelled ``window`` whose six ``data.*`` dates are not that window's."""
+    if window not in WINDOWS:
+        raise PreregistrationError(
+            f"protocol.window={window!r} is not one of {list(WINDOWS)}; the holdout is "
+            "never a window a run may name"
+        )
+    flat = _flatten(dict(resolved))
+    differ = {
+        key: flat.get(key)
+        for key, value in WINDOWS[window].spans().items()
+        if str(flat.get(key)) != value
+    }
+    if differ:
+        raise PreregistrationError(
+            f"this run is labelled {window} but its dates are not {window}'s: "
+            + ", ".join(
+                f"{key}={got!r} ({window} has {WINDOWS[window].spans()[key]})"
+                for key, got in differ.items()
+            )
+        )
+
+
 def resolve_run_standing(
     protocol: Any,
     resolved: Mapping[str, Any],
@@ -529,12 +555,15 @@ def resolve_run_standing(
 
     ``protocol`` is the run's :class:`~mci_gru.config.ProtocolConfig`. A run must name
     a committed pre-registration and be exactly one of its arms on one of its windows,
-    or set ``protocol.exploratory=true``. ``config_sources`` is Hydra's
+    or set ``protocol.exploratory=true``; an exploratory run that names a window must
+    run on that window's dates (#371). ``config_sources`` is Hydra's
     ``runtime.config_sources`` for the run; a declared run with any source outside
     ``repo_root/configs`` is refused.
     """
     if protocol.exploratory:
-        return protocol_stamp(None, arm=None, window=None)
+        if protocol.window is not None:
+            check_window_dates(resolved, protocol.window)
+        return protocol_stamp(None, arm=None, window=protocol.window)
     if protocol.experiment_id is None:
         raise PreregistrationError(
             "This run names no pre-registration. Declare it in "
