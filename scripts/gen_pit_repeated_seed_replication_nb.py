@@ -939,7 +939,7 @@ cells = [
             run_log_dir.mkdir(parents=True, exist_ok=True)
             stdout_path = run_log_dir / 'train_stdout.log'
             stderr_path = run_log_dir / 'train_stderr.log'
-            cmd = [sys.executable, '-u', str(REPO_DIR / 'run_experiment.py'), *job['overrides']]
+            cmd = [sys.executable, '-u', str(REPO_DIR / 'run_experiment.py'), *job['overrides'], 'protocol.exploratory=true']
 
             max_attempts = 1 + max(0, int(TRAINING_RETRY_ON_REGIME_FETCH_FAILURE))
             stdout_chunks = []

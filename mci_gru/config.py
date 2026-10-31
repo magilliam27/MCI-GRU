@@ -1104,12 +1104,25 @@ class TrackingConfig:
 class ProtocolConfig:
     """Where a run stands under the experiment protocol (PRD #369).
 
+    The runner refuses a run unless it names a committed pre-registration
+    (``experiment_id``, with the ``arm`` and ``window`` it runs) or says it is
+    exploratory (#372). Other entry points, which rebuild configs of saved runs,
+    take the section as it is.
+
     Attributes:
+        experiment_id: Id of ``docs/research/experiments/<id>.yaml``.
+        arm: The declared arm this run is.
+        window: The declared window this run is, ``W1`` to ``W5``.
+        exploratory: True for a run with no pre-registration; it never gets a verdict.
         holdout_promotion: Id of the committed promotion record that may unlock the
             locked 2026 holdout for one run. The promotion path is #374; until it
             lands no record exists, so every value is refused.
     """
 
+    experiment_id: str | None = None
+    arm: str | None = None
+    window: str | None = None
+    exploratory: bool = False
     holdout_promotion: str | None = None
 
     def __post_init__(self) -> None:
@@ -1117,6 +1130,22 @@ class ProtocolConfig:
             raise HoldoutError(
                 f"protocol.holdout_promotion={self.holdout_promotion!r}: no promotion "
                 "record can unlock the holdout yet; the promotion path is #374"
+            )
+        if not isinstance(self.exploratory, bool):
+            raise ValueError(
+                f"protocol.exploratory must be true or false, got {self.exploratory!r}"
+            )
+        if self.exploratory and self.experiment_id is not None:
+            raise ValueError(
+                "protocol.exploratory=true and protocol.experiment_id name two standings; "
+                "a pre-registered run is not exploratory"
+            )
+        if self.experiment_id is None and (self.arm is not None or self.window is not None):
+            raise ValueError("protocol.arm and protocol.window need a protocol.experiment_id")
+        if self.experiment_id is not None and (self.arm is None or self.window is None):
+            raise ValueError(
+                f"protocol.experiment_id={self.experiment_id} needs protocol.arm and "
+                "protocol.window: a declared run is one arm on one window"
             )
 
 

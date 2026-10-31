@@ -55,6 +55,7 @@ MISSING_BAR = ("C.N", "2020-03-10")
 BASELINES = ["reversal_1w", "reversal_1m", "momentum_12_1", "linear_ridge"]
 OVERRIDES = [
     "features=base",
+    "protocol.exploratory=true",
     "data.source=csv",
     "data.input_package_manifest=null",
     "data.input_package_manifest_sha256=null",

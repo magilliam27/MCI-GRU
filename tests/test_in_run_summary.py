@@ -568,6 +568,7 @@ def test_the_config_drives_legs_tranches_and_lags():
 
 RUNNER_OVERRIDES = [
     "features=base",
+    "protocol.exploratory=true",
     "data.source=csv",
     "data.use_pit_universe=false",
     "data.train_start=2020-01-01",

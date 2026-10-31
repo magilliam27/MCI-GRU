@@ -50,6 +50,11 @@ results/
 
 ## Usage
 
+> Every `run_experiment.py` command below also needs `protocol.exploratory=true`, or a
+> declared `protocol.experiment_id`, `protocol.arm` and `protocol.window`; the runner
+> refuses a run with neither. It is left out of the examples for brevity. See
+> [`research/EXPERIMENT_PROTOCOL.md`](research/EXPERIMENT_PROTOCOL.md).
+
 ### Local Training
 
 ```bash

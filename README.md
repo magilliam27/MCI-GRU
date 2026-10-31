@@ -106,7 +106,7 @@ python scripts/ci_smoke.py   # a synthetic four-stock panel through the whole pi
 With a panel of your own (`kdcode, dt, open, high, low, close, volume`):
 
 ```bash
-python run_experiment.py data.filename=/path/to/panel.csv data.use_pit_universe=false \
+python run_experiment.py protocol.exploratory=true data.filename=/path/to/panel.csv data.use_pit_universe=false \
     training.num_epochs=2 training.num_models=1 tracking.enabled=false
 ```
 

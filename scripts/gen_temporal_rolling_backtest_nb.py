@@ -396,7 +396,7 @@ cells = [
             run_log_dir.mkdir(parents=True, exist_ok=True)
             stdout_path = run_log_dir / 'stdout.log'
             stderr_path = run_log_dir / 'stderr.log'
-            cmd = [sys.executable, '-u', str(REPO_DIR / 'run_experiment.py'), *job['overrides']]
+            cmd = [sys.executable, '-u', str(REPO_DIR / 'run_experiment.py'), *job['overrides'], 'protocol.exploratory=true']
 
             print('\n' + '=' * 100)
             print('Training:', job['name'])
