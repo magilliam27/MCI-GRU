@@ -22,6 +22,7 @@ from omegaconf import OmegaConf
 
 from mci_gru.config import create_config_from_dict
 from mci_gru.data.input_manifest import InputFileSpec, write_input_manifest
+from mci_gru.preregistration import resolve_run_standing
 from scripts import first_run_colab as frc
 from scripts import nb_lib
 
@@ -98,6 +99,53 @@ def test_smoke_replaces_the_budget_in_place_and_full_keeps_it():
     assert [o for o in smoke if o in recipe] == [
         o for o in recipe if o.split("=", 1)[0] not in budget
     ]
+
+
+def test_the_recipe_on_its_own_window_gains_no_override():
+    """W5 is the recipe (#367), so moving the recipe onto W5 changes nothing."""
+    recipe = frc.recipe_overrides(RECIPE.read_text(encoding="utf-8"))
+    assert frc.window_overrides(recipe, frc.recipe_data_config(REPO_ROOT), "W5") == recipe
+
+
+@pytest.mark.parametrize("window", ["W1", "W2", "W3", "W4", "W5"])
+def test_a_window_run_composes_onto_that_windows_dates_and_passes_the_runner_gate(window):
+    recipe = frc.recipe_overrides(RECIPE.read_text(encoding="utf-8"))
+    run_dir = Path("/tmp/first-run")
+
+    def built(name):
+        return frc.build_run_overrides(
+            recipe, run_dir=run_dir, experiment_name="slug", smoke=False, window=name
+        )
+
+    overrides = built(window)
+    with initialize_config_dir(config_dir=str(REPO_ROOT / "configs"), version_base=None):
+        cfg = compose(
+            config_name="config", overrides=[o for o in overrides if not o.startswith("hydra.")]
+        )
+    resolved = OmegaConf.to_container(cfg, resolve=True)
+    spans = frc.WINDOWS[window].spans()
+    assert {key: str(resolved["data"][key.removeprefix("data.")]) for key in spans} == spans
+    config = create_config_from_dict(resolved)
+    stamp = resolve_run_standing(
+        config.protocol, resolved, repo_root=REPO_ROOT, compose=lambda overrides: {}
+    )
+    assert stamp == {"exploratory": True, "experiment_id": None, "arm": None, "window": window}
+    # Only the dates and the stamp differ from the same run on the recipe's own window.
+    other = [o for o in overrides if o.partition("=")[0] not in frc.WINDOW_DATE_KEYS]
+    recipe_window = [o for o in built("W5") if o.partition("=")[0] not in frc.WINDOW_DATE_KEYS]
+    assert [o.replace(f"protocol.window={window}", "protocol.window=W5") for o in other] == (
+        recipe_window
+    )
+
+
+def test_the_holdout_is_never_a_window_a_run_may_name(capsys):
+    assert "holdout" not in frc.RUN_WINDOWS
+    with pytest.raises(ValueError, match="not a window a run may name"):
+        frc.window_overrides([], {}, "holdout")
+    with pytest.raises(SystemExit):
+        frc.main(["run", "--mode", "smoke", "--window", "holdout", "--local-root", "l",
+                  "--drive-root", "d"])  # fmt: skip
+    assert "invalid choice: 'holdout'" in capsys.readouterr().err
 
 
 def test_capture_is_added_only_when_the_recipe_does_not_select_it():
@@ -1091,10 +1139,10 @@ def test_every_arm_composes_into_the_typed_config(arm):
     assert config.features.include_global_regime is True
 
 
-def _run_arm(tmp_path, arm, mode="full"):
+def _run_arm(tmp_path, arm, mode="full", window="W5"):
     return frc.main(
         [
-            "run", "--mode", mode, "--arm", arm,
+            "run", "--mode", mode, "--arm", arm, "--window", window,
             "--local-root", str(tmp_path / "local"),
             "--drive-root", str(tmp_path / "drive"),
             "--tag-file", str(tmp_path / "tag.txt"),
@@ -1105,13 +1153,24 @@ def _run_arm(tmp_path, arm, mode="full"):
 def test_a_control_arm_records_itself_and_is_never_an_admitted_run_candidate(tmp_path, run_repo):
     returncode = _run_arm(tmp_path, "graph_zeroed")
     tag = (tmp_path / "tag.txt").read_text().strip()
-    assert re.fullmatch(r"\d{8}T\d{6}Z-full-graph-zeroed-[0-9a-f]{8}", tag), tag
+    assert re.fullmatch(r"\d{8}T\d{6}Z-full-graph-zeroed-W5-[0-9a-f]{8}", tag), tag
     record = json.loads((tmp_path / "drive" / tag / "colab_run_record.json").read_text())
     assert record["returncode"] == returncode
     assert record["arm"] == "graph_zeroed"
     assert "not an admitted-run candidate" in record["evidence"]
     assert "+experiment=graph_zeroed" in record["overrides"]
     assert "experiment_name=slug__arm-graph-zeroed" in record["overrides"]
+
+
+def test_a_window_run_records_its_window_in_its_folder_name_and_record(tmp_path, run_repo):
+    _run_arm(tmp_path, "recipe", window="W3")
+    tag = (tmp_path / "tag.txt").read_text().strip()
+    assert re.fullmatch(r"\d{8}T\d{6}Z-full-W3-[0-9a-f]{8}", tag), tag
+    record = json.loads((tmp_path / "drive" / tag / "colab_run_record.json").read_text())
+    assert record["window"] == "W3"
+    for key, value in frc.WINDOWS["W3"].spans().items():
+        assert frc.override_value(record["overrides"], key) == value
+    assert "protocol.window=W3" in record["overrides"]
 
 
 def test_an_arm_the_recipe_cannot_take_is_refused_before_anything_is_written(
@@ -1178,7 +1237,16 @@ def test_the_gpu_check_fails_when_pytest_writes_no_report(tmp_path, monkeypatch)
 
 # Arm comparison ------------------------------------------------------------
 
-_DATES = [f"2025-01-{day:02d}" for day in range(2, 22)]
+
+def _dates(window="W5"):
+    """Twenty dated test days inside *window*'s test span."""
+    year = frc.WINDOWS[window].test_start[:4]
+    return [f"{year}-02-{day:02d}" for day in range(2, 22)]
+
+
+_DATES = _dates()
+#: The recipe's data config on W5: the fake recipe sets no dates of its own.
+_W5_DATA = {key.removeprefix("data."): value for key, value in frc.WINDOWS["W5"].spans().items()}
 
 
 _FAKE_RECIPE = ["seed=1729", "training.num_models=20", _FIXED_RECIPE_LINE, "tracking.enabled=false"]
@@ -1207,18 +1275,33 @@ def _fake_arm_run(
     overrides=None,
     package=None,
     observations=(b"fred",),
+    window="W5",
+    record_window="as-run",
+    dates=None,
+    config_window=None,
 ):
-    """A finished run folder as the launcher and run_experiment.py leave it."""
+    """A finished run folder as the launcher and run_experiment.py leave it.
+
+    *window* places the run's dates, its saved config and its default overrides on a
+    protocol window. ``record_window`` is what the launcher's record says ("as-run":
+    *window*; None: no window, as before #371). ``config_window`` writes another
+    window's dates to the saved config.
+    """
     import numpy as np
     import pandas as pd
 
-    run_dir = root / arm
-    window = run_dir / "outputs"
-    window.mkdir(parents=True)
+    run_dir = root / (arm if window == "W5" else f"{arm}-{window}")
+    outputs = run_dir / "outputs"
+    outputs.mkdir(parents=True)
     ic = np.asarray(ic, dtype=float)
     rank_ic = ic / 2
-    pd.DataFrame({"dt": _DATES, "ic": ic, "rank_ic": rank_ic}).to_csv(
-        window / "daily_ic.csv", index=False, float_format="%.17g"
+    pd.DataFrame({"dt": dates or _dates(window), "ic": ic, "rank_ic": rank_ic}).to_csv(
+        outputs / "daily_ic.csv", index=False, float_format="%.17g"
+    )
+    saved = frc.WINDOWS[config_window or window].spans()
+    (run_dir / "config.yaml").write_text(
+        yaml.safe_dump({"data": {k.removeprefix("data."): v for k, v in saved.items()}}),
+        encoding="utf-8",
     )
     summary = {
         "label_t": 5,
@@ -1232,16 +1315,21 @@ def _fake_arm_run(
     }
     if ties is not None:
         summary["linked_score_ties"] = ties
-    (window / "evaluation_summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    (outputs / "evaluation_summary.json").write_text(json.dumps(summary), encoding="utf-8")
     for index, data in enumerate(observations):
         files = run_dir / "input_snapshots" / f"obs{index}" / "files"
         files.mkdir(parents=True)
         (files / "observations.bin").write_bytes(data)
     if overrides is None:
-        overrides = frc.apply_arm(_FAKE_RECIPE, arm)
+        overrides = frc.window_overrides(frc.apply_arm(_FAKE_RECIPE, arm), _W5_DATA, window)
     frc.write_json(
         run_dir / "colab_run_record.json",
         {
+            **(
+                {}
+                if record_window is None
+                else {"window": window if record_window == "as-run" else record_window}
+            ),
             "arm": arm,
             "mode": mode,
             "run_tag": f"tag-{arm}",
@@ -1291,18 +1379,26 @@ def test_compare_pairs_the_reference_against_each_arm_on_common_dates(tmp_path):
     assert frc.main(argv) == 0
 
     comparison = json.loads((out / "arm_comparison.json").read_text())
+    assert comparison["windows"] == ["W5"]
     assert [a["arm"] for a in comparison["arms"]] == ["recipe", "graph_zeroed", "levels_inputs"]
-    recipe = comparison["arms"][0]
+    assert [a["windows"] for a in comparison["arms"]] == [["W5"]] * 3
+    assert comparison["arms"][0]["n_dates"] == len(_DATES) - 1
+    assert [(r["arm"], r["window"]) for r in comparison["runs"]] == [
+        ("recipe", "W5"), ("graph_zeroed", "W5"), ("levels_inputs", "W5"),
+    ]  # fmt: skip
+    recipe = comparison["runs"][0]
     assert recipe["n_dates"] == len(_DATES) - 1
     assert recipe["experiment_name"] == "slug-recipe"
     assert recipe["linked_score_ties"]["ensemble_tied_total"] == 1
     assert recipe["linked_score_ties"]["ensemble_tied_share"] == pytest.approx(1 / 50)
     assert recipe["linked_score_ties"]["dates_with_an_ensemble_tie"] == 1
     assert recipe["linked_score_ties"]["eval_autocast"] is False
-    assert comparison["arms"][1]["linked_score_ties"]["ensemble_tied_share"] is None
-    assert comparison["arms"][2]["linked_score_ties"] is None
+    assert comparison["runs"][1]["linked_score_ties"]["ensemble_tied_share"] is None
+    assert comparison["runs"][2]["linked_score_ties"] is None
 
-    paired = {(p["metric"], p["control"]): p for p in comparison["paired_daily_difference"]}
+    rows = comparison["paired_daily_difference"]
+    assert {r["window"] for r in rows} == {"pooled", "W5"}
+    paired = {(p["metric"], p["control"]): p for p in rows if p["window"] == "pooled"}
     assert set(paired) == {
         (metric, control)
         for metric in ("ic", "rank_ic")
@@ -1430,9 +1526,119 @@ def test_compare_flags_auxiliary_inputs_that_differ_from_the_recipe_arms(tmp_pat
     revised = _fake_arm_run(tmp_path, "levels_inputs", ic, observations=(b"fred-b", b"index"))
     runs = [("recipe", recipe), ("graph_zeroed", same), ("levels_inputs", revised)]
     assert _compare(tmp_path, runs) == 0
-    arms = json.loads((tmp_path / "out" / "arm_comparison.json").read_text())["arms"]
-    assert [a["auxiliary_inputs_match_reference"] for a in arms] == [True, True, False]
-    assert [a["auxiliary_observations"] for a in arms] == [2, 2, 2]
+    runs = json.loads((tmp_path / "out" / "arm_comparison.json").read_text())["runs"]
+    assert [r["auxiliary_inputs_match_reference"] for r in runs] == [True, True, False]
+    assert [r["auxiliary_observations"] for r in runs] == [2, 2, 2]
+
+
+def _window_runs(tmp_path, deltas, **zeroed):
+    """Recipe and graph-zeroed runs on each window of *deltas*, recipe = zeroed + delta."""
+    import numpy as np
+
+    rng = np.random.default_rng(1)
+    runs = []
+    for window, delta in deltas.items():
+        base = rng.normal(0.0, 0.05, len(_DATES))
+        runs.append(("recipe", _fake_arm_run(tmp_path, "recipe", base + delta, window=window)))
+        runs.append(
+            ("graph_zeroed", _fake_arm_run(tmp_path, "graph_zeroed", base, window=window, **zeroed))
+        )
+    return runs
+
+
+def test_compare_pools_each_arms_windows_and_reports_each_window(tmp_path):
+    import pandas as pd
+
+    runs = _window_runs(tmp_path, {"W2": 0.03, "W1": 0.01})
+    assert _compare(tmp_path, runs) == 0
+    comparison = json.loads((tmp_path / "out" / "arm_comparison.json").read_text())
+    assert comparison["windows"] == ["W1", "W2"]
+    arms = {a["arm"]: a for a in comparison["arms"]}
+    assert arms["recipe"]["windows"] == arms["graph_zeroed"]["windows"] == ["W1", "W2"]
+    assert arms["recipe"]["n_dates"] == 2 * len(_DATES)
+    rows = {(r["window"], r["metric"]): r for r in comparison["paired_daily_difference"]}
+    assert set(rows) == {(w, m) for w in ("pooled", "W1", "W2") for m in ("ic", "rank_ic")}
+    assert rows[("pooled", "ic")]["n_common_dates"] == 2 * len(_DATES)
+    assert rows[("pooled", "ic")]["mean_delta"] == pytest.approx(0.02, abs=1e-12)
+    assert rows[("W1", "ic")]["mean_delta"] == pytest.approx(0.01, abs=1e-12)
+    assert rows[("W2", "ic")]["mean_delta"] == pytest.approx(0.03, abs=1e-12)
+    assert rows[("W2", "rank_ic")]["mean_delta"] == pytest.approx(0.015, abs=1e-12)
+    table = pd.read_csv(tmp_path / "out" / "daily_ic_by_arm.csv", dtype={"dt": str})
+    assert table["window"].tolist() == ["W1"] * len(_DATES) + ["W2"] * len(_DATES)
+    assert table["dt"].tolist() == _dates("W1") + _dates("W2")
+
+
+def test_compare_reads_a_run_from_before_window_records_by_its_dates(tmp_path):
+    runs = _window_runs(tmp_path, {"W5": 0.01}, record_window=None)
+    assert _compare(tmp_path, runs) == 0
+    comparison = json.loads((tmp_path / "out" / "arm_comparison.json").read_text())
+    assert [r["window"] for r in comparison["runs"]] == ["W5", "W5"]
+
+
+@pytest.mark.parametrize(
+    ("zeroed", "message"),
+    [
+        ({"record_window": "W3"}, "is recorded as W3 but ran W2's dates"),
+        ({"dates": _dates("W5")}, "outside W2's test span"),
+        ({"config_window": "W1"}, "is recorded as W2 but ran W1's dates"),
+        ({"config_window": "W1", "record_window": None}, "outside W1's test span"),
+    ],
+)
+def test_compare_refuses_a_run_whose_window_is_not_what_it_scored(
+    tmp_path, capsys, zeroed, message
+):
+    import numpy as np
+
+    ic = np.full(len(_DATES), 0.01)
+    recipe = _fake_arm_run(tmp_path, "recipe", ic, window="W2")
+    other = _fake_arm_run(tmp_path, "graph_zeroed", ic, window="W2", **zeroed)
+    assert _compare(tmp_path, [("recipe", recipe), ("graph_zeroed", other)]) == 1
+    assert message in capsys.readouterr().out
+
+
+def test_a_run_on_dates_that_are_no_window_is_refused(tmp_path):
+    run = _fake_arm_run(tmp_path, "recipe", [0.01] * len(_DATES))
+    saved = yaml.safe_load((run / "config.yaml").read_text())
+    saved["data"]["train_start"] = "2016-01-04"  # the first run's eight training years
+    (run / "config.yaml").write_text(yaml.safe_dump(saved))
+    with pytest.raises(ValueError, match="no protocol window's"):
+        frc.run_window(run)
+    (run / "config.yaml").unlink()
+    with pytest.raises(ValueError, match="has no config.yaml"):
+        frc.run_window(run)
+
+
+def test_compare_refuses_arms_that_ran_different_windows(tmp_path, capsys):
+    runs = _window_runs(tmp_path, {"W1": 0.01, "W2": 0.01})
+    assert _compare(tmp_path, runs[:-1]) == 1  # graph_zeroed lacks W2
+    assert "arm 'graph_zeroed' ran windows ['W1']; arm 'recipe' ran ['W1', 'W2']" in (
+        capsys.readouterr().out
+    )
+    extra = _fake_arm_run(tmp_path, "graph_zeroed", [0.01] * len(_DATES), window="W3")
+    assert _compare(tmp_path, [*runs, ("graph_zeroed", extra)], out="out3") == 1
+    assert "ran windows ['W1', 'W2', 'W3']" in capsys.readouterr().out
+
+
+def test_compare_refuses_a_window_given_twice_for_one_arm(tmp_path, capsys):
+    runs = _window_runs(tmp_path, {"W1": 0.01})
+    assert _compare(tmp_path, [runs[0], *runs]) == 1
+    assert "arm 'recipe' twice on W1" in capsys.readouterr().out
+
+
+def test_compare_refuses_reference_windows_that_differ_beyond_their_dates(tmp_path, capsys):
+    import numpy as np
+
+    ic = np.full(len(_DATES), 0.01)
+    runs = _window_runs(tmp_path, {"W1": 0.01})
+    smaller = frc.window_overrides(
+        [o.replace("num_models=20", "num_models=1") for o in _FAKE_RECIPE], _W5_DATA, "W2"
+    )
+    recipe_w2 = _fake_arm_run(tmp_path, "recipe", ic, window="W2", overrides=smaller)
+    zeroed_w2 = _fake_arm_run(
+        tmp_path, "graph_zeroed", ic, window="W2", overrides=frc.apply_arm(smaller, "graph_zeroed")
+    )
+    assert _compare(tmp_path, [*runs, ("recipe", recipe_w2), ("graph_zeroed", zeroed_w2)]) == 1
+    assert "beyond the window's dates" in capsys.readouterr().out
 
 
 def test_compare_writes_strict_json_and_never_writes_over_a_folder(tmp_path, capsys):

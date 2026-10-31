@@ -46,6 +46,7 @@ from mci_gru.data.input_manifest import (
     read_input_manifest,
     validate_input_package,
 )
+from mci_gru.protocol import WINDOWS
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -229,6 +230,37 @@ def apply_arm(overrides: Sequence[str], arm: str) -> list[str]:
     return result
 
 
+#: The windows a run may name (PRD #369). The holdout window is never one of them.
+RUN_WINDOWS = tuple(WINDOWS)
+#: The window the recipe itself trains, validates and tests on (#367).
+RECIPE_WINDOW = "W5"
+#: The six ``data.*`` dates a window sets; nothing else differs between windows.
+WINDOW_DATE_KEYS = tuple(WINDOWS[RECIPE_WINDOW].spans())
+
+
+def window_overrides(
+    overrides: Sequence[str], data_config: dict[str, Any], window: str
+) -> list[str]:
+    """*overrides* moved onto *window*'s six dates (#371).
+
+    A date the overrides set is replaced; one they leave to the data config is
+    appended only when the data config's value is not the window's. So the recipe on
+    its own window, W5, gains nothing. ``data_config`` is the recipe's data config
+    (:func:`recipe_data_config`).
+    """
+    if window not in RUN_WINDOWS:
+        raise ValueError(f"{window!r} is not a window a run may name; they are {RUN_WINDOWS}")
+    result = list(overrides)
+    for key, value in WINDOWS[window].spans().items():
+        current = override_value(result, key)
+        if current is not None:
+            if current != value:
+                result = replace_override(result, key, value)
+        elif str(data_config.get(key.removeprefix("data."))) != value:
+            result.append(f"{key}={value}")
+    return result
+
+
 def arm_experiment_name(slug: str, arm: str) -> str:
     """The recipe slug for the recipe arm; a suffixed one for every other arm."""
     suffix = RUN_ARMS[arm].slug_suffix
@@ -347,11 +379,16 @@ def build_run_overrides(
     experiment_name: str,
     smoke: bool,
     arm: str = "recipe",
+    window: str = RECIPE_WINDOW,
+    data_config: dict[str, Any] | None = None,
 ) -> list[str]:
     """The recipe's overrides plus where this run writes; budgets change only for smoke.
 
     *arm* applies one of :data:`RUN_ARMS` first, so a control arm differs from the
-    recipe only by its named changes.
+    recipe only by its named changes. *window* then moves the run onto that window's
+    dates (:func:`window_overrides`); ``data_config`` defaults to the recipe's at
+    :data:`REPO_DIR`. The window is stamped as ``protocol.window``, and the runner
+    refuses the run unless its dates are that window's.
 
     Capture is added only when the recipe does not already select it (main before
     #274). The folder is named explicitly then, because before #274 capture has no
@@ -359,7 +396,9 @@ def build_run_overrides(
     MLflow tracking is switched off: ``requirements.lock`` does not carry the
     ``tracking`` extra, and the run's own records do not depend on it.
     """
-    overrides = apply_arm(recipe, arm)
+    if data_config is None:
+        data_config = recipe_data_config(REPO_DIR)
+    overrides = window_overrides(apply_arm(recipe, arm), data_config, window)
     if smoke:
         for key, value in SMOKE_BUDGET.items():
             overrides = replace_override(overrides, key, value)
@@ -378,6 +417,7 @@ def build_run_overrides(
         # No arm here is pre-registered: #326 runs W5 only, which the protocol counts
         # as exploratory (PRD #369, decision 7). The runner refuses an unstamped run.
         "protocol.exploratory=true",
+        f"protocol.window={window}",
     ]
     return overrides
 
@@ -919,7 +959,8 @@ def _command_run(args: Any) -> int:
     commit = _git("rev-parse", "HEAD")
     arm_part = f"-{RUN_ARMS[args.arm].slug_suffix}" if args.arm != "recipe" else ""
     run_tag = args.run_tag or (
-        f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{args.mode}{arm_part}-{commit[:8]}"
+        f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{args.mode}{arm_part}"
+        f"-{args.window}-{commit[:8]}"
     )
     local_dir = Path(args.local_root) / run_tag
     drive_dir = Path(args.drive_root) / run_tag
@@ -935,11 +976,14 @@ def _command_run(args: Any) -> int:
         experiment_name=arm_experiment_name(slug, args.arm),
         smoke=not full,
         arm=args.arm,
+        window=args.window,
+        data_config=recipe_data_config(REPO_DIR),
     )
     record = {
         "run_tag": run_tag,
         "mode": args.mode,
         "arm": args.arm,
+        "window": args.window,
         "evidence": evidence_label(args.mode, args.arm),
         "recipe_slug": slug,
         "commit": commit,
@@ -1064,6 +1108,7 @@ class ArmResult:
     record: dict[str, Any]
     summary: dict[str, Any]
     daily: Any  # pandas.DataFrame indexed by dt, columns ic and rank_ic
+    window: str  # the protocol window its saved config's dates are (#371)
 
 
 #: The dated IC series and the summary's mean must agree this closely, or the folder
@@ -1071,8 +1116,29 @@ class ArmResult:
 RECONCILE_TOLERANCE = 1e-9
 
 
+def run_window(run_dir: Path) -> str:
+    """The protocol window whose six dates the run's saved ``config.yaml`` holds.
+
+    The dates, not a label, decide: a run from before #371 records no window, and one
+    that does must agree with its dates.
+    """
+    path = Path(run_dir) / "config.yaml"
+    if not path.exists():
+        raise ValueError(f"{run_dir} has no config.yaml, so its dates cannot be read")
+    data = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("data") or {}
+    dates = {key: str(data.get(key.removeprefix("data."))) for key in WINDOW_DATE_KEYS}
+    for name, window in WINDOWS.items():
+        if dates == window.spans():
+            return name
+    raise ValueError(f"{run_dir} ran on dates that are no protocol window's: {dates}")
+
+
 def read_arm_result(arm: str, run_dir: Path) -> ArmResult:
-    """Read one arm's record, summary and dated IC, and check that they agree."""
+    """Read one arm's record, summary and dated IC, and check that they agree.
+
+    The run's window comes from its saved dates (:func:`run_window`), and every scored
+    date must lie in that window's test span.
+    """
     import pandas as pd
 
     run_dir = Path(run_dir)
@@ -1100,7 +1166,17 @@ def read_arm_result(arm: str, run_dir: Path) -> ArmResult:
                 f"{daily_path}: mean {column} {recomputed!r} differs from the summary's "
                 f"{key} {stored!r}"
             )
-    return ArmResult(arm, run_dir, record, summary, daily)
+    window = run_window(run_dir)
+    if record.get("window", window) != window:
+        raise ValueError(f"{run_dir} is recorded as {record['window']} but ran {window}'s dates")
+    spans = WINDOWS[window]
+    outside = [d for d in daily.index if not spans.test_start <= d <= spans.test_end]
+    if outside:
+        raise ValueError(
+            f"{daily_path} scores {len(outside)} date(s) outside {window}'s test span "
+            f"{spans.test_start} to {spans.test_end}, e.g. {outside[0]}"
+        )
+    return ArmResult(arm, run_dir, record, summary, daily, window)
 
 
 def _ties(summary: dict[str, Any]) -> dict[str, Any] | None:
@@ -1125,6 +1201,11 @@ def _ties(summary: dict[str, Any]) -> dict[str, Any] | None:
 
 #: Overrides that name where a run writes rather than what it trains.
 _RUN_LOCATION_KEYS = ("hydra.run.dir", "experiment_name", "data.auxiliary_snapshot_directory")
+
+
+def _without_dates(overrides: Sequence[str]) -> list[str]:
+    """Overrides without the six window dates: what every window of an arm shares."""
+    return [o for o in overrides if o.partition("=")[0] not in WINDOW_DATE_KEYS]
 
 
 def _trained_overrides(overrides: Sequence[str]) -> list[str]:
@@ -1171,6 +1252,46 @@ def _finite_or_none(value: Any) -> Any:
     return value
 
 
+def _run_entry(result: ArmResult, reference_aux: list[str]) -> dict[str, Any]:
+    """One run's IC, ties and inputs, as the comparison reports it."""
+    metrics = result.summary["metrics"]
+    digests = auxiliary_observation_digests(result.run_dir)
+    return {
+        "arm": result.arm,
+        "window": result.window,
+        "run_tag": result.record.get("run_tag"),
+        "experiment_name": next(
+            (o.partition("=")[2] for o in result.record.get("overrides", [])
+             if o.startswith("experiment_name=")),
+            None,
+        ),
+        "n_dates": int(result.daily["ic"].notna().sum()),
+        **{
+            key: metrics.get(key)
+            for key in (
+                "avg_ic", "avg_ic_ci_lower", "avg_ic_ci_upper",
+                "avg_rank_ic", "avg_rank_ic_ci_lower", "avg_rank_ic_ci_upper",
+                "rank_ic_ir",
+            )
+        },
+        "linked_score_ties": _ties(result.summary),
+        "auxiliary_observations": len(digests),
+        "auxiliary_inputs_match_reference": digests == reference_aux,
+    }  # fmt: skip
+
+
+def pooled_daily(runs: Sequence[ArmResult]) -> Any:
+    """One arm's window runs as one dated series, in window order; a date twice is refused."""
+    import pandas as pd
+
+    ordered = sorted(runs, key=lambda run: RUN_WINDOWS.index(run.window))
+    pooled = pd.concat([run.daily[["ic", "rank_ic"]] for run in ordered])
+    if not pooled.index.is_unique:
+        repeated = pooled.index[pooled.index.duplicated()][0]
+        raise ValueError(f"arm {runs[0].arm!r} scores {repeated} in more than one window")
+    return pooled.sort_index()
+
+
 def compare_arms(
     results: Sequence[ArmResult],
     *,
@@ -1178,12 +1299,16 @@ def compare_arms(
     seed: int,
     ci_level: float = 0.95,
 ) -> dict[str, Any]:
-    """Each arm's IC and ties, and the recipe arm's paired daily IC difference to the rest.
+    """Each arm's IC, pooled over its windows, and the recipe arm's paired difference.
 
-    The first arm must be the recipe. Every other arm must come from the same commit,
-    mode and staged package, and its overrides must be the recipe arm's with only that
-    arm's change, so the arms differ by nothing else. The paired difference uses the
-    overlap-aware HAC t-test and interval of ``paired_inference`` (#356), with the
+    *results* holds one run per arm and window (#371). The first must be a recipe
+    run; it names the reference arm. Every arm must have run the same windows, each
+    once. Every run must come from the same commit, mode and staged package; the
+    reference arm's runs may differ from each other only by their window's dates, and
+    each other arm's run must be the reference run of its window plus only that arm's
+    change. Per arm the windows' dated IC is joined into one series. The paired
+    difference is reported pooled over every window, then for each window, using the
+    overlap-aware HAC t-test and interval of ``paired_inference`` (#356) with the
     label's horizon from the summary; that interval draws no resamples, so
     ``n_resamples`` and ``seed`` no longer move it.
     """
@@ -1191,89 +1316,124 @@ def compare_arms(
 
     from mci_gru.evaluation.paired_inference import align_daily_series, paired_mean_inference
 
-    if len(results) < 2:
+    if not results:
         raise ValueError("compare needs at least two arms")
-    names = [result.arm for result in results]
-    if len(set(names)) != len(names):
-        raise ValueError(f"each arm may be given once: {names}")
-    reference = results[0]
-    if reference.arm != "recipe":
+    reference_arm = results[0].arm
+    if reference_arm != "recipe":
         raise ValueError(
-            f"the first arm is the reference and must be 'recipe', not {reference.arm!r}"
+            f"the first arm is the reference and must be 'recipe', not {reference_arm!r}"
         )
-    reference_trained = _trained_overrides(reference.record.get("overrides", []))
-    for result in results[1:]:
-        for key in ("commit", "mode"):
-            if result.record.get(key) != reference.record.get(key):
-                raise ValueError(
-                    f"arm {result.arm!r} ran {key} {result.record.get(key)!r}; "
-                    f"arm {reference.arm!r} ran {reference.record.get(key)!r}"
-                )
-        if _package_identity(result.record) != _package_identity(reference.record):
-            raise ValueError(f"arm {result.arm!r} staged another input package")
-        expected = _trained_overrides(apply_arm(reference_trained, result.arm))
-        if _trained_overrides(result.record.get("overrides", [])) != expected:
-            raise ValueError(
-                f"arm {result.arm!r} trained with overrides other than the recipe arm's "
-                "plus its own change"
-            )
-    reference_aux = auxiliary_observation_digests(reference.run_dir)
-    label_t = int(reference.summary["label_t"])
-    arms = []
+    by_arm: dict[str, dict[str, ArmResult]] = {}
     for result in results:
-        metrics = result.summary["metrics"]
-        arms.append(
-            {
-                "arm": result.arm,
-                "run_tag": result.record.get("run_tag"),
-                "experiment_name": next(
-                    (o.partition("=")[2] for o in result.record.get("overrides", [])
-                     if o.startswith("experiment_name=")),
-                    None,
-                ),
-                "n_dates": int(result.daily["ic"].notna().sum()),
-                **{
-                    key: metrics.get(key)
-                    for key in (
-                        "avg_ic", "avg_ic_ci_lower", "avg_ic_ci_upper",
-                        "avg_rank_ic", "avg_rank_ic_ci_lower", "avg_rank_ic_ci_upper",
-                        "rank_ic_ir",
-                    )
-                },
-                "linked_score_ties": _ties(result.summary),
-                "auxiliary_observations": len(auxiliary_observation_digests(result.run_dir)),
-                "auxiliary_inputs_match_reference": (
-                    auxiliary_observation_digests(result.run_dir) == reference_aux
-                ),
-            }
-        )  # fmt: skip
-    paired = []
-    for column in ("ic", "rank_ic"):
-        frame = align_daily_series({r.arm: r.daily[column] for r in results})
-        for other in results[1:]:
-            inference = paired_mean_inference(
-                frame[reference.arm] - frame[other.arm],
-                arm=reference.arm,
-                control=other.arm,
-                label_horizon=label_t,
-                n_resamples=n_resamples,
-                seed=seed,
-                ci_level=ci_level,
+        windows = by_arm.setdefault(result.arm, {})
+        if result.window in windows:
+            raise ValueError(
+                f"each arm may be given once per window: arm {result.arm!r} twice on "
+                f"{result.window}"
             )
-            paired.append({"metric": column, "n_common_dates": len(frame), **asdict(inference)})
+        windows[result.window] = result
+    if len(by_arm) < 2:
+        raise ValueError("compare needs at least two arms")
+    reference = by_arm[reference_arm]
+    reference_windows = sorted(reference, key=RUN_WINDOWS.index)
+    first = reference[reference_windows[0]]
+    shared = _without_dates(_trained_overrides(first.record.get("overrides", [])))
+    for result in results:
+        if result.arm != reference_arm and sorted(by_arm[result.arm]) != sorted(reference):
+            raise ValueError(
+                f"arm {result.arm!r} ran windows {sorted(by_arm[result.arm])}; "
+                f"arm {reference_arm!r} ran {sorted(reference)}"
+            )
+        for key in ("commit", "mode"):
+            if result.record.get(key) != first.record.get(key):
+                raise ValueError(
+                    f"arm {result.arm!r} on {result.window} ran {key} "
+                    f"{result.record.get(key)!r}; arm {reference_arm!r} on {first.window} "
+                    f"ran {first.record.get(key)!r}"
+                )
+        if _package_identity(result.record) != _package_identity(first.record):
+            raise ValueError(f"arm {result.arm!r} on {result.window} staged another input package")
+        trained = _trained_overrides(result.record.get("overrides", []))
+        if result.arm == reference_arm:
+            if _without_dates(trained) != shared:
+                raise ValueError(
+                    f"arm {reference_arm!r} on {result.window} trained with overrides other "
+                    f"than its run on {first.window}, beyond the window's dates"
+                )
+            continue
+        twin = reference[result.window]
+        expected = _trained_overrides(
+            apply_arm(_trained_overrides(twin.record.get("overrides", [])), result.arm)
+        )
+        if trained != expected:
+            raise ValueError(
+                f"arm {result.arm!r} on {result.window} trained with overrides other than "
+                "the recipe arm's plus its own change"
+            )
+    label_ts = {int(result.summary["label_t"]) for result in results}
+    if len(label_ts) != 1:
+        raise ValueError(f"the runs score different label horizons: {sorted(label_ts)}")
+    label_t = label_ts.pop()
+
+    runs = []
+    for windows in by_arm.values():
+        for window in sorted(windows, key=RUN_WINDOWS.index):
+            reference_aux = auxiliary_observation_digests(reference[window].run_dir)
+            runs.append(_run_entry(windows[window], reference_aux))
+    pooled = {arm: pooled_daily(list(windows.values())) for arm, windows in by_arm.items()}
+    arms = [
+        {
+            "arm": arm,
+            "windows": sorted(by_arm[arm], key=RUN_WINDOWS.index),
+            "n_dates": int(series["ic"].notna().sum()),
+            "avg_ic": float(series["ic"].mean()),
+            "avg_rank_ic": float(series["rank_ic"].mean()),
+        }
+        for arm, series in pooled.items()
+    ]
+    paired = []
+    others = [arm for arm in by_arm if arm != reference_arm]
+    for scope in ("pooled", *reference_windows):
+        for column in ("ic", "rank_ic"):
+            series = {
+                arm: (pooled[arm] if scope == "pooled" else by_arm[arm][scope].daily)[column]
+                for arm in by_arm
+            }
+            frame = align_daily_series(series)
+            for other in others:
+                inference = paired_mean_inference(
+                    frame[reference_arm] - frame[other],
+                    arm=reference_arm,
+                    control=other,
+                    label_horizon=label_t,
+                    n_resamples=n_resamples,
+                    seed=seed,
+                    ci_level=ci_level,
+                )
+                paired.append(
+                    {
+                        "window": scope,
+                        "metric": column,
+                        "n_common_dates": len(frame),
+                        **asdict(inference),
+                    }
+                )
     return {
-        "reference_arm": reference.arm,
-        "commit": reference.record.get("commit"),
+        "reference_arm": reference_arm,
+        "commit": first.record.get("commit"),
+        "windows": reference_windows,
         "label_t": label_t,
         "ci_level": ci_level,
         "n_resamples": n_resamples,
         "seed": seed,
         "arms": arms,
+        "runs": runs,
         "paired_daily_difference": paired,
         "note": "Evidence, not a pass/fail gate (PRD #319, D1). Paired rows are "
-        "reference minus control, per date, on the dates every arm scored. Each arm "
-        "fetched its FRED inputs itself; auxiliary_inputs_match_reference says whether "
-        "the captured bytes were the same as the recipe arm's.",
+        "reference minus control, per date, on the dates every arm scored: pooled over "
+        "every window, then one window at a time (#371). Each run fetched its FRED "
+        "inputs itself; auxiliary_inputs_match_reference says whether the captured bytes "
+        "were the same as the recipe arm's run on that window.",
     }
 
 
@@ -1303,9 +1463,14 @@ def _command_compare(args: Any) -> int:
     comparison = _finite_or_none(comparison)
     out_dir.mkdir(parents=True)
     write_json(out_dir / "arm_comparison.json", comparison)
-    pd.concat(
-        {f"{r.arm}_{c}": r.daily[c] for r in results for c in ("ic", "rank_ic")}, axis=1
-    ).sort_index().to_csv(out_dir / "daily_ic_by_arm.csv", float_format="%.17g")
+    arms = list(dict.fromkeys(r.arm for r in results))
+    pooled = {arm: pooled_daily([r for r in results if r.arm == arm]) for arm in arms}
+    table = pd.concat(
+        {f"{arm}_{c}": pooled[arm][c] for arm in arms for c in ("ic", "rank_ic")}, axis=1
+    ).sort_index()
+    window_of = {d: r.window for r in results for d in r.daily.index}
+    table.insert(0, "window", [window_of[d] for d in table.index])
+    table.to_csv(out_dir / "daily_ic_by_arm.csv", float_format="%.17g")
     print(json.dumps(comparison, indent=2))
     print(f"Comparison written to {out_dir}")
     return 0
@@ -1333,6 +1498,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     run.add_argument("--eodhd-drive-path", default=EODHD_MARKET_DRIVE_PATH)
     run.add_argument("--tag-file", default="")
     run.add_argument("--arm", choices=list(RUN_ARMS), default="recipe")
+    run.add_argument(
+        "--window", choices=list(RUN_WINDOWS), default=RECIPE_WINDOW,
+        help="the protocol window to run (PRD #369); W5 is the recipe's own dates",
+    )  # fmt: skip
     check_arms = commands.add_parser("check-arms")
     check_arms.add_argument("arms", nargs="+")
     gpu_check = commands.add_parser("gpu-check")
@@ -1340,7 +1509,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     compare = commands.add_parser("compare")
     compare.add_argument(
         "--run", action="append", required=True, metavar="ARM=RUN_FOLDER",
-        help="an arm's run folder; the first given is the reference",
+        help="one run folder of an arm, once per window; the first given is the reference",
     )  # fmt: skip
     compare.add_argument("--out-dir", required=True)
     compare.add_argument("--resamples", type=int, default=2000)

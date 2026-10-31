@@ -64,10 +64,10 @@ arm names (`RUN_ARMS` in `scripts/first_run_colab.py`):
 
 | Arm | What changes from the recipe | Run tag |
 | --- | --- | --- |
-| `recipe` | nothing | `<time>-full-<commit>` |
-| `graph_zeroed` | `+experiment=graph_zeroed`: the GAT layers stay, the correlation edges are empty | `<time>-full-graph-zeroed-<commit>` |
-| `levels_inputs` | `features.base_inputs=levels`: the fixed graph layers on the old raw price and volume levels | `<time>-full-inputs-levels-<commit>` |
-| `other_seeds` | `seed=2729`: the recipe on member seeds 2729 + i, none of which the recipe's 1729 + i uses | `<time>-full-seed-2729-<commit>` |
+| `recipe` | nothing | `<time>-full-<window>-<commit>` |
+| `graph_zeroed` | `+experiment=graph_zeroed`: the GAT layers stay, the correlation edges are empty | `<time>-full-graph-zeroed-<window>-<commit>` |
+| `levels_inputs` | `features.base_inputs=levels`: the fixed graph layers on the old raw price and volume levels | `<time>-full-inputs-levels-<window>-<commit>` |
+| `other_seeds` | `seed=2729`: the recipe on member seeds 2729 + i, none of which the recipe's 1729 + i uses | `<time>-full-seed-2729-<window>-<commit>` |
 
 The first three share the recipe's seed. The recipe arm's paired difference against
 `other_seeds` is the seed noise floor: a difference against `graph_zeroed` or
@@ -92,6 +92,25 @@ bootstrap the graph ablation used. It reads each run's `daily_ic.csv` and refuse
 a run whose dated series does not average to its own summary's `avg_ic`, or arms
 from different commits or packages. It is evidence, not a pass/fail gate (PRD #319,
 decision D1).
+
+## Window runs (#371)
+
+`run --window W1..W5` moves a run onto one protocol window's dates
+(`WINDOWS` in `mci_gru/protocol.py`; PRD #369). W5 is the recipe's own dates and
+the default, so it adds no override. The run tag, `colab_run_record.json` and the
+run's `protocol.window` stamp in `run_metadata.json` all record the window, and the
+runner refuses a run whose dates are not the window it names. The holdout is
+never a choice. The notebook runs W5 only; a window run is launched from the
+command line or a headless job.
+
+`compare` takes one `--run ARM=FOLDER` per arm and window. It reads each run's
+window from the dates in its saved `config.yaml`, refuses a run that scored a date
+outside that window's test span, refuses arms that ran different windows or one
+window twice, and refuses recipe runs that differ beyond their dates. Per arm it
+joins the windows' `daily_ic.csv` into one series. The paired rows are then
+reported pooled over every window and once per window. `arm_comparison.json`
+lists each run under `runs` and each arm's pooled IC under `arms`, and
+`daily_ic_by_arm.csv` gains a `window` column.
 
 ## When something stops
 
