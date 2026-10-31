@@ -1077,23 +1077,23 @@ def test_the_jev_arm_differs_from_the_top_k_arm_only_by_its_link_scores():
 
 
 @pytest.mark.parametrize("value", ["0.4", "0.5", "0.6", "0.7", "0.8"])
-def test_each_yearly_threshold_arm_is_its_static_arm_rebuilt_every_year(value):
+def test_each_quarterly_threshold_arm_is_its_static_arm_rebuilt_every_quarter(value):
     recipe = _recipe_with_fixed_inputs()
-    yearly = frc.apply_arm(recipe, f"graph_yearly_thr_{value.replace('.', 'p')}")
+    rebuilt = frc.apply_arm(recipe, f"graph_quarterly_thr_{value.replace('.', 'p')}")
     static = (
         recipe if value == "0.8" else frc.apply_arm(recipe, f"graph_thr_{value.replace('.', 'p')}")
     )
-    assert [o for o in yearly if o not in static] == ["graph.update_frequency_months=12"]
-    assert [o for o in static if o not in yearly] == ["graph.update_frequency_months=0"]
-    assert len(yearly) == len(static)
+    assert [o for o in rebuilt if o not in static] == ["graph.update_frequency_months=3"]
+    assert [o for o in static if o not in rebuilt] == ["graph.update_frequency_months=0"]
+    assert len(rebuilt) == len(static)
 
 
-def test_the_yearly_jev_arm_differs_from_the_yearly_top_k_arm_only_by_its_link_scores():
+def test_the_quarterly_jev_arm_differs_from_the_quarterly_top_k_arm_only_by_its_link_scores():
     recipe = _recipe_with_fixed_inputs()
-    by_corr = frc.apply_arm(recipe, "graph_yearly_topk8")
-    by_jev = frc.apply_arm(recipe, "graph_yearly_jev_topk8")
+    by_corr = frc.apply_arm(recipe, "graph_quarterly_topk8")
+    by_jev = frc.apply_arm(recipe, "graph_quarterly_jev_topk8")
     assert [o for o in by_corr if o not in recipe] == [
-        "graph.update_frequency_months=12",
+        "graph.update_frequency_months=3",
         "graph.top_k=8",
     ]
     assert [o for o in by_jev if o not in by_corr] == [
@@ -1131,7 +1131,7 @@ def test_every_arm_composes_into_the_typed_config(arm):
     assert config.graph.zero_edges is (arm == "graph_zeroed")
     threshold = arm.rpartition("_thr_")[2].replace("p", ".") if "_thr_" in arm else "0.8"
     assert config.graph.judge_value == float(threshold)
-    assert config.graph.update_frequency_months == (12 if "_yearly_" in arm else 0)
+    assert config.graph.update_frequency_months == (3 if "_quarterly_" in arm else 0)
     assert config.graph.top_k == (8 if arm.endswith("topk8") else 0)
     assert config.features.base_inputs == ("levels" if arm == "levels_inputs" else "relative")
     assert config.experiment_name == frc.arm_experiment_name("slug", arm)

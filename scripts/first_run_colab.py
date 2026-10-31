@@ -196,10 +196,10 @@ class RunArm:
 #: Git: a run stages it here from the project bucket and its bytes are recorded at load.
 JEV_LINK_SCORES_CSV = "data/raw/graph_links/jev_link_scores_2019_10k.csv"
 #: The same scores from the 2019 to 2024 10-Ks, one set per ``score_year``, for a graph
-#: rebuilt every January from the filings public by then. Staged the same way.
-JEV_YEARLY_LINK_SCORES_CSV = "data/raw/graph_links/jev_link_scores_2019_2024_10k.csv"
-#: A graph rebuilt each year on the trailing year's returns (or filings), not built once.
-_YEARLY = ("graph.update_frequency_months", "12")
+#: rebuilt every quarter from the filings public by then. Staged the same way.
+JEV_LINK_SCORES_2019_2024_CSV = "data/raw/graph_links/jev_link_scores_2019_2024_10k.csv"
+#: A graph rebuilt every quarter on the trailing year's returns (or filings), not built once.
+_QUARTERLY = ("graph.update_frequency_months", "3")
 
 #: Every arm trains on the recipe's data, seed and budget; only these overrides differ.
 RUN_ARMS = {
@@ -232,23 +232,23 @@ RUN_ARMS = {
         replace=(("graph.top_k", "8"),),
         add=(f"graph.link_scores_csv={JEV_LINK_SCORES_CSV}",),
     ),
-    # The same graphs rebuilt every January instead of once (#377): each snapshot uses
+    # The same graphs rebuilt every quarter instead of once (#377): each snapshot uses
     # the trailing 252 sessions, or the newest 10-K scores filed before it.
-    "graph_yearly_thr_0p8": RunArm(slug_suffix="graph-yearly-thr-0p8", replace=(_YEARLY,)),
+    "graph_quarterly_thr_0p8": RunArm(slug_suffix="graph-quarterly-thr-0p8", replace=(_QUARTERLY,)),
     **{
-        f"graph_yearly_thr_{tag}": RunArm(
-            slug_suffix=f"graph-yearly-thr-{tag}",
-            replace=(_YEARLY, ("graph.judge_value", value)),
+        f"graph_quarterly_thr_{tag}": RunArm(
+            slug_suffix=f"graph-quarterly-thr-{tag}",
+            replace=(_QUARTERLY, ("graph.judge_value", value)),
         )
         for tag, value in (("0p4", "0.4"), ("0p5", "0.5"), ("0p6", "0.6"), ("0p7", "0.7"))
     },
-    "graph_yearly_topk8": RunArm(
-        slug_suffix="graph-yearly-topk8", replace=(_YEARLY, ("graph.top_k", "8"))
+    "graph_quarterly_topk8": RunArm(
+        slug_suffix="graph-quarterly-topk8", replace=(_QUARTERLY, ("graph.top_k", "8"))
     ),
-    "graph_yearly_jev_topk8": RunArm(
-        slug_suffix="graph-yearly-jev-topk8",
-        replace=(_YEARLY, ("graph.top_k", "8")),
-        add=(f"graph.link_scores_csv={JEV_YEARLY_LINK_SCORES_CSV}",),
+    "graph_quarterly_jev_topk8": RunArm(
+        slug_suffix="graph-quarterly-jev-topk8",
+        replace=(_QUARTERLY, ("graph.top_k", "8")),
+        add=(f"graph.link_scores_csv={JEV_LINK_SCORES_2019_2024_CSV}",),
     ),
 }
 
