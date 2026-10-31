@@ -492,9 +492,12 @@ EODHD daily prices for the point-in-time universe (#281).
 | `test_a_declared_unavailable_name_is_left_out_and_disclosed` |  |  |
 | `test_a_name_with_no_rows_still_blocks_unless_declared` |  |  |
 | `test_a_delisted_name_stops_at_its_last_trade` |  |  |
+| `test_trimming_every_name_stops_a_live_code_at_its_last_trade_too` | #379: CIK-keyed identifiers carry no delisting mark, so every name is trimmed. |  |
+| `test_the_manifest_carries_the_given_description` |  |  |
 | `test_symbol_map_rejects_a_malformed_unavailable_entry` |  | parametrize |
 | `test_the_key_is_never_written` |  |  |
 | `test_client_never_stores_or_reports_the_key` |  |  |
+| `test_client_sends_no_key_only_when_a_proxy_adds_it` | #379: in the cloud the network proxy adds the key; the client must send none. |  |
 | `test_client_quotes_symbols_and_retries_dropped_connections` |  |  |
 | `test_client_records_when_each_response_was_served` | Issue 347: the later splits in volume run to when the vendor served the rows, cached or not. |  |
 | `test_the_volume_check_passes_a_package_built_from_its_cache` | Two stretches of one symbol share its later split once each, never twice (#347 review). |  |
@@ -2310,6 +2313,22 @@ The locked 2026 holdout and the window schedule (#370, PRD #369).
 | `test_the_capacity_replay_refuses_predictions_in_the_holdout` |  |  |
 | `test_the_backtest_guard_reads_the_strategy_exit_not_only_the_label` | An open_to_open hold sells at open D+1+holding_period, which can pass the label. |  |
 | `test_the_replay_library_call_reads_the_strategy_exit` | W5's window with a 20-session hold sells inside the holdout. |  |
+
+## `tests/test_r2k_sample_universe.py`
+
+The small-caps universe draw (#379): frame, draw size, membership file and symbol map.
+
+**Exercises:** `mci_gru.data.eodhd_prices`, `mci_gru.data.pit`, `scripts.data.build_r2k_sample_universe`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_frame_keeps_window_members_with_a_price_confirmed_holding` |  |  |
+| `test_draw_size_scales_the_frame_to_the_target_members` |  |  |
+| `test_draw_is_seeded_and_ignores_input_order` |  |  |
+| `test_membership_file_clips_to_the_window_end_and_loads` |  |  |
+| `test_ticker_change_ends_the_old_symbol_on_its_last_close` |  |  |
+| `test_ticker_change_without_prices_ends_the_day_before_the_new_report` |  |  |
+| `test_main_writes_the_three_outputs` |  |  |
 
 ## `tests/test_readme_figure.py`
 
