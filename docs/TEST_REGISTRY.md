@@ -2663,6 +2663,27 @@ The residual-return linear model removes market and peer moves, and finds a plan
 | `test_without_peers_the_market_move_alone_is_removed` | Peer means also carry the market move, so check market removal with peers off. |  |
 | `test_a_run_trained_on_rank_labels_is_refused` |  |  |
 
+## `tests/test_return_history_net.py`
+
+The return-history net reads only past closes and learns a planted signal (#385).
+
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation.baselines`, `mci_gru.evaluation.candidate_registry`, `mci_gru.evaluation.candidates`, `mci_gru.evaluation.return_history_net`, `mci_gru.evaluation.statistics`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_input_lags_are_the_daily_path_then_twelve_months` |  |  |
+| `test_every_input_is_past_return_for_its_lag` |  |  |
+| `test_no_close_after_the_signal_date_changes_its_inputs` |  |  |
+| `test_a_stock_without_a_close_on_the_date_is_unscored_and_a_missing_past_close_is_neutral` |  |  |
+| `test_ranks_span_minus_one_to_one_with_ties_averaged` |  |  |
+| `test_target_is_standardised_within_each_date_over_the_mask_only` |  |  |
+| `test_the_net_learns_a_planted_reversal_and_is_reproducible` |  | parametrize |
+| `test_test_scores_are_nan_where_the_stock_has_no_close_on_the_date` |  |  |
+| `test_an_unknown_architecture_is_refused` |  |  |
+| `test_both_arms_are_registered_under_stable_names` |  |  |
+| `test_no_arm_score_moves_when_later_prices_are_scrambled` |  | parametrize |
+| `test_the_arm_keeps_the_runs_mask_and_records_its_training` |  |  |
+
 ## `tests/test_run_bundle_manifest.py`
 
 **Exercises:** `mci_gru.evaluation.run_bundle`
