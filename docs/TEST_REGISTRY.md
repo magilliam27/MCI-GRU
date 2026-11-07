@@ -1774,6 +1774,28 @@ Public exact-observation snapshot preservation and offline replay contracts.
 | `test_trainer_rejects_checkpoint_selection_without_eligible_rank_rows` |  |  |
 | `test_select_training_objective_respects_selection_metric` |  |  |
 
+## `tests/test_lightgbm_candidate.py`
+
+The LightGBM candidate reads only what each split may read (#387).
+
+**Exercises:** `mci_gru.evaluation`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_features_at_a_date_ignore_every_later_bar` |  |  |
+| `test_return_features_are_ratios_of_closes_counted_in_sessions` |  |  |
+| `test_a_missing_bar_gives_nan_rather_than_a_shifted_window` |  |  |
+| `test_percentiles_respect_the_mask_and_share_ties` |  |  |
+| `test_forward_labels_are_the_run_definition_and_stop_before_the_boundary` |  |  |
+| `test_twenty_day_training_never_reads_a_validation_or_test_close` |  |  |
+| `test_the_arm_recovers_a_planted_reversal` |  |  |
+| `test_the_twenty_day_arm_also_recovers_it` |  |  |
+| `test_only_cells_the_test_mask_admits_are_scored` |  |  |
+| `test_bars_after_the_last_test_date_change_nothing` |  |  |
+| `test_validation_labels_steer_selection_only` |  |  |
+| `test_malformed_requests_are_refused` |  | parametrize |
+| `test_overlapping_splits_are_refused` |  |  |
+
 ## `tests/test_linked_score_ties.py`
 
 Run summaries count ties among graph-linked names (#324).
