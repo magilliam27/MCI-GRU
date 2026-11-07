@@ -24,8 +24,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+import yaml
 from test_score_baselines import _run
 
+from mci_gru import protocol
 from mci_gru.config import ExperimentConfig
 from mci_gru.evaluation import candidate_registry
 from mci_gru.evaluation.candidates import (
@@ -35,7 +37,8 @@ from mci_gru.evaluation.candidates import (
     panel_up_to,
 )
 from mci_gru.evaluation.dated_ic import dated_ic_frame
-from scripts import pool_candidates, rescore_run, score_candidates
+from mci_gru.utils.hashing import sha256_file
+from scripts import pool_candidates, rescore_run, score_baselines, score_candidates
 from scripts.score_candidates import SUMMARY_FILENAME, CandidateError
 
 # --- What a candidate sees -------------------------------------------------------------
@@ -79,11 +82,23 @@ def test_the_test_labels_are_left_out_of_the_data_and_it_is_built_once():
 
     def loader():
         calls.append(1)
-        return {"train_dates": ["2020-01-02"], "val_dates": [], "test_labels": 1, "df": 2}
+        return {
+            "train_dates": ["2020-01-02"],
+            "val_dates": [],
+            "test_labels": 1,
+            "test_loss_mask": 1,
+            "test_tradable_mask": 1,
+            "pit_eligibility": 1,
+            "pit_breadth": 1,
+            "admission": 1,
+            "df": 2,
+        }
 
     context = _toy_context(data_loader=loader)
-    assert "test_labels" not in context.data
+    for hidden in ("test_labels", "test_loss_mask", "pit_eligibility", "pit_breadth", "admission"):
+        assert hidden not in context.data
     assert "df" not in context.data
+    assert "test_tradable_mask" in context.data
     assert context.train_dates == ["2020-01-02"]
     assert context.data is context.data
     assert len(calls) == 1
@@ -230,6 +245,7 @@ def test_the_pooled_ic_is_the_mean_of_the_windows_joined(tmp_path):
     arms = {a["arm"]: a for a in report["arms"]}
     assert arms["model"]["ic"]["mean"] == pytest.approx(np.mean([0.1, 0, 0.2, 0, -0.1, 0.1]))
     assert arms["cand"]["ic"]["n_dates"] == 6
+    assert arms["cand"]["ic"]["newey_west_lags"] == 3
     assert arms["base"]["windows"] == ["W1"]
     assert arms["cand"]["per_window"]["W2"]["ic"] == pytest.approx(0.1)
     paired = {(r["arm"], r["metric"]): r for r in report["paired_vs_reference"]}
@@ -256,3 +272,169 @@ def test_an_arm_scored_twice_on_a_window_is_refused(tmp_path):
     b = _folder(tmp_path / "b", "W1", {"model": [0.1, 0.0], "cand": [0.3, 0.1]}, w1)
     with pytest.raises(ValueError, match="scored twice"):
         pool_candidates.pool([a, b])
+
+
+def test_the_newey_west_t_reproduces_the_protocol_tables_figure(tmp_path):
+    """Bartlett weights on label_t - 2 lags, the five-window table's convention."""
+    rng = np.random.default_rng(5)
+    values = rng.normal(0.01, 0.1, 300)
+    dates = list(pd.bdate_range("2021-01-25", periods=300).strftime("%Y-%m-%d"))
+    folder = _folder(tmp_path, "W1", {"model": list(values)}, dates)
+    report = pool_candidates.pool([folder])
+    lags = 3
+    x = values - values.mean()
+    var = x @ x / len(x)
+    for lag in range(1, lags + 1):
+        var += 2 * (1 - lag / (lags + 1)) * (x[lag:] @ x[:-lag]) / len(x)
+    expected = values.mean() / np.sqrt(var / len(x))
+    assert report["arms"][0]["ic"]["t_newey_west"] == pytest.approx(expected, rel=1e-10)
+
+
+def test_pit_intervals_are_read_as_the_pipeline_reads_them(tmp_path):
+    path = tmp_path / "pit.csv"
+    pd.DataFrame(
+        {
+            "kdcode": ["A.N", "B.N"],
+            "valid_from": ["1/4/2016", "2/1/2016"],
+            "valid_to": ["2019-07-30", ""],
+        }
+    ).to_csv(path, index=False)
+    frame = score_candidates.read_pit_intervals(str(path), "2026-07-31")
+    assert frame.to_dict("records") == [
+        {"kdcode": "A.N", "valid_from": "2016-01-04", "valid_to": "2019-07-30"},
+        {"kdcode": "B.N", "valid_from": "2016-02-01", "valid_to": "2026-07-31"},
+    ]
+    assert score_candidates.read_pit_intervals(None, "2026-07-31") is None
+
+
+# --- Another universe, with a run of the window as a template ---------------------------
+
+
+def _universe(run: Path, tmp_path: Path, stocks: list[str], manifest: bool = False):
+    """A data config naming a sub-universe of the template run's own panel."""
+    resolved = rescore_run.resolve_run_config(run).config
+    pit = tmp_path / "sub_pit.csv"
+    pd.DataFrame({"kdcode": stocks, "valid_from": "2019-01-01", "valid_to": ""}).to_csv(
+        pit, index=False
+    )
+    block = {
+        "filename": "panel.csv",
+        "use_pit_universe": True,
+        "pit_universe_csv": "sub_pit.csv",
+        "pit_export_cutoff": "2020-03-31",
+        "pit_min_scoreable_stocks": 1,
+        "pit_breadth_policy": "off",
+        # Dates in a data config are the template's to set; these must be ignored.
+        "train_start": "2019-01-02",
+        "test_end": "2020-12-31",
+    }
+    if manifest:
+        listing = {
+            "files": [
+                {"path": "market/panel.csv", "sha256": sha256_file(resolved.data.filename)},
+                {"path": "constituents/sub_pit.csv", "sha256": sha256_file(pit)},
+            ]
+        }
+        manifest_path = tmp_path / "package.json"
+        manifest_path.write_text(json.dumps(listing), encoding="utf-8")
+        block["input_package_manifest"] = "manifests/package.json"
+        block["input_package_manifest_sha256"] = sha256_file(manifest_path)
+    config_path = tmp_path / "universe.yaml"
+    config_path.write_text(yaml.safe_dump(block), encoding="utf-8")
+    return config_path, resolved.data.filename, str(pit)
+
+
+def test_another_universe_is_scored_on_the_templates_window_with_no_model_arm(run, tmp_path):
+    stocks = ["A.N", "B.N", "C.N", "F.N"]
+    config_path, panel, pit = _universe(run, tmp_path, stocks)
+    path = score_candidates.score_candidate_on_universe(
+        run,
+        "reversal_1w",
+        out_dir=tmp_path / "out",
+        data_config=config_path,
+        data_file=panel,
+        pit_universe_csv=pit,
+    )
+    summary = _summary(path)
+    template = rescore_run.rebuild_scoring_inputs(rescore_run.resolve_run_config(run).config)
+
+    assert set(summary["arms"]) == {"reversal_1w"}
+    assert summary["paired_daily_difference"] == []
+    assert summary["controls"]["model_ic_reproduced"] is None
+    assert summary["run"]["mode"] == "template"
+    assert summary["run"]["n_stocks"] == len(stocks)
+    assert summary["run"]["test_dates"] == [template.dates[0], template.dates[-1]]
+    assert len(summary["run"]["scoring_fingerprint"]) == 64
+    assert not (path.parent / "daily_ic" / "model.csv").exists()
+
+
+def test_a_candidate_on_another_universe_gets_that_universes_labels(run, tmp_path):
+    config_path, panel, pit = _universe(run, tmp_path, ["A.N", "B.N", "C.N", "F.N"])
+    config, _ = score_candidates.template_config(Path(run), config_path, None, panel, pit)
+    scoring = rescore_run.rebuild_scoring_inputs(config)
+    full = rescore_run.rebuild_scoring_inputs(rescore_run.resolve_run_config(run).config)
+    assert scoring.kdcodes == ["A.N", "B.N", "C.N", "F.N"]
+    columns = [full.kdcodes.index(code) for code in scoring.kdcodes]
+    np.testing.assert_array_equal(scoring.labels, full.labels[:, columns])
+    assert config.data.train_start == rescore_run.resolve_run_config(run).config.data.train_start
+    assert config.data.test_end != "2020-12-31"
+
+
+def test_a_universe_whose_files_differ_from_its_manifest_is_refused(run, tmp_path):
+    config_path, panel, pit = _universe(run, tmp_path, ["A.N", "B.N", "C.N"], manifest=True)
+    manifest = tmp_path / "package.json"
+    config, checked = score_candidates.template_config(Path(run), config_path, manifest, panel, pit)
+    assert checked["data.pit_universe_csv"] == sha256_file(pit)
+
+    with pytest.raises(CandidateError, match="pass --package_manifest"):
+        score_candidates.template_config(Path(run), config_path, None, panel, pit)
+    other_pit = tmp_path / "other_pit.csv"
+    pd.DataFrame({"kdcode": ["A.N"], "valid_from": "2019-01-01", "valid_to": ""}).to_csv(
+        other_pit, index=False
+    )
+    with pytest.raises(CandidateError, match="the manifest records"):
+        score_candidates.template_config(Path(run), config_path, manifest, panel, str(other_pit))
+    manifest.write_text(manifest.read_text(encoding="utf-8") + " ", encoding="utf-8")
+    with pytest.raises(CandidateError, match="not the"):
+        score_candidates.template_config(Path(run), config_path, manifest, panel, pit)
+
+
+def test_a_template_window_inside_the_holdout_is_refused(run, tmp_path, monkeypatch):
+    config_path, panel, pit = _universe(run, tmp_path, ["A.N", "B.N", "C.N"])
+    monkeypatch.setattr(protocol, "HOLDOUT_START", "2020-03-01")
+    # The config itself refuses holdout dates; the explicit check is a backstop.
+    with pytest.raises(protocol.HoldoutError, match="locked holdout"):
+        score_candidates.template_config(Path(run), config_path, None, panel, pit)
+
+
+def test_the_pool_refuses_folders_that_scored_different_universes_on_a_window(tmp_path):
+    w1 = ["2021-01-25", "2021-01-26"]
+    a = _folder(tmp_path / "a", "W1", {"rev": [0.1, 0.0]}, w1)
+    b = _folder(tmp_path / "b", "W1", {"cand": [0.3, 0.1]}, w1)
+    for folder, fingerprint in ((a, "x" * 64), (b, "y" * 64)):
+        summary = json.loads((folder / SUMMARY_FILENAME).read_text(encoding="utf-8"))
+        summary["run"]["scoring_fingerprint"] = fingerprint
+        (folder / SUMMARY_FILENAME).write_text(json.dumps(summary), encoding="utf-8")
+    with pytest.raises(ValueError, match="same run or universe"):
+        pool_candidates.pool([a, b], reference="rev")
+
+
+def test_a_universe_with_no_run_is_pooled_against_a_named_reference(tmp_path):
+    w1 = ["2021-01-25", "2021-01-26", "2021-01-27"]
+    a = _folder(tmp_path / "a", "W1", {"rev": [0.1, 0.0, 0.2]}, w1)
+    b = _folder(tmp_path / "b", "W1", {"cand": [0.3, 0.1, 0.2]}, w1)
+    with pytest.raises(ValueError, match="name one with --reference"):
+        pool_candidates.pool([a, b])
+    report = pool_candidates.pool([a, b], reference="rev")
+    assert report["reference_arm"] == "rev"
+    (row,) = [r for r in report["paired_vs_reference"] if r["metric"] == "ic"]
+    assert row["mean_delta"] == pytest.approx(0.1)
+
+
+def test_the_registered_baselines_score_what_score_baselines_scores(run, tmp_path):
+    baselines = score_baselines.score_baselines(run, out_dir=tmp_path / "b", include_linear=False)
+    for arm in ("reversal_1w", "reversal_1m", "momentum_12_1"):
+        path = score_candidates.score_candidate(run, arm, out_dir=tmp_path / arm)
+        mine = pd.read_csv(path.parent / "daily_ic" / f"{arm}.csv")
+        theirs = pd.read_csv(baselines.parent / "daily_ic" / f"{arm}.csv")
+        pd.testing.assert_frame_equal(mine, theirs)
