@@ -108,6 +108,22 @@ def test_a_filing_on_or_after_the_valid_from_date_is_never_used(late):
     assert matrix.loc["A", "C"] == 1.0
 
 
+def test_the_scale_and_the_edges_come_from_pairs_on_the_axis_only():
+    """An off-axis score must not shrink the on-axis edges; a zero score links nothing."""
+    scores = _scores(
+        [
+            ("A", "B", 4.0, "2019-01-02", "2019-01-03"),
+            ("A", "C", 0.0, "2019-01-02", "2019-01-03"),
+            ("B", "C", 2.0, "2019-01-02", "2019-01-03"),
+            ("C", "Z", 100.0, "2019-01-02", "2019-01-03"),
+        ]
+    )
+    matrix = link_score_matrix(scores, ["A", "B", "C"], "2020-01-02")
+    assert matrix.loc["A", "B"] == 1.0
+    assert matrix.loc["B", "C"] == 0.5
+    assert np.isnan(matrix.loc["A", "C"]) and np.isnan(matrix.loc["C", "A"])
+
+
 def test_a_snapshot_with_no_score_filed_before_it_is_refused():
     scores = _scores([("A", "B", 1.0, "2019-01-02", "2020-01-02")])
     with pytest.raises(ValueError, match="dated before the graph.s valid-from 2020-01-02"):

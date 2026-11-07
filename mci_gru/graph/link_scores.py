@@ -117,10 +117,10 @@ def link_score_matrix(
     (newest ``score_year`` when the file has one). Raises when no score is
     usable at all, which means the file does not cover this snapshot.
 
-    Unscored pairs and the diagonal are NaN, which edge selection skips; names
-    absent from *kdcode_list* are dropped. Scores are divided by the largest
-    score this snapshot uses, so column 0 of the edge features reads like a
-    correlation.
+    Unscored pairs, zero scores and the diagonal are NaN, which edge selection
+    skips; names absent from *kdcode_list* are dropped. Scores are divided by the
+    largest score this snapshot places on the axis, so column 0 of the edge
+    features reads like a correlation.
     """
     usable = (scores["filing_date_a"] < valid_from) & (scores["filing_date_b"] < valid_from)
     if not usable.any():
@@ -141,8 +141,10 @@ def link_score_matrix(
     kept = chosen.loc[on_axis]
     rows = kept["kdcode_a"].map(position).to_numpy()
     cols = kept["kdcode_b"].map(position).to_numpy()
-    scale = float(chosen["score"].max()) or 1.0
-    values = kept["score"].to_numpy(dtype=float) / scale
+    scale = float(kept["score"].max()) if len(kept) else 1.0
+    # A zero score says the two companies are not linked, so it is no candidate at all.
+    raw = kept["score"].to_numpy(dtype=float)
+    values = np.where(raw > 0, raw, np.nan) / (scale or 1.0)
     matrix = np.full((len(kdcode_list), len(kdcode_list)), np.nan)
     matrix[rows, cols] = values
     matrix[cols, rows] = values

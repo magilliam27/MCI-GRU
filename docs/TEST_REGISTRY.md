@@ -1488,6 +1488,7 @@ Company-link scores as the neighbour ranking for the correlation graph (#377).
 | `test_the_matrix_is_symmetric_scaled_and_leaves_unscored_pairs_empty` |  |  |
 | `test_a_yearly_file_loads_one_row_per_pair_per_year` |  |  |
 | `test_a_filing_on_or_after_the_valid_from_date_is_never_used` |  | parametrize |
+| `test_the_scale_and_the_edges_come_from_pairs_on_the_axis_only` | An off-axis score must not shrink the on-axis edges; a zero score links nothing. |  |
 | `test_a_snapshot_with_no_score_filed_before_it_is_refused` |  |  |
 | `test_a_filing_the_day_before_valid_from_is_accepted` |  |  |
 | `test_each_snapshot_takes_the_newest_scores_filed_before_it` | 2020's 10-Ks reach the graph only once both are public; until then 2019's stand. |  |
