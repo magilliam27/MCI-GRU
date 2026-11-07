@@ -328,6 +328,18 @@ ranks by *signed* correlation and keeps the K most-positive **available**
 neighbours, so a node with fewer than K positive neighbours contributes negative
 edges under either metric.
 
+`graph.link_scores_csv` swaps what top-K ranks: pairwise company-link scores
+(`kdcode_a, kdcode_b, score, filing_date_a, filing_date_b`, scored outside the
+repository, such as Jev's 10-K link question in #377) in place of past return
+correlation. An optional `score_year` column carries one score set per year of
+filings. `mci_gru/graph/link_scores.py` uses, for each pair, the newest score
+whose two filings are both dated before the graph's valid-from date, so a
+dynamic schedule (`update_frequency_months > 0`) picks up each year's 10-Ks once
+they are public and never sooner. It scales the scores by the largest one in
+use, leaves unscored pairs as NaN so they never win a slot, and refuses a
+snapshot that no score was filed before. It needs `top_k > 0`. The edge features
+keep their four columns, with the scaled score in place of `corr`.
+
 The comparison is **strict**, which is why `-1` is a floor rather than a literal
 "every pair": a pair at exactly `-1.0` is dropped at `judge_value = -1`. That is
 measure-zero on real return panels and reachable in a fixture, and it is pinned
