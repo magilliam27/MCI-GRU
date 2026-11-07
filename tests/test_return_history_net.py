@@ -18,6 +18,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+import torch
 
 from mci_gru.config import ExperimentConfig
 from mci_gru.evaluation.baselines import past_return
@@ -29,6 +30,7 @@ from mci_gru.evaluation.return_history_net import (
     MONTHLY_LAGS,
     NetSpec,
     _score_candidate,
+    equal_date_mse,
     fit_predict,
     rank_within_date,
     return_history_inputs,
@@ -259,3 +261,100 @@ def test_the_arm_keeps_the_runs_mask_and_records_its_training():
     assert result.controls["input_lags_sessions"] == list(INPUT_LAGS)
     assert len(result.controls["member_best_epoch"]) == 1
     assert result.controls["train_dates"] == 100
+
+
+# --- Alignment, masks and the loss ------------------------------------------------------
+
+
+def _next_day_reversal(panel: pd.DataFrame, dates: list[str], shift: int = 0) -> np.ndarray:
+    """Labels that are minus the last session's return, optionally taken ``shift`` rows on.
+
+    Daily returns are independent here, so a label one row out of line with its date
+    carries no information the inputs on that date hold.
+    """
+    sessions = sorted(panel.dt.unique())
+    index = {d: i for i, d in enumerate(sessions)}
+    moved = [sessions[index[d] + shift] for d in dates]
+    signal = -past_return(panel, STOCKS, moved, start_lag=1)
+    noise = np.random.default_rng(11).normal(0.0, 1.0, signal.shape) * np.nanstd(signal)
+    return signal + 0.3 * noise
+
+
+def _fit_next_day(panel, train, val, test, *, shift=0, train_mask=None, train_labels=None):
+    return fit_predict(
+        panel,
+        STOCKS,
+        train_dates=train,
+        train_labels=(
+            _next_day_reversal(panel, train, shift) if train_labels is None else train_labels
+        ),
+        train_mask=train_mask,
+        val_dates=val,
+        val_labels=_next_day_reversal(panel, val, shift),
+        val_mask=None,
+        test_dates=test,
+        spec=NetSpec(members=1, max_epochs=15, patience=5),
+    )
+
+
+def test_labels_are_read_on_their_own_dates_rows():
+    panel = _panel(n_sessions=420)
+    sessions = sorted(panel.dt.unique())
+    train, val, test = sessions[260:360], sessions[365:390], sessions[395:415]
+    truth = _next_day_reversal(panel, test)
+
+    aligned = daily_ic_series(_fit_next_day(panel, train, val, test).scores, truth, "pearson")
+    shifted = daily_ic_series(
+        _fit_next_day(panel, train, val, test, shift=1).scores, truth, "pearson"
+    )
+
+    assert aligned.mean() > 0.5
+    assert abs(shifted.mean()) < 0.2  # the control: misaligned labels teach nothing
+
+
+def test_training_labels_outside_the_loss_mask_are_never_learned():
+    panel = _panel(n_sessions=420)
+    sessions = sorted(panel.dt.unique())
+    train, val, test = sessions[260:360], sessions[365:390], sessions[395:415]
+    labels = _next_day_reversal(panel, train)
+    mask = np.random.default_rng(5).random(labels.shape) < 0.5
+    poisoned = np.where(mask, labels, -20.0 * labels)  # outside the mask: the opposite sign
+    truth = _next_day_reversal(panel, test)
+
+    fit = _fit_next_day(panel, train, val, test, train_mask=mask, train_labels=poisoned)
+
+    assert daily_ic_series(fit.scores, truth, "pearson").mean() > 0.4
+
+
+def test_the_loss_weights_every_date_equally_and_ignores_weight_zero_rows():
+    pred = torch.tensor([[1.0, 2.0, 9.0], [0.0, 0.0, 0.0]])
+    target = torch.tensor([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]])
+    weight = torch.tensor([[1.0, 1.0, 0.0], [1.0, 1.0, 1.0]])
+
+    loss = equal_date_mse(pred, target, weight)
+
+    assert float(loss) == pytest.approx(((1 + 4) / 2 + 1.0) / 2)
+    moved = pred.clone()
+    moved[0, 2] = -100.0
+    assert float(equal_date_mse(moved, target, weight)) == pytest.approx(float(loss))
+
+
+def test_ranks_are_taken_among_the_masked_names_only():
+    raw = np.array([[[1.0], [2.0], [3.0], [100.0]]]).reshape(1, 4, 1)
+    mask = np.array([[True, True, True, False]])
+    moved = raw.copy()
+    moved[0, 3, 0] = -100.0
+
+    ranked = rank_within_date(raw, mask)[0, :, 0]
+
+    np.testing.assert_allclose(ranked, [-1.0, 0.0, 1.0, 0.0], atol=1e-7)
+    np.testing.assert_array_equal(rank_within_date(moved, mask), rank_within_date(raw, mask))
+
+
+def test_the_ensemble_score_is_centred_within_each_test_date():
+    context = _context()
+
+    scores = _score_candidate(context, NetSpec(members=2, max_epochs=3, patience=2)).scores
+
+    for row in scores:
+        assert np.nanmean(row) == pytest.approx(0.0, abs=1e-9)

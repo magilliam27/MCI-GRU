@@ -15,8 +15,10 @@ them:
 * the cumulative return from close ``D-21k`` to close ``D`` for ``k = 1..12`` (the
   paper's twelve cumulative monthly returns).
 
-Each input is ranked within its date to ``[-1, 1]``; a missing close gives a neutral 0.
-A stock without a close on ``D`` itself has no score that date.
+Each input is ranked within its date to ``[-1, 1]`` among the names the split uses that
+date (the run's loss mask on training dates, its tradable masks on validation and test
+dates); a missing close gives a neutral 0. A stock without a close on ``D`` itself has
+no score that date.
 
 The target is the run's own training label, standardised within each training date
 over the run's loss mask, fitted by MSE with every date weighted equally. Each member
@@ -86,7 +88,10 @@ def _close_matrix(panel: pd.DataFrame, kdcodes: list[str]) -> tuple[list[str], n
     rows["kdcode"] = rows["kdcode"].astype(str)
     sessions = label_session_axis(rows, list(kdcodes))
     closes = rows.pivot_table(index="dt", columns="kdcode", values="close", aggfunc="mean")
-    closes = closes.reindex(index=sessions, columns=list(kdcodes)).to_numpy(dtype=np.float64)
+    closes = closes.reindex(index=sessions, columns=list(kdcodes)).to_numpy(
+        dtype=np.float64, copy=True
+    )
+    closes[~(closes > 0)] = np.nan  # a non-positive close is no close
     return sessions, closes
 
 
@@ -113,7 +118,7 @@ def return_history_inputs(
         if at is None:
             continue
         now = closes[at]
-        scoreable[row] = np.isfinite(now) & (now > 0)
+        scoreable[row] = np.isfinite(now)
         starts = at - lag_array
         valid = starts >= 0
         past = np.full((len(lags), len(kdcodes)), np.nan)
@@ -124,13 +129,22 @@ def return_history_inputs(
     return out, scoreable
 
 
-def rank_within_date(raw: np.ndarray) -> np.ndarray:
-    """Each input ranked within its date to ``[-1, 1]`` (ties averaged); NaN becomes 0."""
+def rank_within_date(raw: np.ndarray, mask: np.ndarray | None = None) -> np.ndarray:
+    """Each input ranked within its date to ``[-1, 1]`` (ties averaged); NaN becomes 0.
+
+    With ``mask`` ``(dates, stocks)``, only the masked stocks are ranked, among
+    themselves (the names the split trains, validates or scores on that date); every
+    other cell is 0. So a name that is not in the universe on a date cannot move the
+    ranks of those that are.
+    """
     out = np.zeros_like(raw, dtype=np.float32)
+    keep = None if mask is None else np.asarray(mask, dtype=bool)
     for i in range(raw.shape[0]):
         for k in range(raw.shape[2]):
             column = raw[i, :, k]
             finite = np.isfinite(column)
+            if keep is not None:
+                finite &= keep[i]
             n = int(finite.sum())
             if n < 2:
                 continue
@@ -236,6 +250,16 @@ def _standardise_scores(scores: np.ndarray, mask: np.ndarray) -> np.ndarray:
     return standardise_within_date(scores, mask)
 
 
+def equal_date_mse(pred: torch.Tensor, target: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
+    """Mean over dates of each date's MSE on its weighted rows (weight 0 drops a row).
+
+    ``pred``, ``target`` and ``weight`` are ``(dates, stocks)``. Every date counts the
+    same however many rows it has: the paper's equal weight per period.
+    """
+    per_date = ((pred - target) ** 2 * weight).sum(dim=1) / weight.sum(dim=1)
+    return per_date.mean()
+
+
 def _train_member(
     spec: NetSpec,
     seed: int,
@@ -264,8 +288,7 @@ def _train_member(
             batch = torch.from_numpy(order[start : start + spec.dates_per_batch])
             xb, yb, wb = x_t[batch], y_t[batch], w_t[batch]
             pred = model(xb.reshape(-1, xb.shape[-1])).reshape(yb.shape)
-            per_date = ((pred - yb) ** 2 * wb).sum(dim=1) / wb.sum(dim=1)
-            loss = per_date.mean()  # every date weighted equally
+            loss = equal_date_mse(pred, yb, wb)
             optimiser.zero_grad()
             loss.backward()
             optimiser.step()
@@ -308,14 +331,16 @@ def _fit_predict(
     val_labels: np.ndarray,
     val_mask: np.ndarray | None,
     test_dates: list[str],
+    test_mask: np.ndarray | None = None,
     spec: NetSpec | None = None,
 ) -> NetFit:
     """Train ``spec.members`` networks on the training dates; score the test dates.
 
-    Training rows are those with a finite label inside ``train_mask`` (the run's loss
-    mask). Validation IC is read where ``val_mask`` (the run's tradable mask) holds and
-    the stock is scoreable. Test scores are NaN where the stock has no close on ``D``;
-    the harness applies the run's PIT mask on top.
+    Each split works on its own universe per date: scoreable stocks (a close on ``D``)
+    inside ``train_mask`` (the run's loss mask), ``val_mask`` (its validation tradable
+    mask) and ``test_mask`` (its test tradable mask). Inputs are ranked, and member
+    predictions standardised, among those stocks only. Training rows also need a finite
+    label. Test scores are NaN outside the test universe.
     """
     spec = spec or NetSpec()
     if spec.architecture not in ARCHITECTURES:
@@ -324,11 +349,14 @@ def _fit_predict(
     raw_tr, ok_tr = return_history_inputs(panel, kdcodes, train_dates)
     raw_va, ok_va = return_history_inputs(panel, kdcodes, val_dates)
     raw_te, ok_te = return_history_inputs(panel, kdcodes, test_dates)
-    x_tr, x_va, x_te = rank_within_date(raw_tr), rank_within_date(raw_va), rank_within_date(raw_te)
-
     train_keep = ok_tr if train_mask is None else ok_tr & np.asarray(train_mask, dtype=bool)
-    y_tr = standardise_within_date(train_labels, train_keep)
     val_keep = ok_va if val_mask is None else ok_va & np.asarray(val_mask, dtype=bool)
+    test_keep = ok_te if test_mask is None else ok_te & np.asarray(test_mask, dtype=bool)
+    x_tr = rank_within_date(raw_tr, train_keep)
+    x_va = rank_within_date(raw_va, val_keep)
+    x_te = rank_within_date(raw_te, test_keep)
+
+    y_tr = standardise_within_date(train_labels, train_keep)
     val_y = np.asarray(val_labels, dtype=np.float64)
 
     fit = NetFit(scores=np.full((len(test_dates), len(kdcodes)), np.nan))
@@ -342,14 +370,14 @@ def _fit_predict(
         fit.member_best_epoch.append(epoch)
         fit.member_val_ic.append(ic)
         val_members.append(_standardise_scores(_predict(model, x_va), val_keep))
-        test_members.append(_standardise_scores(_predict(model, x_te), ok_te))
+        test_members.append(_standardise_scores(_predict(model, x_te), test_keep))
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)  # all-NaN cells stay NaN
         val_scores = np.nanmean(np.stack(val_members), axis=0)
         scores = np.nanmean(np.stack(test_members), axis=0)
     fit.ensemble_val_ic = _mean_ic(val_scores, val_y, val_keep)
-    fit.scores = np.where(ok_te, scores, np.nan)
+    fit.scores = np.where(test_keep, scores, np.nan)
     return fit
 
 
@@ -368,13 +396,11 @@ def _score_candidate(context: CandidateContext, spec: NetSpec) -> CandidateResul
         val_labels=np.asarray(data["val_labels"], dtype=np.float64),
         val_mask=data.get("val_tradable_mask"),
         test_dates=context.test_dates,
+        test_mask=context.rankable_mask,
         spec=spec,
     )
-    scores = fit.scores
-    if context.rankable_mask is not None:
-        scores = np.where(np.asarray(context.rankable_mask, dtype=bool), scores, np.nan)
     return CandidateResult(
-        scores=scores,
+        scores=fit.scores,
         controls={
             "definition": f"{spec.architecture} on ranked cumulative return paths "
             "(20 daily, 12 monthly lags); target the training label standardised within date",

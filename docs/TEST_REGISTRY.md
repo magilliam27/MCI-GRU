@@ -2683,6 +2683,11 @@ The return-history net reads only past closes and learns a planted signal (#385)
 | `test_both_arms_are_registered_under_stable_names` |  |  |
 | `test_no_arm_score_moves_when_later_prices_are_scrambled` |  | parametrize |
 | `test_the_arm_keeps_the_runs_mask_and_records_its_training` |  |  |
+| `test_labels_are_read_on_their_own_dates_rows` |  |  |
+| `test_training_labels_outside_the_loss_mask_are_never_learned` |  |  |
+| `test_the_loss_weights_every_date_equally_and_ignores_weight_zero_rows` |  |  |
+| `test_ranks_are_taken_among_the_masked_names_only` |  |  |
+| `test_the_ensemble_score_is_centred_within_each_test_date` |  |  |
 
 ## `tests/test_run_bundle_manifest.py`
 
