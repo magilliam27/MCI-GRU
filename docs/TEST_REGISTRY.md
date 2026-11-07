@@ -129,6 +129,7 @@ Candidate models are scored on a saved run's own axis, then pooled over windows 
 | `test_the_pooled_ic_is_the_mean_of_the_windows_joined` |  |  |
 | `test_folders_that_scored_different_runs_are_refused` |  |  |
 | `test_an_arm_scored_twice_on_a_window_is_refused` |  |  |
+| `test_the_newey_west_t_reproduces_the_protocol_tables_figure` | Bartlett weights on label_t - 2 lags, the five-window table's convention. |  |
 
 ## `tests/test_capability_marker_guard.py`
 

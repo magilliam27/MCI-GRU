@@ -230,6 +230,7 @@ def test_the_pooled_ic_is_the_mean_of_the_windows_joined(tmp_path):
     arms = {a["arm"]: a for a in report["arms"]}
     assert arms["model"]["ic"]["mean"] == pytest.approx(np.mean([0.1, 0, 0.2, 0, -0.1, 0.1]))
     assert arms["cand"]["ic"]["n_dates"] == 6
+    assert arms["cand"]["ic"]["newey_west_lags"] == 3
     assert arms["base"]["windows"] == ["W1"]
     assert arms["cand"]["per_window"]["W2"]["ic"] == pytest.approx(0.1)
     paired = {(r["arm"], r["metric"]): r for r in report["paired_vs_reference"]}
@@ -256,3 +257,19 @@ def test_an_arm_scored_twice_on_a_window_is_refused(tmp_path):
     b = _folder(tmp_path / "b", "W1", {"model": [0.1, 0.0], "cand": [0.3, 0.1]}, w1)
     with pytest.raises(ValueError, match="scored twice"):
         pool_candidates.pool([a, b])
+
+
+def test_the_newey_west_t_reproduces_the_protocol_tables_figure(tmp_path):
+    """Bartlett weights on label_t - 2 lags, the five-window table's convention."""
+    rng = np.random.default_rng(5)
+    values = rng.normal(0.01, 0.1, 300)
+    dates = list(pd.bdate_range("2021-01-25", periods=300).strftime("%Y-%m-%d"))
+    folder = _folder(tmp_path, "W1", {"model": list(values)}, dates)
+    report = pool_candidates.pool([folder])
+    lags = 3
+    x = values - values.mean()
+    var = x @ x / len(x)
+    for lag in range(1, lags + 1):
+        var += 2 * (1 - lag / (lags + 1)) * (x[lag:] @ x[:-lag]) / len(x)
+    expected = values.mean() / np.sqrt(var / len(x))
+    assert report["arms"][0]["ic"]["t_newey_west"] == pytest.approx(expected, rel=1e-10)

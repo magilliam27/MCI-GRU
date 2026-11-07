@@ -7,7 +7,9 @@ of those folders, joins each arm's windows into one dated series, and reports:
 
 * per arm and window, the mean IC and rank IC;
 * per arm, the IC and rank IC pooled over every date it scored, with the
-  overlap-aware Hansen-Hodrick t-statistic (``hansen_hodrick_mean_inference``);
+  overlap-aware Hansen-Hodrick t-statistic (``hansen_hodrick_mean_inference``), and
+  the Newey-West (Bartlett) t on ``label_t - 2`` lags that the protocol's five-window
+  table reports, so the two can be read side by side;
 * per arm against the reference arm (``model``, MCI-GRU's saved predictions by
   default), the arm minus the reference per date, pooled over every window, with the
   HAC t-test of ``paired_inference``.
@@ -42,7 +44,11 @@ if str(REPO_DIR) not in sys.path:
     sys.path.insert(0, str(REPO_DIR))
 
 from mci_gru.evaluation.paired_inference import paired_mean_inference  # noqa: E402
-from mci_gru.evaluation.statistics import hansen_hodrick_mean_inference  # noqa: E402
+from mci_gru.evaluation.statistics import (  # noqa: E402
+    hansen_hodrick_mean_inference,
+    newey_west_std,
+    overlap_hac_lags,
+)
 from mci_gru.protocol import WINDOWS  # noqa: E402
 
 POOLED_SCHEMA = "mci_gru.candidates_pooled.v1"
@@ -115,7 +121,16 @@ def _inference(values: pd.Series, label_t: int) -> dict[str, Any]:
     finite = values.to_numpy(dtype=np.float64)
     finite = finite[np.isfinite(finite)]
     result = hansen_hodrick_mean_inference(finite, label_horizon=label_t)
-    return {"n_dates": result.n_obs, "mean": result.mean, "t": result.t_stat, "p": result.p_value}
+    lags = overlap_hac_lags(label_t)
+    nw_se = newey_west_std(finite, lags=lags) / np.sqrt(finite.size) if finite.size else 0.0
+    return {
+        "n_dates": result.n_obs,
+        "mean": result.mean,
+        "t": result.t_stat,
+        "p": result.p_value,
+        "t_newey_west": float(result.mean / nw_se) if nw_se > 0 else None,
+        "newey_west_lags": lags,
+    }
 
 
 def pool(folders: list[Path], *, ci_level: float = 0.95) -> dict[str, Any]:
@@ -164,8 +179,9 @@ def pool(folders: list[Path], *, ci_level: float = 0.95) -> dict[str, Any]:
         "results": [str(f) for f in folders],
         "arms": arms,
         "paired_vs_reference": paired,
-        "note": "Exploratory, not a verdict (#372). Pooled t is Hansen-Hodrick on the arm's own "
-        "dates. Paired rows are the arm minus the reference per date, on the dates both "
+        "note": "Exploratory, not a verdict (#372). Pooled t is Hansen-Hodrick (label_t - 1 lags) "
+        "on the arm's own dates; t_newey_west is Bartlett on label_t - 2 lags, as the protocol's "
+        "five-window table reports. Paired rows are the arm minus the reference per date, on the dates both "
         "scored. A baseline folder's paired rows inside score_baselines.py score the model on "
         "the baseline's cells only; these use each arm's whole daily series.",
     }
@@ -178,8 +194,8 @@ def _fmt(value: float | None, digits: int) -> str:
 def markdown(report: dict[str, Any]) -> str:
     """The report as a Markdown table."""
     windows = list(WINDOWS)
-    head = "| Arm | " + " | ".join(windows) + " | Pooled IC | t | Pooled rank IC | t |"
-    lines = [head, "|" + "---|" * (len(windows) + 5)]
+    head = "| Arm | " + " | ".join(windows) + " | Pooled IC | HH t | NW t | Pooled rank IC | HH t |"
+    lines = [head, "|" + "---|" * (len(windows) + 6)]
     for arm in report["arms"]:
         cells = [
             f"{arm['per_window'][w]['ic']:.4f}" if w in arm["per_window"] else "" for w in windows
@@ -187,7 +203,8 @@ def markdown(report: dict[str, Any]) -> str:
         ic, rank = arm["ic"], arm["rank_ic"]
         lines.append(
             f"| {arm['arm']} | " + " | ".join(cells) + f" | {_fmt(ic['mean'], 4)} | "
-            f"{_fmt(ic['t'], 2)} | {_fmt(rank['mean'], 4)} | {_fmt(rank['t'], 2)} |"
+            f"{_fmt(ic['t'], 2)} | {_fmt(ic['t_newey_west'], 2)} | {_fmt(rank['mean'], 4)} | "
+            f"{_fmt(rank['t'], 2)} |"
         )
     lines += [
         "",
