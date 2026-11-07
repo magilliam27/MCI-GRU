@@ -97,9 +97,17 @@ class VendorError(RuntimeError):
 class EodhdClient:
     """Minimal EODHD JSON client with an on-disk response cache."""
 
-    def __init__(self, api_key: str, cache_dir: Path, raw_log: list[dict[str, Any]]) -> None:
-        if not api_key:
+    def __init__(
+        self,
+        api_key: str,
+        cache_dir: Path,
+        raw_log: list[dict[str, Any]],
+        *,
+        key_from_proxy: bool = False,
+    ) -> None:
+        if not api_key and not key_from_proxy:
             raise VendorError(f"{KEY_ENV} is not set")
+        #: Empty when a network proxy adds the key to each request; none is sent then.
         self._key = api_key
         self._cache = cache_dir
         self._raw = raw_log
@@ -122,7 +130,8 @@ class EodhdClient:
             self._raw.append(record)
             self.last_retrieved_at = envelope.get("retrieved_at")
             return envelope["body"]
-        query = urllib.parse.urlencode({**params, "api_token": self._key, "fmt": "json"})
+        token = {"api_token": self._key} if self._key else {}
+        query = urllib.parse.urlencode({**params, **token, "fmt": "json"})
         url = f"{API_ROOT}/{urllib.parse.quote(path, safe='/.-_')}?{query}"
         body, status = None, None
         for attempt, delay in enumerate((0, *RETRY_DELAYS)):
@@ -210,6 +219,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--cache-dir", type=Path, required=True)
     parser.add_argument("--manifest-output", type=Path)
     parser.add_argument("--package-revision", default="r1")
+    parser.add_argument(
+        "--key-from-proxy",
+        action="store_true",
+        help=f"Send no key when {KEY_ENV} is unset: a network proxy adds it to each request",
+    )
+    parser.add_argument(
+        "--trim-carried-tails",
+        choices=("delisted", "all"),
+        default="delisted",
+        help="Whose trailing zero-volume repeats of the last close are dropped: names with an "
+        "LSEG delisted code only, or every name (for identifiers that carry no delisting mark)",
+    )
+    parser.add_argument(
+        "--description",
+        default="EODHD daily prices for the preserved 110-name PIT universe (#281); "
+        "membership is the LSEG-derived file, byte-identical.",
+        help="The manifest's description of the package",
+    )
     return parser.parse_args(argv)
 
 
@@ -491,7 +518,7 @@ def main(argv: list[str] | None = None) -> int:
     ref_by_code = dict(tuple(reference.groupby("kdcode"))) if reference is not None else {}
 
     raw_log: list[dict[str, Any]] = []
-    client = EodhdClient(api_key, args.cache_dir, raw_log)
+    client = EodhdClient(api_key, args.cache_dir, raw_log, key_from_proxy=args.key_from_proxy)
     listings: dict[bool, list[dict[str, Any]]] = {}
     pieces: dict[str, list[pd.DataFrame]] = {}
     resolved: dict[str, Any] = {}
@@ -530,7 +557,7 @@ def main(argv: list[str] | None = None) -> int:
                 kdcode, joined, plan.adjustments
             )
             findings.extend(adjustment_findings)
-            if is_delisted(kdcode):
+            if args.trim_carried_tails == "all" or is_delisted(kdcode):
                 joined, carried = trim_carried_tail(joined)
                 if carried:
                     findings.append(
@@ -667,8 +694,7 @@ def main(argv: list[str] | None = None) -> int:
                 ],
             },
             metadata={
-                "description": "EODHD daily prices for the preserved 110-name PIT universe "
-                "(#281); membership is the LSEG-derived file, byte-identical.",
+                "description": args.description,
                 "repository_commit": meta["repository_commit"],
             },
         )
