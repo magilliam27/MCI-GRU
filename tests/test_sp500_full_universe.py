@@ -258,7 +258,7 @@ def test_the_config_binds_its_files_to_the_committed_package():
     map_record = next(r for r in manifest.files if r.path.endswith("_symbol_map.json"))
     assert map_record.sha256 == hashlib.sha256(SYMBOL_MAP.read_bytes()).hexdigest()
     # Declared-absent members are exactly the manifest's unknowns.
-    unknowns = {u.split(":", 1)[0] for u in manifest.provenance.unknowns}
+    unknowns = {u.split(":", 1)[0] for u in manifest.provenance["unknowns"]}
     assert set(config.pit_absent_kdcodes) == unknowns
 
 
