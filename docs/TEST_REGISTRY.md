@@ -1344,6 +1344,15 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_check_arms_accepts_the_levels_arm_once_the_recipe_pins_relative_inputs` | Control for the refusal above: the #325 recipe gives levels_inputs a pin to undo. |  |
 | `test_the_notebook_checks_every_arm_before_any_trains` |  |  |
 | `test_the_seed_arm_shares_no_member_seed_with_the_recipe` | The noise-floor arm is the recipe on seeds none of the recipe's members used. |  |
+| `test_a_complete_ledger_gets_a_verdict_with_every_number_that_decided_it` |  |  |
+| `test_a_negative_difference_is_rejected_and_noise_is_inconclusive` |  |  |
+| `test_a_missing_run_refuses_the_verdict_but_still_writes_the_ledger` |  |  |
+| `test_a_launch_that_failed_before_scoring_stays_in_the_ledger_and_may_be_rerun` |  |  |
+| `test_a_ledger_that_is_not_the_declared_runs_gets_no_verdict` |  | parametrize |
+| `test_an_experiment_without_a_seed_floor_gets_no_verdict_until_one_is_named` |  |  |
+| `test_exploratory_runs_never_get_a_verdict` | Window runs launched without --experiment are exploratory: no ledger names them. |  |
+| `test_a_declared_launch_composes_to_exactly_the_declared_run` | The launcher's overrides pass the runner's own declared-run check. | parametrize |
+| `test_a_declared_launch_records_its_experiment_and_refuses_smoke_or_an_undeclared_arm` |  |  |
 
 ## `tests/test_gat_own_signal.py`
 
@@ -2961,6 +2970,27 @@ Validation labels never read test-period closes (#342, dates finding 5).
 | `test_a_wide_gap_purges_nothing` |  |  |
 | `test_no_walk_forward_window_leaks_test_closes_into_validation` | r6: 9 of 11 default windows leaked before the purge. |  |
 | `test_prepared_validation_dates_stop_before_labels_reach_test` | Both preparation paths purge: the calendar check passes, the sessions do not. | parametrize |
+
+## `tests/test_verdict.py`
+
+The verdict rule a pre-registered experiment is judged by (#373, PRD #369 decision 4).
+
+**Exercises:** `mci_gru.evaluation.verdict`, `mci_gru.preregistration`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_holm_steps_down_and_stays_monotone` |  |  |
+| `test_bonferroni_multiplies_every_p_by_the_family_size_and_caps_at_one` |  |  |
+| `test_a_missing_p_still_counts_toward_the_family` | An arm whose test failed cannot shrink the family and so cheapen the others. |  |
+| `test_an_unknown_adjustment_is_refused` |  |  |
+| `test_adopt_reject_and_inconclusive` |  |  |
+| `test_two_arms_each_significant_alone_are_inconclusive_after_holm` | Holm's job: raw p 0.03 twice passes alpha alone and fails it as a family of two. |  |
+| `test_a_difference_inside_the_seed_floor_is_inconclusive_however_small_its_p` |  |  |
+| `test_the_declared_multiple_scales_the_floor` |  |  |
+| `test_a_verdict_without_the_seed_floor_is_refused` |  |  |
+| `test_the_seed_arm_measures_the_floor_and_is_not_tested` |  |  |
+| `test_two_seed_arms_are_refused` |  |  |
+| `test_another_verdicts_floor_is_read_for_the_same_recipe_only` |  |  |
 
 ## `tests/test_vix_features.py`
 

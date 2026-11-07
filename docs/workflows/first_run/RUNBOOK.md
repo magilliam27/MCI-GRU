@@ -113,6 +113,23 @@ reported pooled over every window and once per window. `arm_comparison.json`
 lists each run under `runs` and each arm's pooled IC under `arms`, and
 `daily_ic_by_arm.csv` gains a `window` column.
 
+## Declared runs and the verdict (#373)
+
+`run --mode full --experiment <id> --arm <arm> --window <W>` launches one
+declared arm of a committed pre-registration
+(`docs/research/EXPERIMENT_PROTOCOL.md`). The overrides are the recipe at this
+commit, the seed base, the arm's one change and the window's dates, plus where
+the run writes and the `protocol.*` stamp. Smoke mode and arms the file does not
+declare are refused before anything is written. The tag reads
+`<time>-full-<id>-<arm>-<window>-<commit>`, and the record carries
+`experiment_id` and `preregistration_sha256`.
+
+Put every launch of an experiment in one folder, failed ones too. Then
+`compare --experiment <id> --runs-root <folder> --out-dir <new folder>` writes
+the trial ledger and, if the ledger is complete, `verdict.json`. Add
+`--seed-floor <verdict.json>` when the experiment has no seed arm of its own.
+`No verdict:` names what is missing.
+
 ## When something stops
 
 | Message | Meaning | What to do |
