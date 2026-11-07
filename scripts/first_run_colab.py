@@ -193,39 +193,6 @@ class RunArm:
     add: tuple[str, ...] = ()
 
 
-#: Jev's 2019 10-K link scores for the four-year recipe's axis (#377). The file is not in
-#: Git: a run stages it here from the project bucket and its bytes are recorded at load.
-JEV_LINK_SCORES_CSV = "data/raw/graph_links/jev_link_scores_2019_10k.csv"
-#: The same scores from the 2019 to 2024 10-Ks, one set per ``score_year``, for a graph
-#: rebuilt on a schedule from the filings public by then. Staged the same way.
-JEV_LINK_SCORES_2019_2024_CSV = "data/raw/graph_links/jev_link_scores_2019_2024_10k.csv"
-
-
-def _rebuilt_graph_arms(cadence: str, months: str) -> dict[str, RunArm]:
-    """The thresholds 0.4 to 0.8 and both top-8 graphs, rebuilt every *months* months.
-
-    Each snapshot uses the trailing 252 sessions' correlation, or the newest 10-K link
-    scores whose filings both precede it, instead of one graph built at the start (#377).
-    """
-    every = ("graph.update_frequency_months", months)
-    arms = {
-        f"graph_{cadence}_thr_0p8": RunArm(slug_suffix=f"graph-{cadence}-thr-0p8", replace=(every,))
-    }
-    for tag, value in (("0p4", "0.4"), ("0p5", "0.5"), ("0p6", "0.6"), ("0p7", "0.7")):
-        arms[f"graph_{cadence}_thr_{tag}"] = RunArm(
-            slug_suffix=f"graph-{cadence}-thr-{tag}", replace=(every, ("graph.judge_value", value))
-        )
-    arms[f"graph_{cadence}_topk8"] = RunArm(
-        slug_suffix=f"graph-{cadence}-topk8", replace=(every, ("graph.top_k", "8"))
-    )
-    arms[f"graph_{cadence}_jev_topk8"] = RunArm(
-        slug_suffix=f"graph-{cadence}-jev-topk8",
-        replace=(every, ("graph.top_k", "8")),
-        add=(f"graph.link_scores_csv={JEV_LINK_SCORES_2019_2024_CSV}",),
-    )
-    return arms
-
-
 #: Every arm trains on the recipe's data, seed and budget; only these overrides differ.
 RUN_ARMS = {
     "recipe": RunArm(slug_suffix=""),
@@ -240,26 +207,6 @@ RUN_ARMS = {
     # recipe's 1729 + i for a 20-model ensemble. The paired difference against the
     # recipe arm is the seed noise floor the other arms' differences are read against.
     "other_seeds": RunArm(slug_suffix="seed-2729", replace=(("seed", "2729"),)),
-    # The correlation threshold swept below the recipe's 0.8 (#377): at 0.8 the static
-    # graph links about four pairs a day, so the graph-zeroed control barely differs.
-    **{
-        f"graph_thr_{tag}": RunArm(
-            slug_suffix=f"graph-thr-{tag}", replace=(("graph.judge_value", value),)
-        )
-        for tag, value in (("0p4", "0.4"), ("0p5", "0.5"), ("0p6", "0.6"), ("0p7", "0.7"))
-    },
-    # Eight neighbours per stock, close to the 0.5 threshold's density on the static
-    # graph, ranked on past correlation or on Jev's company-link scores (#377). The two
-    # differ only in what ranks the candidates, so their paired difference is Jev's.
-    "graph_topk8": RunArm(slug_suffix="graph-topk8", replace=(("graph.top_k", "8"),)),
-    "graph_jev_topk8": RunArm(
-        slug_suffix="graph-jev-topk8",
-        replace=(("graph.top_k", "8"),),
-        add=(f"graph.link_scores_csv={JEV_LINK_SCORES_CSV}",),
-    ),
-    # The same graphs rebuilt every quarter, then every month, instead of once (#377).
-    **_rebuilt_graph_arms("quarterly", "3"),
-    **_rebuilt_graph_arms("monthly", "1"),
 }
 
 

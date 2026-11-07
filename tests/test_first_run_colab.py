@@ -1103,56 +1103,6 @@ def test_each_control_arm_differs_from_the_recipe_only_by_its_change():
     assert len(names) == len(frc.RUN_ARMS), "an arm must not file its results under the recipe id"
 
 
-@pytest.mark.parametrize("value", ["0.4", "0.5", "0.6", "0.7"])
-def test_each_threshold_arm_changes_only_the_correlation_threshold(value):
-    recipe = _recipe_with_fixed_inputs()
-    arm = f"graph_thr_{value.replace('.', 'p')}"
-    swept = frc.apply_arm(recipe, arm)
-    assert [o for o in swept if o not in recipe] == [f"graph.judge_value={value}"]
-    assert [o for o in recipe if o not in swept] == ["graph.judge_value=0.8"]
-    assert len(swept) == len(recipe)
-
-
-def test_the_jev_arm_differs_from_the_top_k_arm_only_by_its_link_scores():
-    recipe = _recipe_with_fixed_inputs()
-    by_corr = frc.apply_arm(recipe, "graph_topk8")
-    by_jev = frc.apply_arm(recipe, "graph_jev_topk8")
-    assert [o for o in by_corr if o not in recipe] == ["graph.top_k=8"]
-    assert [o for o in by_jev if o not in by_corr] == [
-        "graph.link_scores_csv=data/raw/graph_links/jev_link_scores_2019_10k.csv"
-    ]
-    assert len(by_jev) == len(by_corr) + 1
-
-
-@pytest.mark.parametrize(("cadence", "months"), [("quarterly", "3"), ("monthly", "1")])
-@pytest.mark.parametrize("value", ["0.4", "0.5", "0.6", "0.7", "0.8"])
-def test_each_rebuilt_threshold_arm_is_its_static_arm_on_a_schedule(cadence, months, value):
-    recipe = _recipe_with_fixed_inputs()
-    tag = value.replace(".", "p")
-    rebuilt = frc.apply_arm(recipe, f"graph_{cadence}_thr_{tag}")
-    static = recipe if value == "0.8" else frc.apply_arm(recipe, f"graph_thr_{tag}")
-    assert [o for o in rebuilt if o not in static] == [f"graph.update_frequency_months={months}"]
-    assert [o for o in static if o not in rebuilt] == ["graph.update_frequency_months=0"]
-    assert len(rebuilt) == len(static)
-
-
-@pytest.mark.parametrize(("cadence", "months"), [("quarterly", "3"), ("monthly", "1")])
-def test_the_rebuilt_jev_arm_differs_from_the_rebuilt_top_k_arm_only_by_its_link_scores(
-    cadence, months
-):
-    recipe = _recipe_with_fixed_inputs()
-    by_corr = frc.apply_arm(recipe, f"graph_{cadence}_topk8")
-    by_jev = frc.apply_arm(recipe, f"graph_{cadence}_jev_topk8")
-    assert [o for o in by_corr if o not in recipe] == [
-        f"graph.update_frequency_months={months}",
-        "graph.top_k=8",
-    ]
-    assert [o for o in by_jev if o not in by_corr] == [
-        "graph.link_scores_csv=data/raw/graph_links/jev_link_scores_2019_2024_10k.csv"
-    ]
-    assert len(by_jev) == len(by_corr) + 1
-
-
 def test_an_arm_that_would_change_nothing_is_refused():
     with pytest.raises(
         KeyError, match="changes features.base_inputs, which the recipe does not set"
@@ -1180,12 +1130,9 @@ def test_every_arm_composes_into_the_typed_config(arm):
         cfg = compose(config_name="config", overrides=job_overrides)
     config = create_config_from_dict(OmegaConf.to_container(cfg, resolve=True))
     assert config.graph.zero_edges is (arm == "graph_zeroed")
-    threshold = arm.rpartition("_thr_")[2].replace("p", ".") if "_thr_" in arm else "0.8"
-    assert config.graph.judge_value == float(threshold)
-    cadence = {"_quarterly_": 3, "_monthly_": 1}
-    months = next((m for key, m in cadence.items() if key in arm), 0)
-    assert config.graph.update_frequency_months == months
-    assert config.graph.top_k == (8 if arm.endswith("topk8") else 0)
+    # The recipe's graph: correlation above 0.5, rebuilt every quarter (#377).
+    assert (config.graph.judge_value, config.graph.update_frequency_months) == (0.5, 3)
+    assert config.graph.top_k == 0
     assert config.features.base_inputs == ("levels" if arm == "levels_inputs" else "relative")
     assert config.experiment_name == frc.arm_experiment_name("slug", arm)
     # Same seed, budget and data whichever arm runs.

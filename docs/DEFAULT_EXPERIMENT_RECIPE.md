@@ -1,6 +1,6 @@
 # Default Frozen Experiment Recipe
 
-Last updated: 2026-10-27
+Last updated: 2026-11-07
 
 Use this recipe for production-style confirmation notebooks and PIT validation
 runs unless an experiment is explicitly testing one of these factors.
@@ -155,10 +155,38 @@ runs unless an experiment is explicitly testing one of these factors.
 > their dates overridden. The DuPont note below applies only to windows that
 > train on 2016 or 2017.
 
+> **The graph changed on 2026-11-07, after the threshold and cadence tests (#377).**
+>
+> Until then the recipe built one correlation graph at the start of training, on
+> the 252 sessions before it, kept pairs above 0.8, and served that graph to every
+> later sample, so 2025 was scored on links measured in 2019. It now keeps pairs
+> above 0.5 and rebuilds the graph every quarter from the trailing 252 sessions;
+> each snapshot uses only returns before its own date, and selection follows
+> each snapshot's own point-in-time membership.
+>
+> | | before 2026-11-07 | from 2026-11-07 |
+> |---|---|---|
+> | `graph.judge_value` | 0.8 | 0.5 |
+> | `graph.update_frequency_months` | 0 (built once) | 3 (one snapshot per quarter of the run) |
+> | slug | `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32__train-4y` | `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32__train-4y__graph-quarterly-0p5` |
+>
+> On the recipe's 2025 test, quarterly 0.5 scored IC 0.0275 against 0.0131 for
+> the graph-zeroed control (+0.014, 95% CI -0.015 to +0.043, p 0.32) and
+> against 0.0124 for the same threshold built once. Every quarterly density
+> tried (0.4 to 0.8, top-8) beat its built-once version and the control on point
+> estimate; none separated from the control, and the gap is about one seed
+> floor. The owner adopted it on that evidence without a pre-registered
+> five-window test. Results: #377 and the project files under
+> `graph-jev/quarterly-results/`. Runs under the earlier slug, including the
+> five-window baseline of 2026-11-07, are the built-once graph's.
+>
+> `graph.zero_edges` no longer refuses a dynamic schedule: the zeroed control
+> builds no snapshots, so it is the same empty graph under either slug.
+
 Recipe slug:
 
 ```text
-static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32__train-4y
+static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32__train-4y__graph-quarterly-0p5
 ```
 
 ## Hydra Overrides
@@ -189,8 +217,8 @@ model.cross_section_block=residual
 model.gru_attn_layer_widths=per_layer
 model.gat_layer_form=residual
 
-graph.judge_value=0.8
-graph.update_frequency_months=0
+graph.judge_value=0.5
+graph.update_frequency_months=3
 graph.corr_lookback_days=252
 graph.top_k=0
 graph.top_k_metric=corr

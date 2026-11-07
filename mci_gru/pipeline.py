@@ -870,6 +870,12 @@ def build_correlation_graph(
         # its default self-loops only. The sector branch (arm A4) is still
         # honoured below.
         logger.info("graph.zero_edges=true: correlation edges suppressed (zeroed control arm)")
+        if graph_config.update_frequency_months > 0:
+            logger.info(
+                "graph.update_frequency_months=%d is inert under zero_edges: no snapshot "
+                "schedule is built for an always-empty graph",
+                graph_config.update_frequency_months,
+            )
         if graph_config.use_multi_feature_edges:
             n_extra = 2 if graph_config.use_lead_lag_features else 0
             empty_weight = torch.zeros((0, 4 + n_extra), dtype=torch.float)

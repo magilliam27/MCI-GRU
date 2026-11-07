@@ -345,6 +345,9 @@ Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
 | `test_the_recipe_trains_on_four_years` | Issue 367: train 2020 to 2023, validate 2024, test 2025, the last window before 2026. |  |
 | `test_without_its_window_line_the_recipe_would_train_on_eight_years` | Control: the four-year window comes from the recipe's line, not from the data config. |  |
 | `test_recipe_records_the_training_window_change` | The 8-year first run and the 4-year runs must not be read as one recipe. |  |
+| `test_the_recipe_graph_keeps_pairs_above_half_and_rebuilds_every_quarter` | Issue 377: the owner adopted the quarterly 0.5 graph on 2026-11-07. |  |
+| `test_without_its_graph_lines_the_recipe_would_build_one_graph_at_0p8` | Control: the quarterly 0.5 graph comes from the recipe's lines, not the base default. |  |
+| `test_recipe_records_the_graph_change` | Built-once and quarterly-graph evidence must not be read as one recipe. |  |
 | `test_without_its_data_line_the_recipe_would_read_the_lseg_panel` | Control: the test above must come from the recipe's selector, not the base default. |  |
 | `test_recipe_records_the_price_panel_change` | The 2026-10-08 EODHD switch is dated, so LSEG- and EODHD-panel evidence stay apart. |  |
 
@@ -1312,10 +1315,6 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_a_run_records_itself_without_the_key` |  |  |
 | `test_the_recipe_arm_is_the_recipe` |  |  |
 | `test_each_control_arm_differs_from_the_recipe_only_by_its_change` |  |  |
-| `test_each_threshold_arm_changes_only_the_correlation_threshold` |  | parametrize |
-| `test_the_jev_arm_differs_from_the_top_k_arm_only_by_its_link_scores` |  |  |
-| `test_each_rebuilt_threshold_arm_is_its_static_arm_on_a_schedule` |  | parametrize, parametrize |
-| `test_the_rebuilt_jev_arm_differs_from_the_rebuilt_top_k_arm_only_by_its_link_scores` |  | parametrize |
 | `test_an_arm_that_would_change_nothing_is_refused` |  |  |
 | `test_every_arm_composes_into_the_typed_config` | Each arm goes through Hydra the way run_experiment.py takes it. | parametrize |
 | `test_a_control_arm_records_itself_and_is_never_an_admitted_run_candidate` |  |  |
@@ -1585,7 +1584,7 @@ Graph-zeroed control arm (issue 165, semantics fixed by the issue-164 protocol).
 |---|---|---|
 | `test_zero_edges_defaults_false` |  |  |
 | `test_zero_edges_accepts_true` |  |  |
-| `test_zero_edges_rejects_dynamic_schedule` |  |  |
+| `test_zero_edges_accepts_a_dynamic_schedule_and_builds_no_snapshots` | The recipe's graph updates quarterly (#377); its zeroed control must still compose. |  |
 | `test_zeroed_build_is_empty_with_multi_feature_width` |  |  |
 | `test_zeroed_build_scalar_and_lead_lag_widths` |  |  |
 | `test_zeroed_build_still_builds_sector_branch` |  |  |

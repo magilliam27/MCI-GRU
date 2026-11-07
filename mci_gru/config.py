@@ -508,9 +508,9 @@ class GraphConfig:
             self-loops only -- architecture and parameters unchanged, edges
             suppressed. ``judge_value`` / ``top_k`` become inert (no edges are
             selected) but still validate. Composes with ``use_sector_relation``
-            (arm A4: sector edges only). Incompatible with a dynamic schedule:
-            precomputing snapshots of an always-empty graph would silently
-            pretend to update, so ``update_frequency_months`` must be 0.
+            (arm A4: sector edges only). ``update_frequency_months`` is inert
+            too: no snapshot schedule is built, so the zeroed control of a
+            recipe whose graph updates is the same empty graph as before (#377).
         exclude_edge_pairs: Kdcode pairs excluded from every constructed
             adjacency -- threshold, top-K, dynamic snapshots, and the sector
             relation (issue 164 hygiene rule: the GOOG.OQ/GOOGL.OQ same-company
@@ -574,13 +574,6 @@ class GraphConfig:
             raise ValueError("lead_lag_days must contain only positive integers")
         if self.use_sector_relation and not self.sector_map_csv:
             raise ValueError("use_sector_relation=True requires graph.sector_map_csv")
-        if self.zero_edges and self.update_frequency_months > 0:
-            raise ValueError(
-                "zero_edges=True suppresses all correlation edges, so a dynamic "
-                "schedule is meaningless; got "
-                f"update_frequency_months={self.update_frequency_months}. "
-                "Set update_frequency_months=0 for the zeroed control arm."
-            )
         # A threshold on the link-score scale has no calibration.
         if self.link_scores_csv is not None and self.top_k <= 0:
             raise ValueError("link_scores_csv requires graph.top_k > 0")
