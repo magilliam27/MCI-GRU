@@ -181,16 +181,21 @@ def check_stock_level_inputs(
     }
 
 
-def linear_baseline(
+def stock_level_data(
     config: ExperimentConfig,
     metadata: dict[str, Any],
     recorded: dict[str, Any],
     scoring: ScoringInputs,
-) -> LinearBaseline:
-    """Rebuild the run's stock-level inputs, fit the ridge on its training dates, score test."""
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The run's stock-level inputs rebuilt with the pipeline, and the checks they passed.
+
+    The rebuild must read the inputs the run recorded, carry exactly the run's
+    train-period normalisation for every stock-level column, and sit on the run's stock
+    axis and test dates.
+    """
     if config.data.normalisation != "zscore":
         raise BaselineError(
-            f"the linear baseline checks a z-score normalisation; the run used "
+            f"the stock-level rebuild checks a z-score normalisation; the run used "
             f"{config.data.normalisation!r}"
         )
     stock_config = stock_level_config(config)
@@ -208,7 +213,17 @@ def linear_baseline(
         raise BaselineError("the rebuilt inputs' stock axis differs from the run's")
     if [str(d) for d in data["test_dates"]] != scoring.dates:
         raise BaselineError("the rebuilt inputs' test dates differ from the run's")
+    return data, controls
 
+
+def linear_baseline(
+    config: ExperimentConfig,
+    metadata: dict[str, Any],
+    recorded: dict[str, Any],
+    scoring: ScoringInputs,
+) -> LinearBaseline:
+    """Rebuild the run's stock-level inputs, fit the ridge on its training dates, score test."""
+    data, controls = stock_level_data(config, metadata, recorded, scoring)
     fit = fit_cross_sectional_ridge(
         data["stock_features_train"],
         data["train_labels"],
