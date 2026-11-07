@@ -108,6 +108,37 @@ Simple baseline signals read only what was known at the signal date's close (#36
 | `test_the_penalty_with_the_best_validation_ic_is_kept_and_ties_go_to_the_larger` |  |  |
 | `test_validation_ic_reads_only_scores_the_validation_mask_allows` |  |  |
 
+## `tests/test_candidates.py`
+
+Candidate models are scored on a saved run's own axis, then pooled over windows (#384).
+
+**Exercises:** `mci_gru`, `mci_gru.config`, `mci_gru.evaluation`, `mci_gru.evaluation.candidates`, `mci_gru.evaluation.dated_ic`, `mci_gru.utils.hashing`, `scripts`, `scripts.score_candidates`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_a_panel_past_the_last_test_date_is_refused` |  |  |
+| `test_panel_up_to_drops_every_later_row` |  |  |
+| `test_the_test_labels_are_left_out_of_the_data_and_it_is_built_once` |  |  |
+| `test_a_result_of_the_wrong_shape_or_with_an_infinite_score_is_refused` |  |  |
+| `test_every_registered_candidate_has_a_unique_name` |  |  |
+| `test_a_candidate_is_scored_where_the_run_could_rank_and_sees_nothing_later` |  |  |
+| `test_the_candidate_gets_the_runs_own_training_labels` |  |  |
+| `test_the_run_is_untouched_and_an_earlier_result_is_kept_unless_forced` |  |  |
+| `test_the_model_arm_cannot_be_named_as_a_candidate` |  |  |
+| `test_the_residual_linear_model_scores_a_real_run_end_to_end` |  |  |
+| `test_the_pooled_ic_is_the_mean_of_the_windows_joined` |  |  |
+| `test_folders_that_scored_different_runs_are_refused` |  |  |
+| `test_an_arm_scored_twice_on_a_window_is_refused` |  |  |
+| `test_the_newey_west_t_reproduces_the_protocol_tables_figure` | Bartlett weights on label_t - 2 lags, the five-window table's convention. |  |
+| `test_pit_intervals_are_read_as_the_pipeline_reads_them` |  |  |
+| `test_another_universe_is_scored_on_the_templates_window_with_no_model_arm` |  |  |
+| `test_a_candidate_on_another_universe_gets_that_universes_labels` |  |  |
+| `test_a_universe_whose_files_differ_from_its_manifest_is_refused` |  |  |
+| `test_a_template_window_inside_the_holdout_is_refused` |  |  |
+| `test_the_pool_refuses_folders_that_scored_different_universes_on_a_window` |  |  |
+| `test_a_universe_with_no_run_is_pooled_against_a_named_reference` |  |  |
+| `test_the_registered_baselines_score_what_score_baselines_scores` |  |  |
+
 ## `tests/test_capability_marker_guard.py`
 
 No test CI deselects by capability marker may pass without that capability.
@@ -1774,6 +1805,30 @@ Public exact-observation snapshot preservation and offline replay contracts.
 | `test_trainer_rejects_checkpoint_selection_without_eligible_rank_rows` |  |  |
 | `test_select_training_objective_respects_selection_metric` |  |  |
 
+## `tests/test_lightgbm_candidate.py`
+
+The LightGBM candidate reads only what each split may read (#387).
+
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation`, `mci_gru.evaluation.candidate_registry`, `mci_gru.evaluation.candidates`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_features_at_a_date_ignore_every_later_bar` |  |  |
+| `test_return_features_are_ratios_of_closes_counted_in_sessions` |  |  |
+| `test_a_missing_bar_gives_nan_rather_than_a_shifted_window` |  |  |
+| `test_percentiles_respect_the_mask_and_share_ties` |  |  |
+| `test_forward_labels_are_the_run_definition_and_stop_before_the_boundary` |  |  |
+| `test_twenty_day_training_never_reads_a_validation_or_test_close` |  |  |
+| `test_the_arm_recovers_a_planted_reversal` |  |  |
+| `test_the_twenty_day_arm_also_recovers_it` |  |  |
+| `test_only_cells_the_test_mask_admits_are_scored` |  |  |
+| `test_bars_after_the_last_test_date_change_nothing` |  |  |
+| `test_validation_labels_steer_selection_only` |  |  |
+| `test_malformed_requests_are_refused` |  | parametrize |
+| `test_overlapping_splits_are_refused` |  |  |
+| `test_registered_arms_pass_the_harness_lookahead_check` |  | parametrize |
+| `test_the_harness_lookahead_check_would_catch_a_feature_reading_tomorrow` |  |  |
+
 ## `tests/test_linked_score_ties.py`
 
 Run summaries count ties among graph-linked names (#324).
@@ -2609,6 +2664,28 @@ A saved run is re-scored from its own inputs, without retraining (#337).
 |---|---|---|
 | `test_infers_title_authors_and_abstract_from_first_page_text` |  |  |
 | `test_builds_markdown_intake_artifact_with_warnings_and_full_text` |  |  |
+
+## `tests/test_residual_linear.py`
+
+The residual-return linear model removes market and peer moves, and finds a planted signal (#384).
+
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation`, `mci_gru.evaluation.candidates`, `mci_gru.evaluation.statistics`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_membership_follows_the_pit_intervals` |  |  |
+| `test_betas_recover_the_planted_betas_shrunk_toward_one` |  |  |
+| `test_residual_returns_carry_neither_the_market_nor_the_industry_move` |  |  |
+| `test_clusters_recover_the_planted_industries` |  |  |
+| `test_a_label_of_market_and_peer_moves_only_residualises_to_zero` |  |  |
+| `test_no_score_moves_when_later_prices_are_scrambled` |  | parametrize |
+| `test_the_lookahead_check_catches_a_score_that_reads_tomorrow` |  |  |
+| `test_the_fitted_model_finds_the_planted_reversal` |  |  |
+| `test_without_a_planted_reversal_the_model_finds_little` |  |  |
+| `test_residual_reversal_is_minus_the_last_weeks_residual_return` |  |  |
+| `test_centred_ranks_span_minus_half_to_half_and_leave_gaps_in_the_middle` |  |  |
+| `test_without_peers_the_market_move_alone_is_removed` | Peer means also carry the market move, so check market removal with peers off. |  |
+| `test_a_run_trained_on_rank_labels_is_refused` |  |  |
 
 ## `tests/test_run_bundle_manifest.py`
 

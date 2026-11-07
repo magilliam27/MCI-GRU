@@ -68,6 +68,8 @@ joblib==1.5.3
     # via scikit-learn
 kiwisolver==1.5.0
     # via matplotlib
+lightgbm==4.7.0
+    # via mci-gru (pyproject.toml)
 markupsafe==3.0.3
     # via jinja2
 matplotlib==3.11.0
@@ -85,6 +87,7 @@ networkx==3.6.1
 numpy==2.5.1
     # via
     #   contourpy
+    #   lightgbm
     #   matplotlib
     #   mci-gru (pyproject.toml)
     #   pandas
@@ -151,6 +154,7 @@ scikit-learn==1.9.0
     # via mci-gru (pyproject.toml)
 scipy==1.18.0
     # via
+    #   lightgbm
     #   mci-gru (pyproject.toml)
     #   scikit-learn
 six==1.17.0
