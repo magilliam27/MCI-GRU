@@ -20,7 +20,8 @@ What a candidate may see, and what it may not:
   read a test label's closing prices beyond the last test date. A score for date ``D``
   must still use rows up to ``D`` only; ``check_no_lookahead`` tests that.
 * Training and validation labels come from ``data`` (the run's own labels, cut at each
-  split's end as the pipeline cuts them). The test labels are left out of ``data``.
+  split's end as the pipeline cuts them). The test labels, and every key that depends
+  on them (``HIDDEN_DATA_KEYS``), are left out of ``data``.
 * ``pit_intervals`` is the run's point-in-time membership file, for a candidate that
   needs to know which names were members on a past date (a market average, say).
 
@@ -41,9 +42,14 @@ if TYPE_CHECKING:
 
     from mci_gru.config import ExperimentConfig
 
-#: ``data`` keys a candidate never gets: the test labels, and the panel the pipeline
+#: ``data`` keys a candidate never gets, because each depends on prices after a test
+#: date: the test labels; the test loss mask (tradable and label-available, which needs
+#: the closes at D+1 and D+label_t); the PIT eligibility and breadth reports and the
+#: admission record that carries them (resolved test labels); and the panel the pipeline
 #: built (which runs past the last test date).
-HIDDEN_DATA_KEYS = frozenset({"test_labels", "df"})
+HIDDEN_DATA_KEYS = frozenset(
+    {"test_labels", "test_loss_mask", "pit_eligibility", "pit_breadth", "admission", "df"}
+)
 
 
 @dataclass(frozen=True)

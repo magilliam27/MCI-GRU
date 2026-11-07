@@ -18,6 +18,8 @@ reverses over the following week, and pin that:
 
 from __future__ import annotations
 
+import dataclasses
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -67,7 +69,8 @@ def _synthetic(reversal: float = 0.6, seed: int = 3):
     ]
     panel = pd.DataFrame(rows)
     forward = np.full((n, k), np.nan)
-    forward[: n - LABEL_T] = close[LABEL_T:] / close[: n - LABEL_T] - 1.0
+    # The pipeline's label: close D+1 to close D+LABEL_T (compute_labels).
+    forward[: n - LABEL_T] = close[LABEL_T:] / close[1 : n - LABEL_T + 1] - 1.0
     pit = pd.DataFrame(
         [
             {
@@ -288,3 +291,11 @@ def test_without_peers_the_market_move_alone_is_removed(synthetic):
         out = rl.residual_labels(state, labels, rows[:20])
     expected = labels - betas * labels.mean(axis=1, keepdims=True)
     np.testing.assert_allclose(out, expected, rtol=0, atol=1e-15)
+
+
+def test_a_run_trained_on_rank_labels_is_refused(synthetic):
+    context, _ = _context(synthetic)
+    config = ExperimentConfig()
+    config.training.label_type = "rank"
+    with pytest.raises(ValueError, match="residualises return labels"):
+        rl.residual_linear(dataclasses.replace(context, config=config))

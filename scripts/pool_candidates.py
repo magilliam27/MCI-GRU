@@ -7,7 +7,8 @@ of those folders, joins each arm's windows into one dated series, and reports:
 
 * per arm and window, the mean IC and rank IC;
 * per arm, the IC and rank IC pooled over every date it scored, with the
-  overlap-aware Hansen-Hodrick t-statistic (``hansen_hodrick_mean_inference``), and
+  overlap-aware Hansen-Hodrick t-statistic on ``label_t - 2`` lags (the run's own IC
+  interval's convention, ``overlap_hac_lags``), and
   the Newey-West (Bartlett) t on ``label_t - 2`` lags that the protocol's five-window
   table reports, so the two can be read side by side;
 * per arm against the reference arm (``model``, MCI-GRU's saved predictions by
@@ -120,8 +121,10 @@ def pooled_series(windows: dict[str, pd.DataFrame]) -> pd.DataFrame:
 def _inference(values: pd.Series, label_t: int) -> dict[str, Any]:
     finite = values.to_numpy(dtype=np.float64)
     finite = finite[np.isfinite(finite)]
-    result = hansen_hodrick_mean_inference(finite, label_horizon=label_t)
     lags = overlap_hac_lags(label_t)
+    # Uniform weights on the overlap's own lag count, as the run's IC interval and the
+    # paired rows use; hansen_hodrick_mean_inference takes lags = label_horizon - 1.
+    result = hansen_hodrick_mean_inference(finite, label_horizon=lags + 1)
     nw_se = newey_west_std(finite, lags=lags) / np.sqrt(finite.size) if finite.size else 0.0
     return {
         "n_dates": result.n_obs,
@@ -178,9 +181,10 @@ def pool(folders: list[Path], *, ci_level: float = 0.95) -> dict[str, Any]:
         "reference_arm": REFERENCE_ARM,
         "results": [str(f) for f in folders],
         "arms": arms,
+        "paired_direction": "arm_minus_reference",
         "paired_vs_reference": paired,
-        "note": "Exploratory, not a verdict (#372). Pooled t is Hansen-Hodrick (label_t - 1 lags) "
-        "on the arm's own dates; t_newey_west is Bartlett on label_t - 2 lags, as the protocol's "
+        "note": "Exploratory, not a verdict (#372). Pooled t is Hansen-Hodrick on label_t - 2 "
+        "lags (overlap_hac_lags, as the paired rows) on the arm's own dates; t_newey_west is Bartlett on label_t - 2 lags, as the protocol's "
         "five-window table reports. Paired rows are the arm minus the reference per date, on the dates both "
         "scored. A baseline folder's paired rows inside score_baselines.py score the model on "
         "the baseline's cells only; these use each arm's whole daily series.",

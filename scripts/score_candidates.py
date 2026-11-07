@@ -38,15 +38,15 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import pandas as pd
 
 REPO_DIR = Path(__file__).resolve().parents[1]
 if str(REPO_DIR) not in sys.path:
     sys.path.insert(0, str(REPO_DIR))
 
+from mci_gru.data.pit import load_pit_intervals  # noqa: E402
 from mci_gru.evaluation.artifacts import write_json_artifact  # noqa: E402
 from mci_gru.evaluation.candidate_registry import CANDIDATES, get_candidate  # noqa: E402
 from mci_gru.evaluation.candidates import (  # noqa: E402
@@ -80,6 +80,9 @@ from scripts.score_baselines import (  # noqa: E402
     stock_level_data,
 )
 
+if TYPE_CHECKING:
+    import pandas as pd
+
 CANDIDATES_SCHEMA = "mci_gru.candidates.v1"
 DEFAULT_OUT_DIRNAME = "candidates"
 SUMMARY_FILENAME = "candidate_summary.json"
@@ -103,11 +106,11 @@ def run_window(run: Path, test_start: str | None) -> str | None:
     return None
 
 
-def read_pit_intervals(path: str | None) -> pd.DataFrame | None:
-    """The PIT membership file's kdcode, valid_from and valid_to, as strings."""
+def read_pit_intervals(path: str | None, open_valid_to: str | None) -> pd.DataFrame | None:
+    """The PIT membership file read as the pipeline reads it: ISO dates, open ends filled."""
     if not path:
         return None
-    frame = pd.read_csv(path, dtype=str)
+    frame = load_pit_intervals(path, open_valid_to=open_valid_to)
     return frame.loc[:, ["kdcode", "valid_from", "valid_to"]].reset_index(drop=True)
 
 
@@ -191,7 +194,10 @@ def score_candidate(
         kdcodes=list(scoring.kdcodes),
         test_dates=list(scoring.dates),
         rankable_mask=scoring.rankable_mask,
-        pit_intervals=read_pit_intervals(config.data.pit_universe_csv),
+        pit_intervals=read_pit_intervals(
+            config.data.pit_universe_csv if config.data.use_pit_universe else None,
+            config.data.pit_export_cutoff,
+        ),
         data_loader=load_data,
     )
     started = time.perf_counter()
@@ -233,6 +239,7 @@ def score_candidate(
             }
             for name, s in arms.items()
         },
+        "paired_direction": "model_minus_candidate",
         "paired_daily_difference": paired_comparison(
             arms, scoring.labels, scoring.dates, label_t, config.evaluation.ci_level
         ),

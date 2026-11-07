@@ -130,6 +130,7 @@ Candidate models are scored on a saved run's own axis, then pooled over windows 
 | `test_folders_that_scored_different_runs_are_refused` |  |  |
 | `test_an_arm_scored_twice_on_a_window_is_refused` |  |  |
 | `test_the_newey_west_t_reproduces_the_protocol_tables_figure` | Bartlett weights on label_t - 2 lags, the five-window table's convention. |  |
+| `test_pit_intervals_are_read_as_the_pipeline_reads_them` |  |  |
 
 ## `tests/test_capability_marker_guard.py`
 
@@ -2653,6 +2654,7 @@ The residual-return linear model removes market and peer moves, and finds a plan
 | `test_residual_reversal_is_minus_the_last_weeks_residual_return` |  |  |
 | `test_centred_ranks_span_minus_half_to_half_and_leave_gaps_in_the_middle` |  |  |
 | `test_without_peers_the_market_move_alone_is_removed` | Peer means also carry the market move, so check market removal with peers off. |  |
+| `test_a_run_trained_on_rank_labels_is_refused` |  |  |
 
 ## `tests/test_run_bundle_manifest.py`
 

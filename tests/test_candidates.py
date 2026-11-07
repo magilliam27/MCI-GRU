@@ -79,11 +79,23 @@ def test_the_test_labels_are_left_out_of_the_data_and_it_is_built_once():
 
     def loader():
         calls.append(1)
-        return {"train_dates": ["2020-01-02"], "val_dates": [], "test_labels": 1, "df": 2}
+        return {
+            "train_dates": ["2020-01-02"],
+            "val_dates": [],
+            "test_labels": 1,
+            "test_loss_mask": 1,
+            "test_tradable_mask": 1,
+            "pit_eligibility": 1,
+            "pit_breadth": 1,
+            "admission": 1,
+            "df": 2,
+        }
 
     context = _toy_context(data_loader=loader)
-    assert "test_labels" not in context.data
+    for hidden in ("test_labels", "test_loss_mask", "pit_eligibility", "pit_breadth", "admission"):
+        assert hidden not in context.data
     assert "df" not in context.data
+    assert "test_tradable_mask" in context.data
     assert context.train_dates == ["2020-01-02"]
     assert context.data is context.data
     assert len(calls) == 1
@@ -273,3 +285,20 @@ def test_the_newey_west_t_reproduces_the_protocol_tables_figure(tmp_path):
         var += 2 * (1 - lag / (lags + 1)) * (x[lag:] @ x[:-lag]) / len(x)
     expected = values.mean() / np.sqrt(var / len(x))
     assert report["arms"][0]["ic"]["t_newey_west"] == pytest.approx(expected, rel=1e-10)
+
+
+def test_pit_intervals_are_read_as_the_pipeline_reads_them(tmp_path):
+    path = tmp_path / "pit.csv"
+    pd.DataFrame(
+        {
+            "kdcode": ["A.N", "B.N"],
+            "valid_from": ["1/4/2016", "2/1/2016"],
+            "valid_to": ["2019-07-30", ""],
+        }
+    ).to_csv(path, index=False)
+    frame = score_candidates.read_pit_intervals(str(path), "2026-07-31")
+    assert frame.to_dict("records") == [
+        {"kdcode": "A.N", "valid_from": "2016-01-04", "valid_to": "2019-07-30"},
+        {"kdcode": "B.N", "valid_from": "2016-02-01", "valid_to": "2026-07-31"},
+    ]
+    assert score_candidates.read_pit_intervals(None, "2026-07-31") is None
