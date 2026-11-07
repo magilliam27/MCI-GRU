@@ -112,7 +112,7 @@ Simple baseline signals read only what was known at the signal date's close (#36
 
 Candidate models are scored on a saved run's own axis, then pooled over windows (#384).
 
-**Exercises:** `mci_gru.config`, `mci_gru.evaluation`, `mci_gru.evaluation.candidates`, `mci_gru.evaluation.dated_ic`, `scripts`, `scripts.score_candidates`
+**Exercises:** `mci_gru`, `mci_gru.config`, `mci_gru.evaluation`, `mci_gru.evaluation.candidates`, `mci_gru.evaluation.dated_ic`, `mci_gru.utils.hashing`, `scripts`, `scripts.score_candidates`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -131,6 +131,13 @@ Candidate models are scored on a saved run's own axis, then pooled over windows 
 | `test_an_arm_scored_twice_on_a_window_is_refused` |  |  |
 | `test_the_newey_west_t_reproduces_the_protocol_tables_figure` | Bartlett weights on label_t - 2 lags, the five-window table's convention. |  |
 | `test_pit_intervals_are_read_as_the_pipeline_reads_them` |  |  |
+| `test_another_universe_is_scored_on_the_templates_window_with_no_model_arm` |  |  |
+| `test_a_candidate_on_another_universe_gets_that_universes_labels` |  |  |
+| `test_a_universe_whose_files_differ_from_its_manifest_is_refused` |  |  |
+| `test_a_template_window_inside_the_holdout_is_refused` |  |  |
+| `test_the_pool_refuses_folders_that_scored_different_universes_on_a_window` |  |  |
+| `test_a_universe_with_no_run_is_pooled_against_a_named_reference` |  |  |
+| `test_the_registered_baselines_score_what_score_baselines_scores` |  |  |
 
 ## `tests/test_capability_marker_guard.py`
 
