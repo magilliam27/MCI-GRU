@@ -17,7 +17,6 @@ seams are pinned here:
 
 import numpy as np
 import pandas as pd
-import pytest
 import torch
 
 from mci_gru.config import GraphConfig
@@ -63,9 +62,12 @@ def test_zero_edges_accepts_true():
     assert GraphConfig(zero_edges=True).zero_edges is True
 
 
-def test_zero_edges_rejects_dynamic_schedule():
-    with pytest.raises(ValueError, match="zero_edges"):
-        GraphConfig(zero_edges=True, update_frequency_months=6)
+def test_zero_edges_accepts_a_dynamic_schedule_and_builds_no_snapshots():
+    """The recipe's graph updates quarterly (#377); its zeroed control must still compose."""
+    art = _artifacts(_panel(False), GraphConfig(zero_edges=True, update_frequency_months=3))
+    assert art.edge_index.shape == (2, 0)
+    assert art.edge_weight.shape == (0, 4)
+    assert art.graph_schedule is None
 
 
 # ── seam 2: build contract ────────────────────────────────────────────────

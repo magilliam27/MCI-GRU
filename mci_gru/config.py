@@ -508,9 +508,9 @@ class GraphConfig:
             self-loops only -- architecture and parameters unchanged, edges
             suppressed. ``judge_value`` / ``top_k`` become inert (no edges are
             selected) but still validate. Composes with ``use_sector_relation``
-            (arm A4: sector edges only). Incompatible with a dynamic schedule:
-            precomputing snapshots of an always-empty graph would silently
-            pretend to update, so ``update_frequency_months`` must be 0.
+            (arm A4: sector edges only). ``update_frequency_months`` is inert
+            too: no snapshot schedule is built, so the zeroed control of a
+            recipe whose graph updates is the same empty graph as before (#377).
         exclude_edge_pairs: Kdcode pairs excluded from every constructed
             adjacency -- threshold, top-K, dynamic snapshots, and the sector
             relation (issue 164 hygiene rule: the GOOG.OQ/GOOGL.OQ same-company
@@ -520,6 +520,14 @@ class GraphConfig:
             candidate set. Each entry names two distinct non-empty kdcodes;
             names absent from a run's node axis are a logged no-op. Default
             empty: shipped behaviour is unchanged.
+        link_scores_csv: Pairwise company-link scores (``kdcode_a, kdcode_b,
+            score, filing_date_a, filing_date_b``) that replace past return
+            correlation as the ranking for top-K neighbour selection (#377).
+            Requires ``top_k > 0``. An optional ``score_year`` column carries
+            several yearly score sets; each snapshot uses, per pair, the newest
+            score whose filings both precede its valid-from date, so a dynamic
+            schedule picks up new filings. Default ``None``: neighbours are
+            ranked on correlation.
     """
 
     judge_value: float = 0.8
@@ -538,6 +546,7 @@ class GraphConfig:
     sector_map_csv: str | None = None
     zero_edges: bool = False
     exclude_edge_pairs: list[list[str]] = field(default_factory=list)
+    link_scores_csv: str | None = None
 
     _VALID_TOP_K_METRICS = ("corr", "abs_corr")
 
@@ -565,13 +574,9 @@ class GraphConfig:
             raise ValueError("lead_lag_days must contain only positive integers")
         if self.use_sector_relation and not self.sector_map_csv:
             raise ValueError("use_sector_relation=True requires graph.sector_map_csv")
-        if self.zero_edges and self.update_frequency_months > 0:
-            raise ValueError(
-                "zero_edges=True suppresses all correlation edges, so a dynamic "
-                "schedule is meaningless; got "
-                f"update_frequency_months={self.update_frequency_months}. "
-                "Set update_frequency_months=0 for the zeroed control arm."
-            )
+        # A threshold on the link-score scale has no calibration.
+        if self.link_scores_csv is not None and self.top_k <= 0:
+            raise ValueError("link_scores_csv requires graph.top_k > 0")
         for pair in self.exclude_edge_pairs:
             if (
                 not isinstance(pair, (list, tuple))

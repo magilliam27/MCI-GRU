@@ -1130,6 +1130,9 @@ def test_every_arm_composes_into_the_typed_config(arm):
         cfg = compose(config_name="config", overrides=job_overrides)
     config = create_config_from_dict(OmegaConf.to_container(cfg, resolve=True))
     assert config.graph.zero_edges is (arm == "graph_zeroed")
+    # The recipe's graph: correlation above 0.5, rebuilt every quarter (#377).
+    assert (config.graph.judge_value, config.graph.update_frequency_months) == (0.5, 3)
+    assert config.graph.top_k == 0
     assert config.features.base_inputs == ("levels" if arm == "levels_inputs" else "relative")
     assert config.experiment_name == frc.arm_experiment_name("slug", arm)
     # Same seed, budget and data whichever arm runs.
