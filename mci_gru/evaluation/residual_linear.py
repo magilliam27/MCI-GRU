@@ -329,11 +329,16 @@ def _split_scorable(context: CandidateContext, key: str, labels: np.ndarray) -> 
 def _test_scorable(context: CandidateContext, state: ResidualState, rows: np.ndarray) -> np.ndarray:
     if context.rankable_mask is not None:
         return np.asarray(context.rankable_mask, dtype=bool)
-    return np.isfinite(state.returns[rows]) | np.isfinite(state.returns[rows - 1])
+    previous = np.where(rows > 0, rows - 1, rows)
+    return np.isfinite(state.returns[rows]) | np.isfinite(state.returns[previous])
 
 
 def residual_linear(context: CandidateContext) -> CandidateResult:
     """Ridge on ranked residual signals, fitted to ranked residual 5-session labels."""
+    label_type = context.config.training.label_type
+    if label_type != "returns":
+        # Rank labels sit in [0, 1]: removing beta times their mean would plant a beta tilt.
+        raise ValueError(f"residual_linear residualises return labels; the run used {label_type!r}")
     state = residual_state(context.panel, context.kdcodes, context.pit_intervals)
     signals = signal_panel(state)
     data = context.data
@@ -346,11 +351,19 @@ def residual_linear(context: CandidateContext) -> CandidateResult:
     train_scorable = _split_scorable(context, "train_loss_mask", train_labels)
     val_scorable = _split_scorable(context, "val_tradable_mask", val_labels)
     test_scorable = _test_scorable(context, state, test_rows)
+    # Inputs are ranked over the tradable names, as on test dates; the fit then uses only
+    # the rows whose label exists (the loss mask), a subset of them.
+    train_tradable = data.get("train_tradable_mask")
+    train_universe = (
+        train_scorable | np.asarray(train_tradable, dtype=bool)
+        if train_tradable is not None
+        else train_scorable
+    )
 
     target = residual_labels(state, np.where(train_scorable, train_labels, np.nan), train_rows)
     ranked_target = centred_ranks(target, train_scorable & np.isfinite(target))
     fit = fit_cross_sectional_ridge(
-        model_inputs(signals, train_rows, train_scorable),
+        model_inputs(signals, train_rows, train_universe),
         ranked_target,
         model_inputs(signals, val_rows, val_scorable),
         val_labels,

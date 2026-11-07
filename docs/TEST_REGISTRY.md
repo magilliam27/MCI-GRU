@@ -112,7 +112,7 @@ Simple baseline signals read only what was known at the signal date's close (#36
 
 Candidate models are scored on a saved run's own axis, then pooled over windows (#384).
 
-**Exercises:** `mci_gru.config`, `mci_gru.evaluation`, `mci_gru.evaluation.candidates`, `mci_gru.evaluation.dated_ic`, `scripts`, `scripts.score_candidates`
+**Exercises:** `mci_gru`, `mci_gru.config`, `mci_gru.evaluation`, `mci_gru.evaluation.candidates`, `mci_gru.evaluation.dated_ic`, `mci_gru.utils.hashing`, `scripts`, `scripts.score_candidates`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -129,6 +129,15 @@ Candidate models are scored on a saved run's own axis, then pooled over windows 
 | `test_the_pooled_ic_is_the_mean_of_the_windows_joined` |  |  |
 | `test_folders_that_scored_different_runs_are_refused` |  |  |
 | `test_an_arm_scored_twice_on_a_window_is_refused` |  |  |
+| `test_the_newey_west_t_reproduces_the_protocol_tables_figure` | Bartlett weights on label_t - 2 lags, the five-window table's convention. |  |
+| `test_pit_intervals_are_read_as_the_pipeline_reads_them` |  |  |
+| `test_another_universe_is_scored_on_the_templates_window_with_no_model_arm` |  |  |
+| `test_a_candidate_on_another_universe_gets_that_universes_labels` |  |  |
+| `test_a_universe_whose_files_differ_from_its_manifest_is_refused` |  |  |
+| `test_a_template_window_inside_the_holdout_is_refused` |  |  |
+| `test_the_pool_refuses_folders_that_scored_different_universes_on_a_window` |  |  |
+| `test_a_universe_with_no_run_is_pooled_against_a_named_reference` |  |  |
+| `test_the_registered_baselines_score_what_score_baselines_scores` |  |  |
 
 ## `tests/test_capability_marker_guard.py`
 
@@ -1800,7 +1809,7 @@ Public exact-observation snapshot preservation and offline replay contracts.
 
 The LightGBM candidate reads only what each split may read (#387).
 
-**Exercises:** `mci_gru.evaluation`
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation`, `mci_gru.evaluation.candidate_registry`, `mci_gru.evaluation.candidates`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -1817,6 +1826,8 @@ The LightGBM candidate reads only what each split may read (#387).
 | `test_validation_labels_steer_selection_only` |  |  |
 | `test_malformed_requests_are_refused` |  | parametrize |
 | `test_overlapping_splits_are_refused` |  |  |
+| `test_registered_arms_pass_the_harness_lookahead_check` |  | parametrize |
+| `test_the_harness_lookahead_check_would_catch_a_feature_reading_tomorrow` |  |  |
 
 ## `tests/test_linked_score_ties.py`
 
@@ -2674,6 +2685,7 @@ The residual-return linear model removes market and peer moves, and finds a plan
 | `test_residual_reversal_is_minus_the_last_weeks_residual_return` |  |  |
 | `test_centred_ranks_span_minus_half_to_half_and_leave_gaps_in_the_middle` |  |  |
 | `test_without_peers_the_market_move_alone_is_removed` | Peer means also carry the market move, so check market removal with peers off. |  |
+| `test_a_run_trained_on_rank_labels_is_refused` |  |  |
 
 ## `tests/test_run_bundle_manifest.py`
 
