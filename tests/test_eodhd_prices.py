@@ -672,7 +672,7 @@ class FakeClient:
     #: Every client the export made, so a test can read what was asked of it.
     instances: list[FakeClient] = []
 
-    def __init__(self, api_key, cache_dir, raw_log):
+    def __init__(self, api_key, cache_dir, raw_log, *, key_from_proxy=False):
         FakeClient.instances.append(self)
         self.calls = 0
         self._raw = raw_log
@@ -935,6 +935,34 @@ def test_a_delisted_name_stops_at_its_last_trade(vendor):
     assert ("OLD.N^A16", "carried_tail_dropped", False) in codes
 
 
+def test_trimming_every_name_stops_a_live_code_at_its_last_trade_too(vendor):
+    """#379: CIK-keyed identifiers carry no delisting mark, so every name is trimmed."""
+    good = [dict(row) for row in FakeClient.eod_rows["GOOD.US"]]
+    last = max(i for i, row in enumerate(good) if row["date"] <= "2016-07-29")
+    good[last].update(
+        {k: good[last - 1][k] for k in ("open", "high", "low", "close", "adjusted_close")},
+        volume=0.0,
+    )
+    FakeClient.eod_rows = {**FakeClient.eod_rows, "GOOD.US": good}
+
+    assert export.main(_argv(vendor, trim_carried_tails="all")) == 0
+
+    market = vendor["tmp"] / "package" / "market"
+    panel = pd.read_csv(next(market.glob("*_20160729.csv")), dtype={"dt": str})
+    assert panel[panel["kdcode"] == "GOOD.OQ"]["dt"].max() == good[last - 1]["date"]
+    symbols = json.loads(next(market.glob("*_symbols.json")).read_text())
+    assert symbols["GOOD.OQ"]["carried_tail_dropped"] == [good[last]["date"]]
+
+
+def test_the_manifest_carries_the_given_description(vendor):
+    manifest = vendor["tmp"] / "toy.r1.json"
+    argv = _argv(vendor, manifest_output=manifest, description="Small caps (#379).")
+
+    assert export.main(argv) == 0
+
+    assert json.loads(manifest.read_text())["metadata"]["description"] == "Small caps (#379)."
+
+
 @pytest.mark.parametrize(
     ("entry", "message"),
     [
@@ -1021,6 +1049,27 @@ def test_client_never_stores_or_reports_the_key(tmp_path, monkeypatch):
     with pytest.raises(export.VendorError) as caught:
         client.eod("A B.US", "2020-01-01", "2020-01-31")
     assert key not in str(caught.value) and caught.value.__cause__ is None
+
+
+def test_client_sends_no_key_only_when_a_proxy_adds_it(tmp_path, monkeypatch):
+    """#379: in the cloud the network proxy adds the key; the client must send none."""
+    seen_urls = []
+
+    def fake_urlopen(url, timeout):
+        seen_urls.append(url)
+        return _Response([])
+
+    monkeypatch.setattr(export.urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(export.VendorError, match="not set"):
+        export.EodhdClient("", tmp_path / "cache", [])
+
+    client = export.EodhdClient("", tmp_path / "cache", [], key_from_proxy=True)
+    client.eod("AAPL.US", "2020-01-01", "2020-01-31")
+    assert "api_token" not in seen_urls[-1] and "fmt=json" in seen_urls[-1]
+
+    keyed = export.EodhdClient("k", tmp_path / "other", [], key_from_proxy=True)
+    keyed.eod("AAPL.US", "2020-01-01", "2020-01-31")
+    assert "api_token=k" in seen_urls[-1]  # a key that is set is still sent
 
 
 def test_client_quotes_symbols_and_retries_dropped_connections(tmp_path, monkeypatch):

@@ -492,9 +492,12 @@ EODHD daily prices for the point-in-time universe (#281).
 | `test_a_declared_unavailable_name_is_left_out_and_disclosed` |  |  |
 | `test_a_name_with_no_rows_still_blocks_unless_declared` |  |  |
 | `test_a_delisted_name_stops_at_its_last_trade` |  |  |
+| `test_trimming_every_name_stops_a_live_code_at_its_last_trade_too` | #379: CIK-keyed identifiers carry no delisting mark, so every name is trimmed. |  |
+| `test_the_manifest_carries_the_given_description` |  |  |
 | `test_symbol_map_rejects_a_malformed_unavailable_entry` |  | parametrize |
 | `test_the_key_is_never_written` |  |  |
 | `test_client_never_stores_or_reports_the_key` |  |  |
+| `test_client_sends_no_key_only_when_a_proxy_adds_it` | #379: in the cloud the network proxy adds the key; the client must send none. |  |
 | `test_client_quotes_symbols_and_retries_dropped_connections` |  |  |
 | `test_client_records_when_each_response_was_served` | Issue 347: the later splits in volume run to when the vendor served the rows, cached or not. |  |
 | `test_the_volume_check_passes_a_package_built_from_its_cache` | Two stretches of one symbol share its later split once each, never twice (#347 review). |  |
@@ -943,6 +946,26 @@ Jev's answers graded against the hand labels (#289).
 | `test_grading_script_writes_summary_calibration_and_disagreements_first` |  |  |
 | `test_grading_script_refuses_a_half_labelled_sheet` |  |  |
 
+## `tests/test_filings_iwm_holdings.py`
+
+Russell 2000 membership from IWM's SEC holdings filings (E14).
+
+**Exercises:** `mci_gru.filings.iwm_holdings`, `scripts.data.build_r2k_members`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_the_n_q_schedule_runs_from_the_first_page_header_to_the_net_assets_line` |  |  |
+| `test_another_funds_holding_of_iwm_is_not_a_page_header` |  |  |
+| `test_an_n_port_gives_its_series_date_and_holdings_with_isin` |  |  |
+| `test_holding_keys_ignore_punctuation_state_suffixes_and_legal_words` |  | parametrize |
+| `test_different_companies_keep_different_keys` |  |  |
+| `test_a_split_after_the_report_date_is_undone_before_comparing` |  |  |
+| `test_a_missing_or_zero_price_never_matches` |  |  |
+| `test_membership_runs_from_a_report_date_to_the_day_before_the_next_date_it_is_missing` |  |  |
+| `test_larger_draw_keeps_the_smaller_draw_as_its_first_release` |  |  |
+| `test_a_later_release_never_takes_an_earlier_release_companys_key` |  |  |
+| `test_rest_release_adds_every_undrawn_company_and_keeps_the_draw` |  |  |
+
 ## `tests/test_filings_jev.py`
 
 The frozen question set, the answer cache and the blind label sheet (#289).
@@ -1221,13 +1244,16 @@ The first run declares no cessation file; this pins why that is safe, and when n
 
 Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 
-**Exercises:** `mci_gru.config`, `mci_gru.data.input_manifest`, `scripts`
+**Exercises:** `mci_gru.config`, `mci_gru.data.input_manifest`, `mci_gru.preregistration`, `scripts`
 
 | Test | Description | Markers |
 |---|---|---|
 | `test_recipe_overrides_are_read_from_the_recipe_document` |  |  |
 | `test_recipe_parsing_refuses_a_missing_block_or_a_key_set_twice` |  |  |
 | `test_smoke_replaces_the_budget_in_place_and_full_keeps_it` |  |  |
+| `test_the_recipe_on_its_own_window_gains_no_override` | W5 is the recipe (#367), so moving the recipe onto W5 changes nothing. |  |
+| `test_a_window_run_composes_onto_that_windows_dates_and_passes_the_runner_gate` |  | parametrize |
+| `test_the_holdout_is_never_a_window_a_run_may_name` |  |  |
 | `test_capture_is_added_only_when_the_recipe_does_not_select_it` |  |  |
 | `test_replace_override_refuses_a_key_the_recipe_does_not_set` |  |  |
 | `test_run_overrides_compose_into_the_typed_config` | The notebook's overrides go through Hydra the way run_experiment.py takes them. | parametrize |
@@ -1293,6 +1319,7 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_an_arm_that_would_change_nothing_is_refused` |  |  |
 | `test_every_arm_composes_into_the_typed_config` | Each arm goes through Hydra the way run_experiment.py takes it. | parametrize |
 | `test_a_control_arm_records_itself_and_is_never_an_admitted_run_candidate` |  |  |
+| `test_a_window_run_records_its_window_in_its_folder_name_and_record` |  |  |
 | `test_an_arm_the_recipe_cannot_take_is_refused_before_anything_is_written` |  |  |
 | `test_junit_outcome_reads_the_cuda_test` |  | parametrize |
 | `test_the_gpu_check_passes_only_when_the_cuda_test_ran_and_passed` |  | parametrize |
@@ -1307,6 +1334,15 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_compare_pairs_runs_recorded_before_and_after_the_protocol_stamp` | A run launched before #372 has no ``protocol.*`` override; one launched after it |  |
 | `test_compare_refuses_an_arm_given_twice_or_a_reference_other_than_the_recipe` |  |  |
 | `test_compare_flags_auxiliary_inputs_that_differ_from_the_recipe_arms` |  |  |
+| `test_compare_pools_each_arms_windows_and_reports_each_window` |  |  |
+| `test_compare_reads_a_run_from_before_window_records_by_its_dates` |  |  |
+| `test_compare_refuses_a_run_whose_window_is_not_what_it_scored` |  | parametrize |
+| `test_a_run_on_dates_that_are_no_window_is_refused` |  |  |
+| `test_compare_refuses_arms_that_ran_different_windows` |  |  |
+| `test_compare_refuses_a_window_given_twice_for_one_arm` |  |  |
+| `test_compare_refuses_reference_windows_that_differ_beyond_their_dates` |  |  |
+| `test_compare_refuses_runs_that_score_different_label_horizons` |  |  |
+| `test_window_runs_take_their_dates_from_the_data_group_they_select` | The data config comes from the overrides given, not from the checkout's recipe. |  |
 | `test_compare_writes_strict_json_and_never_writes_over_a_folder` |  |  |
 | `test_check_arms_refuses_before_training_an_arm_the_recipe_cannot_take` |  |  |
 | `test_check_arms_accepts_the_levels_arm_once_the_recipe_pins_relative_inputs` | Control for the refusal above: the #325 recipe gives levels_inputs a pin to undo. |  |
@@ -2309,6 +2345,9 @@ Pre-registered experiments and the runner's standing gate (#372, PRD #369).
 | `test_an_arm_that_changes_nothing_is_refused` | The recipe already sets graph.drop_edge_p=0.1, so this arm is the control. |  |
 | `test_a_changed_recipe_is_refused` |  |  |
 | `test_an_exploratory_run_is_stamped_exploratory` |  |  |
+| `test_an_exploratory_run_records_the_window_its_dates_are` |  | parametrize |
+| `test_an_exploratory_run_labelled_with_another_windows_name_is_refused` |  |  |
+| `test_no_run_may_name_the_holdout_as_its_window` |  |  |
 | `test_a_run_with_no_standing_is_refused` |  |  |
 | `test_a_declared_run_is_stamped_with_its_declaration` |  |  |
 | `test_a_declared_run_composed_from_another_config_tree_is_refused` | ``--config-path`` elsewhere would feed the run and its check the same tree. |  |
@@ -2383,6 +2422,31 @@ The locked 2026 holdout and the window schedule (#370, PRD #369).
 | `test_the_capacity_replay_refuses_predictions_in_the_holdout` |  |  |
 | `test_the_backtest_guard_reads_the_strategy_exit_not_only_the_label` | An open_to_open hold sells at open D+1+holding_period, which can pass the label. |  |
 | `test_the_replay_library_call_reads_the_strategy_exit` | W5's window with a 20-session hold sells inside the holdout. |  |
+
+## `tests/test_r2k_sample_universe.py`
+
+The small-caps universe draw (#379): frame, draw size, membership file and symbol map.
+
+**Exercises:** `mci_gru.data.eodhd_prices`, `mci_gru.data.input_manifest`, `mci_gru.data.pit`, `scripts.data.build_r2k_sample_universe`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_frame_keeps_window_members_with_a_price_confirmed_holding` |  |  |
+| `test_draw_size_scales_the_frame_to_the_target_members` |  |  |
+| `test_draw_is_seeded_and_ignores_input_order` |  |  |
+| `test_membership_file_clips_to_the_window_end_and_loads` |  |  |
+| `test_ticker_change_ends_the_old_symbol_on_its_last_close` |  |  |
+| `test_ticker_change_without_prices_ends_the_day_before_the_new_report` |  |  |
+| `test_main_writes_the_three_outputs` |  |  |
+| `test_symbols_after_the_window_end_are_ignored` |  |  |
+| `test_review_moves_the_start_and_declares_adjustments_with_a_reason` |  |  |
+| `test_review_drops_a_single_wrong_session_by_splitting_the_segment` |  |  |
+| `test_a_share_class_is_kept_for_the_whole_history_even_when_the_other_is_larger_once` |  |  |
+| `test_review_keeps_one_segment_with_its_bounds_and_can_end_the_series` |  |  |
+| `test_join_returns_measure_the_close_to_close_move_across_a_symbol_change` |  |  |
+| `test_main_stops_on_a_large_join_return_without_a_keep_segments_decision` |  | parametrize |
+| `test_the_config_binds_its_files_to_the_committed_package` |  |  |
+| `test_the_config_keeps_the_recipe_window` | Only the universe changes: train 2020-2023 (the recipe's start), validate 2024, test 2025. |  |
 
 ## `tests/test_readme_figure.py`
 

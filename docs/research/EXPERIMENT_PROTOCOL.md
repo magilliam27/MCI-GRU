@@ -23,7 +23,9 @@ and #369 win.
   and the SHA-256 of the recipe's override lines.
 - **Exploratory.** `protocol.exploratory=true`. Smoke runs, debugging, a
   W5-only run, and any run whose design was not written down first all go here.
-  The run is stamped `exploratory` and never gets a verdict (decision 6).
+  The run is stamped `exploratory` and never gets a verdict (decision 6). It may
+  also name `protocol.window=<W1..W5>`, and is then refused unless its six dates
+  are that window's; the stamp records the window (#371).
 
 The gate is `mci_gru/preregistration.py` (`resolve_run_standing`, #372).
 
@@ -145,6 +147,16 @@ python run_experiment.py <the recipe's overrides> +experiment=graph_zeroed \
     protocol.experiment_id=graph-zeroed-control protocol.arm=graph_zeroed protocol.window=W3
 ```
 
-Until #371 gives the launcher a `--window` flag, the window dates are passed by
-hand. `tests/test_preregistration.py` checks that this template loads and that a
-run built this way is accepted.
+`scripts/first_run_colab.py run --window W3` builds the window's dates on top of
+the recipe (#371); its runs are exploratory until the launcher can name an
+experiment (#373). `tests/test_preregistration.py` checks that this template loads
+and that a run built this way is accepted.
+
+## Pooled comparison
+
+`scripts/first_run_colab.py compare` takes one run folder per arm and window. Per
+arm it joins the windows' dated IC into one series, so the paired difference is
+pooled over every window's test dates, and it reports each window's difference
+beside it. It refuses arms with different window sets, a window given twice, and a
+run that scored dates outside its window's test span (#371). The verdict and the
+ledger it needs are #373.
