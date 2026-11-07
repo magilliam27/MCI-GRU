@@ -19,15 +19,21 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from mci_gru.config import ExperimentConfig
 from mci_gru.evaluation.baselines import past_return
+from mci_gru.evaluation.candidate_registry import CANDIDATES
+from mci_gru.evaluation.candidates import CandidateContext, check_no_lookahead, check_result
 from mci_gru.evaluation.return_history_net import (
     DAILY_LAGS,
     INPUT_LAGS,
     MONTHLY_LAGS,
     NetSpec,
+    _score_candidate,
     fit_predict,
     rank_within_date,
     return_history_inputs,
+    return_net_cnn_lstm,
+    return_net_fnn,
     standardise_within_date,
 )
 from mci_gru.evaluation.statistics import daily_ic_series
@@ -42,7 +48,8 @@ def _panel(n_sessions: int = 320, n_stocks: int = 30, seed: int = 0) -> pd.DataF
     for j, kdcode in enumerate(STOCKS[:n_stocks]):
         closes = 40.0 * (1 + j / 10) * np.cumprod(1.0 + rng.normal(0.0, 0.02, n_sessions))
         rows += [
-            {"kdcode": kdcode, "dt": d, "close": c} for d, c in zip(dates, closes, strict=True)
+            {"kdcode": kdcode, "dt": d, "close": c, "volume": 1e6}
+            for d, c in zip(dates, closes, strict=True)
         ]
     return pd.DataFrame(rows)
 
@@ -194,3 +201,61 @@ def test_an_unknown_architecture_is_refused():
             test_dates=sessions[45:50],
             spec=NetSpec(architecture="transformer"),
         )
+
+
+# --- The candidate arms on the #384 harness ---------------------------------------------
+
+SMALL = NetSpec(members=1, max_epochs=3, patience=2)
+
+
+def _context(n_sessions: int = 420) -> CandidateContext:
+    panel = _panel(n_sessions=n_sessions)
+    sessions = sorted(panel.dt.unique())
+    train, val, test = sessions[260:360], sessions[365:390], sessions[395:415]
+    rankable = np.ones((len(test), len(STOCKS)), dtype=bool)
+    rankable[:, 0] = False  # one name is never tradable on the test dates
+    data = {
+        "train_dates": train,
+        "val_dates": val,
+        "test_dates": test,
+        "train_labels": _planted(panel, train),
+        "val_labels": _planted(panel, val),
+        "train_loss_mask": np.ones((len(train), len(STOCKS)), dtype=bool),
+        "val_tradable_mask": np.ones((len(val), len(STOCKS)), dtype=bool),
+    }
+    return CandidateContext(
+        config=ExperimentConfig(),
+        panel=panel.loc[panel.dt <= test[-1]].reset_index(drop=True),
+        kdcodes=list(STOCKS),
+        test_dates=test,
+        rankable_mask=rankable,
+        pit_intervals=None,
+        data_loader=lambda: data,
+    )
+
+
+def test_both_arms_are_registered_under_stable_names():
+    assert CANDIDATES["return_net_fnn"] is return_net_fnn
+    assert CANDIDATES["return_net_cnn_lstm"] is return_net_cnn_lstm
+
+
+@pytest.mark.parametrize("architecture", ["fnn", "cnn_lstm"])
+def test_no_arm_score_moves_when_later_prices_are_scrambled(architecture):
+    context = _context()
+    spec = NetSpec(architecture=architecture, members=1, max_epochs=3, patience=2)
+
+    check_no_lookahead(lambda c: _score_candidate(c, spec), context, context.test_dates[10])
+
+
+def test_the_arm_keeps_the_runs_mask_and_records_its_training():
+    context = _context()
+
+    result = _score_candidate(context, SMALL)
+    scores = check_result(result, context)
+
+    assert np.isnan(scores[:, 0]).all()
+    assert np.isfinite(scores[:, 1:]).all()
+    assert result.controls["spec"]["architecture"] == "fnn"
+    assert result.controls["input_lags_sessions"] == list(INPUT_LAGS)
+    assert len(result.controls["member_best_epoch"]) == 1
+    assert result.controls["train_dates"] == 100

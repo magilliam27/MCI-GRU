@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from mci_gru.evaluation.residual_linear import residual_linear, residual_reversal_1w
+from mci_gru.evaluation.return_history_net import return_net_cnn_lstm, return_net_fnn
 
 if TYPE_CHECKING:
     from mci_gru.evaluation.candidates import Candidate
@@ -17,6 +18,8 @@ if TYPE_CHECKING:
 CANDIDATES: dict[str, Candidate] = {
     "residual_linear": residual_linear,
     "residual_reversal_1w": residual_reversal_1w,
+    "return_net_fnn": return_net_fnn,
+    "return_net_cnn_lstm": return_net_cnn_lstm,
 }
 
 

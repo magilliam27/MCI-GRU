@@ -35,6 +35,7 @@ import torch
 from torch import nn
 
 from mci_gru.data.preprocessing import label_session_axis
+from mci_gru.evaluation.candidates import CandidateContext, CandidateResult
 from mci_gru.evaluation.statistics import daily_ic_series
 
 if TYPE_CHECKING:
@@ -282,7 +283,21 @@ def _train_member(
     return model, best_epoch, float(best_ic)
 
 
-def fit_predict(
+def fit_predict(*args, **kwargs) -> NetFit:
+    """``_fit_predict`` on one CPU thread, restoring the caller's thread count after.
+
+    These networks are tiny: one thread is faster than several (thread hand-offs
+    dominate an LSTM step this small), and it lets the five windows run side by side.
+    """
+    threads = torch.get_num_threads()
+    torch.set_num_threads(1)
+    try:
+        return _fit_predict(*args, **kwargs)
+    finally:
+        torch.set_num_threads(threads)
+
+
+def _fit_predict(
     panel: pd.DataFrame,
     kdcodes: list[str],
     *,
@@ -305,7 +320,6 @@ def fit_predict(
     spec = spec or NetSpec()
     if spec.architecture not in ARCHITECTURES:
         raise ValueError(f"unknown architecture {spec.architecture!r}")
-    torch.set_num_threads(max(1, torch.get_num_threads()))
 
     raw_tr, ok_tr = return_history_inputs(panel, kdcodes, train_dates)
     raw_va, ok_va = return_history_inputs(panel, kdcodes, val_dates)
@@ -337,3 +351,58 @@ def fit_predict(
     fit.ensemble_val_ic = _mean_ic(val_scores, val_y, val_keep)
     fit.scores = np.where(ok_te, scores, np.nan)
     return fit
+
+
+# ── candidate arms (#384 harness) ────────────────────────────────────────
+
+
+def _score_candidate(context: CandidateContext, spec: NetSpec) -> CandidateResult:
+    data = context.data
+    fit = fit_predict(
+        context.panel,
+        context.kdcodes,
+        train_dates=context.train_dates,
+        train_labels=np.asarray(data["train_labels"], dtype=np.float64),
+        train_mask=data.get("train_loss_mask"),
+        val_dates=context.val_dates,
+        val_labels=np.asarray(data["val_labels"], dtype=np.float64),
+        val_mask=data.get("val_tradable_mask"),
+        test_dates=context.test_dates,
+        spec=spec,
+    )
+    scores = fit.scores
+    if context.rankable_mask is not None:
+        scores = np.where(np.asarray(context.rankable_mask, dtype=bool), scores, np.nan)
+    return CandidateResult(
+        scores=scores,
+        controls={
+            "definition": f"{spec.architecture} on ranked cumulative return paths "
+            "(20 daily, 12 monthly lags); target the training label standardised within date",
+            "input_lags_sessions": list(INPUT_LAGS),
+            "spec": {
+                "architecture": spec.architecture,
+                "members": spec.members,
+                "max_epochs": spec.max_epochs,
+                "patience": spec.patience,
+                "dates_per_batch": spec.dates_per_batch,
+                "learning_rate": spec.learning_rate,
+                "weight_decay": spec.weight_decay,
+                "seed": spec.seed,
+            },
+            "member_best_epoch": fit.member_best_epoch,
+            "member_validation_ic": fit.member_val_ic,
+            "ensemble_validation_ic": fit.ensemble_val_ic,
+            "train_dates": fit.train_dates,
+            "train_rows": fit.train_rows,
+        },
+    )
+
+
+def return_net_fnn(context: CandidateContext) -> CandidateResult:
+    """The primary arm: a 32-32-16-1 network over the ranked return path."""
+    return _score_candidate(context, NetSpec(architecture="fnn"))
+
+
+def return_net_cnn_lstm(context: CandidateContext) -> CandidateResult:
+    """The secondary arm: a CNN plus LSTM over the daily and monthly paths."""
+    return _score_candidate(context, NetSpec(architecture="cnn_lstm"))
