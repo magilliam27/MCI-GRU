@@ -15,10 +15,10 @@
 
 For production-style confirmation notebooks and PIT validation runs, use the
 frozen recipe in `docs/DEFAULT_EXPERIMENT_RECIPE.md`:
-`static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32__train-4y`.
+`static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32__train-4y__graph-quarterly-0p5`.
 It means a 20-model, 100-epoch, patience-15 ensemble; pure IC loss; raw 5-day
-return labels; `selection_metric=val_ic`; shuffled static threshold graph;
-multi-feature edges; `drop_edge_p=0.1`; static weekly momentum; strict
+return labels; `selection_metric=val_ic`; shuffled training; a correlation
+threshold graph at 0.5 rebuilt every quarter (#377); multi-feature edges; `drop_edge_p=0.1`; static weekly momentum; strict
 current-only global regime features; data-dependent market latents; the
 residual cross-stock block; a 32-then-10 `gru_attn` encoder; residual graph
 layers; per-stock relative base inputs in place of raw price and volume levels;
@@ -157,7 +157,7 @@ or renaming tests: `.\.venv\Scripts\python.exe scripts/generate_test_registry.py
 ## Correlation graph
 
 How the graph is built, selected (threshold or top-K), given edge features, and scheduled is documented in `docs/ARCHITECTURE.md` (Graph section, including the dynamic `GraphSchedule` path) and routed in `docs/agents/guide.md` (Correlation edge selection, Edge feature width, and the graph block under Change propagation). The dynamic-graph preset is `configs/experiment/correlation_dynamic.yaml`.
-Whether the graph earns its place is a measured question: see the Graph Specification Evidence section of `docs/research/README.md`, where the graph-zeroed control is not beaten by any specification tried.
+Whether the graph earns its place is a measured question. The static-graph evidence is in the Graph Specification Evidence section of `docs/research/README.md`, where no static graph beats the graph-zeroed control. A graph rebuilt every quarter beat it on 2025 without reaching significance, and the owner adopted the quarterly 0.5 graph into the recipe on that evidence (#377, 2026-11-07; results in its comments and in `docs/DEFAULT_EXPERIMENT_RECIPE.md`).
 The April 2026 roadmap those measurements replaced is archived at `docs/research/archive/graph_signal_upgrades_plan_2026-04.md`; its lever names are still used in tickets, its todos are not a plan, and the diagnostic script it names was never in this repository.
 
 ## Code Style

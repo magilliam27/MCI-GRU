@@ -195,7 +195,7 @@ id: graph-zeroed-control
 family: graph
 hypothesis: >-
   The correlation graph adds IC over the same model with its edges suppressed.
-recipe: static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32__train-4y
+recipe: static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32__train-4y__graph-quarterly-0p5
 control: recipe
 arms:
   recipe: []
