@@ -1,0 +1,882 @@
+{
+  "schema": 1,
+  "description": "EODHD symbols for identifiers of the 110-name 2016 PIT universe that the rule in mci_gru/data/eodhd_prices.py default_symbol cannot map: renamed, reused, predecessor and delisted tickers (#281). Each segment lists candidate symbols tried in order, then EODHD's US listings whose company name contains name_hint. When the pull is given the preserved LSEG panel, a candidate is accepted only if its returns agree with that panel over the span the universe needs, so a wrong guess here stops the pull rather than entering the panel. Dates are inclusive and follow the listing changes. An entry may instead declare unavailable, with the reason the vendor holds no history for that identifier; it then has no rows in the panel. An entry may also declare adjustments (a corporate action the split records miss, such as a spin-off: prices before the date are multiplied by factor; by 1 - cash / the last close before the date when cash per share is given; or by the step in EODHD adjusted_close on that date when neither is given; share_conversion also divides earlier volume by the factor) and accepted_differences (dates whose one-day difference from the reference is explained); each needs a reason.",
+  "overrides": {
+    "AA.N": {
+      "note": "Alcoa Corporation, spun off on 2016-11-01 and an S&P 500 member for that day. EODHD's AA.US before then is the old Alcoa Inc. (renamed Arconic, now HWM), so the segment starts on the spin-off.",
+      "segments": [
+        {
+          "candidates": [
+            "AA.US"
+          ],
+          "start": "2016-11-01"
+        }
+      ]
+    },
+    "ADT.N^E16": {
+      "note": "The ADT Corporation, taken private 2016-05-02. The ADT ticker was reused by ADT Inc. in 2018; EODHD files the old company as ADT_old.",
+      "segments": [
+        {
+          "candidates": [
+            "ADT_old.US"
+          ],
+          "name_hint": "ADT Corp"
+        }
+      ]
+    },
+    "AIV.N": {
+      "segments": [
+        {
+          "candidates": [
+            "AIV.US"
+          ]
+        }
+      ],
+      "note": "Aimco special distributions, after its membership ended in 2020.",
+      "adjustments": [
+        {
+          "date": "2025-10-16",
+          "reason": "$2.23 distribution in EODHD's dividend records, several hundred times the name's typical record; a split-sized step between EODHD's raw and adjusted closes. EODHD's adjusted_close step is applied."
+        },
+        {
+          "date": "2026-02-27",
+          "reason": "$1.45 distribution in EODHD's dividend records, several hundred times the name's typical record; a split-sized step between EODHD's raw and adjusted closes. EODHD's adjusted_close step is applied."
+        },
+        {
+          "date": "2026-06-04",
+          "reason": "$1.30 distribution in EODHD's dividend records, several hundred times the name's typical record; a split-sized step between EODHD's raw and adjusted closes. EODHD's adjusted_close step is applied."
+        }
+      ]
+    },
+    "APC.N^H19": {
+      "note": "Anadarko Petroleum, acquired by Occidental 2019-08-08. EODHD's APC is now ARKO Petroleum; Anadarko is APC_old.",
+      "segments": [
+        {
+          "candidates": [
+            "APC_old.US"
+          ],
+          "name_hint": "Anadarko"
+        }
+      ]
+    },
+    "ATVI.OQ^J23": {
+      "note": "Delisted 2023-10-13 on its acquisition by Microsoft.",
+      "segments": [
+        {
+          "candidates": [
+            "ATVI.US"
+          ],
+          "name_hint": "Activision Blizzard"
+        }
+      ]
+    },
+    "BALL.N": {
+      "note": "Ball Corporation traded as BLL until 2022-05-09; BALL from the open on 2022-05-10 (Ball press release of 2022-04-27).",
+      "segments": [
+        {
+          "candidates": [
+            "BALL.US",
+            "BLL.US"
+          ],
+          "name_hint": "Ball Corp",
+          "end": "2022-05-09"
+        },
+        {
+          "candidates": [
+            "BALL.US"
+          ],
+          "start": "2022-05-10"
+        }
+      ]
+    },
+    "BBBY.OQ^E23": {
+      "note": "Bed Bath & Beyond (Nasdaq), delisted 2023 in bankruptcy. EODHD's delisted BBBY is the later NYSE reuse of the ticker; the original company is BBBY_old.",
+      "segments": [
+        {
+          "candidates": [
+            "BBBY_old.US"
+          ],
+          "name_hint": "Bed Bath"
+        }
+      ]
+    },
+    "BKNG.OQ": {
+      "note": "Traded as PCLN until 2018-02-26.",
+      "segments": [
+        {
+          "candidates": [
+            "BKNG.US",
+            "PCLN.US"
+          ],
+          "name_hint": "Priceline",
+          "end": "2018-02-26"
+        },
+        {
+          "candidates": [
+            "BKNG.US"
+          ],
+          "start": "2018-02-27"
+        }
+      ]
+    },
+    "BKR.OQ": {
+      "note": "Baker Hughes, a GE company (BHGE) from 2017-07-05, renamed BKR in 2019. LSEG carries Baker Hughes Inc (BHI) before it.",
+      "segments": [
+        {
+          "candidates": [
+            "BKR.US",
+            "BHI.US"
+          ],
+          "name_hint": "Baker Hughes",
+          "end": "2017-07-03"
+        },
+        {
+          "candidates": [
+            "BKR.US",
+            "BHGE.US"
+          ],
+          "start": "2017-07-05"
+        }
+      ],
+      "adjustments": [
+        {
+          "date": "2017-07-05",
+          "cash": 17.5,
+          "reason": "Baker Hughes Inc holders received $17.50 per share in cash plus one BHGE share when the combination with GE Oil & Gas closed, so BHI prices are restated net of the cash. The BHI-to-BHGE splice falls -35.4% against LSEG -7.3% that day in the first EODHD pull of 2026-10-08."
+        }
+      ]
+    },
+    "CA.OQ^K18": {
+      "note": "CA Technologies, acquired by Broadcom 2018-11-05; EODHD files it as CA_old.",
+      "segments": [
+        {
+          "candidates": [
+            "CA_old.US"
+          ],
+          "name_hint": "CA Technologies"
+        }
+      ]
+    },
+    "CAM.N^D16": {
+      "note": "Cameron International, acquired by Schlumberger 2016-04-01; EODHD files it as CAM_old (CAM_old1 is Camco).",
+      "segments": [
+        {
+          "candidates": [
+            "CAM_old.US"
+          ],
+          "name_hint": "Cameron International"
+        }
+      ]
+    },
+    "CB.N": {
+      "note": "ACE Limited (ACE) until it acquired Chubb on 2016-01-14 and took the CB ticker.",
+      "segments": [
+        {
+          "candidates": [
+            "CB.US",
+            "ACE.US"
+          ],
+          "name_hint": "ACE Limited",
+          "end": "2016-01-14"
+        },
+        {
+          "candidates": [
+            "CB.US"
+          ],
+          "start": "2016-01-15"
+        }
+      ]
+    },
+    "CB.N^A16": {
+      "note": "The Chubb Corporation, acquired by ACE on 2016-01-14; ACE then took the CB ticker. EODHD's CB.US is ACE/Chubb Ltd for the whole history; the old company is CB1.",
+      "segments": [
+        {
+          "candidates": [
+            "CB1.US"
+          ]
+        }
+      ]
+    },
+    "CCEP.OQ": {
+      "note": "LSEG files Coca-Cola Enterprises' S&P 500 years (to 2016-05-27) under its successor's RIC CCEP. The successor was formed by a three-way merger with cash, so only the old company's own series (EODHD CCE_old) is read; it ends at that company's last trade.",
+      "segments": [
+        {
+          "candidates": [
+            "CCE_old.US"
+          ],
+          "name_hint": "Coca-Cola Enterprises"
+        }
+      ]
+    },
+    "CHK.N^F20": {
+      "note": "Chesapeake Energy before its 2020 bankruptcy. EODHD's CHK.US runs on into the 2021 relisting and lacks 2015; the original company is CHK_old.",
+      "segments": [
+        {
+          "candidates": [
+            "CHK_old.US"
+          ]
+        }
+      ]
+    },
+    "CHTR.OQ": {
+      "note": "Charter Communications. When the Time Warner Cable merger closed on 2016-05-18, each legacy Charter share became 0.9042 shares of the new Charter. EODHD's pre-merger closes are the legacy closes times 0.9042 and its 4521/5000 split record on that date only divides that back out, so its split records do not carry the conversion itself (#347).",
+      "adjustments": [
+        {
+          "date": "2016-05-18",
+          "factor": 1.1059500110595002,
+          "share_conversion": true,
+          "reason": "Legacy Charter shares converted 0.9042 for 1 (5000/4521) in the Time Warner Cable merger, so earlier prices are restated per new share and earlier volume, counted in legacy shares, is converted to new shares. EODHD +11.85% against LSEG +1.11% that day in the first EODHD pull of 2026-10-08; 0.9042 reproduces LSEG's +1.11% (r1 and r2 used 0.9). The vendor's volume does not carry the conversion or the split record: its 21,642,600 on 2016-05-17 equals Yahoo's, which records no split there (#347)."
+        }
+      ]
+    },
+    "COST.OQ": {
+      "note": "Costco special dividends larger than the 3% daily limit.",
+      "adjustments": [
+        {
+          "date": "2015-02-05",
+          "reason": "$5 special dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -4.38% against -1.21% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.968."
+        },
+        {
+          "date": "2017-05-08",
+          "reason": "$7 special dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -4.20% against -0.32% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.961."
+        }
+      ]
+    },
+    "CSRA.N^D18": {
+      "note": "CSRA Inc., acquired by General Dynamics 2018-04-03; EODHD files it as CSRA_old.",
+      "segments": [
+        {
+          "candidates": [
+            "CSRA_old.US"
+          ],
+          "name_hint": "CSRA"
+        }
+      ]
+    },
+    "DD.N": {
+      "note": "DowDuPont from 2017-09-01, renamed DuPont de Nemours in 2019. Older DD rows are the previous company (DD.N^I17).",
+      "segments": [
+        {
+          "candidates": [
+            "DD.US",
+            "DWDP.US"
+          ],
+          "name_hint": "DuPont de Nemours",
+          "start": "2017-09-01"
+        }
+      ]
+    },
+    "DD.N^I17": {
+      "note": "E. I. du Pont de Nemours, traded as DD until the Dow merger closed on 2017-08-31. The merged DowDuPont traded as DWDP; the DD ticker was reused on 2019-06-03 when DowDuPont became DuPont de Nemours.",
+      "unavailable": "EODHD holds no history for the pre-merger DuPont common stock. Its DD.US rows before 2017-09-01 are The Dow Chemical Company's (the same closes as DOW_old.US, e.g. 45.59 on 2015-01-02), and its US listings carry only DuPont preferred shares (CTA-PA, CTA-PB, DD-PA, DD-PB). Found in the first EODHD pull of 2026-10-08; the name is absent from the panel. A data config using the package declares it in data.pit_absent_kdcodes, and admission then keeps it off the stock axis."
+    },
+    "DLPH.N^J20": {
+      "note": "Delphi Technologies, spun off from Delphi Automotive (now Aptiv) on 2017-12-05 and an S&P 500 member that day. EODHD's DLPH.US carries Delphi Automotive's closes before the spin-off (a -45.8% step on 2017-12-05), so the segment starts on it.",
+      "segments": [
+        {
+          "candidates": [
+            "DLPH.US"
+          ],
+          "start": "2017-12-05"
+        }
+      ]
+    },
+    "DNB.N^B19": {
+      "note": "The Dun & Bradstreet Corporation, taken private 2019-02-08. Its successor Dun & Bradstreet Holdings relisted as DNB in 2020; EODHD files the original as DNB_old.",
+      "segments": [
+        {
+          "candidates": [
+            "DNB_old.US"
+          ],
+          "name_hint": "Dun & Bradstreet"
+        }
+      ]
+    },
+    "DO.N^D20": {
+      "note": "Diamond Offshore before its 2020 bankruptcy. EODHD's DO.US is the company that relisted in 2022; the original is DO_old.",
+      "segments": [
+        {
+          "candidates": [
+            "DO_old.US"
+          ]
+        }
+      ]
+    },
+    "DOW.N": {
+      "note": "Dow Inc., spun off from DowDuPont; the LSEG panel starts 2019-03-20.",
+      "segments": [
+        {
+          "candidates": [
+            "DOW.US"
+          ],
+          "start": "2019-03-20"
+        }
+      ]
+    },
+    "DOW.N^I17": {
+      "note": "The Dow Chemical Company, traded as DOW until the DuPont merger closed on 2017-08-31. The DOW ticker was reused by Dow Inc. in 2019.",
+      "segments": [
+        {
+          "candidates": [],
+          "name_hint": "Dow Chemical",
+          "end": "2017-08-31"
+        }
+      ]
+    },
+    "EMC.N^I16": {
+      "note": "EMC Corporation, acquired by Dell 2016-09-07; EODHD files it as EMC_old.",
+      "segments": [
+        {
+          "candidates": [
+            "EMC_old.US"
+          ],
+          "name_hint": "EMC"
+        }
+      ]
+    },
+    "EQIX.OQ": {
+      "note": "Equinix special distribution.",
+      "adjustments": [
+        {
+          "date": "2015-10-06",
+          "reason": "Special distribution, several times the regular dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -4.19% against -0.60% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.961."
+        }
+      ]
+    },
+    "EQR.N": {
+      "note": "Equity Residential special dividends in 2016.",
+      "adjustments": [
+        {
+          "date": "2016-03-01",
+          "reason": "Special dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -7.88% against +3.20% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.893."
+        },
+        {
+          "date": "2016-09-22",
+          "reason": "Special dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -2.50% against +2.14% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.947."
+        }
+      ]
+    },
+    "EVHC.N^J18": {
+      "note": "Envision Healthcare Corporation: AmSurg (AMSG) until the 2016-12-01 merger, which renamed it and took the EVHC ticker one for one; acquired by KKR in 2018.",
+      "segments": [
+        {
+          "candidates": [
+            "AMSG.US"
+          ],
+          "end": "2016-12-01"
+        },
+        {
+          "candidates": [
+            "EVHC.US"
+          ],
+          "start": "2016-12-02"
+        }
+      ]
+    },
+    "EVHC.N^L16": {
+      "note": "Envision Healthcare Holdings, merged into AmSurg on 2016-12-01. EODHD's EVHC.US carries its closes to that day and the successor's from 2016-12-02 (at about three times the price), so the segment ends there.",
+      "segments": [
+        {
+          "candidates": [
+            "EVHC.US"
+          ],
+          "end": "2016-12-01"
+        }
+      ]
+    },
+    "F.N": {
+      "note": "Ford supplemental dividend.",
+      "adjustments": [
+        {
+          "date": "2023-02-10",
+          "cash": 0.65,
+          "reason": "$0.65 supplemental dividend paid with the regular $0.15. EODHD's split-only prices drop with it and the LSEG panel does not: -5.63% against -0.86% that day in the first EODHD pull of 2026-10-08. Only the supplemental is restated, because the LSEG panel carries regular dividends unadjusted; EODHD's adjusted_close step (0.941) would take out both. No Ford split since, so the cash is on the pull's price basis."
+        }
+      ]
+    },
+    "FTI.N^A17": {
+      "note": "FMC Technologies, combined into TechnipFMC on 2017-01-17. EODHD files its own series as FTI1; its FTI.US is TechnipFMC.",
+      "segments": [
+        {
+          "candidates": [
+            "FTI1.US"
+          ]
+        }
+      ]
+    },
+    "GEN.OQ": {
+      "segments": [
+        {
+          "candidates": [
+            "GEN.US"
+          ]
+        }
+      ],
+      "note": "Gen Digital (Symantec, then NortonLifeLock) special dividends.",
+      "adjustments": [
+        {
+          "date": "2016-03-04",
+          "reason": "Symantec's $4 special dividend; a split-sized step between EODHD's raw and adjusted closes. EODHD's adjusted_close step is applied."
+        },
+        {
+          "date": "2020-02-03",
+          "reason": "NortonLifeLock's $12 special dividend; a split-sized step between EODHD's raw and adjusted closes. EODHD's adjusted_close step is applied."
+        }
+      ]
+    },
+    "GTX.N^I20": {
+      "note": "Garrett Motion, an S&P 500 member for one day (2018-10-01) when spun off from Honeywell; its NYSE line was retired in the 2020 bankruptcy. EODHD's GTX.US runs on into the reorganised company, so the segment ends with that month.",
+      "segments": [
+        {
+          "candidates": [
+            "GTX.US"
+          ],
+          "end": "2020-09-30"
+        }
+      ]
+    },
+    "HES.N^G25": {
+      "note": "Delisted 2025-07-18 on its acquisition by Chevron.",
+      "segments": [
+        {
+          "candidates": [
+            "HES.US"
+          ],
+          "name_hint": "Hess Corp"
+        }
+      ]
+    },
+    "IILGV.OQ^E16": {
+      "note": "Interval Leisure Group when-issued line, an S&P 500 member for the one day 2016-05-13.",
+      "unavailable": "EODHD lists no IILGV symbol: when-issued lines are not carried."
+    },
+    "INFO.N^B22": {
+      "note": "IHS Markit, merged into S&P Global 2022-02-28; EODHD files it as INFO_old1.",
+      "segments": [
+        {
+          "candidates": [
+            "INFO_old1.US"
+          ],
+          "name_hint": "Markit"
+        }
+      ]
+    },
+    "JCI.N": {
+      "segments": [
+        {
+          "candidates": [
+            "JCI.US"
+          ]
+        }
+      ],
+      "note": "Johnson Controls spin-off of Adient.",
+      "adjustments": [
+        {
+          "date": "2016-10-31",
+          "reason": "Spin-off of Adient (one ADNT per ten JCI) on 2016-10-31: EODHD's split-only close falls with it and its adjusted_close steps by 0.893. A spin-off changes the price basis, so the vendor step is applied."
+        }
+      ]
+    },
+    "JCI.N^I16": {
+      "note": "Johnson Controls Inc., merged with Tyco on 2016-09-02. The merged company kept Tyco's legal history and took the JCI ticker.",
+      "unavailable": "EODHD holds no series for the pre-merger Johnson Controls Inc.: its JCI.US before 2016-09-02 is Tyco's (31.79 on 2016-01-04, the same close as TYC.US), and no other listing carries the name. LSEG's monthly market cap for this RIC is Tyco's too."
+    },
+    "KDP.OQ": {
+      "segments": [
+        {
+          "candidates": [
+            "KDP.US"
+          ]
+        }
+      ],
+      "note": "Keurig Dr Pepper special dividend.",
+      "adjustments": [
+        {
+          "date": "2018-07-10",
+          "reason": "$103.75 special dividend paid to Dr Pepper Snapple holders when Keurig Green Mountain merged into it; a split-sized step between EODHD's raw and adjusted closes. EODHD's adjusted_close step is applied."
+        }
+      ]
+    },
+    "LDOS.N": {
+      "segments": [
+        {
+          "candidates": [
+            "LDOS.US"
+          ]
+        }
+      ],
+      "note": "Leidos special dividend.",
+      "adjustments": [
+        {
+          "date": "2016-08-17",
+          "reason": "$13.64 special dividend paid before the Lockheed Martin IS&GS combination; a split-sized step between EODHD's raw and adjusted closes. EODHD's adjusted_close step is applied."
+        }
+      ]
+    },
+    "LIN.OQ": {
+      "note": "Linde plc from 2018-10-31. LSEG carries Praxair (PX) before it; Praxair holders received one LIN share each. The PX ticker now belongs to P10 Inc.",
+      "segments": [
+        {
+          "candidates": [
+            "LIN.US"
+          ],
+          "name_hint": "Praxair",
+          "end": "2018-10-30"
+        },
+        {
+          "candidates": [
+            "LIN.US"
+          ],
+          "start": "2018-10-31"
+        }
+      ]
+    },
+    "LLL.N^G19": {
+      "note": "L3 Technologies, merged with Harris 2019-06-28; EODHD's delisted LLL is a later reuse, L3 is LLL_old.",
+      "segments": [
+        {
+          "candidates": [
+            "LLL_old.US"
+          ],
+          "name_hint": "L3"
+        }
+      ]
+    },
+    "LYB.N": {
+      "note": "LyondellBasell special dividend.",
+      "adjustments": [
+        {
+          "date": "2022-06-03",
+          "reason": "$5.20 special dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -6.81% against -2.41% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.945."
+        }
+      ]
+    },
+    "META.OQ": {
+      "note": "Traded as FB until 2022-06-08.",
+      "segments": [
+        {
+          "candidates": [
+            "META.US",
+            "FB.US"
+          ],
+          "name_hint": "Facebook",
+          "end": "2022-06-08"
+        },
+        {
+          "candidates": [
+            "META.US"
+          ],
+          "start": "2022-06-09"
+        }
+      ]
+    },
+    "MNK.N^J20": {
+      "note": "Mallinckrodt before its 2020 bankruptcy. EODHD's delisted MNK.US holds only the 2022-2023 relisting; the original history is filed as MNKKQ.",
+      "segments": [
+        {
+          "candidates": [
+            "MNKKQ.US"
+          ]
+        }
+      ]
+    },
+    "MON.N^F18": {
+      "note": "Monsanto, acquired by Bayer 2018-06-07; EODHD files it as MON_old.",
+      "segments": [
+        {
+          "candidates": [
+            "MON_old.US"
+          ],
+          "name_hint": "Monsanto"
+        }
+      ]
+    },
+    "NBL.OQ^J20": {
+      "note": "Noble Energy, acquired by Chevron in October 2020. EODHD's NBL.US ends with a zero-volume 2020-10-05 row and four rows at about half the last close (4.18 to 4.20 on 100-share volume), so the segment ends on the last trade, 2020-10-02.",
+      "segments": [
+        {
+          "candidates": [
+            "NBL.US"
+          ],
+          "end": "2020-10-02"
+        }
+      ]
+    },
+    "NFX.N^B19": {
+      "note": "Newfield Exploration, acquired by Encana 2019-02-13; EODHD files it as NFX_old.",
+      "segments": [
+        {
+          "candidates": [
+            "NFX_old.US"
+          ],
+          "name_hint": "Newfield"
+        }
+      ]
+    },
+    "PCL.N^B16": {
+      "note": "Plum Creek Timber, merged into Weyerhaeuser 2016-02-19; EODHD files it as PCL_old.",
+      "segments": [
+        {
+          "candidates": [
+            "PCL_old.US"
+          ],
+          "name_hint": "Plum Creek"
+        }
+      ]
+    },
+    "POM.N^C16": {
+      "note": "Pepco Holdings, acquired by Exelon 2016-03-23. EODHD's POM is now a different ADR; Pepco is POM_old.",
+      "segments": [
+        {
+          "candidates": [
+            "POM_old.US"
+          ],
+          "name_hint": "Pepco"
+        }
+      ]
+    },
+    "PSA.N": {
+      "note": "Public Storage special dividend.",
+      "adjustments": [
+        {
+          "date": "2022-07-29",
+          "reason": "$13.15 special dividend. EODHD's split-only prices drop with it and the LSEG panel does not: -3.17% against +0.76% that day in the first EODHD pull of 2026-10-08; EODHD's adjusted_close steps by 0.961."
+        }
+      ]
+    },
+    "PSKY.OQ": {
+      "note": "Paramount Skydance from 2025-08-07; before it Paramount Global (PARA), ViacomCBS (VIAC) and CBS Corp (CBS). By this pull EODHD files the whole history under PSKY.US (46.65 on 2016-01-04, CBS's close), and PARA.US is a different series from 2021. This replaces the 110-name map's PARA-first entry, which read the older layout.",
+      "segments": [
+        {
+          "candidates": [
+            "PSKY.US"
+          ]
+        }
+      ]
+    },
+    "PXD.N^E24": {
+      "note": "Delisted 2024-05-03 on its acquisition by Exxon Mobil.",
+      "segments": [
+        {
+          "candidates": [
+            "PXD.US"
+          ],
+          "name_hint": "Pioneer Natural Resources"
+        }
+      ]
+    },
+    "RTX.N": {
+      "note": "United Technologies (UTX) until 2020-04-02; renamed Raytheon Technologies on the Raytheon merger, later RTX Corp.",
+      "segments": [
+        {
+          "candidates": [
+            "RTX.US",
+            "UTX.US"
+          ],
+          "name_hint": "United Technologies",
+          "end": "2020-04-02"
+        },
+        {
+          "candidates": [
+            "RTX.US"
+          ],
+          "start": "2020-04-03"
+        }
+      ]
+    },
+    "SBNY.OQ^C23": {
+      "note": "Signature Bank, closed by regulators on 2023-03-12. EODHD's SBNY.US runs on with a carried 70.00 after the last trade on 2023-03-10, so the segment ends there.",
+      "segments": [
+        {
+          "candidates": [
+            "SBNY.US"
+          ],
+          "end": "2023-03-10"
+        }
+      ]
+    },
+    "SE.N^B17": {
+      "note": "Spectra Energy, merged with Enbridge 2017-02-27. EODHD's SE is now Sea Ltd; Spectra is SE_old.",
+      "segments": [
+        {
+          "candidates": [
+            "SE_old.US"
+          ],
+          "name_hint": "Spectra Energy"
+        }
+      ]
+    },
+    "SNDK.OQ^E16": {
+      "note": "SanDisk, acquired by Western Digital 2016-05-12. The SNDK ticker was reused by the 2025 Sandisk spin-off; the original is SNDK_old.",
+      "segments": [
+        {
+          "candidates": [
+            "SNDK_old.US"
+          ],
+          "name_hint": "SanDisk"
+        }
+      ]
+    },
+    "SPLS.OQ^I17": {
+      "note": "Staples, taken private 2017-09-12; EODHD files it as SPLS_old.",
+      "segments": [
+        {
+          "candidates": [
+            "SPLS_old.US"
+          ],
+          "name_hint": "Staples"
+        }
+      ]
+    },
+    "STI.N^L19": {
+      "note": "SunTrust Banks, merged into Truist 2019-12-06. EODHD's STI is now Solidion Technology; SunTrust is STI_old.",
+      "segments": [
+        {
+          "candidates": [
+            "STI_old.US"
+          ],
+          "name_hint": "SunTrust"
+        }
+      ]
+    },
+    "TE.N^G16": {
+      "note": "TECO Energy, acquired by Emera 2016-07-01. EODHD's TE is now T1 Energy; TECO is TE_old1.",
+      "segments": [
+        {
+          "candidates": [
+            "TE_old1.US"
+          ],
+          "name_hint": "TECO"
+        }
+      ]
+    },
+    "VAL.N^H20": {
+      "note": "Ensco plc (ESV), renamed Valaris plc in 2019 and delisted in its 2020 bankruptcy. EODHD's VAL.US is the company that relisted in 2021; the original is ESV.",
+      "segments": [
+        {
+          "candidates": [
+            "ESV.US"
+          ]
+        }
+      ]
+    },
+    "VSXY.N": {
+      "note": "Victoria's Secret & Co., spun off from L Brands and an S&P 500 member on 2021-08-03. EODHD files its history under the old ticker VSCO.US to 2026-04-27 and under VSXY.US from 2026-04-28 (51.73 on both).",
+      "segments": [
+        {
+          "candidates": [
+            "VSCO.US"
+          ],
+          "end": "2026-04-27"
+        },
+        {
+          "candidates": [
+            "VSXY.US"
+          ],
+          "start": "2026-04-28"
+        }
+      ]
+    },
+    "VTR.N": {
+      "segments": [
+        {
+          "candidates": [
+            "VTR.US"
+          ]
+        }
+      ],
+      "note": "Ventas spin-off of Care Capital Properties.",
+      "adjustments": [
+        {
+          "date": "2015-08-18",
+          "factor": 0.7668,
+          "reason": "Spin-off of Care Capital Properties (one CCP share per four VTR) effective 2015-08-18. EODHD records it as a 8757/10000 split, which raises the earlier prices instead of lowering them, so its split-adjusted close falls 23.57% that day against 0.33% in the LSEG panel. The factor (1-0.2357)/(1-0.0033) puts the day on LSEG's basis."
+        }
+      ]
+    },
+    "WBA.OQ^H25": {
+      "note": "Delisted 2025-08-28 when taken private.",
+      "segments": [
+        {
+          "candidates": [
+            "WBA.US"
+          ],
+          "name_hint": "Walgreens Boots Alliance"
+        }
+      ]
+    },
+    "WELL.N": {
+      "note": "Welltower traded as HCN until 2018-02-27.",
+      "segments": [
+        {
+          "candidates": [
+            "WELL.US",
+            "HCN.US"
+          ],
+          "name_hint": "Welltower",
+          "end": "2018-02-27"
+        },
+        {
+          "candidates": [
+            "WELL.US"
+          ],
+          "start": "2018-02-28"
+        }
+      ]
+    },
+    "WRK.N^G24": {
+      "segments": [
+        {
+          "candidates": [
+            "WRK.US"
+          ]
+        }
+      ],
+      "note": "WestRock spin-off of Ingevity.",
+      "adjustments": [
+        {
+          "date": "2016-05-16",
+          "reason": "Spin-off of Ingevity (one NGVT per six WRK) on 2016-05-16: EODHD's adjusted_close steps by 0.901 with no dividend record. A spin-off changes the price basis, so the vendor step is applied."
+        }
+      ]
+    },
+    "WY.N": {
+      "segments": [
+        {
+          "candidates": [
+            "WY.US"
+          ]
+        }
+      ],
+      "note": "Weyerhaeuser supplemental dividend.",
+      "adjustments": [
+        {
+          "date": "2022-02-17",
+          "reason": "$1.45 dividend on the ex-date (EODHD's record), mostly a supplemental on top of the base dividend. EODHD's split-only close falls 6.43% that day and the LSEG panel 3.07%; EODHD's adjusted_close steps by 0.965."
+        }
+      ]
+    },
+    "XL.N^I18": {
+      "note": "XL Group, acquired by AXA 2018-09-12. EODHD's delisted XL is XL Fleet; XL Group is XL_old.",
+      "segments": [
+        {
+          "candidates": [
+            "XL_old.US"
+          ],
+          "name_hint": "XL Group"
+        }
+      ]
+    },
+    "ZIMV.OQ^J25": {
+      "note": "ZimVie, taken private in October 2025. EODHD's ZIMV.US ends with zero-volume rows and a 230.00 close on 2025-11-03 after a last trade at 18.99, so the segment ends on 2025-10-17.",
+      "segments": [
+        {
+          "candidates": [
+            "ZIMV.US"
+          ],
+          "end": "2025-10-17"
+        }
+      ]
+    }
+  }
+}
