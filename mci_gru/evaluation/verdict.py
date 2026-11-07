@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
     from mci_gru.preregistration import Preregistration
 
@@ -32,6 +32,8 @@ REJECT = "reject"
 INCONCLUSIVE = "inconclusive"
 #: The one key whose change makes an arm the seed-floor arm.
 SEED_KEY = "seed"
+#: The ensemble size, which sets how many member seeds a base uses.
+NUM_MODELS_KEY = "training.num_models"
 
 
 class VerdictError(ValueError):
@@ -57,6 +59,38 @@ def seed_floor_arm(preregistration: Preregistration) -> str | None:
             "floor comes from exactly one"
         )
     return arms[0] if arms else None
+
+
+def seed_arm_problem(preregistration: Preregistration, recipe: Sequence[str]) -> str | None:
+    """Why the seed arm cannot measure the floor, or None (also None with no seed arm).
+
+    Member ``i`` of an ensemble trains on ``seed + i`` (``train_multiple_models``), so a
+    seed arm measures the noise of separately seeded ensembles only when none of its
+    member seeds is one the control's members used. ``recipe`` is the recipe's override
+    lines, which set the ensemble size.
+    """
+    arm = seed_floor_arm(preregistration)
+    if arm is None:
+        return None
+    value = preregistration.arms[arm][0].partition("=")[2].strip()
+    try:
+        seed = int(value)
+    except ValueError:
+        return f"seed arm {arm!r} sets seed to {value!r}, which is not an integer"
+    sizes = [o.partition("=")[2].strip() for o in recipe if _override_key(o) == NUM_MODELS_KEY]
+    if len(sizes) != 1 or not sizes[0].isdigit():
+        return (
+            f"the recipe sets {NUM_MODELS_KEY} {len(sizes)} times; the seed arm's member "
+            "seeds cannot be checked against the control's"
+        )
+    members = int(sizes[0])
+    base = preregistration.seed_base
+    if seed < base + members and base < seed + members:
+        return (
+            f"seed arm {arm!r} on base {seed} shares member seeds with the seed base {base} "
+            f"for a {members}-model ensemble; the floor needs a base at least {members} away"
+        )
+    return None
 
 
 def treatment_arms(preregistration: Preregistration) -> list[str]:
@@ -156,13 +190,30 @@ def decide(
 
 
 def seed_floor_from_verdict(
-    payload: Mapping[str, Any], *, recipe_slug: str, recipe_overrides_sha256: str
+    payload: Mapping[str, Any],
+    *,
+    recipe_slug: str,
+    recipe_overrides_sha256: str,
+    label_t: int | None = None,
+    windows: Sequence[str] | None = None,
 ) -> dict[str, Any]:
-    """The seed floor another experiment's ``verdict.json`` measured, for the same recipe.
+    """The seed floor another experiment's verdict measured, for the same recipe.
 
     Refused unless that verdict came from a complete ledger, measured a floor itself, and
-    ran the same recipe slug with the same override lines.
+    ran the same recipe slug with the same override lines, and, when given, the same
+    label horizon and windows. The launcher computes that verdict from the other
+    experiment's own runs; it never takes the numbers from a file.
     """
+    if label_t is not None and payload.get("label_t") != label_t:
+        raise VerdictError(
+            f"the named seed floor was measured at label_t {payload.get('label_t')!r}, "
+            f"not {label_t}"
+        )
+    if windows is not None and list(payload.get("windows") or []) != list(windows):
+        raise VerdictError(
+            f"the named seed floor was measured on windows {payload.get('windows')!r}, "
+            f"not {list(windows)}"
+        )
     floor = payload.get("seed_floor") or {}
     if payload.get("ledger_complete") is not True:
         raise VerdictError("the named seed-floor verdict does not come from a complete ledger")

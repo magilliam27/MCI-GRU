@@ -13,6 +13,7 @@ from mci_gru.evaluation.verdict import (
     VerdictError,
     adjusted_p_values,
     decide,
+    seed_arm_problem,
     seed_floor_arm,
     seed_floor_from_verdict,
     treatment_arms,
@@ -186,3 +187,32 @@ def test_another_verdicts_floor_is_read_for_the_same_recipe_only():
         seed_floor_from_verdict(
             _floor_verdict(), recipe_slug="other", recipe_overrides_sha256="a" * 64
         )
+
+
+def test_another_verdicts_floor_must_share_the_label_horizon_and_windows():
+    kwargs = {"recipe_slug": _SLUG, "recipe_overrides_sha256": "a" * 64}
+    payload = _floor_verdict(label_t=5, windows=["W1", "W2", "W3", "W4", "W5"])
+    windows = ["W1", "W2", "W3", "W4", "W5"]
+    assert seed_floor_from_verdict(payload, label_t=5, windows=windows, **kwargs)
+    with pytest.raises(VerdictError, match="label_t"):
+        seed_floor_from_verdict(payload, label_t=10, windows=windows, **kwargs)
+    with pytest.raises(VerdictError, match="windows"):
+        seed_floor_from_verdict(payload, label_t=5, windows=["W5"], **kwargs)
+
+
+def test_a_seed_arm_must_use_no_member_seed_the_control_uses():
+    """Member i trains on seed + i, so a base fewer than num_models away overlaps."""
+    recipe = ["training.num_models=20", "seed=1729"]
+
+    def problem(change):
+        return seed_arm_problem(_prereg({"recipe": [], "s": [change]}), recipe)
+
+    assert problem("seed=2729") is None
+    assert problem("seed=1749") is None
+    assert problem("seed=1709") is None
+    assert "shares member seeds" in problem("seed=1748")
+    assert "shares member seeds" in problem("seed=1729")
+    assert "shares member seeds" in problem("seed=1710")
+    assert "not an integer" in problem("seed=abc")
+    assert "cannot be checked" in seed_arm_problem(_prereg({"recipe": [], "s": ["seed=9"]}), [])
+    assert seed_arm_problem(_prereg({"recipe": [], "g": ["+experiment=x"]}), recipe) is None

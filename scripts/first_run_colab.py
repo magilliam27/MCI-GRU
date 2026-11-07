@@ -50,6 +50,7 @@ from mci_gru.evaluation.trial_ledger import validate_trial_family, write_trial_l
 from mci_gru.evaluation.verdict import (
     VerdictError,
     decide,
+    seed_arm_problem,
     seed_floor_arm,
     seed_floor_from_verdict,
     treatment_arms,
@@ -1030,6 +1031,13 @@ def _command_run(args: Any) -> int:
                 f"are {sorted(loaded.preregistration.arms)}"
             )
             return 1
+        if args.window not in loaded.preregistration.windows:
+            print(f"Refusing to run: {args.experiment} declares no window {args.window!r}")
+            return 1
+        reseed = seed_arm_problem(loaded.preregistration, recipe_overrides(loaded.recipe_text))
+        if reseed and args.arm == seed_floor_arm(loaded.preregistration):
+            print(f"Refusing to run: {reseed}")
+            return 1
         recipe_text = loaded.recipe_text
     else:
         if args.arm not in RUN_ARMS:
@@ -1108,6 +1116,12 @@ def _command_run(args: Any) -> int:
     (local_dir / "pip_freeze.txt").write_text(installed_distributions(), encoding="utf-8")
     if args.tag_file:
         Path(args.tag_file).write_text(run_tag + "\n", encoding="utf-8")
+    # On Drive at once, so a launch that dies before the first timed copy is still
+    # there for the trial ledger to count (#373).
+    try:
+        sync_to_drive(local_dir, drive_dir)
+    except OSError as error:
+        print(f"The first copy to Drive failed ({error}); it is retried while the run goes.")
     print(f"Run {run_tag}: {record['evidence']}")
     print(f"Local folder: {local_dir}\nDrive copy:   {drive_dir}")
     returncode = run_with_drive_sync(
@@ -1566,6 +1580,36 @@ def _read_json_file(path: Path) -> dict[str, Any] | None:
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
 
 
+#: Outputs that mean the run has seen the test set: per-member test predictions are
+#: written as each member finishes, long before the summary (``train_multiple_models``).
+SCORED_OUTPUTS = (
+    "daily_ic.csv",
+    "evaluation_summary.json",
+    "averaged_predictions",
+    "predictions_model_*",
+)
+
+
+def _unreadable_row(run_dir: Path, experiment_id: str, error: Exception) -> dict[str, Any]:
+    return {
+        "trial_id": "unreadable",
+        "family_id": experiment_id,
+        "status": INVALID,
+        "scored": False,
+        "problems": f"its launcher record or run metadata cannot be read: {error}",
+        "arm": None,
+        "window": None,
+        "run_tag": run_dir.name,
+        "run_dir": str(run_dir),
+        "commit": None,
+        "mode": None,
+        "returncode": None,
+        "started_at_utc": None,
+        "finished_at_utc": None,
+        "preregistration_sha256": None,
+    }
+
+
 def ledger_row(run_dir: Path, experiment_id: str) -> dict[str, Any] | None:
     """The ledger row of one launched run of *experiment_id*, or None if it is another's.
 
@@ -1573,23 +1617,28 @@ def ledger_row(run_dir: Path, experiment_id: str) -> dict[str, Any] | None:
     it. Status: ABORTED when the record has no exit code (the launcher never finished),
     FAILED on a non-zero exit or a clean exit without scores, COMPLETE on a clean exit
     with a stamp and scores, and INVALID when the folder cannot be trusted: no launcher
-    record, a record and a stamp that disagree, or a stamp that says exploratory.
-    ``scored`` says whether the folder holds test scores, whatever its status.
+    record, a record and a stamp that disagree, a stamp that says exploratory, more than
+    one run in the folder, or files that cannot be read. ``scored`` says whether the
+    folder holds anything computed on the test set (:data:`SCORED_OUTPUTS`), whatever
+    its status.
     """
     run_dir = Path(run_dir)
-    record = _read_json_file(run_dir / "colab_run_record.json")
     metadata = sorted(run_dir.rglob("run_metadata.json"))
-    stamp = None
-    if len(metadata) == 1:
-        stamp = (_read_json_file(metadata[0]) or {}).get("protocol")
-    named = (record or {}).get("experiment_id") == experiment_id or (
-        isinstance(stamp, dict) and stamp.get("experiment_id") == experiment_id
+    try:
+        record = _read_json_file(run_dir / "colab_run_record.json")
+        stamps = [(_read_json_file(path) or {}).get("protocol") for path in metadata]
+    except (OSError, ValueError) as error:
+        # A truncated copy may be a launch of this experiment; it cannot be ruled out.
+        return _unreadable_row(run_dir, experiment_id, error)
+    stamp = stamps[0] if len(stamps) == 1 else None
+    named = (record or {}).get("experiment_id") == experiment_id or any(
+        isinstance(s, dict) and s.get("experiment_id") == experiment_id for s in stamps
     )
     if not named:
         return None
     source = record if record is not None else (stamp or {})
     arm, window = source.get("arm"), source.get("window")
-    scored = any(run_dir.rglob("daily_ic.csv")) or any(run_dir.rglob("evaluation_summary.json"))
+    scored = any(any(run_dir.rglob(pattern)) for pattern in SCORED_OUTPUTS)
     problems = []
     if record is None:
         problems.append(
@@ -1729,6 +1778,9 @@ def experiment_verdict(
     preregistration = loaded.preregistration
     expected = [trial_id(a, w) for a in preregistration.arms for w in preregistration.windows]
     problems = ledger_problems(rows, expected)
+    reseed = seed_arm_problem(preregistration, recipe_overrides(loaded.recipe_text))
+    if reseed:
+        problems.append(reseed)
     if problems:
         raise VerdictError("the ledger is not the declared runs, complete: " + " | ".join(problems))
 
@@ -1745,6 +1797,7 @@ def experiment_verdict(
         stamp = _stamp_of(result.run_dir)
         for key, want in (
             ("preregistration_sha256", loaded.sha256),
+            ("preregistration_commit", commit),
             ("recipe_slug", preregistration.recipe),
             ("recipe_overrides_sha256", overrides_sha),
         ):
@@ -1812,12 +1865,14 @@ def experiment_verdict(
             seed_floor_verdict,
             recipe_slug=preregistration.recipe,
             recipe_overrides_sha256=overrides_sha,
+            label_t=label_t,
+            windows=windows,
         )
-        seed_floor = {**measured, "source": "another_verdict"}
+        seed_floor = {**measured, "source": "another_experiment"}
     else:
         raise VerdictError(
-            f"{experiment_id} declares no seed arm and no other verdict's seed floor was "
-            "named (--seed-floor); a verdict without the seed floor is refused"
+            f"{experiment_id} declares no seed arm and no other experiment's seed floor was "
+            "named (--seed-floor ID=RUNS_ROOT); a verdict without the seed floor is refused"
         )
     treatments = treatment_arms(preregistration)
     rule = preregistration.decision_rule
@@ -1850,6 +1905,14 @@ def experiment_verdict(
             }
         )
     statuses = [row["status"] for row in rows]
+    runs = []
+    for (_arm, window), result in sorted(
+        results.items(), key=lambda item: (item[0][0], RUN_WINDOWS.index(item[0][1]))
+    ):
+        control_aux = auxiliary_observation_digests(results[(control, window)].run_dir)
+        entry = _run_entry(result, control_aux)
+        entry["auxiliary_inputs_match_control"] = entry.pop("auxiliary_inputs_match_reference")
+        runs.append(entry)
     return {
         "schema_version": VERDICT_SCHEMA,
         "experiment_id": experiment_id,
@@ -1879,10 +1942,13 @@ def experiment_verdict(
         "seed_floor": seed_floor,
         "seed_floor_test": tests[seed_arm] if seed_arm is not None else None,
         "arms": arms,
+        "runs": runs,
         "note": "Adopt: adjusted p < alpha, a positive difference, and |difference| above "
         "seed_floor.value x seed_floor_multiple. Reject: the same with a negative "
         "difference. Otherwise inconclusive, and the default stays (PRD #369, decision 4). "
-        "Everything under reported_not_decisive decided nothing.",
+        "Everything under reported_not_decisive decided nothing. Each run fetched its FRED "
+        "inputs itself; auxiliary_inputs_match_control says whether its captured bytes were "
+        "the control run's on that window.",
     }
 
 
@@ -1902,17 +1968,28 @@ def _command_compare_experiment(args: Any) -> int:
     out_dir.mkdir(parents=True)
     paths = write_trial_ledger(rows, out_dir)
     print(f"Trial ledger ({len(rows)} launched runs) written to {paths['csv']}")
+    refusals = (VerdictError, PreregistrationError, ValueError, KeyError, TypeError, OSError)
     seed_floor_verdict = None
     if args.seed_floor:
-        seed_floor_verdict = json.loads(Path(args.seed_floor).read_text(encoding="utf-8"))
+        floor_id, _, floor_root = args.seed_floor.partition("=")
+        if not floor_id or not floor_root:
+            print(f"--seed-floor takes ID=RUNS_ROOT; got {args.seed_floor!r}")
+            return 1
+        try:
+            seed_floor_verdict = experiment_verdict(
+                experiment_ledger(floor_id, Path(floor_root)), repo_dir=REPO_DIR
+            )
+        except refusals as error:
+            print(f"No verdict: the seed floor's experiment {floor_id!r} gives none: {error}")
+            return 1
     try:
         verdict = experiment_verdict(rows, repo_dir=REPO_DIR, seed_floor_verdict=seed_floor_verdict)
-    except (VerdictError, PreregistrationError, ValueError, KeyError, OSError) as error:
+    except refusals as error:
         print(f"No verdict: {error}")
         return 1
-    if args.seed_floor:
-        verdict["seed_floor"]["verdict_path"] = str(args.seed_floor)
-        verdict["seed_floor"]["verdict_sha256"] = sha256_of(Path(args.seed_floor))
+    if seed_floor_verdict is not None:
+        verdict["seed_floor"]["runs_root"] = floor_root
+        verdict["seed_floor"]["attempts"] = seed_floor_verdict["attempts"]
     verdict = _finite_or_none(verdict)
     write_json(out_dir / "verdict.json", verdict)
     for arm in verdict["arms"]:
@@ -2023,9 +2100,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="with --experiment: the folder holding every launched run of the experiment",
     )  # fmt: skip
     compare.add_argument(
-        "--seed-floor", default="",
-        help="with --experiment: the verdict.json of the declared experiment that measured "
-        "the seed floor on the same recipe, when this one declares no seed arm",
+        "--seed-floor", default="", metavar="ID=RUNS_ROOT",
+        help="with --experiment: the declared experiment, and its runs, whose seed arm "
+        "measures the floor on the same recipe, when this one declares no seed arm",
     )  # fmt: skip
     compare.add_argument("--out-dir", required=True)
     compare.add_argument("--resamples", type=int, default=2000)

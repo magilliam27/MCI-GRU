@@ -127,8 +127,11 @@ declare are refused before anything is written. The tag reads
 Put every launch of an experiment in one folder, failed ones too. Then
 `compare --experiment <id> --runs-root <folder> --out-dir <new folder>` writes
 the trial ledger and, if the ledger is complete, `verdict.json`. Add
-`--seed-floor <verdict.json>` when the experiment has no seed arm of its own.
-`No verdict:` names what is missing.
+`--seed-floor <id>=<runs folder>` when the experiment has no seed arm of its
+own. `No verdict:` names what is missing. The launcher copies the run record to
+the Drive folder before training starts, so a launch that dies in its first
+minutes is still counted. A run that scores and dies between two timed copies
+can look unscored on Drive; check the local folder before relaunching it.
 
 ## When something stops
 

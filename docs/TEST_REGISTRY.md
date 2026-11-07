@@ -1349,7 +1349,8 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_a_missing_run_refuses_the_verdict_but_still_writes_the_ledger` |  |  |
 | `test_a_launch_that_failed_before_scoring_stays_in_the_ledger_and_may_be_rerun` |  |  |
 | `test_a_ledger_that_is_not_the_declared_runs_gets_no_verdict` |  | parametrize |
-| `test_an_experiment_without_a_seed_floor_gets_no_verdict_until_one_is_named` |  |  |
+| `test_an_experiment_without_a_seed_arm_takes_its_floor_from_another_experiments_runs` |  |  |
+| `test_a_seed_arm_that_shares_member_seeds_with_the_control_gives_no_verdict` |  |  |
 | `test_exploratory_runs_never_get_a_verdict` | Window runs launched without --experiment are exploratory: no ledger names them. |  |
 | `test_a_declared_launch_composes_to_exactly_the_declared_run` | The launcher's overrides pass the runner's own declared-run check. | parametrize |
 | `test_a_declared_launch_records_its_experiment_and_refuses_smoke_or_an_undeclared_arm` |  |  |
@@ -2991,6 +2992,8 @@ The verdict rule a pre-registered experiment is judged by (#373, PRD #369 decisi
 | `test_the_seed_arm_measures_the_floor_and_is_not_tested` |  |  |
 | `test_two_seed_arms_are_refused` |  |  |
 | `test_another_verdicts_floor_is_read_for_the_same_recipe_only` |  |  |
+| `test_another_verdicts_floor_must_share_the_label_horizon_and_windows` |  |  |
+| `test_a_seed_arm_must_use_no_member_seed_the_control_uses` | Member i trains on seed + i, so a base fewer than num_models away overlaps. |  |
 
 ## `tests/test_vix_features.py`
 

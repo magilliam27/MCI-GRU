@@ -103,7 +103,12 @@ experiment. Each row gets one of these statuses:
 - `FAILED`: a non-zero exit, or a clean exit without scores.
 - `ABORTED`: no exit code recorded, because the launcher never finished.
 - `INVALID`: the folder cannot be trusted. That covers no launcher record, a
-  record and stamp that disagree, or a stamp that says exploratory.
+  record and stamp that disagree, a stamp that says exploratory, more than one
+  run in one folder, or a record that cannot be read.
+
+A run counts as **scored** once anything computed on the test set is in its
+folder. That includes one member's test predictions (`predictions_model_*`),
+which are written long before the summary.
 
 The verdict is refused when any of these hold:
 
@@ -133,11 +138,15 @@ The verdict is computed in these steps:
   arm's daily IC is joined with the control's over all five windows. The paired
   difference is tested with the HAC t on `label_t - 2` lags.
 - **The seed floor.** It is the absolute pooled difference of the seed arm (the
-  one arm whose change is `seed=...`). An experiment without a seed arm names
-  another declared experiment's `verdict.json` with `--seed-floor`. That verdict
-  must come from a complete ledger, have measured the floor with its own seed
-  arm, and use the same recipe slug and override lines. Its path and SHA-256 are
-  recorded. A verdict with neither is refused.
+  one arm whose change is `seed=...`). Member i trains on `seed + i`, so the
+  seed arm's base must be at least `training.num_models` away from `seed_base`;
+  otherwise the arm shares member seeds with the control, and both the launch
+  and the verdict are refused. An experiment without a seed arm names another
+  declared experiment and its runs with `--seed-floor <id>=<runs folder>`. That
+  experiment's verdict is computed from its own complete ledger, never read from
+  a file. It must have measured the floor with its own seed arm, on the same
+  recipe slug, override lines, label horizon and windows. A verdict with
+  neither is refused.
 - **The adjustment.** The treatment arms (every arm but the control and the seed
   arm) are adjusted together, with Holm or with the declared Bonferroni.
 - **The decision.** Each treatment arm is adopted, rejected or inconclusive by
@@ -146,6 +155,8 @@ The verdict is computed in these steps:
 `verdict.json` records these numbers:
 
 - the attempts by status;
+- each run's IC, and whether its captured FRED inputs match the control run's on
+  that window;
 - the rule as declared;
 - the seed floor and the test that measured it;
 - for each treatment arm: its difference, t, raw and adjusted p, whether it
