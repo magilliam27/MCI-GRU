@@ -45,6 +45,7 @@ from mci_gru.data.preprocessing import (
     generate_time_series_features,
     label_session_axis,
     purge_training_sessions_for_embargo,
+    resolve_label_endpoints,
     resolve_labels,
 )
 from mci_gru.data.quality_contract import (
@@ -224,9 +225,10 @@ def _compute_norm_stats(
     df: pd.DataFrame,
     feature_cols: list[str],
     train_end: str,
+    train_start: str | None = None,
 ) -> tuple[dict[str, float], dict[str, float]]:
     """Compute per-feature mean/std from the training period."""
-    return compute_zscore_norm_stats(df, feature_cols, train_end)
+    return compute_zscore_norm_stats(df, feature_cols, train_end, train_start=train_start)
 
 
 def _build_feature_reference(
@@ -384,6 +386,45 @@ def _embargo_training_sessions(
     )
     logger.info(f"Session-level train/val embargo verified: {summary}")
     return purged
+
+
+def _embargo_validation_sessions(
+    val_dates: list[str],
+    df_for_labels: pd.DataFrame,
+    kdcode_list: list[str],
+    test_start: str,
+    label_t: int,
+) -> list[str]:
+    """Purge the validation tail whose labels read test-period closes (#342).
+
+    The calendar-day gap check cannot see sessions: six calendar days can hold three,
+    so a validation label ``label_t`` sessions out would exit inside the test window
+    and early stopping would read test prices. Exits come from the training label's
+    own resolver on the panel's session axis, and only dates whose exit is on or after
+    ``test_start`` are dropped, so a split with a wide gap loses nothing.
+    """
+    if label_t <= 0 or not val_dates:
+        return list(val_dates)
+    sessions = label_session_axis(df_for_labels, kdcode_list)
+    _entries, exits = resolve_label_endpoints(sessions, val_dates, label_t)
+    kept = [
+        date
+        for date, exit_date in zip(val_dates, exits, strict=True)
+        if exit_date is None or exit_date < test_start
+    ]
+    if not kept:
+        raise ValueError(
+            f"Val/test embargo purge leaves no validation sessions: every label of "
+            f"{len(val_dates)} validation session(s) exits on or after test_start="
+            f"{test_start} (label_t={label_t}). Widen the validation window."
+        )
+    if len(kept) < len(val_dates):
+        logger.info(
+            f"Val/test embargo purge: dropped the last {len(val_dates) - len(kept)} "
+            f"validation session(s) ({val_dates[len(kept)]}..{val_dates[-1]}) whose labels "
+            f"exit on or after test_start={test_start} (label_t={label_t} sessions)"
+        )
+    return kept
 
 
 def _build_tensors(
@@ -550,23 +591,30 @@ def resolve_pit_context(
 def fit_normalisation(
     df_filled: pd.DataFrame,
     feature_cols: list[str],
+    train_start: str,
     train_end: str,
     mode: str,
     pit: PitContext,
 ) -> tuple[NormFit, pd.DataFrame]:
+    """Fit normalisation on the training window only, ``train_start`` to ``train_end``.
+
+    The frame still carries the panel's earlier rows, which features needed for their
+    lookbacks; they stay out of the fit, so a four-year window is scaled by its own
+    four years (#367).
+    """
     rank_gauss_reference: dict[str, np.ndarray] | None = None
     if mode == "zscore":
         norm_source = df_filled
         if pit.masked_panel:
             norm_source = _apply_pit_universe(df_filled, pit.csv_path, pit.input_observations)
-        means, stds = _compute_norm_stats(norm_source, feature_cols, train_end)
+        means, stds = _compute_norm_stats(norm_source, feature_cols, train_end, train_start)
         df_norm = _apply_normalisation(df_filled, feature_cols, means, stds)
     elif mode == "rank_gauss":
         logger.info("Applying rank-Gaussian normalisation (train fit)...")
         rank_source = df_filled
         if pit.masked_panel:
             rank_source = _apply_pit_universe(df_filled, pit.csv_path, pit.input_observations)
-        train_mask = rank_source["dt"] <= train_end
+        train_mask = (rank_source["dt"] >= train_start) & (rank_source["dt"] <= train_end)
         train_slice = rank_source.loc[train_mask]
         rank_gauss_reference = fit_rank_gaussian_reference(train_slice, feature_cols)
         df_norm = apply_rank_gaussian(df_filled, feature_cols, rank_gauss_reference)
@@ -940,6 +988,7 @@ def prepare_data(
     norm_fit, df_norm = fit_normalisation(
         df_filled,
         feature_cols,
+        config.data.train_start,
         config.data.train_end,
         config.data.normalisation,
         pit,
@@ -964,6 +1013,9 @@ def prepare_data(
         config.data.val_start,
         config.model.his_t,
         config.model.label_t,
+    )
+    val_dates = _embargo_validation_sessions(
+        val_dates, frames.raw, kdcode_list, config.data.test_start, config.model.label_t
     )
 
     tensor_bundle = build_tensors(
@@ -1121,6 +1173,9 @@ def prepare_data_index_level(
         config.data.val_start,
         config.model.his_t,
         config.model.label_t,
+    )
+    val_dates = _embargo_validation_sessions(
+        val_dates, df_filtered, kdcode_list, config.data.test_start, config.model.label_t
     )
 
     tensors = _build_tensors(

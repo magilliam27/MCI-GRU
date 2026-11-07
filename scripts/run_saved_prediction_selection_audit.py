@@ -122,7 +122,7 @@ def _run_research_evidence(args: argparse.Namespace) -> None:
         price_adjustment_provenance=args.price_adjustment_provenance,
         null_draws=args.null_draws,
         null_seed=args.null_seed,
-        hac_lag=(args.hac_lag if args.hac_lag is not None else args.label_t - 1),
+        hac_lag=(args.hac_lag if args.hac_lag is not None else max(0, args.label_t - 2)),
         bootstrap_block_length=(
             args.bootstrap_block_length if args.bootstrap_block_length is not None else args.label_t
         ),

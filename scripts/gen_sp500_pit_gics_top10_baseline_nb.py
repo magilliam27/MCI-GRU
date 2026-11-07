@@ -72,6 +72,8 @@ cells = [
             "lseg_20150101_20260622.csv"
         )
         PIT_FILENAME = "sp500_pit_gics_top10_mcap_monthly_20160104_20260622_pit_universe.csv"
+        # The export's _meta.json "end": a blank valid_to means membership through it.
+        PIT_EXPORT_CUTOFF = "2026-06-22"
         SNAPSHOT_FILENAME = "sp500_pit_gics_top10_mcap_monthly_20160104_20260622_snapshots.csv"
         MARKET_META_FILENAME = MARKET_FILENAME.replace(".csv", ".meta.json")
         PIT_META_FILENAME = "sp500_pit_gics_top10_mcap_monthly_20160104_20260622_meta.json"
@@ -244,6 +246,7 @@ cells = [
                 f"data.test_end={window['test_end']}",
                 "data.use_pit_universe=true",
                 f"data.pit_universe_csv={repo_pit_csv.relative_to(REPO_DIR).as_posix()}",
+                f"data.pit_export_cutoff={PIT_EXPORT_CUTOFF}",
                 "data.pit_universe_mode=masked_panel",
                 f"data.pit_min_scoreable_stocks={PIT_MIN_SCOREABLE_STOCKS}",
                 "data.pit_breadth_policy=error",
@@ -396,7 +399,7 @@ cells = [
                 overrides = base_overrides(year, year_root)
                 write_json(DRIVE_RUN_ROOT / f"hydra_overrides_{year}.json", {"overrides": overrides})
 
-                train_cmd = [sys.executable, "-u", str(REPO_DIR / "run_experiment.py"), *overrides]
+                train_cmd = [sys.executable, "-u", str(REPO_DIR / "run_experiment.py"), *overrides, "protocol.exploratory=true"]
                 run_stream(train_cmd, cwd=REPO_DIR, log_name=f"training_{year}.log", phase=f"training_{year}")
 
                 experiment_name = PIT_WINDOWS[year]["experiment_name"]
@@ -432,6 +435,8 @@ cells = [
                     str(repo_market_csv),
                     "--pit_universe_csv",
                     str(repo_pit_csv),
+                    "--pit_export_cutoff",
+                    PIT_EXPORT_CUTOFF,
                     "--test_start",
                     window["test_start"],
                     "--test_end",

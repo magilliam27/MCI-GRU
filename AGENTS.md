@@ -8,20 +8,33 @@
 ```powershell
 .\.venv\Scripts\python.exe scripts/run_pytest_isolated.py tests/ -v  # Windows-preferred full suite
 .\.venv\Scripts\python.exe scripts/ci_smoke.py  # end-to-end smoke on a synthetic panel; what CI runs
-.\.venv\Scripts\python.exe run_experiment.py data.use_pit_universe=false training.num_epochs=2 training.num_models=1 tracking.enabled=false  # smoke run against the default CSV group (needs its CSV locally); PIT masks off
+.\.venv\Scripts\python.exe run_experiment.py protocol.exploratory=true data.use_pit_universe=false training.num_epochs=2 training.num_models=1 tracking.enabled=false  # smoke run against the default CSV group (needs its CSV locally); PIT masks off
 ```
 
 ## Default Experiment Recipe
 
 For production-style confirmation notebooks and PIT validation runs, use the
 frozen recipe in `docs/DEFAULT_EXPERIMENT_RECIPE.md`:
-`static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10`.
+`static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32__train-4y`.
 It means a 20-model, 100-epoch, patience-15 ensemble; pure IC loss; raw 5-day
 return labels; `selection_metric=val_ic`; shuffled static threshold graph;
 multi-feature edges; `drop_edge_p=0.1`; static weekly momentum; strict
 current-only global regime features; data-dependent market latents; the
-residual cross-stock block; and a 32-then-10 `gru_attn` encoder. `FRED_API_KEY` is required unless a smoke
-run explicitly disables global regime.
+residual cross-stock block; a 32-then-10 `gru_attn` encoder; residual graph
+layers; per-stock relative base inputs in place of raw price and volume levels;
+full-precision validation and prediction (#325); and a four-year training
+window, 2020 to 2023, validated on 2024 and tested on 2025 (#367).
+`FRED_API_KEY` is required unless a smoke run explicitly disables global regime.
+
+## Experiment Protocol
+
+Every training run is either pre-registered or says it is exploratory: the runner
+refuses one that is neither. An experiment is declared in a committed
+`docs/research/experiments/<id>.yaml` and run as
+`protocol.experiment_id=<id> protocol.arm=<arm> protocol.window=W1..W5`; anything
+else passes `protocol.exploratory=true` and never gets a verdict. The 2026 holdout
+(2026-01-22 onward) is refused for every run. See
+`docs/research/EXPERIMENT_PROTOCOL.md` (PRD #369).
 
 ## Agent skills
 

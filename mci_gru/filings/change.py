@@ -251,11 +251,16 @@ def score_states(
     cache: AnswerCache,
     model: str,
     labels: Sequence[str],
+    draw: int | None = None,
 ) -> list[ScoredChoice]:
     """Ask the Choice of every (id, state), options shuffled per id, from the cache when held.
 
     The id fills ``pair_id`` in each record and result, whatever it names (a risk
-    pair, or an 8-K event), so every cache keeps one shape.
+    pair, or an 8-K event), so every cache keeps one shape. ``draw`` numbers
+    independent asks of the same question, as in
+    :func:`mci_gru.filings.jev.score_pairs`: it joins the cache key only, so
+    the model reads the same state and question either way, and without it the
+    key is unchanged.
     """
     if question.kind != "choice":
         raise QuestionSetError(f"{question.question_id}: only Choice questions are scored here")
@@ -267,6 +272,8 @@ def score_states(
     for item_id, state in items:
         order = option_order(question, item_id)
         spec = {**question.spec(), "option_order": order}
+        if draw is not None:
+            spec["draw"] = draw
         key = cache_key(state, spec, model)
         cached = key in cache
         if not cached:

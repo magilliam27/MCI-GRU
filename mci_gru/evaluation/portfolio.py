@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from mci_gru.evaluation import outcomes
+
 if TYPE_CHECKING:
     import pandas as pd
 
@@ -16,19 +18,25 @@ def rank_scores(scores_df: pd.DataFrame) -> pd.DataFrame:
     missing = required - set(scores_df.columns)
     if missing:
         raise ValueError(f"Scores DataFrame missing columns: {sorted(missing)}")
-    ranked = scores_df.copy()
-    ranked = ranked.sort_values(["score", "kdcode"], ascending=[False, True]).reset_index(drop=True)
+    order = outcomes.order_by_score(scores_df["score"].to_numpy(), scores_df["kdcode"])
+    ranked = scores_df.iloc[order].reset_index(drop=True)
     ranked["rank"] = np.arange(1, len(ranked) + 1, dtype=int)
     return ranked
 
 
-def select_top_k(scores: np.ndarray, top_k: int) -> np.ndarray:
-    """Select top-k indices by descending score with stable index tie-breaks."""
+def select_top_k(scores: np.ndarray, top_k: int, kdcodes: list[str] | None = None) -> np.ndarray:
+    """Select top-k indices by descending score, ties by kdcode (the core rule, #335).
+
+    Without ``kdcodes`` the columns are taken to be in kdcode order, so an index
+    tiebreak is the kdcode tiebreak; callers whose columns are not sorted must pass them.
+    """
     if top_k <= 0:
         return np.asarray([], dtype=int)
     arr = np.asarray(scores, dtype=np.float64)
-    order = np.lexsort((np.arange(arr.size), -arr))
-    return order[: min(top_k, arr.size)]
+    if kdcodes is None:
+        order = np.lexsort((np.arange(arr.size), -arr))
+        return order[: min(top_k, arr.size)]
+    return outcomes.order_by_score(arr, kdcodes)[: min(top_k, arr.size)]
 
 
 def apply_rank_drop_gate(
@@ -120,8 +128,16 @@ def calculate_turnover(prev_holdings, curr_holdings, target_k: int | None = None
     return float((len(sold) + len(bought)) / (2 * target_k))
 
 
-def top_k_returns(predictions: np.ndarray, true_returns: np.ndarray, top_k: int) -> np.ndarray:
-    """Return equal-weight realized returns of the top-k predictions per day."""
+def top_k_returns(
+    predictions: np.ndarray,
+    true_returns: np.ndarray,
+    top_k: int,
+    kdcodes: list[str] | None = None,
+) -> np.ndarray:
+    """Return equal-weight realized returns of the top-k predictions per day.
+
+    ``kdcodes`` names the columns for the core tie rule; see ``select_top_k``.
+    """
     preds = np.asarray(predictions, dtype=np.float64)
     rets = np.asarray(true_returns, dtype=np.float64)
     if preds.shape != rets.shape:
@@ -136,7 +152,8 @@ def top_k_returns(predictions: np.ndarray, true_returns: np.ndarray, top_k: int)
         if not valid.any():
             continue
         valid_idx = np.flatnonzero(valid)
-        idx = valid_idx[select_top_k(p[valid], top_k)]
+        names = None if kdcodes is None else [kdcodes[j] for j in valid_idx]
+        idx = valid_idx[select_top_k(p[valid], top_k, kdcodes=names)]
         if idx.size:
             out.append(float(np.mean(r[idx])))
     return np.asarray(out, dtype=np.float64)

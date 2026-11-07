@@ -7,9 +7,12 @@ for experiment configuration and management.
 
 import re
 import warnings
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
+
+from mci_gru.protocol import HoldoutError, require_outside_holdout
 
 
 @dataclass
@@ -241,6 +244,11 @@ def resolve_volatility_targeting_components(
     return resolved_components
 
 
+# features.base_inputs values; mci_gru.features.base.RELATIVE_BASE_FEATURES lists the
+# columns "relative" feeds (#323).
+BASE_INPUT_FORMS = ("levels", "relative")
+
+
 @dataclass
 class FeatureConfig:
     """
@@ -248,6 +256,11 @@ class FeatureConfig:
 
     Attributes:
         base_features: List of base OHLCV feature column names
+        base_inputs: Form of the six base inputs. "levels" (default, legacy) feeds the raw
+            close/open/high/low/volume/turnover levels, which a split-adjusted panel
+            rescales for splits after each row (#323). "relative" feeds per-stock ratios
+            instead: log return, overnight and intraday returns, high-low range over
+            close, and log volume and turnover against the stock's 20-session mean.
         include_momentum: Whether to add momentum features
         include_weekly_momentum: Whether to include weekly momentum features (5-day return/signal)
         momentum_encoding: Type of momentum encoding (binary, continuous, buffered)
@@ -305,6 +318,7 @@ class FeatureConfig:
     base_features: list[str] = field(
         default_factory=lambda: ["close", "open", "high", "low", "volume", "turnover"]
     )
+    base_inputs: str = "levels"  # levels, relative
     include_momentum: bool = True
     include_weekly_momentum: bool = True
     momentum_encoding: str = "binary"  # binary, continuous, buffered
@@ -355,6 +369,10 @@ class FeatureConfig:
     def __post_init__(self):
         valid_encodings = ["binary", "continuous", "buffered"]
         valid_blend_modes = ["static", "dynamic"]
+        if self.base_inputs not in BASE_INPUT_FORMS:
+            raise ValueError(
+                f"base_inputs must be one of {list(BASE_INPUT_FORMS)}, got {self.base_inputs!r}"
+            )
         if self.momentum_encoding not in valid_encodings:
             raise ValueError(f"momentum_encoding must be one of {valid_encodings}")
         if self.momentum_blend_mode not in valid_blend_modes:
@@ -630,6 +648,13 @@ class ModelConfig:
             32-wide layer then a 10-wide one. Defaults to ``"shared"`` for
             checkpoint compatibility; ``legacy`` and the transformer fast path
             do not read it.
+        gat_layer_form: Form of every graph block: the A2 correlation stream,
+            the sector stream and the final head (issue #320). ``"legacy"``
+            keeps the shipped GAT v1 layers, in which a linked stock's own
+            features enter only as one more neighbour, so stocks with the same
+            neighbourhood score alike. ``"residual"`` adds a learned own-feature
+            path to each layer (``GATConv(residual=True)``). Defaults to
+            ``"legacy"`` for checkpoint compatibility.
     """
 
     his_t: int = 10
@@ -659,12 +684,14 @@ class ModelConfig:
     cross_section_block: str = "legacy"
     market_latent_mode: str = "static"
     gru_attn_layer_widths: str = "shared"
+    gat_layer_form: str = "legacy"
 
     _VALID_OUTPUT_ACTIVATIONS = ("none", "elu", "relu", "sigmoid")
     _VALID_TEMPORAL_ENCODERS = ("legacy", "gru_attn", "transformer")
     _VALID_CROSS_SECTION_BLOCKS = ("legacy", "residual")
     _VALID_MARKET_LATENT_MODES = ("static", "data_dependent")
     _VALID_GRU_ATTN_LAYER_WIDTHS = ("shared", "per_layer")
+    _VALID_GAT_LAYER_FORMS = ("legacy", "residual")
 
     def __post_init__(self):
         if self.label_t < 2:
@@ -702,6 +729,11 @@ class ModelConfig:
             raise ValueError(
                 f"gru_attn_layer_widths must be one of {self._VALID_GRU_ATTN_LAYER_WIDTHS}, "
                 f"got {self.gru_attn_layer_widths!r}"
+            )
+        if self.gat_layer_form not in self._VALID_GAT_LAYER_FORMS:
+            raise ValueError(
+                f"gat_layer_form must be one of {self._VALID_GAT_LAYER_FORMS}, "
+                f"got {self.gat_layer_form!r}"
             )
         if self.market_latent_mode == "data_dependent" and not self.use_nn_multihead_attention:
             # Per-date latents need per-date keys, which the legacy 8-Linear
@@ -748,6 +780,7 @@ class ModelConfig:
             "cross_section_block": self.cross_section_block,
             "market_latent_mode": self.market_latent_mode,
             "gru_attn_layer_widths": self.gru_attn_layer_widths,
+            "gat_layer_form": self.gat_layer_form,
         }
 
 
@@ -802,7 +835,10 @@ class TrainingConfig:
                      do not introduce look-ahead bias.
         warmup_steps: Linear LR warmup steps (optimizer steps) before cosine decay
         lr_scheduler: "cosine" (warmup + cosine) or "none" (constant LR)
-        use_amp: Enable CUDA autocast + GradScaler when device is CUDA
+        use_amp: Enable CUDA autocast + GradScaler for training when device is CUDA
+        eval_amp: Also run validation and prediction under CUDA autocast. ``False``
+                  scores in full precision, so a member's scores do not sit on an
+                  fp16 grid and tie (#321); training keeps ``use_amp`` either way.
         selection_metric: "val_ic", "val_rank_ic", or "val_loss" for early stopping / checkpointing
         shuffle_train: Optional override for training DataLoader shuffling. ``None`` keeps
                        the historical behavior: shuffled for static graphs, sequential for
@@ -833,6 +869,7 @@ class TrainingConfig:
     warmup_steps: int = 1000
     lr_scheduler: str = "cosine"
     use_amp: bool = True
+    eval_amp: bool = False
     selection_metric: str = "val_ic"
     minimum_selection_rows: int = 1
     shuffle_train: bool | None = None
@@ -918,11 +955,52 @@ class TrainingConfig:
             raise ValueError("warmup_steps must be >= 0")
 
 
+@dataclass(frozen=True)
+class Legs:
+    """Entry and exit sessions after signal date ``D``, both at the close (#335).
+
+    The training label's legs are close ``D+1`` to close ``D+label_t``. Sessions count
+    on the panel's own trading-date axis, as the label does.
+    """
+
+    entry_session: int = 1
+    exit_session: int = 5
+
+    def __post_init__(self) -> None:
+        for name in ("entry_session", "exit_session"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"legs.{name} must be an integer session offset, got {value!r}")
+        if self.entry_session < 1:
+            raise ValueError(
+                f"legs.entry_session must be >= 1, got {self.entry_session}: the signal "
+                "uses close D, so the earliest fill is close D+1"
+            )
+        if self.exit_session <= self.entry_session:
+            raise ValueError(
+                f"legs.exit_session ({self.exit_session}) must be after entry_session "
+                f"({self.entry_session})"
+            )
+
+    @property
+    def hold_sessions(self) -> int:
+        """Close-to-close intervals the position is held for."""
+        return self.exit_session - self.entry_session
+
+    @classmethod
+    def from_label(cls, label_t: int) -> "Legs":
+        """The training label's legs: close ``D+1`` to close ``D+label_t``."""
+        return cls(entry_session=1, exit_session=label_t)
+
+
 @dataclass
 class EvaluationConfig:
     """Evaluation and statistical confidence configuration."""
 
     top_k_values: list[int] = field(default_factory=lambda: [10, 20, 50, 100])
+    # Turns on the in-run intervals, which are uniform-weight HAC intervals with no
+    # resampling (#356). The resample count, seed and block size below reach only the
+    # legacy matrix-only evaluate_predictions path.
     bootstrap_enabled: bool = True
     bootstrap_resamples: int = 1000
     bootstrap_seed: int = 1729
@@ -930,8 +1008,17 @@ class EvaluationConfig:
     block_size: int | None = None
     sharpe_method: str = "newey_west"
     newey_west_lags: int | None = None
+    # Realized-return legs (#335): {"entry_session": e, "exit_session": x}, both at the
+    # close, in sessions after signal date D; exit_session may not pass model.label_t,
+    # the horizon the split embargo is sized for. None follows the training label:
+    # close D+1 to close D+model.label_t.
+    legs: dict[str, int] | None = None
+    # Staggered tranches across the hold; must divide its session count. None is one
+    # tranche per held session (4 under the default legs).
+    tranches: int | None = None
 
     _VALID_SHARPE_METHODS = ("newey_west", "naive")
+    _LEG_KEYS = ("entry_session", "exit_session")
 
     def __post_init__(self):
         if not self.top_k_values or any(k <= 0 for k in self.top_k_values):
@@ -949,6 +1036,44 @@ class EvaluationConfig:
             )
         if self.newey_west_lags is not None and self.newey_west_lags < 0:
             raise ValueError("evaluation.newey_west_lags must be >= 0 when set")
+        if self.legs is not None:
+            self.legs = self._validated_legs(self.legs)
+        if self.tranches is not None and (
+            isinstance(self.tranches, bool)
+            or not isinstance(self.tranches, int)
+            or self.tranches <= 0
+        ):
+            raise ValueError(
+                f"evaluation.tranches must be a positive integer or null, got {self.tranches!r}"
+            )
+
+    @classmethod
+    def _validated_legs(cls, legs: Any) -> dict[str, int]:
+        if not isinstance(legs, Mapping):
+            raise ValueError(
+                f"evaluation.legs must be a mapping with keys {cls._LEG_KEYS} or null, got {legs!r}"
+            )
+        keys = set(legs)
+        if keys != set(cls._LEG_KEYS):
+            raise ValueError(
+                f"evaluation.legs must have exactly the keys {cls._LEG_KEYS}; "
+                f"unknown {sorted(keys - set(cls._LEG_KEYS))}, "
+                f"missing {sorted(set(cls._LEG_KEYS) - keys)}"
+            )
+        Legs(**{key: legs[key] for key in cls._LEG_KEYS})
+        return {key: legs[key] for key in cls._LEG_KEYS}
+
+    def resolved_legs(self, label_t: int) -> Legs:
+        """The configured legs, or the training label's when unset."""
+        if self.legs is None:
+            return Legs.from_label(label_t)
+        return Legs(**self.legs)
+
+    def resolved_tranches(self, label_t: int) -> int:
+        """Tranche count; one per held session when unset."""
+        if self.tranches is None:
+            return self.resolved_legs(label_t).hold_sessions
+        return self.tranches
 
 
 @dataclass
@@ -973,6 +1098,60 @@ class TrackingConfig:
     log_artifacts: bool = True
     log_checkpoints: bool = True
     log_predictions: bool = False
+
+
+@dataclass
+class ProtocolConfig:
+    """Where a run stands under the experiment protocol (PRD #369).
+
+    The runner refuses a run unless it names a committed pre-registration
+    (``experiment_id``, with the ``arm`` and ``window`` it runs) or says it is
+    exploratory (#372). Other entry points, which rebuild configs of saved runs,
+    take the section as it is.
+
+    Attributes:
+        experiment_id: Id of ``docs/research/experiments/<id>.yaml``.
+        arm: The declared arm this run is.
+        window: The window this run is, ``W1`` to ``W5``: the declared one, or for an
+            exploratory run the one its dates must be (#371).
+        exploratory: True for a run with no pre-registration; it never gets a verdict.
+        holdout_promotion: Id of the committed promotion record that may unlock the
+            locked 2026 holdout for one run. The promotion path is #374; until it
+            lands no record exists, so every value is refused.
+    """
+
+    experiment_id: str | None = None
+    arm: str | None = None
+    window: str | None = None
+    exploratory: bool = False
+    holdout_promotion: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.holdout_promotion is not None:
+            raise HoldoutError(
+                f"protocol.holdout_promotion={self.holdout_promotion!r}: no promotion "
+                "record can unlock the holdout yet; the promotion path is #374"
+            )
+        if not isinstance(self.exploratory, bool):
+            raise ValueError(
+                f"protocol.exploratory must be true or false, got {self.exploratory!r}"
+            )
+        if self.exploratory and self.experiment_id is not None:
+            raise ValueError(
+                "protocol.exploratory=true and protocol.experiment_id name two standings; "
+                "a pre-registered run is not exploratory"
+            )
+        if self.experiment_id is None and self.arm is not None:
+            raise ValueError("protocol.arm needs a protocol.experiment_id")
+        if self.experiment_id is None and self.window is not None and not self.exploratory:
+            raise ValueError(
+                "protocol.window needs a protocol.experiment_id or protocol.exploratory=true"
+            )
+        if self.experiment_id is not None and (self.arm is None or self.window is None):
+            raise ValueError(
+                f"protocol.experiment_id={self.experiment_id} needs protocol.arm and "
+                "protocol.window: a declared run is one arm on one window"
+            )
 
 
 @dataclass
@@ -1001,15 +1180,53 @@ class ExperimentConfig:
     training: TrainingConfig = field(default_factory=TrainingConfig)
     evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
+    protocol: ProtocolConfig = field(default_factory=ProtocolConfig)
     experiment_name: str = "baseline"
     output_dir: str = "results"
     seed: int = 1729
 
     def __post_init__(self) -> None:
-        if isinstance(self.evaluation, dict):
+        if isinstance(self.evaluation, Mapping):
             self.evaluation = EvaluationConfig(**self.evaluation)
+        if isinstance(self.protocol, Mapping):
+            self.protocol = ProtocolConfig(**self.protocol)
+        self._validate_holdout()
         self._validate_embargo()
         self._validate_sector_relation()
+        self._validate_evaluation_tranches()
+
+    def _validate_holdout(self) -> None:
+        """Refuse a run whose spans or labels reach the locked 2026 holdout (#370)."""
+        spans = {
+            f"data.{key}": getattr(self.data, key)
+            for key in (
+                "train_start",
+                "train_end",
+                "val_start",
+                "val_end",
+                "test_start",
+                "test_end",
+            )
+        }
+        require_outside_holdout(spans, label_t=self.model.label_t, what="This run")
+
+    def _validate_evaluation_tranches(self) -> None:
+        """Legs stay inside the embargoed horizon; tranches evenly divide the hold."""
+        label_t = self.model.label_t
+        legs = self.evaluation.resolved_legs(label_t)
+        if legs.exit_session > label_t:
+            raise ValueError(
+                f"evaluation.legs.exit_session ({legs.exit_session}) must be <= "
+                f"model.label_t ({label_t}): the split embargo is sized for label_t, so a "
+                "later exit would read closes from the next split"
+            )
+        tranches = self.evaluation.resolved_tranches(label_t)
+        if legs.hold_sessions % tranches:
+            raise ValueError(
+                f"evaluation.tranches ({tranches}) must divide the hold of "
+                f"{legs.hold_sessions} sessions (close D+{legs.entry_session} to close "
+                f"D+{legs.exit_session})"
+            )
 
     def _validate_sector_relation(self) -> None:
         """Reject the sector branch in index-level mode, where it has nothing to connect."""
@@ -1126,6 +1343,8 @@ class ExperimentConfig:
                 self.training.lambdarank_ic_max_pairs_per_day
             ),
             "training.lambdarank_ic_temperature": self.training.lambdarank_ic_temperature,
+            "training.use_amp": self.training.use_amp,
+            "training.eval_amp": self.training.eval_amp,
             "training.shuffle_train": self.training.shuffle_train,
             "training.dataloader_num_workers": self.training.dataloader_num_workers,
             "training.dataloader_pin_memory": self.training.dataloader_pin_memory,
@@ -1137,6 +1356,8 @@ class ExperimentConfig:
             "evaluation.bootstrap_enabled": self.evaluation.bootstrap_enabled,
             "evaluation.bootstrap_resamples": self.evaluation.bootstrap_resamples,
             "evaluation.ci_level": self.evaluation.ci_level,
+            "evaluation.legs": str(self.evaluation.resolved_legs(self.model.label_t)),
+            "evaluation.tranches": self.evaluation.resolved_tranches(self.model.label_t),
             # Tracking
             "tracking.enabled": self.tracking.enabled,
             "tracking.tracking_uri": self.tracking.tracking_uri,
@@ -1223,6 +1444,7 @@ def create_config_from_dict(config_dict: dict[str, Any]) -> ExperimentConfig:
     training_dict = config_dict.get("training", {})
     evaluation_dict = config_dict.get("evaluation", {})
     tracking_dict = config_dict.get("tracking", {})
+    protocol_dict = config_dict.get("protocol", {})
 
     return ExperimentConfig(
         data=DataConfig(**data_dict) if data_dict else DataConfig(),
@@ -1232,6 +1454,7 @@ def create_config_from_dict(config_dict: dict[str, Any]) -> ExperimentConfig:
         training=TrainingConfig(**training_dict) if training_dict else TrainingConfig(),
         evaluation=EvaluationConfig(**evaluation_dict) if evaluation_dict else EvaluationConfig(),
         tracking=TrackingConfig(**tracking_dict) if tracking_dict else TrackingConfig(),
+        protocol=ProtocolConfig(**protocol_dict) if protocol_dict else ProtocolConfig(),
         experiment_name=config_dict.get("experiment_name", "baseline"),
         output_dir=config_dict.get("output_dir", "results"),
         seed=config_dict.get("seed", 1729),

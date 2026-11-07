@@ -396,7 +396,7 @@ cells = [
             run_log_dir.mkdir(parents=True, exist_ok=True)
             stdout_path = run_log_dir / 'stdout.log'
             stderr_path = run_log_dir / 'stderr.log'
-            cmd = [sys.executable, '-u', str(REPO_DIR / 'run_experiment.py'), *job['overrides']]
+            cmd = [sys.executable, '-u', str(REPO_DIR / 'run_experiment.py'), *job['overrides'], 'protocol.exploratory=true']
 
             print('\n' + '=' * 100)
             print('Training:', job['name'])
@@ -443,7 +443,7 @@ cells = [
                 '--holding_period', str(scenario['holding_period']),
                 '--rebalance_style', scenario['rebalance_style'],
                 '--num_tests', str(num_tests),
-                '--adjustment_method', 'bhy',
+                '--adjustment_method', 'holm',
                 '--auto_save',
                 '--plot',
                 '--disable_mlflow_autolink',

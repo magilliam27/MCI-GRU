@@ -221,7 +221,7 @@ class _PassThroughFeatureEngineer:
 
 
 def test_prepare_data_masked_panel_keeps_union_axis_without_complete_stock_filter(tmp_path) -> None:
-    dates = [f"2020-01-{i:02d}" for i in range(1, 11)]
+    dates = [f"2020-01-{i:02d}" for i in range(1, 15)]
     rows = []
     for kdcode in ["AAA", "NEW", "DROP"]:
         stock_dates = dates if kdcode != "DROP" else dates[:4]
@@ -245,8 +245,8 @@ def test_prepare_data_masked_panel_keeps_union_axis_without_complete_stock_filte
     pit_path = tmp_path / "pit.csv"
     pd.DataFrame(
         [
-            {"kdcode": "AAA", "valid_from": "2020-01-01", "valid_to": "2020-01-10"},
-            {"kdcode": "NEW", "valid_from": "2020-01-05", "valid_to": "2020-01-10"},
+            {"kdcode": "AAA", "valid_from": "2020-01-01", "valid_to": "2020-01-14"},
+            {"kdcode": "NEW", "valid_from": "2020-01-05", "valid_to": "2020-01-14"},
             {"kdcode": "DROP", "valid_from": "2020-01-01", "valid_to": "2020-01-04"},
         ]
     ).to_csv(pit_path, index=False)
@@ -258,9 +258,11 @@ def test_prepare_data_masked_panel_keeps_union_axis_without_complete_stock_filte
             train_start="2020-01-01",
             train_end="2020-01-07",
             val_start="2020-01-08",
-            val_end="2020-01-08",
-            test_start="2020-01-09",
-            test_end="2020-01-10",
+            # Three validation sessions: the val/test purge (#342) keeps only 2020-01-08,
+            # whose label_t=2 exit (2020-01-10) is before test_start.
+            val_end="2020-01-10",
+            test_start="2020-01-11",
+            test_end="2020-01-14",
             skip_embargo_check=True,
             use_pit_universe=True,
             pit_universe_csv=str(pit_path),
@@ -289,6 +291,7 @@ def test_prepare_data_masked_panel_keeps_union_axis_without_complete_stock_filte
     # 2020-01-06 and 2020-01-07 are purged: with label_t=2 the 2020-01-06 label reads the
     # 2020-01-08 close, which is val_start.
     assert data["train_dates"] == ["2020-01-03", "2020-01-04", "2020-01-05"]
+    assert data["val_dates"] == ["2020-01-08"]
     assert data["train_feature_ready_mask"][:, new_idx].tolist() == [True, True, True]
     assert data["train_tradable_mask"][:, new_idx].tolist() == [False, False, True]
     assert data["pit_breadth"]["train"][2]["scoreable_count"] == 2

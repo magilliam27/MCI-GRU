@@ -23,7 +23,7 @@ def test_selection_audit_computes_ic_topk_multiple_testing_and_deflated_sharpe(
         bootstrap_seed=7,
     )
 
-    assert audit["schema_version"] == 1
+    assert audit["schema_version"] == 2
     assert audit["status"] == "OK"
     assert audit["trial_count"] == 4
     assert audit["sample"]["aligned_observations"] == 4
@@ -51,7 +51,7 @@ def test_selection_audit_flags_insufficient_evidence_when_alignment_is_empty(
     audit = build_selection_audit(
         predictions_dir=predictions_dir,
         market_data_path=market_path,
-        label_t=1,
+        label_t=2,
         top_k_values=[1],
         trial_count=2,
         bootstrap_resamples=5,

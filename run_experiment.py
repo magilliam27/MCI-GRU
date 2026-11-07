@@ -5,6 +5,12 @@ MCI-GRU Experiment Runner
 Main entry point for running MCI-GRU experiments with Hydra configuration.
 
 Usage:
+    Every run is pre-registered or exploratory (#372, docs/research/EXPERIMENT_PROTOCOL.md):
+    python run_experiment.py protocol.experiment_id=<id> protocol.arm=<arm> protocol.window=W1
+    python run_experiment.py protocol.exploratory=true
+
+    The examples below leave that flag out.
+
     # Run baseline experiment
     python run_experiment.py
 
@@ -36,6 +42,8 @@ from typing import Any
 
 import hydra
 import torch
+from hydra import compose, initialize_config_dir
+from hydra.core.global_hydra import GlobalHydra
 from omegaconf import DictConfig, OmegaConf
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -44,6 +52,7 @@ from mci_gru.config import create_config_from_dict
 from mci_gru.data.data_manager import create_data_loaders
 from mci_gru.data.input_observations import InputObservationError
 from mci_gru.data.quality_contract import AdmissionError, write_run_failure
+from mci_gru.evaluation.dated_ic import DAILY_IC_FILENAME, write_dated_ic
 from mci_gru.evaluation.execution_provenance import (
     EVIDENCE_DIR,
     capture_execution_start,
@@ -54,6 +63,8 @@ from mci_gru.evaluation.execution_provenance import (
 from mci_gru.evaluation.experiment_summary import (
     build_run_metadata,
     compute_evaluation_summary,
+    correlation_edges_for_date,
+    linked_score_tie_summary,
     select_training_objective_value,
     write_resolved_config,
 )
@@ -63,11 +74,33 @@ from mci_gru.features import FeatureEngineer
 from mci_gru.graph.utils import edge_feature_dim
 from mci_gru.models import create_model
 from mci_gru.pipeline import prepare_data, prepare_data_index_level
+from mci_gru.preregistration import resolve_run_standing
 from mci_gru.tracking import MLflowTrackingManager
 from mci_gru.training import train_multiple_models
 from mci_gru.training.summary import build_training_summary
 from mci_gru.utils.seeding import set_seed
-from mci_gru.walkforward import generate_walkforward_configs, merge_walkforward_summary
+from mci_gru.walkforward import (
+    WindowTestSet,
+    generate_walkforward_configs,
+    merge_walkforward_summary,
+    pool_window_test_sets,
+    pooled_evaluation_summary,
+    window_test_set,
+)
+
+#: The checkout whose commit a run records; pre-registrations and the recipe are read here.
+REPO_ROOT = Path(__file__).resolve().parent
+CONFIG_DIR = REPO_ROOT / "configs"
+
+
+def compose_declared(overrides: list[str]) -> dict[str, Any]:
+    """The resolved config ``overrides`` give on this checkout's Hydra tree."""
+    if GlobalHydra.instance().is_initialized():
+        cfg = compose(config_name="config", overrides=overrides)
+    else:
+        with initialize_config_dir(config_dir=str(CONFIG_DIR), version_base=None):
+            cfg = compose(config_name="config", overrides=overrides)
+    return OmegaConf.to_container(cfg, resolve=True)
 
 
 def setup_logging(output_dir: str, experiment_name: str) -> logging.Logger:
@@ -94,8 +127,21 @@ def main(cfg: DictConfig):
     try:
         hydra_cfg = HydraConfig.get()
         output_path = hydra_cfg.runtime.output_dir
+        config_sources = [dict(source) for source in hydra_cfg.runtime.config_sources]
     except Exception:
         output_path = os.getcwd()
+        config_sources = None
+
+    resolved_cfg = OmegaConf.to_container(cfg, resolve=True)
+    config = create_config_from_dict(resolved_cfg)
+    # Before any run file: a protocol run must be declared, or say it is not (#372).
+    protocol_standing = resolve_run_standing(
+        config.protocol,
+        resolved_cfg,
+        repo_root=REPO_ROOT,
+        compose=compose_declared,
+        config_sources=config_sources,
+    )
 
     logger = setup_logging(output_path, cfg.get("experiment_name", "baseline"))
 
@@ -104,7 +150,7 @@ def main(cfg: DictConfig):
     logger.info("=" * 80)
     logger.info("\nConfiguration:")
     logger.info("\n" + OmegaConf.to_yaml(cfg))
-    config = create_config_from_dict(OmegaConf.to_container(cfg, resolve=True))
+    logger.info(f"Protocol standing: {protocol_standing}")
     snapshot_directory = keep_captures_with_run(config.data, output_path)
     if snapshot_directory is not None:
         logger.info(f"Captured auxiliary inputs will be retained in: {snapshot_directory}")
@@ -121,6 +167,7 @@ def main(cfg: DictConfig):
     window_configs = generate_walkforward_configs(config)
     use_wf_subdir = config.training.walkforward.enabled
     wf_summaries: list[dict[str, Any]] = []
+    wf_test_sets: list[WindowTestSet] = []
     window_paths = [
         os.path.join(output_path, "walkforward", f"w{wi:03d}") if use_wf_subdir else output_path
         for wi in range(len(window_configs))
@@ -264,6 +311,7 @@ def main(cfg: DictConfig):
             )
             metadata["execution_start"] = execution_start
             metadata["input_attachment"] = input_attachment
+            metadata["protocol"] = protocol_standing
             metadata_path = os.path.join(wpath, "run_metadata.json")
             with open(metadata_path, "w") as f:
                 json.dump(metadata, f, indent=2)
@@ -381,6 +429,17 @@ def main(cfg: DictConfig):
                     avg_predictions,
                     data["test_labels"],
                     cfg_w,
+                    panel=data["df"],
+                    dates=data["test_dates"],
+                    kdcodes=data["kdcode_list"],
+                    rankable_mask=data.get("test_tradable_mask"),
+                )
+                evaluation_summary["linked_score_ties"] = linked_score_tie_summary(
+                    avg_predictions,
+                    [result.predictions for result in results],
+                    data["test_dates"],
+                    correlation_edges_for_date(data),
+                    eval_autocast=any(result.eval_autocast for result in results),
                 )
                 timing_summary["phases"]["evaluation_summary_seconds"] = (
                     perf_counter() - phase_started
@@ -389,8 +448,24 @@ def main(cfg: DictConfig):
                 with open(evaluation_summary_path, "w") as f:
                     json.dump(evaluation_summary, f, indent=2)
                 logger.info(f"Evaluation summary saved to: {evaluation_summary_path}")
+                daily_ic_path = write_dated_ic(
+                    avg_predictions, data["test_labels"], data["test_dates"], wpath
+                )
+                logger.info(f"Dated daily IC saved to: {daily_ic_path}")
                 training_summary["evaluation"] = evaluation_summary["metrics"]
                 wf_summaries.append(training_summary)
+                if use_wf_subdir:
+                    wf_test_sets.append(
+                        window_test_set(
+                            avg_predictions,
+                            data["test_labels"],
+                            panel=data["df"],
+                            dates=data["test_dates"],
+                            kdcodes=data["kdcode_list"],
+                            rankable_mask=data.get("test_tradable_mask"),
+                            label_t=cfg_w.model.label_t,
+                        )
+                    )
 
                 if active_tracking.enabled:
                     active_tracking.log_metrics(
@@ -467,6 +542,7 @@ def main(cfg: DictConfig):
                     "averaged_predictions",
                     "training_summary.json",
                     "evaluation_summary.json",
+                    DAILY_IC_FILENAME,
                     "timing_summary.json",
                 ],
             )
@@ -474,7 +550,18 @@ def main(cfg: DictConfig):
             logger.info("Terminal receipt saved to: %s", window_receipt.path)
 
         if use_wf_subdir and wf_summaries:
-            merged = merge_walkforward_summary(wf_summaries)
+            # One summary over every window's test dates, never a mean of windows (#342).
+            pooled_evaluation, pooling_status = None, None
+            try:
+                pooled = pool_window_test_sets(wf_test_sets)
+            except ValueError as error:
+                pooling_status = f"NOT_POOLED: {error}"
+                logger.warning("Walk-forward evaluation not pooled: %s", error)
+            else:
+                pooled_evaluation = pooled_evaluation_summary(pooled, config)
+            merged = merge_walkforward_summary(
+                wf_summaries, pooled_evaluation=pooled_evaluation, pooling_status=pooling_status
+            )
             merged_path = os.path.join(output_path, "walkforward_summary.json")
             with open(merged_path, "w") as f:
                 json.dump(merged, f, indent=2)

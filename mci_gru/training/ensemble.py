@@ -203,6 +203,8 @@ def train_multiple_models(
                         {"sha256": trainer.last_loaded_checkpoint_sha256},
                     )
                 predictions = trainer.predict(test_loader, kdcode_list, test_dates)
+                result.predictions = predictions
+                result.eval_autocast = trainer.eval_autocast_enabled()
                 all_predictions.append(predictions)
 
                 pred_dir = os.path.join(base_output_path, f"predictions_model_{model_id}")

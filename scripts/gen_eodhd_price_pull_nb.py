@@ -3,8 +3,10 @@
 The notebook runs ``scripts/data/export_eodhd_pit_prices.py`` where EODHD is
 reachable. It reads the membership file and the LSEG reference panel from the
 preserved Drive package, checks both against the committed r1 manifest, pulls
-EODHD daily prices for every name, and copies the new package and its manifest
-to Drive beside the LSEG one. The notebook carries no data logic of its own.
+EODHD daily prices for every name, checks the new panel's volume against the
+vendor responses and the revision it replaces (#347), and copies the new package
+and its manifest to Drive beside the LSEG one. The notebook carries no data
+logic of its own.
 
 Run from the repository root: ``python scripts/gen_eodhd_price_pull_nb.py``.
 """
@@ -53,12 +55,18 @@ def build_cells() -> list[dict]:
             package. EODHD responses are cached on Drive, so a re-run after a symbol fix
             spends calls only on what changed. Nothing on Drive is ever overwritten or
             deleted.
+
+            **Revision r3 (#347).** r2 split-adjusted volume twice: the vendor's volume
+            already carries its splits. r3 is rebuilt from the same cached responses, so
+            its prices match r2's; only the splits after the panel end are new requests.
+            Before anything is copied, the new panel's volume is checked against those
+            responses and against r2. A failed check publishes nothing.
             """
         ),
         code(
             """
             # Parameters
-            BRANCH = "claude/first-run-eodhd-prices-g5lvy4"  # "main" once #281's pull request is merged
+            BRANCH = "main"
             EXPECTED_COMMIT = ""  # optional: the full commit SHA to run
 
             LSEG_PACKAGE_DRIVE_DIR = "/content/drive/MyDrive/MCI_GRU_shared/preservation/2026-10-02-110-universe-2016"
@@ -69,9 +77,16 @@ def build_cells() -> list[dict]:
             REFERENCE_MANIFEST_SHA256 = "1e2043dcb4f00a88de128985cc94423c122e480034c16ec741710a2460653ecf"
 
             START, END = "2015-01-01", "2026-07-31"  # the LSEG panel's span
-            REVISION = "r2"  # r1 kept carried rows after three delistings; never reuse one
+            # r1 kept carried rows after three delistings; r2 split-adjusted volume twice (#347).
+            # Never reuse a revision.
+            REVISION = "r3"
             OUTPUT_NAME = f"eodhd_{PREFIX}_{REVISION}"
             OUTPUT_DRIVE_DIR = f"/content/drive/MyDrive/MCI_GRU_shared/preservation/{OUTPUT_NAME}"
+            # The revision this one replaces, read only to compare against.
+            PREVIOUS_DRIVE_DIR = f"/content/drive/MyDrive/MCI_GRU_shared/preservation/eodhd_{PREFIX}_r2"
+            CHECK_DRIVE_DIR = f"{OUTPUT_DRIVE_DIR}_volume_check"
+            # The one deliberate price change from r2: CHTR's merger conversion is 0.9042, not 0.9.
+            ALLOWED_PRICE_CHANGES = ["CHTR.OQ:2016-05-18"]
             CACHE_DRIVE_DIR = "/content/drive/MyDrive/MCI_GRU_shared/eodhd_cache/gics_top10_110_2016"
             LOCAL_PACKAGE = "/content/eodhd_package"
             LOCAL_MANIFEST = f"/content/{PREFIX}_eodhd.{REVISION}.json"
@@ -163,6 +178,31 @@ def build_cells() -> list[dict]:
         ),
         code(
             """
+            # Check the panel's volume against the cached vendor responses and the previous
+            # revision (#347). A failed check counts as a failed pull: nothing is published.
+            LOCAL_CHECK = "/content/eodhd_volume_check"
+            check_code = None
+            if exit_code == 0:
+                check_code = stream(
+                    [
+                        sys.executable, "-m", "scripts.data.check_eodhd_volume_basis",
+                        "--package-root", LOCAL_PACKAGE,
+                        "--previous-root", PREVIOUS_DRIVE_DIR,
+                        "--cache-dir", CACHE_DRIVE_DIR,
+                        "--start", START,
+                        "--end", END,
+                        "--out-dir", LOCAL_CHECK,
+                        *[arg for item in ALLOWED_PRICE_CHANGES for arg in ("--allow-price-change", item)],
+                    ],
+                    cwd=REPO_DIR,
+                    check=False,
+                )
+                print("Volume check exit code:", check_code)
+                exit_code = exit_code or check_code
+            """
+        ),
+        code(
+            """
             # Copy the package (and its manifest, when one was published) to Drive. Every
             # destination is checked before anything is copied: a file already there with other
             # bytes stops the copy, and nothing is overwritten. A failed pull goes to its own
@@ -176,6 +216,18 @@ def build_cells() -> list[dict]:
             if exit_code != 0:
                 stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
                 target = target.with_name(f"{target.name}_FAILED_{stamp}")
+            # The check's evidence goes beside the package, never inside it, and first, so a
+            # clash there stops before any package file is copied.
+            if check_code is not None:
+                check_target = Path(CHECK_DRIVE_DIR if exit_code == 0 else f"{target}_volume_check")
+                check_target.mkdir(parents=True, exist_ok=True)
+                for source in sorted(Path(LOCAL_CHECK).glob("*")):
+                    destination = check_target / source.name
+                    if destination.exists() and not filecmp.cmp(source, destination, shallow=False):
+                        raise RuntimeError(f"{destination} already on Drive with other bytes")
+                    if not destination.exists():
+                        shutil.copyfile(source, destination)
+                print("Volume check evidence:", check_target)
             sources = [p for p in sorted(Path(LOCAL_PACKAGE).rglob("*")) if p.is_file()]
             pairs = [(p, target / p.relative_to(LOCAL_PACKAGE)) for p in sources]
             manifest = Path(LOCAL_MANIFEST)

@@ -4,6 +4,11 @@ This guide explains the configuration groups, the presets that exist, and how to
 override them. Feature columns and their flags are in [`FEATURES.md`](FEATURES.md); what
 the model and graph parameters drive is in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
+> Every `run_experiment.py` command below also needs `protocol.exploratory=true`, or a
+> declared `protocol.experiment_id`, `protocol.arm` and `protocol.window`; the runner
+> refuses a run with neither. It is left out of the examples for brevity. See
+> [`research/EXPERIMENT_PROTOCOL.md`](research/EXPERIMENT_PROTOCOL.md).
+
 ## Configuration Files Structure
 
 The configuration system is Hydra-based with typed dataclasses in `mci_gru/config.py`: `DataConfig`, `FeatureConfig`, `GraphConfig`, `ModelConfig`, `TrainingConfig`, `ExperimentConfig`.
@@ -211,7 +216,7 @@ inference, or notebook runs.
 Production-style confirmation notebooks and PIT validation runs should use the
 frozen recipe documented in
 [`DEFAULT_EXPERIMENT_RECIPE.md`](DEFAULT_EXPERIMENT_RECIPE.md):
-`static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10`.
+`static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32__train-4y`.
 
 Core overrides:
 
@@ -226,22 +231,60 @@ Core overrides:
 | Training | label_type | `returns` |
 | Training | selection_metric | `val_ic` |
 | Training | shuffle_train | `true` |
+| Training | eval_amp | `false` (pinned since 2026-10-24; also the base default) |
 | Model | label_t | `5` |
 | Model | temporal_encoder / use_nn_multihead_attention | `gru_attn` / `true` |
 | Model | market_latent_mode | `data_dependent` (since 2026-10-04; base default is `static`) |
 | Model | cross_section_block | `residual` (since 2026-10-04; base default is `legacy`) |
 | Model | gru_attn_layer_widths | `per_layer` (since 2026-10-04; base default is `shared`) |
+| Model | gat_layer_form | `residual` (since 2026-10-24; base default is `legacy`) |
 | Graph | update_frequency_months | `0` |
 | Graph | corr_lookback_days | `252` |
 | Graph | top_k / top_k_metric | `0` / `corr` |
 | Graph | use_multi_feature_edges | `true` |
 | Graph | drop_edge_p | `0.1` |
 | Graph | lead-lag / snapshot-age | disabled |
+| Features | base_inputs | `relative` (since 2026-10-24; base default is `levels`) |
 | Features | momentum | `features=with_momentum`, weekly momentum on, static 50/50 blend |
 | Features | global regime | `include_global_regime=true`, `regime_strict=true`, `regime_include_subsequent_returns=false` |
 
 `FRED_API_KEY` is required for the full recipe unless a smoke run explicitly
 disables global regime features.
+
+## Experiment Protocol Windows and the Locked Holdout
+
+The experiment protocol (PRD #369) runs the recipe once per window, changing only
+the six `data.*` dates. The schedule lives in `mci_gru/protocol.py` as `WINDOWS`:
+
+| Window | Train | Validate | Test |
+|--------|-------|----------|------|
+| W1 | 2016-01-04 to 2019-12-31 | 2020-01-22 to 2020-12-31 | 2021-01-22 to 2021-12-31 |
+| W2 | 2017-01-03 to 2020-12-31 | 2021-01-22 to 2021-12-31 | 2022-01-22 to 2022-12-31 |
+| W3 | 2018-01-02 to 2021-12-31 | 2022-01-22 to 2022-12-31 | 2023-01-22 to 2023-12-31 |
+| W4 | 2019-01-02 to 2022-12-31 | 2023-01-22 to 2023-12-31 | 2024-01-22 to 2024-12-31 |
+| W5 | 2020-01-02 to 2023-12-31 | 2024-01-22 to 2024-12-31 | 2025-01-22 to 2025-12-31 |
+
+W5 is the recipe as written. The 2026 signal dates from 2026-01-22 to 2026-07-24
+are the locked holdout, and everything after them is the next holdout. Any
+`ExperimentConfig` whose dates reach 2026-01-22, or whose last `label_t`-session
+label may exit on or after it, is refused with `HoldoutError`. The guard counts
+weekdays with slack for exchange closures, so it refuses a few days early rather
+than ever late. The same check guards the span every scorer reads:
+
+- the replay's input resolver, behind `scripts/rescore_run.py`,
+  `scripts/score_baselines.py` and `scripts/backtest_sp500.py --run_dir`;
+- the backtest itself, bounded by its strategy's sell session, which an
+  `open_to_open --holding_period` can push past the label;
+- `SelectionResearchProtocol`;
+- the saved-prediction scorers (the legacy selection audit, the TSFM report and the
+  capacity replay), which check the signal dates in the prediction files.
+
+Dates in any form `pd.Timestamp` reads are normalised first, so `03/01/2026` is
+refused like `2026-03-01`.
+
+`protocol.holdout_promotion` is the one key that will unlock the holdout, for a
+single promotion run per candidate. Until the promotion path lands (#374), every
+value is refused.
 
 ## Hydra Base Defaults
 
@@ -266,6 +309,7 @@ Values below reflect **`configs/config.yaml`** merged with **`configs/data/gics_
 | Model | cross_section_block | `legacy` — how the cross-stock attention is applied. `legacy` replaces `z` with the attention output; `residual` applies it as `z + Attn(LayerNorm(z))` so it corrects `z` instead (issue #197). The two forms have disjoint parameter names, so a checkpoint belongs to the form that produced it. |
 | Model | market_latent_mode | `static` — what the B1/B2 latent states are. `static` keeps `R1`/`R2` as frozen parameters, so the streams cannot observe the date's market (issue #198). `data_dependent` lets the latents read the date's active cross-section first. The two modes hold different parameters, so a checkpoint belongs to the mode that produced it. |
 | Model | gru_attn_layer_widths | `shared` — how `gru_attn` reads `gru_hidden_sizes` (issue #131). `shared` uses the list length as the layer count and the last entry as every layer's width, so `[32, 10]` is two width-10 layers; `per_layer` builds one layer per entry at its own width, so `[32, 10]` is 32 then 10. The two forms hold different parameters, so a checkpoint belongs to the form that produced it. |
+| Model | gat_layer_form | `legacy` — the form of every graph block: the A2 correlation stream, the sector stream and the final head (issue #320). `legacy` is plain GAT v1, in which a linked stock's own features count only as one more neighbour, so stocks with the same neighbourhood score alike; `residual` adds a learned own-feature path to each layer (`GATConv(residual=True)`, torch-geometric 2.6 or later). The two forms hold different parameters, so a checkpoint belongs to the form that produced it. |
 | Graph | use_multi_feature_edges | `true` (4-D edge features; `paper_faithful` preset pins `false`) |
 | Training | batch_size | 32 |
 | Training | learning_rate | 5e-5 |
@@ -276,6 +320,7 @@ Values below reflect **`configs/config.yaml`** merged with **`configs/data/gics_
 | Training | minimum_selection_rows | `1` (eligible validation dates the selection metric needs; a run whose `selection_metric` has fewer raises instead of selecting a checkpoint from an empty metric) |
 | Training | lr_scheduler | `cosine` (linear warmup `warmup_steps` then cosine decay; `none` disables) |
 | Training | use_amp | `true` on CUDA (no-op on CPU) |
+| Training | eval_amp | `false` (validation and prediction run in full precision even when `use_amp` trains under autocast; `true` scores under autocast too, so a member's scores sit on an fp16 grid and can tie) |
 | Tracking | enabled | `true` (local `./mlruns`; set `tracking.enabled=false` to disable) |
 
 Because the base default sets `use_pit_universe: true` against a PIT CSV that is not committed, any run supplying its own panel must pass `data.use_pit_universe=false`. `scripts/ci_smoke.py` does this.

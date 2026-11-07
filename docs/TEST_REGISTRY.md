@@ -58,7 +58,7 @@ Public auxiliary loader and preparation capture/replay contracts.
 
 ## `tests/test_backtest_engine_golden.py`
 
-Golden-output regression tests for legacy backtest CLIs (WS-N step 2).
+Golden-output regression tests for the replay CLIs (WS-N step 2, regenerated in #340).
 
 | Test | Description | Markers |
 |---|---|---|
@@ -67,27 +67,46 @@ Golden-output regression tests for legacy backtest CLIs (WS-N step 2).
 
 ## `tests/test_backtest_fairness.py`
 
-Test script to verify backtest fairness fixes.
+Backtest fairness of the replay's open-to-open variant (#340 kept it as a labelled variant).
 
-**Exercises:** `mci_gru.evaluation`
+**Exercises:** `mci_gru.evaluation`, `mci_gru.evaluation.replay_book`
 
 | Test | Description | Markers |
 |---|---|---|
-| `test_return_calculation` | Test that calculate_forward_returns adds the correct columns. |  |
-| `test_simulation_timing` | Test that simulation uses correct timing (next-day open-to-open returns). |  |
-| `test_prediction_date_mapping` | Test that predictions on day t map to day t+1 entry open-to-open returns. |  |
-| `test_rank_drop_gate_eligible` | With rank-drop gate: stock that fell >= 10 ranks is eligible and can be selected. |  |
-| `test_rank_drop_gate_excluded` | With rank-drop gate: when no stock fell >= 10 ranks, holdings persist. |  |
-| `test_rank_drop_gate_disabled_regression` | With rank-drop gate disabled, behavior matches no-gate (same number of trading days as without gate). |  |
-| `test_portfolio_tracking_outputs_nonregression` | Validate additive portfolio tracking outputs and core output preservation. |  |
+| `test_simulation_timing` | The open_to_open variant earns the open D+1 to open D+2 move. |  |
+| `test_prediction_date_mapping` | A prediction on day t is held from the open of t+1 to the open of t+2. |  |
+| `test_rank_drop_gate_eligible` | A holding whose rank fell by >= min_rank_drop is sold and its slot refilled. |  |
+| `test_rank_drop_gate_excluded` | With no rank drop >= min_rank_drop, holdings persist. |  |
+| `test_rank_drop_gate_disabled_regression` | With the gate off, the book is the plain top-k book. |  |
+| `test_portfolio_tracking_outputs_nonregression` | Holdings and trades come from the same book, and every output file is written. |  |
 
 ## `tests/test_backtest_plotting.py`
 
-**Exercises:** `mci_gru.evaluation`
+**Exercises:** `mci_gru.evaluation`, `mci_gru.evaluation.replay_book`
 
 | Test | Description | Markers |
 |---|---|---|
 | `test_plot_equity_curve_uses_agg_backend_when_saving` |  |  |
+
+## `tests/test_baselines.py`
+
+Simple baseline signals read only what was known at the signal date's close (#360).
+
+**Exercises:** `mci_gru.evaluation.baselines`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_past_return_is_the_ratio_of_the_two_closes_counted_in_sessions` |  |  |
+| `test_reversal_is_minus_the_recent_return_and_momentum_skips_the_last_month` |  |  |
+| `test_a_missing_bar_empties_that_score_and_never_moves_an_endpoint` |  |  |
+| `test_no_close_after_the_signal_date_changes_its_score` |  |  |
+| `test_a_date_without_enough_history_or_off_the_axis_has_no_score` |  |  |
+| `test_past_return_refuses_lags_that_do_not_look_back` |  |  |
+| `test_the_ridge_recovers_a_planted_linear_signal_and_scores_with_it` |  |  |
+| `test_the_ridge_reads_only_the_training_rows_its_mask_allows` |  |  |
+| `test_an_input_that_is_the_same_for_every_stock_on_a_date_is_ignored` | Global inputs (regime, VIX, credit) cannot rank stocks; demeaning removes them. |  |
+| `test_the_penalty_with_the_best_validation_ic_is_kept_and_ties_go_to_the_larger` |  |  |
+| `test_validation_ic_reads_only_scores_the_validation_mask_allows` |  |  |
 
 ## `tests/test_capability_marker_guard.py`
 
@@ -283,11 +302,24 @@ Input admission at the confirmed #223 seams: native read, preparation, runner.
 | `test_the_runner_reports_malformed_rows_with_the_identity_of_the_read` |  | slow |
 | `test_the_runner_control_passes_admission_and_reaches_the_guarded_trainer_path` | Proves the guards are live: a valid panel gets past preparation to them. | slow |
 
+## `tests/test_dated_ic.py`
+
+Dated daily IC: each test date keeps its own IC, and the means equal the summary's (#326).
+
+**Exercises:** `mci_gru.evaluation.dated_ic`, `mci_gru.evaluation.metrics`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_unscored_days_keep_their_date_and_later_days_do_not_shift` |  |  |
+| `test_means_equal_the_evaluation_summary` |  |  |
+| `test_the_csv_round_trips_at_full_precision` |  |  |
+| `test_dates_that_do_not_match_the_rows_are_refused` |  |  |
+
 ## `tests/test_default_experiment_recipe.py`
 
 Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
 
-**Exercises:** `mci_gru.config`, `mci_gru.graph.utils`, `mci_gru.models`
+**Exercises:** `mci_gru.config`, `mci_gru.features.base`, `mci_gru.features.registry`, `mci_gru.graph.utils`, `mci_gru.models`, `mci_gru.models.graph`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -300,10 +332,19 @@ Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
 | `test_the_recipe_builds_data_dependent_market_latents` | Issue 198: static latents cannot see the date, so the first run must not use them. |  |
 | `test_the_recipe_builds_the_residual_cross_stock_block` | Issue 197: the legacy block replaces z and discards most cross-sectional variation. |  |
 | `test_the_recipe_builds_gru_attn_layers_at_32_then_10` | Issue 131: [32, 10] must mean a 32-wide layer then a 10-wide one. |  |
+| `test_the_recipe_builds_residual_graph_layers` | Issue 320: legacy graph layers tie linked names; every layer needs an own-feature path. |  |
+| `test_the_recipe_feeds_relative_base_inputs` | Issue 323: raw split-adjusted levels encode later splits; the recipe must not feed them. |  |
+| `test_the_recipe_scores_in_full_precision` | Issue 321: the first run scored under autocast, so its scores sat on an fp16 grid. |  |
 | `test_the_base_config_alone_still_builds_the_legacy_forms` | Control: the two tests above must come from the recipe's own pins. |  |
+| `test_the_slug_names_each_fix_the_recipe_adopts` | PRD 319 D6: the fixed model gets its own id, so its results never mix with the first run's. |  |
+| `test_every_document_naming_the_current_slug_names_this_one` | The slug is quoted outside the recipe; a stale copy would label new runs with the old id. |  |
+| `test_recipe_records_the_model_fix_and_keeps_the_first_run_apart` | PRD 319 D7: the first run stays on record under its own slug and is not this baseline. |  |
 | `test_the_override_block_parser_reads_the_block` | Control: an empty parse would make every composition test vacuous. |  |
 | `test_recipe_captures_its_provider_inputs` | The owner chose capture for the first run (2026-10-04); source leaves inputs unverifiable. |  |
 | `test_the_recipe_trains_on_the_eodhd_price_panel` | Issue 283: the first run reads the EODHD package, not the LSEG one (owner, 2026-10-08). |  |
+| `test_the_recipe_trains_on_four_years` | Issue 367: train 2020 to 2023, validate 2024, test 2025, the last window before 2026. |  |
+| `test_without_its_window_line_the_recipe_would_train_on_eight_years` | Control: the four-year window comes from the recipe's line, not from the data config. |  |
+| `test_recipe_records_the_training_window_change` | The 8-year first run and the 4-year runs must not be read as one recipe. |  |
 | `test_without_its_data_line_the_recipe_would_read_the_lseg_panel` | Control: the test above must come from the recipe's selector, not the base default. |  |
 | `test_recipe_records_the_price_panel_change` | The 2026-10-08 EODHD switch is dated, so LSEG- and EODHD-panel evidence stay apart. |  |
 
@@ -404,7 +445,7 @@ Ensemble invariant: prediction = mean of independently trained models.
 
 EODHD daily prices for the point-in-time universe (#281).
 
-**Exercises:** `mci_gru.config`, `mci_gru.data.eodhd_prices`, `mci_gru.data.input_manifest`, `mci_gru.data.input_observations`, `mci_gru.data.quality_contract`, `mci_gru.evaluation.run_input_declarations`, `scripts.data.export_eodhd_pit_prices`
+**Exercises:** `mci_gru.config`, `mci_gru.data.eodhd_prices`, `mci_gru.data.input_manifest`, `mci_gru.data.input_observations`, `mci_gru.data.quality_contract`, `mci_gru.evaluation.run_input_declarations`, `scripts.data.check_eodhd_volume_basis`, `scripts.data.export_eodhd_pit_prices`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -414,7 +455,11 @@ EODHD daily prices for the point-in-time universe (#281).
 | `test_plans_reject_overrides_for_names_outside_the_universe` |  |  |
 | `test_name_hint_matches_common_stock_names_case_insensitively` |  |  |
 | `test_parse_split_ratio_reads_new_over_old` |  |  |
-| `test_split_adjust_divides_prices_and_multiplies_volume_before_the_split` |  |  |
+| `test_split_adjust_divides_prices_and_leaves_volume_as_delivered` | Issue 347: EODHD's volume is already split-adjusted; multiplying it applied the split twice. |  |
+| `test_volume_is_continuous_across_a_real_vendor_split` | Issue 347: the vendor's own AAPL rows around 2020-08-31 (4-for-1), as served. |  |
+| `test_splits_after_the_panel_end_come_out_of_volume_only` | Issue 347: the vendor's volume carries splits after the panel end; the prices do not. |  |
+| `test_splits_frame_keeps_only_the_dates_between_after_and_as_of` |  |  |
+| `test_chtrs_real_vendor_rows_restate_to_new_shares_across_the_merger` | Issue 347: CHTR's own vendor rows around the 2016-05-18 conversion, through the map's entry. |  |
 | `test_splits_after_the_panel_end_are_not_applied` |  |  |
 | `test_a_split_the_raw_prices_already_carry_is_caught` |  |  |
 | `test_clean_values_blanks_nonpositive_prices_and_negative_volume` |  |  |
@@ -441,6 +486,8 @@ EODHD daily prices for the point-in-time universe (#281).
 | `test_reference_check_only_judges_the_span_the_universe_needs` |  |  |
 | `test_rows_for_a_name_declared_unavailable_block` |  |  |
 | `test_export_proves_each_mapping_and_publishes_a_verifiable_package` |  |  |
+| `test_export_takes_splits_after_the_panel_end_out_of_volume_only` | Issue 347: volume comes through as delivered, less splits from the panel end to serving. |  |
+| `test_a_response_with_no_serving_time_blocks` | Without a serving time the later splits in the vendor's volume cannot be known. |  |
 | `test_export_stops_without_a_manifest_when_no_candidate_matches` |  |  |
 | `test_a_declared_unavailable_name_is_left_out_and_disclosed` |  |  |
 | `test_a_name_with_no_rows_still_blocks_unless_declared` |  |  |
@@ -449,6 +496,9 @@ EODHD daily prices for the point-in-time universe (#281).
 | `test_the_key_is_never_written` |  |  |
 | `test_client_never_stores_or_reports_the_key` |  |  |
 | `test_client_quotes_symbols_and_retries_dropped_connections` |  |  |
+| `test_client_records_when_each_response_was_served` | Issue 347: the later splits in volume run to when the vendor served the rows, cached or not. |  |
+| `test_the_volume_check_passes_a_package_built_from_its_cache` | Two stretches of one symbol share its later split once each, never twice (#347 review). |  |
+| `test_the_volume_check_fails_doubled_volume_and_undeclared_price_changes` |  |  |
 | `test_inputs_must_match_the_reference_manifest` |  |  |
 | `test_notebook_is_the_generator_output` |  |  |
 | `test_notebook_pins_the_reference_package_the_lseg_config_pins` |  |  |
@@ -456,6 +506,53 @@ EODHD daily prices for the point-in-time universe (#281).
 | `test_the_eodhd_config_changes_only_the_price_panel_and_its_package` |  |  |
 | `test_the_eodhd_package_carries_the_lseg_membership_byte_for_byte` |  |  |
 | `test_the_eodhd_config_binds_both_selected_files_to_its_package` |  |  |
+
+## `tests/test_eval_precision.py`
+
+Scoring precision: training may use AMP, validation and prediction do not.
+
+**Exercises:** `mci_gru.config`, `mci_gru.training.trainer`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_default_config_scores_in_full_precision` |  |  |
+| `test_training_keeps_amp_while_validation_runs_in_full_precision` |  |  |
+| `test_prediction_runs_in_full_precision` |  |  |
+| `test_eval_amp_opts_scoring_back_into_autocast` | The control: the recorder does see autocast when scoring asks for it. |  |
+| `test_eval_amp_needs_a_cuda_device` |  |  |
+| `test_cuda_prediction_matches_fp32_to_1e6` |  | skipif |
+
+## `tests/test_evaluation_outcomes.py`
+
+The shared evaluation core: realized returns, the rankable set, exits and ties (#335).
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.pit`, `mci_gru.data.preprocessing`, `mci_gru.evaluation`, `mci_gru.evaluation.outcomes`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_default_legs_equal_the_training_label_exactly_on_a_panel_with_a_missing_bar` |  |  |
+| `test_custom_legs_read_closes_at_their_own_sessions` |  |  |
+| `test_missing_exit_books_the_last_available_close_and_records_the_event` |  |  |
+| `test_missing_exit_books_the_last_close_inside_the_hold_never_a_later_one` |  |  |
+| `test_the_session_axis_does_not_depend_on_which_columns_are_requested` |  |  |
+| `test_missing_entry_close_holds_cash_and_records_the_event` |  |  |
+| `test_a_name_with_no_close_on_the_signal_date_has_no_outcome_and_no_event` |  |  |
+| `test_a_hold_past_the_panel_end_is_unresolved_not_booked` |  |  |
+| `test_legs_reject_impossible_or_non_integer_sessions` |  | parametrize |
+| `test_rankable_is_the_tradable_mask_and_keeps_a_name_with_no_future_price` |  |  |
+| `test_a_top_pick_that_stops_trading_keeps_its_slot_and_books_its_loss` |  |  |
+| `test_ties_order_by_score_then_kdcode` |  |  |
+| `test_tie_order_does_not_depend_on_column_order` |  |  |
+| `test_unscored_names_order_last` |  |  |
+| `test_unscored_and_unrankable_names_are_never_selected` |  |  |
+| `test_portfolio_top_k_uses_the_core_tie_rule` |  |  |
+| `test_evaluation_legs_and_tranches_default_to_the_training_label` |  |  |
+| `test_evaluation_rejects_unknown_or_invalid_legs_and_tranches` |  | parametrize |
+| `test_tranches_must_divide_the_hold_the_label_implies` |  |  |
+| `test_legs_may_not_exit_past_the_embargoed_label_horizon` |  |  |
+| `test_legs_and_tranches_survive_the_hydra_construction_paths` |  |  |
+| `test_unknown_evaluation_key_is_rejected` |  |  |
+| `test_shipped_config_declares_legs_and_tranches_following_the_label` |  |  |
 
 ## `tests/test_evaluation_portfolio.py`
 
@@ -688,6 +785,61 @@ Automatic checks on one filing's Item 1A extraction (#292).
 | `test_text_under_no_heading_after_the_first_risk_is_flagged` |  |  |
 | `test_a_risk_read_from_its_lead_leaves_no_text_without_heading` |  |  |
 | `test_introduction_under_a_cautionary_title_is_not_text_without_heading` |  |  |
+
+## `tests/test_filings_context.py`
+
+E18: an 8-K rated with the company's latest earnings release, from the rule to the run.
+
+**Exercises:** `mci_gru.filings.change`, `mci_gru.filings.context`, `mci_gru.filings.events`, `mci_gru.filings.jev`, `scripts.data.export_sec_context_releases`, `scripts.data.score_8k_with_context`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_the_latest_release_is_the_last_earnings_8k_accepted_before_the_event` |  |  |
+| `test_a_release_counts_up_to_120_days_before` |  | parametrize |
+| `test_an_event_with_no_earlier_release_has_no_context` |  |  |
+| `test_a_draw_takes_only_its_stratum_and_never_depends_on_the_frames_order` |  |  |
+| `test_later_draws_never_repeat_an_earlier_one_and_minus_one_takes_the_rest` |  |  |
+| `test_a_repeated_event_or_an_unknown_stratum_stops_the_draw` |  |  |
+| `test_the_release_goes_just_before_the_event_text_and_nothing_else_changes` |  |  |
+| `test_the_context_question_is_e16s_with_only_the_instructions_changed` |  |  |
+| `test_a_draw_number_asks_again_and_leaves_the_undrawn_key_as_it_was` |  |  |
+| `test_each_frame_event_gets_its_latest_release_or_the_reason_it_has_none` |  |  |
+| `test_a_drawn_release_is_checked_again_on_its_index_page_time_and_text` |  | parametrize |
+| `test_the_baselines_are_the_tone_of_the_8k_the_release_and_both` |  |  |
+| `test_the_context_arm_asks_once_per_event_with_the_release_then_collects` |  |  |
+| `test_the_plain_arm_asks_e16s_exact_question_and_state_as_a_new_draw` |  |  |
+| `test_collect_refuses_while_an_event_has_no_answer` |  |  |
+| `test_events_and_releases_must_name_the_same_8ks` |  |  |
+
+## `tests/test_filings_earnings.py`
+
+E17: earnings releases read against the previous one, from the pairing rule to the run.
+
+**Exercises:** `mci_gru.filings.earnings`, `mci_gru.filings.jev`, `mci_gru.filings.labelling`, `scripts.data.export_sec_member_10k`, `scripts.data.export_sec_member_earnings`, `scripts.data.score_earnings_releases`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_the_previous_release_is_the_latest_earlier_earnings_8k` |  |  |
+| `test_a_pair_counts_only_one_quarter_apart` |  | parametrize |
+| `test_a_company_with_no_earlier_release_has_no_pair` |  |  |
+| `test_a_draw_never_depends_on_the_order_of_the_candidates` |  |  |
+| `test_later_draws_never_repeat_an_earlier_one_and_minus_one_takes_the_rest` |  |  |
+| `test_a_bigger_pool_keeps_the_events_a_smaller_one_drew` |  |  |
+| `test_a_repeated_candidate_stops_the_draw` |  |  |
+| `test_the_frozen_questions_offer_the_scouted_options_each_described` |  |  |
+| `test_each_question_has_its_own_shuffle_the_same_on_every_run` |  |  |
+| `test_setup_score_weights_much_worse_minus_two_to_much_better_plus_two` |  |  |
+| `test_the_state_holds_the_company_both_days_and_both_texts_only` |  |  |
+| `test_candidates_are_members_earnings_8ks_with_a_previous_release` |  |  |
+| `test_a_drawn_event_is_checked_again_on_its_index_page_times` |  |  |
+| `test_a_release_too_short_to_compare_is_left_out` |  |  |
+| `test_the_baseline_is_the_tone_change_of_the_draws_events` |  |  |
+| `test_three_questions_in_one_call_each_event_once_then_collect` |  |  |
+| `test_collect_refuses_while_an_event_has_no_answer` |  |  |
+| `test_an_answer_from_another_model_stops_the_run` |  |  |
+| `test_a_text_over_the_limit_is_refused` |  |  |
+| `test_the_reading_check_asks_jevs_setup_question_word_for_word` |  |  |
+| `test_an_earnings_sheet_shows_the_previous_release_then_the_current` |  |  |
 
 ## `tests/test_filings_edgar.py`
 
@@ -1089,19 +1241,23 @@ The first run declares no cessation file; this pins why that is safe, and when n
 
 Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 
-**Exercises:** `mci_gru.config`, `mci_gru.data.input_manifest`, `scripts`
+**Exercises:** `mci_gru.config`, `mci_gru.data.input_manifest`, `mci_gru.preregistration`, `scripts`
 
 | Test | Description | Markers |
 |---|---|---|
 | `test_recipe_overrides_are_read_from_the_recipe_document` |  |  |
 | `test_recipe_parsing_refuses_a_missing_block_or_a_key_set_twice` |  |  |
 | `test_smoke_replaces_the_budget_in_place_and_full_keeps_it` |  |  |
+| `test_the_recipe_on_its_own_window_gains_no_override` | W5 is the recipe (#367), so moving the recipe onto W5 changes nothing. |  |
+| `test_a_window_run_composes_onto_that_windows_dates_and_passes_the_runner_gate` |  | parametrize |
+| `test_the_holdout_is_never_a_window_a_run_may_name` |  |  |
 | `test_capture_is_added_only_when_the_recipe_does_not_select_it` |  |  |
 | `test_replace_override_refuses_a_key_the_recipe_does_not_set` |  |  |
 | `test_run_overrides_compose_into_the_typed_config` | The notebook's overrides go through Hydra the way run_experiment.py takes them. | parametrize |
 | `test_every_prerequisite_present_reads_as_ready` |  |  |
 | `test_each_missing_prerequisite_is_named_by_its_pull_request` |  | parametrize |
 | `test_one_of_three_model_pins_is_not_enough_for_275` |  |  |
+| `test_a_fix_key_set_to_its_legacy_value_is_missing` | Naming the key is not enough: the pin must select the fixed form. | parametrize |
 | `test_a_digest_without_a_pin_is_named_as_the_pin_not_as_270` |  |  |
 | `test_270_needs_the_package_declaration_in_the_data_config` |  |  |
 | `test_the_recipe_data_config_chooses_the_package_to_stage` |  | parametrize |
@@ -1151,6 +1307,68 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_a_full_run_refuses_source_changes_including_untracked_files` |  |  |
 | `test_a_run_refuses_to_reuse_a_folder` |  |  |
 | `test_a_run_records_itself_without_the_key` |  |  |
+| `test_the_recipe_arm_is_the_recipe` |  |  |
+| `test_each_control_arm_differs_from_the_recipe_only_by_its_change` |  |  |
+| `test_an_arm_that_would_change_nothing_is_refused` |  |  |
+| `test_every_arm_composes_into_the_typed_config` | Each arm goes through Hydra the way run_experiment.py takes it. | parametrize |
+| `test_a_control_arm_records_itself_and_is_never_an_admitted_run_candidate` |  |  |
+| `test_a_window_run_records_its_window_in_its_folder_name_and_record` |  |  |
+| `test_an_arm_the_recipe_cannot_take_is_refused_before_anything_is_written` |  |  |
+| `test_junit_outcome_reads_the_cuda_test` |  | parametrize |
+| `test_the_gpu_check_passes_only_when_the_cuda_test_ran_and_passed` |  | parametrize |
+| `test_the_gpu_check_fails_when_pytest_writes_no_report` |  |  |
+| `test_compare_pairs_the_reference_against_each_arm_on_common_dates` |  |  |
+| `test_compare_refuses_a_dated_series_its_summary_does_not_average` |  |  |
+| `test_compare_refuses_arms_from_different_commits` |  |  |
+| `test_compare_refuses_a_folder_labelled_as_another_arm` |  |  |
+| `test_the_notebook_runs_one_recipe_arm_unless_told_otherwise` |  |  |
+| `test_compare_refuses_a_control_that_differs_by_more_than_its_arm` |  | parametrize |
+| `test_compare_accepts_the_same_package_bytes_however_they_were_staged` |  |  |
+| `test_compare_pairs_runs_recorded_before_and_after_the_protocol_stamp` | A run launched before #372 has no ``protocol.*`` override; one launched after it |  |
+| `test_compare_refuses_an_arm_given_twice_or_a_reference_other_than_the_recipe` |  |  |
+| `test_compare_flags_auxiliary_inputs_that_differ_from_the_recipe_arms` |  |  |
+| `test_compare_pools_each_arms_windows_and_reports_each_window` |  |  |
+| `test_compare_reads_a_run_from_before_window_records_by_its_dates` |  |  |
+| `test_compare_refuses_a_run_whose_window_is_not_what_it_scored` |  | parametrize |
+| `test_a_run_on_dates_that_are_no_window_is_refused` |  |  |
+| `test_compare_refuses_arms_that_ran_different_windows` |  |  |
+| `test_compare_refuses_a_window_given_twice_for_one_arm` |  |  |
+| `test_compare_refuses_reference_windows_that_differ_beyond_their_dates` |  |  |
+| `test_compare_refuses_runs_that_score_different_label_horizons` |  |  |
+| `test_window_runs_take_their_dates_from_the_data_group_they_select` | The data config comes from the overrides given, not from the checkout's recipe. |  |
+| `test_compare_writes_strict_json_and_never_writes_over_a_folder` |  |  |
+| `test_check_arms_refuses_before_training_an_arm_the_recipe_cannot_take` |  |  |
+| `test_check_arms_accepts_the_levels_arm_once_the_recipe_pins_relative_inputs` | Control for the refusal above: the #325 recipe gives levels_inputs a pin to undo. |  |
+| `test_the_notebook_checks_every_arm_before_any_trains` |  |  |
+| `test_the_seed_arm_shares_no_member_seed_with_the_recipe` | The noise-floor arm is the recipe on seeds none of the recipe's members used. |  |
+
+## `tests/test_gat_own_signal.py`
+
+Graph layers must let a linked stock be scored on its own inputs.
+
+**Exercises:** `mci_gru.config`, `mci_gru.graph.utils`, `mci_gru.models`, `mci_gru.models.graph`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_legacy_block_ties_a_linked_pair_whatever_their_inputs` | Guard: the fixture reproduces the bug, so the tests below can fail. | parametrize |
+| `test_residual_block_scores_a_linked_pair_on_its_own_inputs` |  | parametrize |
+| `test_legacy_block_ties_every_node_of_a_linked_triangle` | Guard: ties are not only a two-node effect. | parametrize |
+| `test_residual_block_separates_every_node_of_a_linked_triangle` |  | parametrize |
+| `test_legacy_recipe_model_ties_a_linked_pair` | Guard: the recipe's model reproduces the first run's pair ties. |  |
+| `test_residual_recipe_model_scores_a_linked_pair_on_its_own_inputs` | User story 1 and 2 of #319, through ``create_model`` with the recipe's settings. |  |
+| `test_graph_stream_carries_each_stocks_own_graph_features` | The A2 graph stream, not only the head, must keep a linked stock's own signal. | parametrize |
+| `test_every_graph_block_the_model_builds_keeps_own_signal` | Final head, A2 graph stream and sector stream all get the chosen form. | parametrize |
+| `test_default_config_keeps_the_pre_change_checkpoint_shape` | First-run checkpoints must keep loading, so the default may not move. |  |
+| `test_explicit_legacy_form_keeps_the_pre_change_checkpoint_shape` |  |  |
+| `test_residual_form_adds_an_own_feature_map_to_every_graph_layer` | The residual form is a different parameter set, so it is a different checkpoint. |  |
+| `test_a_legacy_checkpoint_does_not_load_into_the_residual_form` | A silent partial load would leave the own-feature maps at their random init. |  |
+| `test_a_residual_checkpoint_does_not_load_into_the_legacy_form` |  |  |
+| `test_create_model_rejects_an_unknown_gat_layer_form` | ``create_model`` also takes a checkpoint's plain ``config.yaml`` dict, |  |
+| `test_model_config_rejects_an_unknown_gat_layer_form` |  |  |
+| `test_model_config_round_trips_the_gat_layer_form` |  |  |
+| `test_base_config_yaml_ships_the_legacy_graph_layers` | Real runs take the default from ``configs/config.yaml``, not from ``ModelConfig``. |  |
+| `test_residual_form_reaches_the_built_model_from_hydra` | The override must survive Hydra, ``ExperimentConfig`` and the factory. |  |
+| `test_dependency_floor_has_gatconv_residual` | ``GATConv(residual=...)`` first shipped in torch-geometric 2.6.0. |  |
 
 ## `tests/test_generate_test_registry.py`
 
@@ -1364,6 +1582,63 @@ Issue 131: how ``gru_attn`` reads ``model.gru_hidden_sizes``.
 | `test_model_config_validates_and_serialises_the_setting` |  |  |
 | `test_encoder_rejects_an_unknown_layer_widths_value` |  |  |
 
+## `tests/test_ic_interval_overlap.py`
+
+IC confidence intervals reach nominal coverage on overlapping labels (#356).
+
+**Exercises:** `mci_gru.evaluation.metrics`, `mci_gru.evaluation.paired_inference`, `mci_gru.evaluation.statistics`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_label_overlap_is_label_t_minus_two_lags` |  |  |
+| `test_ic_interval_reaches_nominal_coverage_on_overlapping_labels` | The in-run IC CI covers the true mean about 95% of the time on the first run's length. |  |
+| `test_paired_interval_reaches_nominal_coverage_on_overlapping_labels` | The paired-difference CI uses the same interval, so it covers at the same rate. |  |
+| `test_the_block_bootstrap_at_label_t_undercovers` | Control: the scheme #356 replaces fails the coverage band, so the band has teeth. |  |
+| `test_without_overlap_the_interval_is_a_t_interval_on_n_minus_one_df` |  |  |
+| `test_the_interval_records_its_method_lags_and_degrees_of_freedom` |  |  |
+| `test_a_non_positive_long_run_variance_gives_no_interval` |  |  |
+| `test_compute_ic_metrics_reports_the_overlap_interval_for_ic_and_rank_ic` |  |  |
+| `test_compute_ic_metrics_omits_intervals_unless_asked` |  |  |
+| `test_paired_inference_defaults_to_the_overlap_interval` |  |  |
+| `test_paired_inference_keeps_an_explicitly_requested_block_bootstrap` | The archived graph notebooks pass ``block_size``; they reproduce their own records. |  |
+| `test_a_block_bootstrap_needs_its_resamples_and_seed` |  |  |
+| `test_the_t_reference_holds_coverage_on_a_short_test_span` | At 60 dates a normal critical value covers about 91%; the t reference keeps 95%. |  |
+| `test_the_hac_p_value_and_interval_agree` | A p-value under 5% exactly when the 95% interval excludes zero, as one reference. |  |
+
+## `tests/test_in_run_summary.py`
+
+The in-run summary measures a tradable book and nets the universe (#336).
+
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation.experiment_summary`, `mci_gru.evaluation.metrics`, `mci_gru.evaluation.outcomes`, `mci_gru.evaluation.statistics`, `mci_gru.evaluation.tranche_book`, `run_experiment`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_hansen_hodrick_std_gives_every_lag_up_to_the_span_full_weight` |  |  |
+| `test_hansen_hodrick_std_floors_a_negative_variance_at_zero` |  |  |
+| `test_hansen_hodrick_inference_takes_its_lags_from_the_outcome_span` |  |  |
+| `test_the_hansen_hodrick_t_stat_holds_its_size_on_overlapping_returns` | Zero-mean 4-session returns sampled daily: |t| > 1.96 about 5% of the time. |  |
+| `test_the_book_rolls_each_sleeve_and_never_re_equalises_them` | One stock, two-session hold, two sleeves: worked out by hand. |  |
+| `test_a_tranche_that_loses_its_exit_books_the_last_close_as_the_core_does` | A pick that stops trading mid-hold is held at its last close, then cash (E3). |  |
+| `test_the_book_sharpe_matches_a_known_daily_sharpe_on_overlapping_labels` | Identical stocks: every book earns the market each session, so its Sharpe is known. |  |
+| `test_cumulative_return_compounds_the_daily_book` | One sleeve, fully invested from first entry to last exit: exactly the market. |  |
+| `test_random_scores_on_a_rising_market_have_no_excess` |  |  |
+| `test_scores_that_know_the_outcome_show_excess_with_a_large_t_stat` |  |  |
+| `test_every_k_comes_from_top_k_values_and_nets_the_universe_by_hand` | Six names, k of 2 and 3: the excess is the picks' mean minus all six. |  |
+| `test_a_name_outside_the_rankable_set_is_never_bought` |  |  |
+| `test_the_universe_benchmark_uses_the_same_mask_as_the_picks` | A soaring name outside the mask is in neither the picks nor the benchmark. |  |
+| `test_a_window_with_no_resolved_hold_reports_nan_not_zero` |  |  |
+| `test_missing_close_events_count_only_names_that_could_be_held` |  |  |
+| `test_the_summary_labels_its_basis_and_drops_metrics_an_ic_loss_leaves_arbitrary` |  |  |
+| `test_ic_and_rank_ic_are_unchanged_by_the_new_summary` | Control: the per-date IC means, recomputed independently, and their overlap CIs (#356). |  |
+| `test_the_excess_interval_and_its_p_value_agree` | #356: the summary pairs each excess CI with the p-value of the same test. |  |
+| `test_the_excess_interval_is_the_hac_interval_over_the_hold_overlap` | #356: the excess CI is recomputed from the per-date excess, hold - 1 = 3 lags. |  |
+| `test_ic_date_coverage_counts_dates_that_could_not_be_scored` |  |  |
+| `test_quintiles_split_the_cross_section_evenly` | Twelve names in five quintiles are 2, 2, 2, 3, 3 from the bottom, not 2, 2, 2, 2, 4. |  |
+| `test_sharpe_method_is_honoured_on_the_daily_book` |  |  |
+| `test_the_config_drives_legs_tranches_and_lags` |  |  |
+| `test_the_runner_scores_the_book_on_the_panel_it_trained_on` |  |  |
+| `test_the_runner_writes_the_v2_summary` |  |  |
+
 ## `tests/test_index_level_mode.py`
 
 Tests for index-level experiment mode (no stock-level survivorship bias).
@@ -1496,6 +1771,25 @@ Public exact-observation snapshot preservation and offline replay contracts.
 | `test_trainer_rejects_checkpoint_selection_without_eligible_rank_rows` |  |  |
 | `test_select_training_objective_respects_selection_metric` |  |  |
 
+## `tests/test_linked_score_ties.py`
+
+Run summaries count ties among graph-linked names (#324).
+
+**Exercises:** `mci_gru.evaluation.experiment_summary`, `run_experiment`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_linked_pairs_drop_direction_duplicates_and_self_loops` |  |  |
+| `test_an_empty_or_missing_graph_links_nothing` |  |  |
+| `test_an_edge_list_laid_out_as_rows_is_refused` |  |  |
+| `test_ties_are_counted_only_between_linked_finite_scores_within_tolerance` |  |  |
+| `test_the_summary_reports_ensemble_and_each_member_per_date_and_in_total` |  |  |
+| `test_each_date_is_counted_against_its_own_graph_snapshot` |  |  |
+| `test_a_dynamic_run_counts_against_the_schedule_snapshot_not_the_initial_graph` |  |  |
+| `test_a_static_run_counts_against_its_one_graph` |  |  |
+| `test_the_runner_counts_each_members_own_scores_on_the_graph_it_used` |  |  |
+| `test_the_runner_writes_the_counts_into_the_evaluation_summary` |  |  |
+
 ## `tests/test_long_history_issue23.py`
 
 | Test | Description | Markers |
@@ -1610,6 +1904,39 @@ Admissible range for `model.label_t` (issue 107).
 | `test_dynamic_estimator_uses_only_prior_observations` |  |  |
 | `test_dynamic_estimator_activates_after_sufficient_history` |  |  |
 | `test_feature_config_validates_dynamic_controls_and_yaml_merge` |  |  |
+
+## `tests/test_no_split_lookahead.py`
+
+Stock inputs on a date never reflect a split that happens after it (#323, PRD #319 D8).
+
+**Exercises:** `mci_gru.config`, `mci_gru.features`, `mci_gru.features.base`, `mci_gru.pipeline`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_relative_inputs_before_a_split_ignore_the_later_split` |  | parametrize |
+| `test_legacy_level_inputs_carry_the_later_split` | The guard's control: the base default still shows the bug it exists for. |  |
+| `test_relative_inputs_replace_the_six_levels` |  |  |
+| `test_relative_inputs_do_not_repeat_when_price_features_are_also_on` |  |  |
+| `test_relative_definitions_win_over_the_price_features_for_shared_names` | With both on, the shared columns follow the relative definitions. |  |
+| `test_relative_inputs_ignore_a_later_split_across_gaps_in_the_history` | A missing session and an all-missing row before the split change nothing. |  |
+| `test_relative_inputs_are_ratios_of_the_stock_s_own_prices` |  |  |
+| `test_relative_inputs_leave_zero_volume_missing_rather_than_infinite` |  |  |
+| `test_unknown_base_inputs_value_is_rejected` |  |  |
+| `test_base_default_keeps_the_legacy_levels` |  |  |
+| `test_normaliser_fits_the_relative_inputs_on_train_rows_only` |  |  |
+| `test_normaliser_statistics_ignore_rows_after_train_end` |  |  |
+
+## `tests/test_normalisation_window.py`
+
+Issue 367: the pipeline fits normalisation on the training window, not the panel.
+
+**Exercises:** `mci_gru.pipeline`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_zscore_fit_ignores_rows_before_train_start` |  |  |
+| `test_zscore_fit_with_an_earlier_start_takes_those_rows_in` | Control: the bound is what keeps them out, not the shape of the panel. |  |
+| `test_rank_gauss_fit_ignores_rows_before_train_start` |  |  |
 
 ## `tests/test_notebook_eodhd_staging.py`
 
@@ -1771,14 +2098,9 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 
 | Test | Description | Markers |
 |---|---|---|
-| `test_dispatch_refuses_pit_universe_when_simulator_cannot_admit_it` | A simulator that cannot take the PIT universe must not be run with one. | parametrize |
-| `test_shipped_simulators_all_accept_the_pit_universe` | Every dispatchable path admits on the PIT basis, so production never refuses. |  |
 | `test_pit_inactive_name_is_never_held` | The top-scoring name is held only when the PIT universe admits it. | parametrize |
-| `test_internal_benchmark_uses_the_pit_filtered_universe` | Each booked benchmark return is the equal-weight mean over PIT-active rows only. | parametrize |
-| `test_pit_run_matches_a_universe_that_never_contained_the_name` | Public evaluate(): a PIT-restricted run equals a genuinely restricted universe. | parametrize |
+| `test_pit_run_matches_a_universe_that_never_contained_the_name` | A PIT-restricted run equals a genuinely restricted universe, benchmark included. | parametrize |
 | `test_saved_artifacts_exclude_pit_inactive_holdings` | The saved holdings artifacts inherit the same PIT admission basis. |  |
-| `test_dispatch_matches_direct_simulator_call_without_pit` | With no PIT universe the unified dispatch reproduces the legacy call exactly. | parametrize |
-| `test_admit_pit_candidates_is_a_noop_without_a_pit_universe` | The shared admission helper must not perturb non-PIT runs. |  |
 
 ## `tests/test_pit_masked_panel.py`
 
@@ -1826,11 +2148,19 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 | `test_repeated_seed_training_rows_are_not_collapsed_by_year` |  |  |
 | `test_build_backtest_command_uses_scenario_cost_and_label_settings` |  |  |
 | `test_write_sensitivity_outputs_emits_cross_tabs_and_baseline_deltas` |  |  |
+| `test_replay_command_carries_the_pit_export_cutoff` | #339's replay refuses open-ended PIT rows without the export's cutoff. |  |
 
 ## `tests/test_pit_repeated_seed_replication_notebook.py`
 
+**Exercises:** `mci_gru.evaluation.statistics`
+
 | Test | Description | Markers |
 |---|---|---|
+| `test_issue29_all_seeds_row_counts_each_date_once` | Three identical seeds are one series: same t-stat, p-value and n_days (#357). |  |
+| `test_issue29_all_seeds_row_averages_seeds_per_date` | Different seeds enter as their per-date mean, one value per date (#357). |  |
+| `test_issue29_all_seeds_row_flags_a_missing_seed` | A seed absent on some dates is reported, not silently averaged as complete (#357). |  |
+| `test_issue29_pooled_significance_refuses_repeated_dates` | A series that repeats a date would overstate significance; refuse it (#357). |  |
+| `test_issue29_replication_all_seeds_uses_per_date_average` | The notebook builds replication_all_seeds from the per-date seed average (#357). |  |
 | `test_issue31_notebook_pins_repeated_seed_full_pit_replication` |  |  |
 | `test_issue31_notebook_writes_required_decision_artifacts` |  |  |
 | `test_issue31_notebook_can_resume_and_retry_transient_regime_fetch_failures` |  |  |
@@ -1851,6 +2181,9 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 | `test_build_backtest_command_enables_costs_and_rank_gate` |  |  |
 | `test_resolve_year_jobs_remaps_stale_colab_paths_to_current_run_root` |  |  |
 | `test_write_summary_outputs_compares_cost_aware_rows_to_reviewed_artifact` |  |  |
+| `test_multi_year_combine_reads_the_concatenated_daily_series` | r7: a drawdown straddling the year end; yearly combine gave -0.148 against -0.274. |  |
+| `test_multi_year_benchmark_covers_the_days_the_simulator_skipped` | A skipped day is missing from daily_returns.csv but the benchmark still moved. |  |
+| `test_replay_command_carries_the_pit_export_cutoff` | #339's replay refuses open-ended PIT rows without the export's cutoff. |  |
 
 ## `tests/test_pit_universe_mode_config.py`
 
@@ -1914,15 +2247,19 @@ PIT admission must be consistent across every backtest replay path (issue #116).
 
 ## `tests/test_prediction_report.py`
 
-**Exercises:** `mci_gru.evaluation.prediction_report`
+**Exercises:** `mci_gru.data.preprocessing`, `mci_gru.evaluation.prediction_report`
 
 | Test | Description | Markers |
 |---|---|---|
 | `test_oos_r2_uses_zero_return_benchmark` |  |  |
 | `test_sign_metrics_include_positive_negative_and_zero_returns` |  |  |
-| `test_alignment_intersects_dates_universe_and_optional_baselines` |  |  |
+| `test_alignment_keeps_the_primary_rows_and_left_joins_baselines` |  |  |
+| `test_adding_a_baseline_does_not_change_the_primary_numbers` | Logic C: a partial baseline's inner join moved the primary's rank IC 0.077 to 0.118. |  |
+| `test_realized_returns_read_the_session_axis_not_the_next_row` | Dates finding 2: a missing bar made the row shift book close D+6 as close D+5. |  |
+| `test_realized_returns_reject_a_label_with_no_hold` |  |  |
 | `test_prediction_report_includes_yearly_decay_for_each_model` |  |  |
 | `test_saved_prediction_report_runs_without_training` |  |  |
+| `test_report_portfolio_numbers_come_from_the_daily_tranche_book` | The matrix-only Sharpe annualised overlapping 4-session returns as daily (#342). |  |
 
 ## `tests/test_preprocessing_vectorised.py`
 
@@ -1943,6 +2280,56 @@ Regression tests for vectorised preprocessing (matches legacy semantics).
 | `test_prepare_data_training_labels_never_consume_validation_closes` | End-to-end: no training label may read a close at or after val_start. | parametrize |
 | `test_generate_time_series_features_shape` | Output shape matches (num_dates - his_t, n_stocks, his_t, n_features). | parametrize |
 
+## `tests/test_preregistration.py`
+
+Pre-registered experiments and the runner's standing gate (#372, PRD #369).
+
+**Exercises:** `mci_gru`, `mci_gru.config`, `mci_gru.preregistration`, `mci_gru.protocol`, `run_experiment`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_the_documented_template_is_a_valid_preregistration` |  |  |
+| `test_the_template_names_the_current_recipe` | The template must not rot: a stale slug would be refused on every run. |  |
+| `test_a_malformed_or_looser_preregistration_is_refused` |  | parametrize |
+| `test_a_missing_or_unknown_field_is_refused` |  |  |
+| `test_a_stricter_rule_is_accepted` |  |  |
+| `test_a_committed_preregistration_loads_with_its_digest_and_commit` |  |  |
+| `test_a_missing_preregistration_is_refused` |  |  |
+| `test_an_uncommitted_preregistration_is_refused` |  |  |
+| `test_a_preregistration_edited_after_its_commit_is_refused` |  |  |
+| `test_the_declaration_and_recipe_are_read_from_the_commit` |  |  |
+| `test_a_tracked_file_edited_after_the_commit_is_refused` | The run's code, configs and recipe must be the commit's, not only the file. |  |
+| `test_an_untracked_file_does_not_block_a_declared_run` | Data pulls land untracked; they are not the code the commit records. |  |
+| `test_a_tracked_file_hidden_from_git_is_refused` | With either flag git status reports no change, so an edit would go unseen. | parametrize |
+| `test_a_directory_that_is_not_a_checkout_is_refused` |  |  |
+| `test_an_experiment_id_that_is_a_path_is_refused` |  |  |
+| `test_a_declared_arm_on_a_declared_window_is_accepted` |  | parametrize, parametrize |
+| `test_the_declared_run_carries_the_windows_dates_and_the_seed_base` |  |  |
+| `test_an_undeclared_arm_is_refused` |  |  |
+| `test_an_undeclared_window_is_refused` |  | parametrize |
+| `test_a_run_with_a_second_change_is_refused` |  |  |
+| `test_a_run_labelled_with_the_wrong_arm_is_refused` | The treatment's change on a run stamped as the control. |  |
+| `test_a_run_on_another_windows_dates_is_refused` |  |  |
+| `test_a_run_on_another_seed_base_is_refused` |  |  |
+| `test_the_declared_seed_base_is_the_one_checked` | A base other than the recipe's: its runs pass, a run on the recipe's 1729 does not. |  |
+| `test_a_seed_floor_arm_may_change_the_seed` |  |  |
+| `test_the_launcher_keys_are_free` | Where a run writes and how it records itself are not part of the arm. |  |
+| `test_an_arm_that_changes_nothing_is_refused` | The recipe already sets graph.drop_edge_p=0.1, so this arm is the control. |  |
+| `test_a_changed_recipe_is_refused` |  |  |
+| `test_an_exploratory_run_is_stamped_exploratory` |  |  |
+| `test_an_exploratory_run_records_the_window_its_dates_are` |  | parametrize |
+| `test_an_exploratory_run_labelled_with_another_windows_name_is_refused` |  |  |
+| `test_no_run_may_name_the_holdout_as_its_window` |  |  |
+| `test_a_run_with_no_standing_is_refused` |  |  |
+| `test_a_declared_run_is_stamped_with_its_declaration` |  |  |
+| `test_a_declared_run_composed_from_another_config_tree_is_refused` | ``--config-path`` elsewhere would feed the run and its check the same tree. |  |
+| `test_an_incoherent_protocol_section_is_refused` |  | parametrize |
+| `test_a_saved_run_without_a_protocol_section_still_loads` | Rescoring rebuilds old runs' configs; only the runner demands a standing. |  |
+| `test_a_saved_run_from_before_the_standing_fields_still_loads` | A #370-era run saved only ``holdout_promotion`` under ``protocol``. |  |
+| `test_the_runner_refuses_a_run_with_no_standing_before_writing_anything` |  |  |
+| `test_the_runner_stamps_a_declared_run` | A tiny recipe and a stand-in W1 in a scratch checkout, through the real runner. |  |
+| `test_the_runner_stamps_an_exploratory_run` |  |  |
+
 ## `tests/test_project_skills.py`
 
 Contract tests for the repository's own skills under .claude/skills/.
@@ -1960,6 +2347,53 @@ Contract tests for the repository's own skills under .claude/skills/.
 | `test_the_ticket_sequencing_rule_is_stated_in_full` | Next ticket only after the previous one lands, research excepted, HITL still stops. | parametrize |
 | `test_the_retired_one_ticket_per_session_cap_is_stated_nowhere` | The flat cap was the most-violated rule here; it must not return beside its replacement. | parametrize |
 | `test_the_prose_normaliser_ignores_wrapping_and_emphasis_but_not_words` | Control for `_normalised`: without it, both guards above could pass on a normaliser that erases text. |  |
+
+## `tests/test_protocol_holdout.py`
+
+The locked 2026 holdout and the window schedule (#370, PRD #369).
+
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation`, `mci_gru.evaluation.capacity`, `mci_gru.evaluation.prediction_report`, `mci_gru.evaluation.replay_inputs`, `mci_gru.evaluation.selection_audit`, `mci_gru.protocol`, `scripts`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_the_holdout_dates_are_pinned` | Moving the holdout takes a reviewed change to this test, by design. |  |
+| `test_the_window_schedule_is_pinned` |  |  |
+| `test_each_window_trains_four_calendar_years_then_validates_then_tests` |  | parametrize |
+| `test_each_window_starts_training_on_its_first_session` | January 1 is never a session; the training start is the first one after it. |  |
+| `test_w5_is_the_recipe_as_written` | The recipe (#367) and the schedule must not drift apart. |  |
+| `test_every_window_run_passes_the_guard` |  | parametrize |
+| `test_the_holdout_window_is_refused` |  |  |
+| `test_any_single_date_inside_the_holdout_is_refused` | Each of the six dates is checked, not just test_end. | parametrize |
+| `test_a_date_after_the_holdout_is_refused_too` | Decision 3: the data after the holdout is the next holdout, not open ground. |  |
+| `test_a_label_that_may_exit_inside_the_holdout_is_refused` | 2026-01-15 is before the holdout, but its 5-session label can end inside it. |  |
+| `test_the_label_check_follows_label_t` | The same end date passes a 1-session label and fails a 10-session one. |  |
+| `test_the_label_check_reads_the_latest_date_not_the_last_key` |  |  |
+| `test_the_closure_calendar_matches_the_known_closures` | Control: the rule-built calendar holds every closure listed by hand above. |  |
+| `test_the_bound_never_falls_before_the_real_exit` | The slack must cover every closure a label can cross, on every signal date. | parametrize |
+| `test_the_last_legal_signal_date_for_the_recipe_label_is_open` | The test year's real last label (2026-01-08 exit) is far from the guard. |  |
+| `test_label_t_below_one_is_rejected` |  |  |
+| `test_an_empty_span_is_rejected` |  |  |
+| `test_holdout_error_is_not_a_value_error` | The walk-forward builder catches ValueError to skip a window; this must escape it. |  |
+| `test_a_date_written_another_way_is_still_refused` | A non-ISO date must not sort below the holdout start as text. | parametrize |
+| `test_a_value_that_is_not_a_date_is_rejected` |  |  |
+| `test_saved_predictions_reaching_the_holdout_are_refused` |  |  |
+| `test_the_base_config_names_no_promotion` |  |  |
+| `test_any_promotion_is_refused_until_the_promotion_path_lands` |  |  |
+| `test_a_promotion_does_not_open_the_holdout_either` | Not even a promotion key alongside a holdout window composes today. |  |
+| `test_a_hydra_override_into_the_holdout_is_refused` | The runner composes this way; a data.test_end override must not get through. |  |
+| `test_the_replay_refuses_a_run_that_scored_the_holdout` |  |  |
+| `test_the_replay_refuses_a_window_whose_last_label_reaches_the_holdout` |  |  |
+| `test_the_replay_guard_does_not_stop_a_legal_window` | Control: a 2025 window gets past the guard and fails later, on the missing data. |  |
+| `test_the_run_scoring_scripts_refuse_a_run_that_scored_the_holdout` | Both read the run through the replay resolver, so its guard stops them first. | parametrize |
+| `test_the_backtest_with_explicit_inputs_refuses_the_holdout` | The no-run_dir branch takes its window from flags, so it needs its own guard. |  |
+| `test_the_backtest_guard_does_not_stop_a_legal_window` | Control: a 2025 window gets past the guard and fails later, on the missing files. |  |
+| `test_selection_research_refuses_a_holdout_window` |  |  |
+| `test_selection_research_reads_data_as_of_as_a_vintage_not_a_scored_date` | Control: a 2025 window on data pulled in 2026 is legal. |  |
+| `test_the_selection_audit_refuses_predictions_in_the_holdout` |  |  |
+| `test_the_prediction_report_refuses_predictions_in_the_holdout` |  |  |
+| `test_the_capacity_replay_refuses_predictions_in_the_holdout` |  |  |
+| `test_the_backtest_guard_reads_the_strategy_exit_not_only_the_label` | An open_to_open hold sells at open D+1+holding_period, which can pass the label. |  |
+| `test_the_replay_library_call_reads_the_strategy_exit` | W5's window with a 20-session hold sells inside the holdout. |  |
 
 ## `tests/test_readme_figure.py`
 
@@ -2033,6 +2467,82 @@ Regime forward context is refused unless the matching excludes the current month
 | `test_a_stopped_market_file_is_recorded_as_read_but_never_used` |  | parametrize |
 | `test_a_market_file_captured_through_read_file_still_replays` |  |  |
 
+## `tests/test_replay_callers_pass_pit_cutoff.py`
+
+Every notebook that replays on a PIT file names the export's cutoff (#342).
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_the_scan_finds_the_pit_replay_notebooks` |  |  |
+| `test_pit_replay_and_training_carry_the_export_cutoff` |  | parametrize |
+
+## `tests/test_replay_inputs.py`
+
+The replay reads its inputs from the run it replays (#339).
+
+**Exercises:** `mci_gru.evaluation`, `mci_gru.evaluation.backtest_engine`, `mci_gru.evaluation.replay_book`, `mci_gru.evaluation.replay_inputs`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_run_dir_supplies_data_pit_window_label_k_and_members` |  |  |
+| `test_refuses_a_data_file_whose_bytes_differ_from_what_the_run_consumed` |  |  |
+| `test_refuses_a_pit_file_whose_bytes_differ_from_what_the_run_consumed` |  |  |
+| `test_refuses_an_edited_resolved_config` |  |  |
+| `test_refuses_predictions_for_a_name_outside_the_run` |  |  |
+| `test_k_is_required_when_the_run_reported_several` | metrics.top_k is the summary function's default (50), not a choice the run made. |  |
+| `test_refuses_a_prediction_file_the_receipt_did_not_bind` |  |  |
+| `test_refuses_another_runs_predictions` |  |  |
+| `test_legacy_fingerprint_is_used_only_for_csv_runs_without_data_inputs` |  |  |
+| `test_the_recorded_resolved_path_is_tried_when_the_configured_one_differs` |  |  |
+| `test_a_data_file_override_with_the_same_bytes_is_accepted` |  |  |
+| `test_overrides_outside_the_run_are_refused` |  | parametrize |
+| `test_overrides_inside_the_run_are_honoured` |  |  |
+| `test_window_overrides_are_compared_as_dates_not_text` | '2025-3-5' sorts after '2025-03-17' as text; as a date it is 2025-03-05. |  |
+| `test_multi_model_with_a_run_dir_is_refused` |  |  |
+| `test_a_pit_override_for_a_run_without_pit_is_refused` |  |  |
+| `test_the_bare_documented_command_is_refused` | ``--predictions_dir`` alone used to replay on paper-era defaults. |  |
+| `test_explicit_mode_without_a_run_names_every_missing_input` |  |  |
+| `test_a_same_named_file_elsewhere_is_not_substituted` |  |  |
+| `test_open_ended_pit_rows_keep_their_members_through_the_cutoff` |  |  |
+| `test_open_ended_pit_rows_without_a_cutoff_are_refused_not_dropped` |  |  |
+| `test_benchmark_uses_the_candidates_membership_date` | DDD joins on session 6: it is out of the benchmark for the tranche ranked on |  |
+| `test_benchmark_without_a_pit_file_is_the_runs_scored_members` |  |  |
+| `test_numeric_kdcodes_match_a_string_universe` |  |  |
+| `test_explicit_mode_without_a_pit_file_benchmarks_the_scored_names` |  |  |
+| `test_cli_replays_a_run_from_its_directory_alone` |  |  |
+
+## `tests/test_replay_strategy.py`
+
+The replay trades the trained return and reports one consistent set of metrics (#340).
+
+**Exercises:** `mci_gru.data.preprocessing`, `mci_gru.evaluation`, `mci_gru.evaluation.replay_book`, `mci_gru.training`, `run_experiment`, `scripts`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_the_default_book_buys_close_d_plus_1_and_sells_close_d_plus_5` |  |  |
+| `test_a_missing_bar_never_moves_an_endpoint` | A row shift would read the close one session later for every date before the gap. |  |
+| `test_a_missing_exit_books_the_last_close_then_cash_and_is_recorded` | D delists after session 3: its loss is booked, and it is not dropped from the |  |
+| `test_weights_drift_with_prices_inside_a_tranche` | A doubles then doubles again; B is flat. Buy and hold: the second day returns |  |
+| `test_costs_are_booked_on_the_sessions_trades_happen` |  |  |
+| `test_a_name_carried_into_the_next_tranche_trades_only_its_drift` | A rises 10% in the first hold, B is flat; both are picked again at the rollover. |  |
+| `test_a_missing_exit_is_charged_when_it_is_sold` | B has no close after session 2: it is sold at that close, and charged there. |  |
+| `test_the_portfolio_holds_one_share_class_per_issuer` |  |  |
+| `test_the_benchmark_weights_the_issuer_once` |  |  |
+| `test_the_open_to_open_variant_buys_open_d_plus_1_and_sells_open_d_plus_2` |  |  |
+| `test_the_rank_drop_gate_keeps_a_holding_until_its_rank_falls_far_enough` |  |  |
+| `test_the_rank_drop_gate_compares_each_sleeve_with_its_own_last_tranche` | Four sleeves: signal 4 rolls over sleeve 0, opened on signal 0. |  |
+| `test_drawdown_starts_from_one` |  |  |
+| `test_information_ratio_is_annualised` |  |  |
+| `test_standard_sharpe_sits_beside_the_papers_asr` |  |  |
+| `test_monthly_returns_compound` |  |  |
+| `test_holm_for_one_strategy_and_bhy_only_with_the_trial_ledger` |  |  |
+| `test_every_metric_and_file_reads_one_daily_series` |  |  |
+| `test_outputs_record_input_hashes` |  |  |
+| `test_an_issuer_map_joins_share_classes_the_built_in_map_lacks` |  |  |
+| `test_bhy_without_a_ledger_is_refused_before_the_replay_runs` |  |  |
+| `test_multi_model_is_gone` | It averaged member metrics (not the ensemble the run reports) and found no folders. |  |
+| `test_the_replay_top_k_excess_equals_the_in_run_summary` | Against the summary the run wrote, and the one #337 re-scores from its inputs. | parametrize, parametrize |
+
 ## `tests/test_repository_retirement_guard.py`
 
 Prevent retired repository surfaces from being reintroduced.
@@ -2041,6 +2551,29 @@ Prevent retired repository surfaces from being reintroduced.
 |---|---|---|
 | `test_retired_repository_surfaces_stay_absent` |  |  |
 | `test_retired_packages_stay_out_of_packaging_and_imports` |  |  |
+
+## `tests/test_rescore_run.py`
+
+A saved run is re-scored from its own inputs, without retraining (#337).
+
+**Exercises:** `mci_gru.evaluation.metrics`, `mci_gru.evaluation.replay_inputs`, `mci_gru.training`, `run_experiment`, `scripts`, `scripts.rescore_run`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_rescoring_reproduces_the_stored_ic_and_rank_ic` |  | parametrize |
+| `test_every_stored_metric_comes_back_when_the_code_has_not_changed` | The run was scored by this code, so the portfolio numbers must come back too. | parametrize |
+| `test_the_pit_run_is_scored_on_its_rebuilt_tradable_mask` | The fixture's leaver, joiner, missing bar and cessation all move the mask. |  |
+| `test_a_rescore_whose_ic_does_not_reproduce_writes_nothing` |  |  |
+| `test_the_rescore_is_a_new_file_and_the_run_is_untouched` |  |  |
+| `test_the_dated_ic_means_are_the_rescored_summary_means` |  |  |
+| `test_an_earlier_rescore_is_kept_unless_forced` |  |  |
+| `test_a_data_file_with_other_bytes_is_refused` |  |  |
+| `test_a_cessation_file_with_other_bytes_is_refused` |  |  |
+| `test_a_saved_prediction_changed_after_the_run_is_refused` |  |  |
+| `test_the_command_line_rescores_a_run_and_prints_both_ics` |  |  |
+| `test_a_stored_summary_changed_after_the_run_is_refused` |  |  |
+| `test_a_failed_summary_write_leaves_no_dated_ic_behind` |  |  |
+| `test_evaluation_code_from_another_checkout_is_refused` |  |  |
 
 ## `tests/test_research_paper_to_mci_gru_skill.py`
 
@@ -2149,6 +2682,30 @@ Regression tests for the isolated pytest launcher.
 | `test_selection_audit_cli_uses_requested_top_k_without_default_duplicates` |  |  |
 | `test_write_selection_audit_strict_json_and_overwrite_guard` |  |  |
 
+## `tests/test_score_baselines.py`
+
+Simple baselines are scored on a saved run's own axis by the run's own evaluation (#360).
+
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation.dated_ic`, `mci_gru.evaluation.metrics`, `mci_gru.features`, `mci_gru.training`, `run_experiment`, `scripts`, `scripts.rescore_run`, `scripts.score_baselines`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_the_runs_own_predictions_give_back_every_stored_metric` |  |  |
+| `test_a_run_whose_ic_does_not_reproduce_writes_nothing` |  |  |
+| `test_every_baseline_is_scored_by_the_runs_summary_where_the_run_could_rank` |  |  |
+| `test_each_arms_dated_ic_agrees_with_its_summary` |  |  |
+| `test_the_reversal_scores_are_minus_the_last_weeks_return_from_the_panel` |  |  |
+| `test_the_run_is_compared_with_each_baseline_on_the_same_names_day_by_day` |  |  |
+| `test_a_run_without_pit_is_scored_on_every_name_with_a_close` |  |  |
+| `test_the_linear_models_inputs_carry_the_runs_normalisation` |  |  |
+| `test_inputs_not_normalised_as_the_run_was_are_refused` |  |  |
+| `test_only_the_global_columns_are_left_out_of_the_linear_models_inputs` |  |  |
+| `test_results_go_to_a_new_folder_and_the_run_is_untouched` |  |  |
+| `test_an_earlier_result_is_kept_unless_forced` |  |  |
+| `test_the_command_line_scores_a_run_and_prints_each_arm` |  |  |
+| `test_inputs_staged_at_another_path_are_read_from_there` | How Colab runs it: the run's data and PIT files copied elsewhere, the originals gone. |  |
+| `test_force_replaces_only_an_earlier_baseline_result` |  |  |
+
 ## `tests/test_selection_research_artifacts.py`
 
 **Exercises:** `mci_gru.evaluation.artifacts`
@@ -2217,6 +2774,23 @@ Regression tests for the isolated pytest launcher.
 | `test_empirical_one_sided_p_value_uses_plus_one_correction` |  |  |
 | `test_permutation_preserves_daily_set_score_multiset_and_ties` |  |  |
 | `test_permutation_is_deterministic_and_assignment_is_outcome_independent` |  |  |
+
+## `tests/test_side_statistics_overlap.py`
+
+Side-module statistics are overlap-correct (#342).
+
+**Exercises:** `mci_gru.evaluation.paired_inference`, `mci_gru.evaluation.selection_audit`, `mci_gru.evaluation.selection_nulls`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_paired_hac_test_has_nominal_size_on_overlapping_days` | r3: Bartlett lag 4 gave SE 0.85x truth and 10% rejections at a nominal 5%. |  |
+| `test_power_tables_use_the_long_run_sd` | r2: the iid sd gave an MDE of 0.0027 against a Monte Carlo truth of 0.0073. |  |
+| `test_sharpe_of_daily_sampled_overlapping_returns_is_the_daily_sharpe` | Findings 1: uniform weights on 3 lags recover the daily book's annual Sharpe. |  |
+| `test_date_blocked_null_matches_the_sampling_spread_of_a_persistent_score` | r4: the per-date shuffle's null sd was 0.024 against a true 0.045. |  |
+| `test_date_blocked_null_is_deterministic_and_keyed_by_block` |  |  |
+| `test_date_blocked_null_induces_a_bijection_when_names_come_and_go` |  |  |
+| `test_selection_audit_deflates_the_daily_book_sharpe` | r5: the overlapping label series gave about twice the Sharpe and z-stat. |  |
+| `test_deflated_sharpe_has_nominal_size_on_the_daily_book` | r5: p <= 0.05 in 21% of no-skill samples on the overlapping label series. |  |
 
 ## `tests/test_sp500_gics_top10_mcap_export.py`
 
@@ -2317,8 +2891,8 @@ Training summaries average only available checkpoint metrics and count coverage.
 | `test_walkforward_mean_weights_windows_equally_and_counts_windows` | Window coverage counts windows, not members, and each available window counts once. |  |
 | `test_walkforward_treats_historical_non_finite_window_means_as_unavailable` | A -inf or NaN window mean from an older run no longer poisons the aggregate. |  |
 | `test_walkforward_summary_of_no_windows_stays_empty` | An empty walk-forward run has no aggregate at all. |  |
-| `test_walkforward_evaluation_mean_skips_nan_windows_and_reports_coverage` | A NaN evaluation metric in one window is left out and counted, not averaged in. |  |
-| `test_walkforward_evaluation_mean_is_unchanged_without_nan_windows` | With every window available, each aggregate is the plain equal-weight mean. |  |
+| `test_walkforward_evaluation_is_never_a_mean_of_windows` | Window Sharpes, CI bounds and cumulative returns do not average (#342). |  |
+| `test_walkforward_evaluation_is_the_pooled_summary_when_given` |  |  |
 | `test_walkforward_without_evaluation_adds_no_evaluation_keys` | Training-only windows keep the merged summary free of evaluation fields. |  |
 
 ## `tests/test_transforms.py`
@@ -2331,6 +2905,7 @@ Unit tests for mci_gru.data.transforms.
 |---|---|---|
 | `test_impute_feature_nans_by_day_mean_then_zero_fill` |  |  |
 | `test_compute_zscore_norm_stats_train_period_only` |  |  |
+| `test_compute_zscore_norm_stats_train_start_bounds_the_fit` | Issue 367: a window's statistics come from its own training years only. |  |
 | `test_normalize_features_zscore_clip_and_scale` |  |  |
 | `test_normalize_features_zscore_default_fallback_vs_keyerror` |  |  |
 | `test_build_single_date_tensors_shapes` |  |  |
@@ -2345,6 +2920,19 @@ Unit tests for mci_gru.data.transforms.
 | `test_write_trial_ledger_writes_csv_and_jsonl` |  |  |
 | `test_write_trial_ledger_strict_jsonl_and_force_guard` |  |  |
 | `test_validate_trial_family_rejects_missing_expected_member` |  |  |
+
+## `tests/test_val_test_embargo.py`
+
+Validation labels never read test-period closes (#342, dates finding 5).
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.preprocessing`, `mci_gru.features`, `mci_gru.pipeline`, `mci_gru.walkforward`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_val_tail_whose_labels_exit_in_test_is_purged` |  |  |
+| `test_a_wide_gap_purges_nothing` |  |  |
+| `test_no_walk_forward_window_leaks_test_closes_into_validation` | r6: 9 of 11 default windows leaked before the purge. |  |
+| `test_prepared_validation_dates_stop_before_labels_reach_test` | Both preparation paths purge: the calendar check passes, the sessions do not. | parametrize |
 
 ## `tests/test_vix_features.py`
 
@@ -2393,3 +2981,18 @@ Every walk-forward window must inherit the base configuration it was cloned from
 |---|---|---|
 | `test_walkforward_windows_carry_configured_evaluation` |  |  |
 | `test_walkforward_windows_do_not_silently_fall_back_to_evaluation_defaults` |  |  |
+
+## `tests/test_walkforward_pooled_evaluation.py`
+
+Walk-forward evaluation pools the windows' dated test series (#342).
+
+**Exercises:** `mci_gru.config`, `mci_gru.evaluation.experiment_summary`, `mci_gru.evaluation.outcomes`, `mci_gru.walkforward`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_pooled_summary_is_the_summary_of_every_test_date_together` | r1: 63 + 63 + 10-date windows; the mean of windows moved avg_ic 0.076 to 0.029. |  |
+| `test_pooling_widens_to_the_union_of_names` |  |  |
+| `test_overlapping_test_windows_are_not_pooled` |  |  |
+| `test_one_pooled_window_books_what_the_full_panel_books` | The trimmed closes keep every exit: the book, not only IC, is unchanged. |  |
+| `test_without_pit_a_window_ranks_only_its_own_names` | The first window's tail closes must not make its names rankable in the next. |  |
+| `test_windows_stepped_by_their_span_share_no_test_date` | Review of #342: an inclusive test_end was the next window's test_start. |  |

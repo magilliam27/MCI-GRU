@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 
 WITHIN_DATE_SCORE_PERMUTATION_V1 = "WITHIN_DATE_SCORE_PERMUTATION_V1"
+DATE_BLOCKED_SCORE_PERMUTATION_V1 = "DATE_BLOCKED_SCORE_PERMUTATION_V1"
 ASSIGNMENT_DIGEST_STREAM_V1 = "SHA256_ASSIGNMENT_INDEX_STREAM_V1"
 MINIMUM_NULL_DRAWS = 1000
 
@@ -73,6 +74,26 @@ class WithinDatePermutationNullResult:
     valid_draw_count: int
     null_seed: int
     top_k: int
+    rank_ic_means: tuple[float, ...]
+    top_k_spread_means: tuple[float, ...]
+    assignment_digest: str
+    assignment_digest_method: str = ASSIGNMENT_DIGEST_STREAM_V1
+
+
+@dataclass(frozen=True)
+class DateBlockedPermutationNullResult:
+    """Matched-null statistics under one instrument permutation per block of dates.
+
+    ``block_dates`` is ``None`` when one permutation spans every date.
+    """
+
+    method: str
+    draw_count: int
+    valid_draw_count: int
+    null_seed: int
+    top_k: int
+    block_dates: int | None
+    block_count: int
     rank_ic_means: tuple[float, ...]
     top_k_spread_means: tuple[float, ...]
     assignment_digest: str
@@ -160,19 +181,15 @@ def run_within_date_permutation_null(
     null_seed: int,
     top_k: int,
 ) -> WithinDatePermutationNullResult:
-    """Run the matched within-date score null over complete valid dates."""
-    dated_sections = tuple(sorted(cross_sections, key=lambda item: item.signal_dt))
-    if not dated_sections:
-        raise ValueError("cross_sections must not be empty")
-    if len({item.signal_dt for item in dated_sections}) != len(dated_sections):
-        raise ValueError("signal_dt must be unique across cross_sections")
-    if not isinstance(n_draws, int) or n_draws < MINIMUM_NULL_DRAWS:
-        raise ValueError(f"n_draws must be at least {MINIMUM_NULL_DRAWS}")
-    if not isinstance(top_k, int) or top_k <= 0:
-        raise ValueError("top_k must be a positive int")
-    if any(top_k > len(item.instrument_keys) for item in dated_sections):
-        raise ValueError("top_k cannot exceed any date's cross-sectional breadth")
+    """Run the matched within-date score null over complete valid dates.
 
+    Each date is shuffled independently, which destroys the day-to-day persistence
+    of the scores. With persistent scores and overlapping outcomes the daily ICs are
+    autocorrelated, so this null is too narrow and its p-values too small (#342). The
+    selection research uses :func:`run_date_blocked_permutation_null`; this one stays
+    only for outcomes that do not overlap.
+    """
+    dated_sections = _validated_sections(cross_sections, n_draws=n_draws, top_k=top_k)
     dates = tuple(_prepare_cross_section(item) for item in dated_sections)
 
     rank_ic_means: list[float] = []
@@ -224,6 +241,146 @@ def run_within_date_permutation_null(
         top_k_spread_means=tuple(top_k_spread_means),
         assignment_digest=digest.hexdigest(),
     )
+
+
+def run_date_blocked_permutation_null(
+    cross_sections: Sequence[DatedScoreOutcome],
+    *,
+    n_draws: int,
+    null_seed: int,
+    top_k: int,
+    block_dates: int | None = None,
+) -> DateBlockedPermutationNullResult:
+    """Score null that permutes instruments once per block of consecutive dates.
+
+    One permutation of instrument identities is drawn per block and applied to every
+    date in it, so each instrument's score path moves as a whole and the persistence
+    of the scores survives into the null. Outcomes stay where they are, so their
+    overlap survives too: the null's daily ICs keep the autocorrelation the observed
+    ones have, which a per-date shuffle destroys (#342). ``block_dates=None`` uses one
+    block for the whole sample, the right null when scores persist for the whole of it.
+
+    On a date where some of the block's instruments are absent (PIT changes), the
+    permutation is induced on the instruments present: an instrument's score source
+    follows the permutation's cycle to the next present instrument. That stays a
+    bijection, and a date with the block's full set uses the block permutation itself.
+    """
+    if block_dates is not None and (
+        isinstance(block_dates, bool) or not isinstance(block_dates, int) or block_dates < 1
+    ):
+        raise ValueError("block_dates must be a positive int or None")
+    dated_sections = _validated_sections(cross_sections, n_draws=n_draws, top_k=top_k)
+    dates = tuple(_prepare_cross_section(item) for item in dated_sections)
+    span = len(dates) if block_dates is None else block_dates
+    blocks = tuple(dates[start : start + span] for start in range(0, len(dates), span))
+
+    digest = hashlib.sha256()
+    digest.update(ASSIGNMENT_DIGEST_STREAM_V1.encode("ascii"))
+    digest.update(f"{DATE_BLOCKED_SCORE_PERMUTATION_V1}|{block_dates}".encode("ascii"))
+    for item in dates:
+        digest.update(item.signal_dt.encode("utf-8"))
+        digest.update(b"\0")
+        for key in item.instrument_keys:
+            digest.update(key.encode("utf-8"))
+            digest.update(b"\0")
+
+    unions = tuple(
+        tuple(sorted({key for item in block for key in item.instrument_keys})) for block in blocks
+    )
+    rank_ic_means: list[float] = []
+    top_k_spread_means: list[float] = []
+    for draw_id in range(n_draws):
+        daily_rank_ic: list[float] = []
+        daily_top_k_spread: list[float] = []
+        for block_id, (block, union) in enumerate(zip(blocks, unions, strict=True)):
+            sigma = _block_permutation(
+                union, null_seed=null_seed, draw_id=draw_id, block_id=block_id
+            )
+            digest.update(sigma.astype("<u4", copy=False).tobytes())
+            induced: dict[tuple[str, ...], np.ndarray] = {}
+            for item in block:
+                source = induced.get(item.instrument_keys)
+                if source is None:
+                    source = _induced_sources(union, sigma, item.instrument_keys)
+                    induced[item.instrument_keys] = source
+                permuted_ranks = item.source_score_ranks_centered[source]
+                daily_rank_ic.append(
+                    float(
+                        np.dot(permuted_ranks, item.outcome_ranks_centered) / item.rank_denominator
+                    )
+                )
+                daily_top_k_spread.append(
+                    _top_k_spread_prepared(
+                        item.source_scores[source],
+                        item.outcomes,
+                        item.expected_mean,
+                        top_k=top_k,
+                    )
+                )
+        rank_ic_means.append(float(np.mean(daily_rank_ic)))
+        top_k_spread_means.append(float(np.mean(daily_top_k_spread)))
+
+    return DateBlockedPermutationNullResult(
+        method=DATE_BLOCKED_SCORE_PERMUTATION_V1,
+        draw_count=n_draws,
+        valid_draw_count=n_draws,
+        null_seed=null_seed,
+        top_k=top_k,
+        block_dates=block_dates,
+        block_count=len(blocks),
+        rank_ic_means=tuple(rank_ic_means),
+        top_k_spread_means=tuple(top_k_spread_means),
+        assignment_digest=digest.hexdigest(),
+    )
+
+
+def _validated_sections(
+    cross_sections: Sequence[DatedScoreOutcome], *, n_draws: int, top_k: int
+) -> tuple[DatedScoreOutcome, ...]:
+    dated_sections = tuple(sorted(cross_sections, key=lambda item: item.signal_dt))
+    if not dated_sections:
+        raise ValueError("cross_sections must not be empty")
+    if len({item.signal_dt for item in dated_sections}) != len(dated_sections):
+        raise ValueError("signal_dt must be unique across cross_sections")
+    if not isinstance(n_draws, int) or n_draws < MINIMUM_NULL_DRAWS:
+        raise ValueError(f"n_draws must be at least {MINIMUM_NULL_DRAWS}")
+    if not isinstance(top_k, int) or top_k <= 0:
+        raise ValueError("top_k must be a positive int")
+    if any(top_k > len(item.instrument_keys) for item in dated_sections):
+        raise ValueError("top_k cannot exceed any date's cross-sectional breadth")
+    return dated_sections
+
+
+def _block_permutation(
+    union: tuple[str, ...], *, null_seed: int, draw_id: int, block_id: int
+) -> np.ndarray:
+    """``sigma[i]`` is the union index whose score instrument ``union[i]`` receives."""
+    label = f"block-{block_id}"
+    return np.asarray(
+        sorted(
+            range(len(union)),
+            key=lambda index: (
+                _destination_hash(null_seed, draw_id, label, union[index]),
+                union[index],
+            ),
+        ),
+        dtype=np.int64,
+    )
+
+
+def _induced_sources(
+    union: tuple[str, ...], sigma: np.ndarray, present_keys: tuple[str, ...]
+) -> np.ndarray:
+    """Positions in ``present_keys`` of each present key's score source on that date."""
+    union_index = {key: index for index, key in enumerate(union)}
+    present_position = {union_index[key]: position for position, key in enumerate(present_keys)}
+    source = np.empty(len(present_keys), dtype=np.int64)
+    for position, key in enumerate(present_keys):
+        step = int(sigma[union_index[key]])
+        while step not in present_position:
+            step = int(sigma[step])
+        source[position] = present_position[step]
+    return source
 
 
 def _prepare_cross_section(item: DatedScoreOutcome) -> _PreparedCrossSection:

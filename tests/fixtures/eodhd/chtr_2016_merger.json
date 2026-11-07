@@ -1,0 +1,391 @@
+{
+ "description": "EODHD /api/eod and /api/splits responses for CHTR.US around the Time Warner Cable merger of 2016-05-18, as served on 2026-10-25; the 2016-05-17 row matches the r2 pull's cached response. The vendor's pre-merger closes are the legacy closes times 0.9042 and its 4521/5000 split record undoes that; its volume is legacy shares, untouched by the record (#347).",
+ "symbol": "CHTR.US",
+ "retrieved": "2026-10-25",
+ "eod": [
+  {
+   "date": "2016-04-18",
+   "open": 182.5176,
+   "high": 183.8374,
+   "low": 181.7492,
+   "close": 182.2283,
+   "adjusted_close": 201.58,
+   "volume": 992300
+  },
+  {
+   "date": "2016-04-19",
+   "open": 182.5899,
+   "high": 187.7608,
+   "low": 182.2193,
+   "close": 184.9855,
+   "adjusted_close": 204.63,
+   "volume": 1629900
+  },
+  {
+   "date": "2016-04-20",
+   "open": 184.8951,
+   "high": 185.9618,
+   "low": 178.6575,
+   "close": 179.1999,
+   "adjusted_close": 198.23,
+   "volume": 2312700
+  },
+  {
+   "date": "2016-04-21",
+   "open": 179.8056,
+   "high": 180.7819,
+   "low": 175.1681,
+   "close": 180.5288,
+   "adjusted_close": 199.7,
+   "volume": 3221600
+  },
+  {
+   "date": "2016-04-22",
+   "open": 178.8654,
+   "high": 180.3932,
+   "low": 177.4823,
+   "close": 178.9106,
+   "adjusted_close": 197.91,
+   "volume": 1497000
+  },
+  {
+   "date": "2016-04-25",
+   "open": 178.1784,
+   "high": 188.3484,
+   "low": 176.0721,
+   "close": 187.137,
+   "adjusted_close": 207.01,
+   "volume": 6367800
+  },
+  {
+   "date": "2016-04-26",
+   "open": 188.041,
+   "high": 192.8413,
+   "low": 186.9743,
+   "close": 189.9033,
+   "adjusted_close": 210.07,
+   "volume": 6694200
+  },
+  {
+   "date": "2016-04-27",
+   "open": 188.927,
+   "high": 190.9519,
+   "low": 186.1607,
+   "close": 186.6127,
+   "adjusted_close": 206.43,
+   "volume": 3348800
+  },
+  {
+   "date": "2016-04-28",
+   "open": 187.128,
+   "high": 192.4616,
+   "low": 185.8895,
+   "close": 189.614,
+   "adjusted_close": 209.75,
+   "volume": 3196700
+  },
+  {
+   "date": "2016-04-29",
+   "open": 187.7066,
+   "high": 192.1181,
+   "low": 185.0759,
+   "close": 191.865,
+   "adjusted_close": 212.24,
+   "volume": 2968700
+  },
+  {
+   "date": "2016-05-02",
+   "open": 191.874,
+   "high": 197.6867,
+   "low": 190.066,
+   "close": 195.7431,
+   "adjusted_close": 216.53,
+   "volume": 2905600
+  },
+  {
+   "date": "2016-05-03",
+   "open": 194.8662,
+   "high": 195.716,
+   "low": 191.865,
+   "close": 192.2537,
+   "adjusted_close": 212.67,
+   "volume": 1884800
+  },
+  {
+   "date": "2016-05-04",
+   "open": 189.5778,
+   "high": 193.9622,
+   "low": 189.379,
+   "close": 192.0367,
+   "adjusted_close": 212.43,
+   "volume": 1447300
+  },
+  {
+   "date": "2016-05-05",
+   "open": 192.1,
+   "high": 194.0165,
+   "low": 190.97,
+   "close": 191.6661,
+   "adjusted_close": 212.02,
+   "volume": 1555300
+  },
+  {
+   "date": "2016-05-06",
+   "open": 190.7711,
+   "high": 193.1125,
+   "low": 189.7586,
+   "close": 192.4797,
+   "adjusted_close": 212.92,
+   "volume": 2489200
+  },
+  {
+   "date": "2016-05-09",
+   "open": 192.9317,
+   "high": 194.6583,
+   "low": 191.4401,
+   "close": 192.9859,
+   "adjusted_close": 213.48,
+   "volume": 2242200
+  },
+  {
+   "date": "2016-05-10",
+   "open": 192.6424,
+   "high": 195.7431,
+   "low": 192.6424,
+   "close": 195.707,
+   "adjusted_close": 216.49,
+   "volume": 2236300
+  },
+  {
+   "date": "2016-05-11",
+   "open": 195.273,
+   "high": 197.7319,
+   "low": 194.1159,
+   "close": 196.3669,
+   "adjusted_close": 217.22,
+   "volume": 3844400
+  },
+  {
+   "date": "2016-05-12",
+   "open": 198.1839,
+   "high": 198.5003,
+   "low": 191.639,
+   "close": 193.4198,
+   "adjusted_close": 213.96,
+   "volume": 9795700
+  },
+  {
+   "date": "2016-05-13",
+   "open": 192.2808,
+   "high": 195.1194,
+   "low": 191.5214,
+   "close": 193.9803,
+   "adjusted_close": 214.58,
+   "volume": 7137500
+  },
+  {
+   "date": "2016-05-16",
+   "open": 186.8749,
+   "high": 190.066,
+   "low": 184.0544,
+   "close": 184.0544,
+   "adjusted_close": 203.6,
+   "volume": 16959100
+  },
+  {
+   "date": "2016-05-17",
+   "open": 184.0544,
+   "high": 188.6919,
+   "low": 181.7402,
+   "close": 183.8374,
+   "adjusted_close": 203.36,
+   "volume": 21642600
+  },
+  {
+   "date": "2016-05-18",
+   "open": 224.91,
+   "high": 228.29,
+   "low": 222.5,
+   "close": 227.41,
+   "adjusted_close": 227.41,
+   "volume": 4352700
+  },
+  {
+   "date": "2016-05-19",
+   "open": 225.8,
+   "high": 230.49,
+   "low": 225.73,
+   "close": 227.57,
+   "adjusted_close": 227.57,
+   "volume": 4343400
+  },
+  {
+   "date": "2016-05-20",
+   "open": 227.46,
+   "high": 233.7,
+   "low": 227.16,
+   "close": 233.11,
+   "adjusted_close": 233.11,
+   "volume": 5519300
+  },
+  {
+   "date": "2016-05-23",
+   "open": 232.2,
+   "high": 233.19,
+   "low": 223.61,
+   "close": 225,
+   "adjusted_close": 225,
+   "volume": 6529400
+  },
+  {
+   "date": "2016-05-24",
+   "open": 224.21,
+   "high": 229,
+   "low": 223.09,
+   "close": 228.38,
+   "adjusted_close": 228.38,
+   "volume": 3480800
+  },
+  {
+   "date": "2016-05-25",
+   "open": 227.46,
+   "high": 229.37,
+   "low": 224.05,
+   "close": 225.6,
+   "adjusted_close": 225.6,
+   "volume": 3951700
+  },
+  {
+   "date": "2016-05-26",
+   "open": 222.89,
+   "high": 226.19,
+   "low": 218.46,
+   "close": 219.04,
+   "adjusted_close": 219.04,
+   "volume": 3299800
+  },
+  {
+   "date": "2016-05-27",
+   "open": 217.01,
+   "high": 222.02,
+   "low": 217.01,
+   "close": 219.97,
+   "adjusted_close": 219.97,
+   "volume": 2797200
+  },
+  {
+   "date": "2016-05-31",
+   "open": 220.06,
+   "high": 220.98,
+   "low": 216.1,
+   "close": 218.94,
+   "adjusted_close": 218.94,
+   "volume": 3566200
+  },
+  {
+   "date": "2016-06-01",
+   "open": 222.5,
+   "high": 227.51,
+   "low": 220.1,
+   "close": 227.5,
+   "adjusted_close": 227.5,
+   "volume": 3176500
+  },
+  {
+   "date": "2016-06-02",
+   "open": 225.77,
+   "high": 228.72,
+   "low": 225.19,
+   "close": 227.82,
+   "adjusted_close": 227.82,
+   "volume": 2996800
+  },
+  {
+   "date": "2016-06-03",
+   "open": 227.41,
+   "high": 227.81,
+   "low": 224.12,
+   "close": 224.95,
+   "adjusted_close": 224.95,
+   "volume": 1493500
+  },
+  {
+   "date": "2016-06-06",
+   "open": 224.92,
+   "high": 225.95,
+   "low": 221.15,
+   "close": 221.68,
+   "adjusted_close": 221.68,
+   "volume": 2636400
+  },
+  {
+   "date": "2016-06-07",
+   "open": 221.31,
+   "high": 223.41,
+   "low": 220.52,
+   "close": 220.8,
+   "adjusted_close": 220.8,
+   "volume": 1914900
+  },
+  {
+   "date": "2016-06-08",
+   "open": 218.13,
+   "high": 223.16,
+   "low": 218.04,
+   "close": 223.08,
+   "adjusted_close": 223.08,
+   "volume": 2846400
+  },
+  {
+   "date": "2016-06-09",
+   "open": 222.19,
+   "high": 223.23,
+   "low": 221.09,
+   "close": 222.97,
+   "adjusted_close": 222.97,
+   "volume": 1689700
+  },
+  {
+   "date": "2016-06-10",
+   "open": 220.26,
+   "high": 224.24,
+   "low": 218.72,
+   "close": 223.53,
+   "adjusted_close": 223.53,
+   "volume": 2184300
+  },
+  {
+   "date": "2016-06-13",
+   "open": 223.42,
+   "high": 226.35,
+   "low": 223.04,
+   "close": 223.28,
+   "adjusted_close": 223.28,
+   "volume": 2818800
+  },
+  {
+   "date": "2016-06-14",
+   "open": 228.94,
+   "high": 228.94,
+   "low": 220.5,
+   "close": 222.24,
+   "adjusted_close": 222.24,
+   "volume": 3866300
+  },
+  {
+   "date": "2016-06-15",
+   "open": 221.85,
+   "high": 223.78,
+   "low": 220.28,
+   "close": 221.19,
+   "adjusted_close": 221.19,
+   "volume": 1720500
+  }
+ ],
+ "splits": [
+  {
+   "date": "2016-05-18",
+   "split": "4521.000000/5000.000000"
+  }
+ ]
+}

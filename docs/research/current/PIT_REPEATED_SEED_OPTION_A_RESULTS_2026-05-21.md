@@ -9,6 +9,13 @@ This report reviews the expanded Option A notebook run described in
 `archive/pre-cleanup-2026-09:docs/handoffs/2026-05-20-pit-repeated-seed-option-a-notebook.md`
 (a retired handoff; read it with `git show`).
 
+> **Statistics superseded, 2026-10-24 (#334).** Read this before quoting the issue #29 row. Nothing was re-run for this note (#334 decision E10).
+>
+> - **The pooled all-seed significance row** (`replication_all_seeds`: 2,829 days, Newey–West t 2.3303, raw p 0.0198, BHY p 0.2260, daily CI low 0.000095) is superseded: it overstates the significance of the #29 pooled result, and #357 tracks the correction. `[Inferred]` This was found while writing this note, by reading the notebook's pooled-significance cell (`scripts/gen_pit_repeated_seed_replication_nb.py`, section 9), which has not changed on this point since the run date. The cell concatenates the three seeds' daily excess-return series into one vector, so each calendar date enters three times, and the 2,829 "days" are about 943 dates. The Newey–West lags (5) and bootstrap blocks (21) only see dependence within one seed-year's stretch of the vector. The three seeds trade the same universe on the same dates, so their same-day excess returns are positively correlated, and the standard error is understated by up to √3. The mean, an annualised excess of 13.31%, is still a valid cross-seed average. A correct pooled test averages the seeds per date, or clusters by date, before the HAC step. With positively correlated seeds the corrected p-value is larger, so the #29 verdict ("needs more evidence") stands.
+> - **The per-seed rows** pool one seed over four years of distinct dates, so they do not stack dates. Their BHY p-values (0.4972, 0.9196) were adjusted in one family of five with the pooled row. Correcting that row would raise them slightly.
+> - **Every per-year and per-seed-year figure** comes from the daily open-to-open replay engine: excess, ASR, MDD, the cross-seed means, the sensitivity replay and the 2022 diagnostics. The #334 audit, run on that engine as it stood on `main` in October, found faults in it: returns by per-stock row shift, a holding with no exit price dropped and the rest re-weighted, and a hold that is not the label the model was trained on. #340 reworks the engine and remains open. #339 (pull request #350) already makes the replay read its inputs from the run. Whether these faults move this run's figures has not been measured.
+> - The "Mean ARR / ASR" rows are averages of yearly ratios, as labelled. They are not multi-year ratios.
+
 ## Executive Summary
 
 The expanded repeated-seed run completed the intended full budget: three base

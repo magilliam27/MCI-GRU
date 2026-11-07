@@ -85,13 +85,13 @@ def test_notebook_uses_the_arbiter_label_and_overlap_aware_settings(generator) -
     source = "".join(_code_sources())
     assert "realized_returns_from_market_data(market, label_t=LABEL_T)" in source
     assert "close_pivot.shift(-LABEL_T) / close_pivot - 1" in source  # section-8 variant, alongside
-    assert (generator.LABEL_T, generator.BLOCK_SIZE, generator.HAC_LAGS) == (5, 5, 4)
+    assert (generator.LABEL_T, generator.BLOCK_SIZE, generator.HAC_LAGS) == (5, 5, 3)
     assert generator.N_RESAMPLES == 1000 and generator.BOOTSTRAP_SEED == 1729
     assert generator.CI_LEVEL == 0.95
     for name, value in [
         ("LABEL_T", 5),
         ("BLOCK_SIZE", 5),
-        ("HAC_LAGS", 4),
+        ("HAC_LAGS", 3),
         ("N_RESAMPLES", 1000),
         ("BOOTSTRAP_SEED", 1729),
     ]:

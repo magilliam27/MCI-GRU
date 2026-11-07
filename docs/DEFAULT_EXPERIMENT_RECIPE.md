@@ -1,6 +1,6 @@
 # Default Frozen Experiment Recipe
 
-Last updated: 2026-10-08
+Last updated: 2026-10-27
 
 Use this recipe for production-style confirmation notebooks and PIT validation
 runs unless an experiment is explicitly testing one of these factors.
@@ -52,7 +52,7 @@ runs unless an experiment is explicitly testing one of these factors.
 > |---|---|---|
 > | data config | `configs/data/gics_top10_110_2016.yaml` | `configs/data/gics_top10_110_2016_eodhd.yaml` |
 > | price panel | LSEG export, `..._lseg_20150101_20260731.csv` | EODHD pull of 2026-10-08, `..._eodhd_20150101_20260731.csv` |
-> | input package | LSEG r1 manifest | `data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_eodhd.r2.json` |
+> | input package | LSEG r1 manifest | `data/manifests/sp500_pit_gics_top10_mcap_monthly_20160104_20260731_eodhd.r3.json` (r3, 2026-10-25; r2 split-adjusted volume twice, #347) |
 > | names scored in 2016-01..2017-08 | at most 110 | at most 109: the pre-merger DuPont (`DD.N^I17`) has no EODHD history |
 >
 > Before the package was accepted, each name in the panel had its EODHD daily
@@ -62,16 +62,110 @@ runs unless an experiment is explicitly testing one of these factors.
 > Regular dividends are not applied, which matches the LSEG panel's basis.
 > Results on the two panels are close but are not the same run.
 
+> **The in-run summary changed on 2026-10-24, after the first admitted run (#187).**
+>
+> `evaluation_summary.json` now carries `schema_version: mci_gru.evaluation_summary.v2`
+> (#336, PRD #334). Its IC and rank IC, with their intervals, are computed exactly as
+> before. Every portfolio number is now the daily P&L of the staggered tranche book
+> the label implies (close `D+1` to close `D+5`, four sleeves), with returns from the
+> evaluation core (#335), and the headline is each top-k's excess over the
+> equal-weight PIT-tradable universe on the same mask, legs and schedule. Returns are
+> price returns (`return_basis: price`); the panel carries no dividends.
+>
+> | | schema v1 (first run and earlier) | schema v2 (from 2026-10-24) |
+> |---|---|---|
+> | Sharpe | overlapping 4-session top-k returns annualised as daily ones, Bartlett lags `label_t - 1` (about 1.13x the truth) | daily P&L of the tranche book, `evaluation.sharpe_method` honoured, lags `label_t - 2` |
+> | cumulative return | sum of the overlapping returns (each session counted ~4 times) | compounded daily book |
+> | benchmark | none | equal-weight PIT-tradable universe; excess per period with a Hansen-Hodrick t-stat (lags `label_t - 2`) |
+> | k | unsuffixed keys hard-coded to 50 | only the k in `evaluation.top_k_values` |
+> | quantiles | remainder piled into the top bucket | even quintiles |
+>
+> Removed keys, because an IC loss leaves a score's level and scale arbitrary or
+> because they measured overlapping returns as daily: `mse`, `rmse`, `mae`,
+> `hit_rate`, `top_k`, `avg_portfolio_return`, `cumulative_return`, `sharpe_ratio`,
+> `sharpe_naive`, `sharpe_newey_west`, `return_top_<k>`, `sharpe_top_<k>`,
+> `sharpe_top_<k>_naive`, `sharpe_top_<k>_newey_west`, `top_<k>_return_ci_lower/upper`,
+> `quantile_<q>_return`, `long_short_spread`. Their replacements are
+> `top_<k>_abs_*` (long-only), `top_<k>_excess_*` (over the universe),
+> `universe_abs_*`, `quintile_<q>_abs_period_return` and
+> `long_short_abs_period_spread`; `test_dates`, `ic_valid_dates` and
+> `ic_date_coverage` report IC date coverage. A v1 summary keeps its old numbers;
+> re-scoring a saved run writes a new file beside it (#337).
+
+> **The model and its inputs changed on 2026-10-24, after the first admitted run (#187).**
+>
+> The first run's scores had two faults (#319). Its graph layers gave linked
+> stocks that share a neighbourhood the same score, whatever their own data said,
+> and its six base inputs were raw price and volume levels from a panel
+> split-adjusted as of its last date, so a row before a split already encoded
+> that split. Prediction also ran under half-precision autocast, which rounds
+> scores onto a coarse grid. The recipe now pins the fixed forms, each behind a
+> key whose base default keeps the old behaviour, and the slug gains one part
+> for each of the three (#325).
+>
+> | | before 2026-10-24 | from 2026-10-24 |
+> |---|---|---|
+> | `model.gat_layer_form` | `legacy` (inherited): every graph layer sees a stock's own features only as one neighbour, so linked names tie (#320) | `residual` (pinned): `GATConv(residual=True)` in both layers of every graph block the model builds, an own-feature path for every stock |
+> | `features.base_inputs` | `levels` (inherited): raw close, open, high, low, volume and turnover, rescaled by splits that happen after the row (#323) | `relative` (pinned): log return, overnight and intraday returns, high-low range over close, and log volume and turnover against the stock's own 20-session mean |
+> | `training.eval_amp` | no such key: validation and prediction ran under CUDA autocast whenever `training.use_amp` did | `false` (pinned): validation and prediction run in full precision; training keeps AMP (#321) |
+> | slug | `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10` | `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32` |
+>
+> The residual layers hold parameters the legacy ones do not, so a checkpoint
+> trained under the earlier slug does not load into this recipe's model. The
+> relative inputs keep the input width (six columns replace six), so on their
+> own they would not stop such a load; only the run's config tells the two input
+> forms apart. A checkpoint from the earlier slug still rebuilds from its own run
+> directory, because the base defaults keep the legacy forms.
+>
+> The first admitted run, `20261010T044328Z-full-ec77f4b7`, stays on record under
+> the earlier slug as the result of the model with these faults. It is not the
+> baseline for this recipe; the rerun of this recipe with its control arms
+> (#326) is.
+
+> **The training window changed on 2026-10-27, before the rerun (#326).**
+>
+> The model is meant to train on four years, validate on the next year and test
+> on the year after; each such window is its own full run with the same config
+> and only the dates shifted (the owner, 2026-10-27, #367). Through its data
+> config the recipe trained on eight years instead, and the first admitted run
+> did the same. The recipe now starts training on the first session of 2020, so
+> it is the last window before the 2026 holdout. Validation and test are
+> unchanged.
+>
+> | | before 2026-10-27 | from 2026-10-27 |
+> |---|---|---|
+> | train | 2016-01-04 to 2023-12-31 (eight years, from `data=gics_top10_110_2016_eodhd`) | 2020-01-02 to 2023-12-31 (four years, `data.train_start=2020-01-02` pinned here) |
+> | validation | 2024-01-22 to 2024-12-31 | unchanged |
+> | test | 2025-01-22 to 2025-12-31 | unchanged |
+> | slug | `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32` | `static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32__train-4y` |
+>
+> The data config keeps its eight-year window, because it is the first run's
+> provenance. Features are still computed on the whole panel, which starts
+> 2015-01-01, before the training mask, so the first training date has its full
+> lookback. Everything fit on training data now follows the window's own years:
+> the PIT union axis, the static graph's start, and the normalisation
+> statistics, which until now were fit on every panel row up to `train_end`
+> (#367). For the first run's window that changes nothing, because its
+> membership file starts on its first training day. The regime inputs are
+> requested from the train start minus 15 years, so each window's regime
+> similarity pool is its own 15 years too. Regime scores on a given date
+> therefore differ slightly between this window and the first run, which drew on
+> history from 2001. Earlier windows of the same design (train 2016 to 2019,
+> validate 2020, test 2021, and so on) are separate runs under this slug, with
+> their dates overridden. The DuPont note below applies only to windows that
+> train on 2016 or 2017.
+
 Recipe slug:
 
 ```text
-static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10
+static-threshold-shuffle__pure-ic-returns-5d-val-ic__regime-current-only__ensemble__drop-edge-0p1__latents-data__xsec-residual__gru-32-10__gat-residual__inputs-relative__eval-fp32__train-4y
 ```
 
 ## Hydra Overrides
 
 ```text
 data=gics_top10_110_2016_eodhd
+data.train_start=2020-01-02
 data.auxiliary_snapshot_mode=capture
 
 seed=1729
@@ -84,6 +178,7 @@ training.loss_type=ic
 training.label_type=returns
 training.selection_metric=val_ic
 training.shuffle_train=true
+training.eval_amp=false
 model.label_t=5
 model.temporal_encoder=gru_attn
 model.use_multi_scale=true
@@ -92,6 +187,7 @@ model.use_nn_multihead_attention=true
 model.market_latent_mode=data_dependent
 model.cross_section_block=residual
 model.gru_attn_layer_widths=per_layer
+model.gat_layer_form=residual
 
 graph.judge_value=0.8
 graph.update_frequency_months=0
@@ -104,6 +200,7 @@ graph.use_lead_lag_features=false
 graph.drop_edge_p=0.1
 
 features=with_momentum
+features.base_inputs=relative
 features.include_momentum=true
 features.include_weekly_momentum=true
 features.momentum_encoding=binary
@@ -140,9 +237,13 @@ features.regime_min_history_months=24
   `pit_breadth_policy: error`. Confirmation runs must supply that CSV. Runs that
   bring their own panel instead must pass `data.use_pit_universe=false`, as
   `scripts/ci_smoke.py` does.
+- `data.train_start=2020-01-02` is pinned here rather than in the data config
+  (#367). The data config's eight-year window is the first run's provenance and
+  stays as it was; the recipe's four-year window is what every later run trains
+  on. `tests/test_default_experiment_recipe.py` pins the composed window.
 - `FRED_API_KEY` is required when `features.include_global_regime=true` and
   `features.regime_strict=true`.
-- The seven `model.*` keys after `model.label_t` are pinned for the same reason
+- The eight `model.*` keys after `model.label_t` are pinned for the same reason
   as the data config. `market_latent_mode=data_dependent` and
   `cross_section_block=residual` are the corrected forms from #198 and #197, and `gru_attn_layer_widths=per_layer` makes
   `gru_hidden_sizes: [32, 10]` mean a 32-wide layer then a 10-wide one, the
@@ -154,6 +255,19 @@ features.regime_min_history_months=24
   `gru-32-10` does not move if a base default does.
   `tests/test_default_experiment_recipe.py` composes this block the way
   `run_experiment.py` does and checks the model it builds.
+- `model.gat_layer_form=residual` (#320) and `features.base_inputs=relative`
+  (#323) were added on 2026-10-24, with the same reasoning: the base defaults
+  stay `legacy` and `levels` so earlier run directories rebuild. The relative
+  volume inputs divide by the stock's own trailing mean and treat zero or
+  negative volume as missing. The check of the panel's volume column (#322)
+  found r2's volume split-adjusted twice; r3 corrects it at source (#347), and
+  the recipe reads r3. On r2 the relative volume inputs would have shown a
+  false collapse in the 20 sessions after every split, because the extra
+  factor steps down on the split date.
+- `training.eval_amp=false` (#321) is the base default too. It is pinned so a
+  move of that default cannot put prediction back under autocast. It applies to
+  validation and `Trainer.predict` only; `training.use_amp` still governs
+  training.
 - No cessation (delisting) event file is declared:
   `data.pit_cessation_events_csv` stays `null` (decided 2026-10-04, #273). The
   EODHD panel keeps the LSEG identifiers. Five of its names carry LSEG delisted
@@ -194,6 +308,9 @@ features.regime_min_history_months=24
     2025-08-27). With `--all` it exits 1 on one name only. PSKY.OQ, a live
     name, ends in two zero-volume repeats in its last rows to 2026-07-31. That
     is after the test window and its labels, so it does not touch this run.
+    The result carries over to r3 (#347) without a re-run there. r3 has r2's
+    rows, the same prices apart from CHTR before 2016-05-18, and volume only
+    divided by split ratios, so it is zero on exactly the sessions it was in r2.
   - A cessation dated on a name's final session and known by 20:00 New York that
     day would also drop that one session from the cross-section. Its own loss is
     unchanged, but other names' scores on that date move slightly. The likely

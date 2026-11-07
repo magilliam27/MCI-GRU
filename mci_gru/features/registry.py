@@ -19,8 +19,10 @@ if TYPE_CHECKING:
 
 from mci_gru.features.base import (
     BASE_FEATURES,
+    RELATIVE_BASE_FEATURES,
     add_base_features,
     add_price_features,
+    add_relative_base_features,
     add_volume_features,
 )
 from mci_gru.features.credit import (
@@ -169,6 +171,7 @@ class FeatureEngineer:
         config: FeatureConfig | None = None,
         *,
         # Legacy kwargs — used only when *config* is None.
+        base_inputs: str = "levels",
         include_momentum: bool = True,
         include_weekly_momentum: bool = True,
         momentum_encoding: str = "binary",
@@ -207,6 +210,7 @@ class FeatureEngineer:
     ):
         if config is not None:
             # Pull every attribute from the dataclass — single source of truth.
+            self.base_inputs = config.base_inputs
             self.include_momentum = config.include_momentum
             self.include_weekly_momentum = config.include_weekly_momentum
             self.momentum_encoding = config.momentum_encoding
@@ -250,6 +254,7 @@ class FeatureEngineer:
             self.include_volume_features = config.include_volume_features
         else:
             # Legacy path: accept individual kwargs.
+            self.base_inputs = base_inputs
             self.include_momentum = include_momentum
             self.include_weekly_momentum = include_weekly_momentum
             self.momentum_encoding = momentum_encoding
@@ -440,6 +445,11 @@ class FeatureEngineer:
         if self.include_volume_features:
             df = add_volume_features(df)
 
+        # Relative base inputs replace the six levels (#323). Last, so their
+        # definitions win over add_price_features' for the three shared columns.
+        if self.base_inputs == "relative":
+            df = add_relative_base_features(df)
+
         logger.info("=" * 60)
         logger.info("Feature engineering complete")
         logger.info("=" * 60)
@@ -453,7 +463,10 @@ class FeatureEngineer:
         Returns:
             List of feature column names
         """
-        features = list(BASE_FEATURES)
+        if self.base_inputs == "relative":
+            features = list(RELATIVE_BASE_FEATURES)
+        else:
+            features = list(BASE_FEATURES)
 
         if self.include_momentum:
             features.extend(get_momentum_features(self.include_weekly_momentum))
@@ -493,7 +506,8 @@ class FeatureEngineer:
         if self.include_volume_features:
             features.extend(["volume_ma20", "volume_ratio", "dollar_volume"])
 
-        return features
+        # Relative base inputs share three names with the price features.
+        return list(dict.fromkeys(features))
 
     def _get_regime_feature_columns(self) -> list[str]:
         return get_regime_features(

@@ -50,6 +50,12 @@ _EDGE_DROPOUT_STREAMS_PER_STEP = 2
 #: ``create_model`` also takes plain dicts (checkpoint ``config.yaml`` files), so
 #: the trunk refuses an unknown value rather than quietly building ``legacy``.
 _CROSS_SECTION_BLOCKS = ("legacy", "residual")
+#: Forms of every graph block (A2 correlation stream, sector stream, final head),
+#: checked here for the same reason. ``legacy`` is GAT v1, in which a linked
+#: stock's own features enter only as one more neighbour, so stocks with the
+#: same neighbourhood score alike; ``residual`` adds an own-feature path to each
+#: layer (issue #320).
+_GAT_LAYER_FORMS = ("legacy", "residual")
 #: Device types whose generator ``_forked_dropout_edge`` knows how to reseed.
 #: Anything else would seed the CPU generator while ``dropout_edge`` drew from
 #: the accelerator's, so isolation would silently become a no-op -- which is the
@@ -147,6 +153,7 @@ class StockPredictionModel(nn.Module):
         cross_section_block: str = "legacy",
         market_latent_mode: str = "static",
         gru_attn_layer_widths: str = "shared",
+        gat_layer_form: str = "legacy",
     ):
         super().__init__()
         if cross_section_block not in _CROSS_SECTION_BLOCKS:
@@ -154,6 +161,11 @@ class StockPredictionModel(nn.Module):
                 f"cross_section_block must be one of {_CROSS_SECTION_BLOCKS}, "
                 f"got {cross_section_block!r}"
             )
+        if gat_layer_form not in _GAT_LAYER_FORMS:
+            raise ValueError(
+                f"gat_layer_form must be one of {_GAT_LAYER_FORMS}, got {gat_layer_form!r}"
+            )
+        gat_residual = gat_layer_form == "residual"
         if gru_hidden_sizes is None:
             gru_hidden_sizes = [32, 10]
 
@@ -194,6 +206,7 @@ class StockPredictionModel(nn.Module):
             activation=activation,
             edge_feature_dim=edge_feature_dim,
             inter_layer_dropout=gat_inter_drop,
+            residual=gat_residual,
         )
         if use_sector_relation:
             self.gat_layer_sector = GATBlock(
@@ -204,6 +217,7 @@ class StockPredictionModel(nn.Module):
                 activation=activation,
                 edge_feature_dim=1,
                 inter_layer_dropout=gat_inter_drop,
+                residual=gat_residual,
             )
             self.gat_stream_fuse = nn.Linear(output_gat1 * 2, output_gat1)
         else:
@@ -264,6 +278,7 @@ class StockPredictionModel(nn.Module):
             activation=activation,
             edge_feature_dim=edge_feature_dim,
             inter_layer_dropout=gat_inter_drop,
+            residual=gat_residual,
         )
         self.output_act = _make_output_activation(output_activation)
         self.drop_edge_p = float(drop_edge_p)

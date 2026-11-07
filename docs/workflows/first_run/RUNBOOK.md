@@ -43,15 +43,75 @@ draft is [`ADMISSION_RECEIPT_AND_CHARTER_DRAFT.md`](ADMISSION_RECEIPT_AND_CHARTE
    - build a Python 3.12.11 environment with uv, install `requirements.lock` into
      it, then the repository with `--no-deps`, and check
      that every pin is installed and a CUDA GPU is visible;
+   - run the CUDA-only precision test from #327 on this GPU, keeping its log under
+     `<DRIVE_OUTPUT_ROOT>/gpu_checks/`; the notebook stops unless it ran and passed;
    - check the commit for #270, #274 and #275;
    - stage and verify the stock package the recipe's data config declares, and
      the EODHD S&P 500 file;
-   - run the recipe (it stages and verifies again first), copying the run folder to
-     `MyDrive/MCI_GRU_shared/runs/first_run/<run tag>/` every 10 minutes and at
-     the end;
-   - print where the outputs are.
+   - run each arm in `RUN_ARMS` in turn (each stages and verifies again first),
+     copying its run folder to `MyDrive/MCI_GRU_shared/runs/first_run/<run tag>/`
+     every 10 minutes and at the end;
+   - print where the outputs are;
+   - with more than one arm, write their comparison to
+     `<DRIVE_OUTPUT_ROOT>/comparison-<recipe arm's tag>/`.
 5. Keep the browser tab open while it trains. `colab_heartbeat.json` in the Drive
    run folder shows when the last copy was made.
+
+## The model-fix rerun (#326)
+
+Four arms on one commit and one data package, so they differ only by what each
+arm names (`RUN_ARMS` in `scripts/first_run_colab.py`):
+
+| Arm | What changes from the recipe | Run tag |
+| --- | --- | --- |
+| `recipe` | nothing | `<time>-full-<window>-<commit>` |
+| `graph_zeroed` | `+experiment=graph_zeroed`: the GAT layers stay, the correlation edges are empty | `<time>-full-graph-zeroed-<window>-<commit>` |
+| `levels_inputs` | `features.base_inputs=levels`: the fixed graph layers on the old raw price and volume levels | `<time>-full-inputs-levels-<window>-<commit>` |
+| `other_seeds` | `seed=2729`: the recipe on member seeds 2729 + i, none of which the recipe's 1729 + i uses | `<time>-full-seed-2729-<window>-<commit>` |
+
+The first three share the recipe's seed. The recipe arm's paired difference against
+`other_seeds` is the seed noise floor: a difference against `graph_zeroed` or
+`levels_inputs` no larger than it is not evidence of an effect.
+
+An arm refuses to start if its change would change nothing, so `levels_inputs`
+cannot run until the recipe pins `features.base_inputs=relative` (#325). Each arm
+files its results under its own experiment name, the recipe slug plus
+`__arm-<suffix>`, and only the `recipe` arm is labelled an admitted-run
+candidate.
+
+In the parameters cell set
+`RUN_ARMS = ["recipe", "graph_zeroed", "levels_inputs", "other_seeds"]` and
+`DRIVE_OUTPUT_ROOT = "/content/drive/MyDrive/MCI_GRU_shared/runs/model_fix_rerun"`,
+then Run all. The four arms train one after another in the same runtime.
+
+The comparison folder holds `arm_comparison.json` and `daily_ic_by_arm.csv`. For each
+run: IC and rank IC with their intervals and the linked-name tie counts from #324.
+For each arm: its IC and rank IC pooled over its windows. Then the recipe arm's
+paired daily IC and rank IC difference against each of the others, computed over
+the dates every arm scored, with the overlap-aware HAC t-test and interval of #356. It reads each run's `daily_ic.csv` and refuses
+a run whose dated series does not average to its own summary's `avg_ic`, or arms
+from different commits or packages. It is evidence, not a pass/fail gate (PRD #319,
+decision D1).
+
+## Window runs (#371)
+
+`run --window W1..W5` moves a run onto one protocol window's dates
+(`WINDOWS` in `mci_gru/protocol.py`; PRD #369). W5 is the recipe's own dates and
+the default, so it adds no date override; every run still gains the
+`protocol.window` stamp and a `-<window>-` in its tag. The run tag, `colab_run_record.json` and the
+run's `protocol.window` stamp in `run_metadata.json` all record the window, and the
+runner refuses a run whose dates are not the window it names. The holdout is
+never a choice. The notebook runs W5 only, and no headless job loops over
+windows yet; a window run is launched with `run --window` from the command line.
+
+`compare` takes one `--run ARM=FOLDER` per arm and window. It reads each run's
+window from the dates in its saved `config.yaml`, refuses a run that scored a date
+outside that window's test span, refuses arms that ran different windows or one
+window twice, and refuses recipe runs that differ beyond their dates. Per arm it
+joins the windows' `daily_ic.csv` into one series. The paired rows are then
+reported pooled over every window and once per window. `arm_comparison.json`
+lists each run under `runs` and each arm's pooled IC under `arms`, and
+`daily_ic_by_arm.csv` gains a `window` column.
 
 ## When something stops
 
@@ -64,6 +124,8 @@ draft is [`ADMISSION_RECEIPT_AND_CHARTER_DRAFT.md`](ADMISSION_RECEIPT_AND_CHARTE
 | `Missing on Drive` or `does not match its pin` | A staged file is absent or has other bytes | Fix the Drive copy; never edit the pin to match |
 | `run_failure.json` in the run folder | An input failed admission before training | Report it as it stands; do not edit inputs to get past it |
 | The runtime disconnects | The run is incomplete | Start again from the top; the new run gets a new tag and folder |
+| `GPU precision check FAILED` | The #327 CUDA test was skipped or failed on this GPU | Read `eval_precision_gpu.log` under `gpu_checks/`; do not train until it passes |
+| `Refusing to run arm` | The recipe at this commit cannot take that arm's change | Run a commit with the recipe it needs (#325 for `levels_inputs`) |
 
 ## What the notebook changes in the clone
 

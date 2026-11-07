@@ -10,7 +10,11 @@ import pandas as pd
 
 from mci_gru.evaluation.artifacts import write_json_artifact
 from mci_gru.evaluation.portfolio import apply_rank_drop_gate, calculate_turnover, rank_scores
+from mci_gru.protocol import require_predictions_outside_holdout
 from mci_gru.utils.returns import padded_pct_change
+
+#: Sessions after the signal date at which a capacity-replay position is sold.
+CAPACITY_EXIT_SESSION = 2
 
 
 def add_lagged_capacity_inputs(
@@ -87,6 +91,10 @@ def compute_capacity_replay(
 
     preds = predictions.copy()
     preds["dt"] = pd.to_datetime(preds["dt"])
+    # Each signal buys at the next session's open and sells at the open after that.
+    require_predictions_outside_holdout(
+        preds["dt"], label_t=CAPACITY_EXIT_SESSION, what="This capacity replay"
+    )
     market = add_lagged_capacity_inputs(market_data, lookback_days=adv_lookback_days)
     market = market.sort_values(["dt", "kdcode"]).reset_index(drop=True)
     market_dates = sorted(market["dt"].dropna().unique())

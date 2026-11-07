@@ -24,10 +24,12 @@ import numpy as np
 import pandas as pd
 
 from mci_gru.evaluation.statistics import (
+    hansen_hodrick_mean_ci,
+    hansen_hodrick_mean_inference,
+    hansen_hodrick_std,
     moving_block_bootstrap_ci,
     moving_block_mean_ci,
-    newey_west_mean_inference,
-    newey_west_sharpe,
+    overlap_hac_lags,
 )
 
 if TYPE_CHECKING:
@@ -49,7 +51,9 @@ class PairedMeanInference:
     hac_se: float | None
     hac_t: float | None
     hac_p: float | None
-    block_size: int
+    long_run_sd: float | None
+    ci_method: str
+    block_size: int | None
     ci_lower: float | None
     ci_upper: float | None
     top_decile_share: float
@@ -106,17 +110,33 @@ def paired_mean_inference(
     arm: str,
     control: str,
     label_horizon: int,
-    n_resamples: int,
-    seed: int,
     ci_level: float,
+    n_resamples: int | None = None,
+    seed: int | None = None,
     block_size: int | None = None,
     hac_lags: int | None = None,
 ) -> PairedMeanInference:
-    """HAC t-test and block-bootstrap interval for the mean daily difference.
+    """HAC t-test and interval for the mean daily difference.
 
-    Non-finite days are dropped and ``n_days`` reports what remained. ``hac_lags``
-    defaults to ``label_horizon - 1`` and ``block_size`` to ``label_horizon``, the
-    same overlap-aware defaults the production evaluation resolves to.
+    Non-finite days are dropped and ``n_days`` reports what remained.
+    ``label_horizon`` is the model's ``label_t``: the outcome runs from close ``D+1``
+    to close ``D+label_horizon``, so it spans ``label_horizon - 1`` sessions and
+    consecutive days share ``label_horizon - 2`` of them. The HAC uses uniform
+    (Hansen-Hodrick) weights on that many lags, which is exact for the overlap;
+    Bartlett weights on ``label_horizon - 1`` lags understate it (#342).
+
+    The interval is the same HAC one with a Student-t critical value
+    (``statistics.hansen_hodrick_mean_ci``), as the in-run IC intervals use (#356).
+    Passing ``block_size`` asks for the circular block bootstrap instead, with
+    ``n_resamples`` and ``seed``; the archived graph notebooks do, so their intervals
+    reproduce. Their ``hac_p`` does not: since #356 it is Student-t on the interval's
+    equivalent degrees of freedom, where it was normal before (at 238 days a t-stat of
+    2.0 moves from p 0.046 to 0.054). A block of ``label_horizon`` covers about 89%
+    for a nominal 95% on a year of overlapping days, so new work leaves it unset.
+
+    ``long_run_sd`` (``hac_se * sqrt(n_days)``) is the standard deviation that power
+    and minimum-detectable-effect arithmetic needs; ``sd_delta`` is the iid one and
+    understates what overlapping days can detect.
     """
     if label_horizon <= 0:
         raise ValueError("label_horizon must be > 0")
@@ -124,18 +144,28 @@ def paired_mean_inference(
     x = x[np.isfinite(x)]
     if x.size == 0:
         raise ValueError("paired_mean_inference needs at least one finite difference")
-    lags = label_horizon - 1 if hac_lags is None else int(hac_lags)
-    block = label_horizon if block_size is None else int(block_size)
+    minimum_lags = overlap_hac_lags(label_horizon)
+    lags = minimum_lags if hac_lags is None else int(hac_lags)
+    if lags < minimum_lags:
+        raise ValueError(
+            f"hac_lags must be at least label_horizon - 2 ({minimum_lags}) for outcomes "
+            f"spanning {label_horizon - 1} sessions"
+        )
 
-    hac = newey_west_mean_inference(x, lags=lags, label_horizon=label_horizon)
-    interval = moving_block_mean_ci(
-        x,
-        block_size=block,
-        label_horizon=label_horizon,
-        n_resamples=n_resamples,
-        seed=seed,
-        ci_level=ci_level,
-    )
+    hac = hansen_hodrick_mean_inference(x, label_horizon=lags + 1)
+    if block_size is None:
+        interval = hansen_hodrick_mean_ci(x, lags=lags, ci_level=ci_level)
+    else:
+        if n_resamples is None or seed is None:
+            raise ValueError("a block bootstrap interval needs n_resamples and seed")
+        interval = moving_block_mean_ci(
+            x,
+            block_size=int(block_size),
+            label_horizon=label_horizon,
+            n_resamples=n_resamples,
+            seed=seed,
+            ci_level=ci_level,
+        )
     return PairedMeanInference(
         arm=arm,
         control=control,
@@ -148,7 +178,13 @@ def paired_mean_inference(
         hac_se=hac.standard_error,
         hac_t=hac.t_stat,
         hac_p=hac.p_value,
-        block_size=block,
+        long_run_sd=(
+            float(hac.standard_error * math.sqrt(x.size))
+            if hac.standard_error is not None
+            else None
+        ),
+        ci_method=interval.method,
+        block_size=None if block_size is None else int(block_size),
         ci_lower=interval.lower,
         ci_upper=interval.upper,
         top_decile_share=tail_share(x, 0.1),
@@ -194,7 +230,9 @@ def minimum_detectable_effect(
 ) -> float:
     """Smallest mean daily difference detectable at ``power`` with ``n_days`` paired days.
 
-    Normal approximation: ``(z_{1-alpha/2} + z_power) * sd / sqrt(n)``.
+    Normal approximation: ``(z_{1-alpha/2} + z_power) * sd / sqrt(n)``. With
+    overlapping outcomes ``sd`` must be the long-run standard deviation
+    (``PairedMeanInference.long_run_sd``), not the iid ``sd_delta`` (#342).
     """
     if sd <= 0.0 or not math.isfinite(sd):
         raise ValueError("sd must be a positive finite number")
@@ -204,7 +242,10 @@ def minimum_detectable_effect(
 
 
 def required_days(sd: float, mde: float, *, power: float = 0.8, alpha: float = 0.05) -> int:
-    """Paired days needed to detect ``mde`` at ``power``; inverse of the MDE formula."""
+    """Paired days needed to detect ``mde`` at ``power``; inverse of the MDE formula.
+
+    ``sd`` is the long-run standard deviation, as for :func:`minimum_detectable_effect`.
+    """
     if sd <= 0.0 or not math.isfinite(sd):
         raise ValueError("sd must be a positive finite number")
     if mde <= 0.0 or not math.isfinite(mde):
@@ -234,21 +275,32 @@ def winsorize_rows(values: np.ndarray, lower_q: float = 0.01, upper_q: float = 0
 def sharpe_block_bootstrap_ci(
     returns: np.ndarray,
     *,
-    nw_lags: int,
+    hac_lags: int,
     block_size: int,
     n_resamples: int,
     seed: int,
     ci_level: float,
     periods_per_year: int = 252,
 ) -> dict[str, float | int]:
-    """Annualised Newey-West Sharpe with a circular moving-block bootstrap interval."""
+    """Annualised Sharpe with uniform-weight HAC volatility and a block-bootstrap interval.
+
+    For daily-sampled outcomes spanning ``h`` sessions, ``hac_lags = h - 1`` makes the
+    long-run volatility ``h`` times the daily one, as the mean is ``h`` times the
+    daily mean, so ``mean / vol * sqrt(periods_per_year)`` is the daily book's annual
+    Sharpe. Bartlett weights would overstate it (#342).
+    """
     r = np.asarray(returns, dtype=np.float64)
     r = r[np.isfinite(r)]
     if r.size == 0:
         raise ValueError("sharpe_block_bootstrap_ci needs at least one finite return")
+    if hac_lags < 0:
+        raise ValueError("hac_lags must be >= 0")
 
     def statistic(sample: np.ndarray) -> float:
-        return newey_west_sharpe(sample, periods_per_year=periods_per_year, lags=nw_lags)
+        vol = hansen_hodrick_std(sample, lags=hac_lags)
+        if vol <= 0.0 or not np.isfinite(vol):
+            return 0.0
+        return float(np.mean(sample) / vol * np.sqrt(periods_per_year))
 
     point = statistic(r)
     interval = moving_block_bootstrap_ci(
@@ -264,6 +316,6 @@ def sharpe_block_bootstrap_ci(
         "lower": float(interval["lower"]),
         "upper": float(interval["upper"]),
         "n_days": int(r.size),
-        "nw_lags": int(nw_lags),
+        "hac_lags": int(hac_lags),
         "block_size": int(block_size),
     }

@@ -529,7 +529,7 @@ def test_paired_inference_cell_mirrors_the_pre_registered_arbiter(generator) -> 
     assert generator.CONTROL_ARM == "A0_zeroed"
     assert [key for key in EXPECTED_ARM_KEYS if key != "A0_zeroed"] == generator.COMPARISON_ARMS
     assert generator.BHY_CONTRAST_COUNT == len(generator.COMPARISON_ARMS) == 5
-    assert (generator.LABEL_T, generator.BLOCK_SIZE, generator.HAC_LAGS) == (5, 5, 4)
+    assert (generator.LABEL_T, generator.BLOCK_SIZE, generator.HAC_LAGS) == (5, 5, 3)
     assert generator.N_RESAMPLES == 1000
     assert generator.BOOTSTRAP_SEED == 1729
     assert generator.CI_LEVEL == 0.95
@@ -726,8 +726,8 @@ def test_notebook_reports_arbiter_composite_and_disclosures() -> None:
         # April composite, computed alongside and labelled non-authoritative.
         "DECISION_SCORE_WEIGHTS",
         "avg_spearman_corr",
-        "sharpe_top_20_newey_west",
-        "return_top_20",
+        "top_20_abs_sharpe",
+        "top_20_abs_period_return",
         "not the arbiter",
         # Per-span adjacency disclosure and the twin hygiene check.
         "isolated_fraction",

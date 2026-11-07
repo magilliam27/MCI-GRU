@@ -434,6 +434,11 @@ def test_cli_research_mode_writes_only_the_five_file_bundle(tmp_path: Path) -> N
     assert result["claim_status"] == "INVALID_EVIDENCE"
     assert result["valid_date_count"] == 1
     assert result["null_test"]["draw_count"] == 1000
+    # Overlap-correct inference (#342): one permutation for the whole sample keeps the
+    # scores' persistence, and the HAC uses uniform weights.
+    assert result["null_test"]["method"] == "DATE_BLOCKED_SCORE_PERMUTATION_V1"
+    assert result["null_test"]["block_dates"] is None
+    assert result["hac_mean_inference"]["method"] == "hansen_hodrick_t_v1"
 
 
 def _protocol(

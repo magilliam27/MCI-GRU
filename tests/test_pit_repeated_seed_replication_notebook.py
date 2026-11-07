@@ -1,6 +1,14 @@
 import ast
 import json
+import math
 from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pytest
+from scipy import stats
+
+from mci_gru.evaluation.statistics import moving_block_bootstrap_ci, newey_west_std
 
 NOTEBOOK_PATH = Path("notebooks/pit_repeated_seed_replication_colab.ipynb")
 GENERATOR_PATH = Path("scripts/gen_pit_repeated_seed_replication_nb.py")
@@ -18,6 +26,138 @@ def _code_cell_sources() -> list[str]:
         for cell in notebook["cells"]
         if cell.get("cell_type") == "code"
     ]
+
+
+def _notebook_functions(*names: str) -> dict[str, object]:
+    """Exec the named notebook functions in a namespace holding the cell's globals."""
+    namespace: dict[str, object] = {
+        "np": np,
+        "pd": pd,
+        "math": math,
+        "stats": stats,
+        "newey_west_std": newey_west_std,
+        "moving_block_bootstrap_ci": moving_block_bootstrap_ci,
+        "NEWEY_WEST_LAGS": 5,
+        "BLOCK_BOOTSTRAP_BLOCK_SIZE": 21,
+        "SIGNIFICANCE_BOOTSTRAP_RESAMPLES": 50,
+    }
+    found: set[str] = set()
+    for source in _code_cell_sources():
+        for node in ast.parse(source).body:
+            if isinstance(node, ast.FunctionDef) and node.name in names:
+                module = ast.Module(body=[node], type_ignores=[])
+                exec(compile(module, filename=f"<notebook:{node.name}>", mode="exec"), namespace)
+                found.add(node.name)
+    missing = set(names) - found
+    assert not missing, f"notebook functions not found: {sorted(missing)}"
+    return namespace
+
+
+def _seed_daily_frame(excess: np.ndarray, base_seed: int, dates: pd.DatetimeIndex) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "date": dates,
+            "excess_return": excess,
+            "scenario": f"replication_seed_{base_seed}",
+            "base_seed": base_seed,
+        }
+    )
+
+
+_SIGNIFICANCE_FUNCTIONS = (
+    "_information_ratio",
+    "pooled_significance_row",
+    "all_seeds_significance_row",
+)
+
+
+def test_issue29_all_seeds_row_counts_each_date_once() -> None:
+    """Three identical seeds are one series: same t-stat, p-value and n_days (#357)."""
+    fns = _notebook_functions(*_SIGNIFICANCE_FUNCTIONS)
+    dates = pd.bdate_range("2022-01-03", periods=300)
+    excess = np.random.default_rng(7).normal(0.0004, 0.01, size=dates.size)
+    seeds = [314159, 271828, 161803]
+    one = _seed_daily_frame(excess, seeds[0], dates)
+    three = pd.concat([_seed_daily_frame(excess, seed, dates) for seed in seeds], ignore_index=True)
+
+    single = fns["pooled_significance_row"](one, "replication_seed_314159")
+    pooled = fns["all_seeds_significance_row"](three, "replication_all_seeds", expected_seeds=3)
+
+    assert pooled["n_days"] == dates.size
+    assert pooled["n_seeds"] == 3
+    assert pooled["min_seeds_per_date"] == 3
+    assert pooled["all_seeds_complete"] is True
+    for key in (
+        "mean_daily_excess_return",
+        "information_ratio",
+        "newey_west_se_daily_excess",
+        "newey_west_t_stat",
+        "p_value",
+    ):
+        assert pooled[key] == pytest.approx(single[key], rel=1e-12), key
+
+
+def test_issue29_all_seeds_row_averages_seeds_per_date() -> None:
+    """Different seeds enter as their per-date mean, one value per date (#357)."""
+    fns = _notebook_functions(*_SIGNIFICANCE_FUNCTIONS)
+    dates = pd.bdate_range("2023-01-02", periods=120)
+    rng = np.random.default_rng(11)
+    seeds = [314159, 271828, 161803]
+    series = {seed: rng.normal(0.0003, 0.01, size=dates.size) for seed in seeds}
+    frames = [_seed_daily_frame(series[seed], seed, dates) for seed in seeds]
+    # Shuffle row order so the per-date mean cannot rely on input order.
+    three = pd.concat(frames, ignore_index=True).sample(frac=1.0, random_state=3)
+
+    averaged = np.mean(np.vstack([series[seed] for seed in seeds]), axis=0)
+    expected = fns["pooled_significance_row"](
+        pd.DataFrame({"date": dates, "excess_return": averaged}), "expected"
+    )
+    pooled = fns["all_seeds_significance_row"](three, "replication_all_seeds", expected_seeds=3)
+
+    assert pooled["n_days"] == dates.size
+    assert pooled["newey_west_t_stat"] == pytest.approx(expected["newey_west_t_stat"], rel=1e-12)
+    assert pooled["mean_daily_excess_return"] == pytest.approx(float(np.mean(averaged)), rel=1e-12)
+
+
+def test_issue29_all_seeds_row_flags_a_missing_seed() -> None:
+    """A seed absent on some dates is reported, not silently averaged as complete (#357)."""
+    fns = _notebook_functions(*_SIGNIFICANCE_FUNCTIONS)
+    dates = pd.bdate_range("2025-01-02", periods=60)
+    excess = np.linspace(-0.005, 0.01, dates.size)
+    frames = [_seed_daily_frame(excess, seed, dates) for seed in (1, 2)]
+    frames.append(_seed_daily_frame(excess[:30], 3, dates[:30]))
+    pooled = fns["all_seeds_significance_row"](
+        pd.concat(frames, ignore_index=True), "replication_all_seeds", expected_seeds=3
+    )
+
+    assert pooled["n_days"] == dates.size
+    assert pooled["n_seeds"] == 3
+    assert pooled["min_seeds_per_date"] == 2
+    assert pooled["all_seeds_complete"] is False
+
+
+def test_issue29_pooled_significance_refuses_repeated_dates() -> None:
+    """A series that repeats a date would overstate significance; refuse it (#357)."""
+    fns = _notebook_functions(*_SIGNIFICANCE_FUNCTIONS)
+    dates = pd.bdate_range("2024-01-02", periods=30)
+    excess = np.linspace(-0.01, 0.01, dates.size)
+    stacked = pd.concat(
+        [_seed_daily_frame(excess, seed, dates) for seed in (1, 2)], ignore_index=True
+    )
+    with pytest.raises(ValueError, match="repeats dates"):
+        fns["pooled_significance_row"](stacked, "stacked")
+    with pytest.raises(ValueError, match="no date column"):
+        fns["pooled_significance_row"](stacked.drop(columns="date"), "undated")
+
+
+def test_issue29_replication_all_seeds_uses_per_date_average() -> None:
+    """The notebook builds replication_all_seeds from the per-date seed average (#357)."""
+    generator = GENERATOR_PATH.read_text(encoding="utf-8")
+    combined = "\n".join(_cell_sources())
+    for text in (generator, combined):
+        flat = " ".join(text.split())
+        assert "all_seeds_significance_row( replication_daily_df, 'replication_all_seeds'," in flat
+        assert "pooled_significance_row(replication_daily_df" not in flat
 
 
 def test_issue31_notebook_pins_repeated_seed_full_pit_replication() -> None:
@@ -147,7 +287,7 @@ def test_issue31_notebook_uses_cost_rank_gate_promotion_path() -> None:
         "--min_rank_drop",
         "--num_tests",
         "--adjustment_method",
-        "ADJUSTMENT_METHOD = 'bhy'",
+        "ADJUSTMENT_METHOD = 'holm'",
     ]
 
     for token in required_tokens:
