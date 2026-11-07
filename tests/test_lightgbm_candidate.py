@@ -22,7 +22,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from mci_gru.config import ExperimentConfig
 from mci_gru.evaluation import lightgbm_candidate as lc
+from mci_gru.evaluation.candidate_registry import CANDIDATES
+from mci_gru.evaluation.candidates import CandidateContext, check_no_lookahead, check_result
 
 N_STOCKS = 40
 N_SESSIONS = 420
@@ -285,3 +288,65 @@ def test_overlapping_splits_are_refused():
     train, val, test = _splits(panel)
     with pytest.raises(ValueError, match="ordered"):
         _fit(panel, test_dates=val[-5:] + test)
+
+
+# --- Through the shared candidate harness (#384) ----------------------------------------
+
+
+def _context(panel: pd.DataFrame, rankable: np.ndarray | None = None) -> CandidateContext:
+    train, val, test = _splits(panel)
+    data = {
+        "train_dates": train,
+        "val_dates": val,
+        "test_dates": test,
+        "train_labels": _labels(panel, train),
+        "val_labels": _labels(panel, val),
+        "train_loss_mask": np.ones((len(train), N_STOCKS), dtype=bool),
+        "val_tradable_mask": np.ones((len(val), N_STOCKS), dtype=bool),
+    }
+    return CandidateContext(
+        config=ExperimentConfig(),
+        panel=panel.loc[panel["dt"] <= test[-1]].reset_index(drop=True),
+        kdcodes=list(KDCODES),
+        test_dates=test,
+        rankable_mask=rankable,
+        pit_intervals=None,
+        data_loader=lambda: data,
+    )
+
+
+@pytest.fixture
+def harness_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(lc, "ROUND_CHECKPOINTS", (20, 60))
+    monkeypatch.setattr(lc, "DEFAULT_SEEDS", (0, 1))
+    monkeypatch.setattr(lc, "PARAM_GRID", ({"num_leaves": 3, "min_data_in_leaf": 200},))
+
+
+@pytest.mark.parametrize("name", ["lightgbm_5d", "lightgbm_20d"])
+def test_registered_arms_pass_the_harness_lookahead_check(harness_settings, name):
+    panel = _panel(signal=0.6)
+    context = _context(panel)
+    candidate = CANDIDATES[name]
+
+    result = candidate(context)
+
+    assert check_result(result, context).shape == (len(context.test_dates), N_STOCKS)
+    assert _daily_ic(result.scores, _labels(panel, context.test_dates)) > 0.05
+    check_no_lookahead(candidate, context, context.test_dates[40])
+
+
+def test_the_harness_lookahead_check_would_catch_a_feature_reading_tomorrow(
+    harness_settings, monkeypatch
+):
+    panel = _panel(signal=0.6)
+    context = _context(panel)
+    compute = lc.compute_feature_panel
+
+    def peeking(rows, kdcodes):
+        features = compute(rows, kdcodes)
+        features["ret_1"] = features["ret_1"].shift(-1)
+        return features
+
+    monkeypatch.setattr(lc, "compute_feature_panel", peeking)
+    with pytest.raises(ValueError, match="change with prices after"):
+        check_no_lookahead(CANDIDATES["lightgbm_5d"], context, context.test_dates[40])

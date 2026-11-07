@@ -1,6 +1,6 @@
 # Linux CPU reference for #143: Ubuntu 24.04 x86_64 / CPython 3.12.11.
 # Exact distribution URLs and SHA-256; install after the bootstrap lock.
-# Preserve the 61 non-torch Windows-reference versions; explicitly select
+# Preserve the 62 non-torch Windows-reference versions; explicitly select
 # torch 2.12.1+cpu from the official PyTorch CPU index instead of PyPI torch.
 # PyPI URLs/hashes come from the retained Linux installation report at cabc73c
 # (GitHub Actions run 35422083085); CPU URL/hash from the official wheel index.
@@ -99,6 +99,10 @@ joblib @ https://files.pythonhosted.org/packages/7b/91/984aca2ec129e2757d1e4e3c8
 # kiwisolver==1.5.0
 kiwisolver @ https://files.pythonhosted.org/packages/c4/13/680c54afe3e65767bed7ec1a15571e1a2f1257128733851ade24abcefbcc/kiwisolver-1.5.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl \
     --hash=sha256:bb5136fb5352d3f422df33f0c879a1b0c204004324150cc3b5e3c4f310c9049f
+
+# lightgbm==4.7.0
+lightgbm @ https://files.pythonhosted.org/packages/15/eb/837ea3b40cc36e22eeebb9785c01e42b2c255d033eea1d2d9ee8e2540e55/lightgbm-4.7.0-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl \
+    --hash=sha256:d23e922acd891e77212e4d0fbcee9ba973c96dee479491341d05ba595357ebb7
 
 # markupsafe==3.0.3
 markupsafe @ https://files.pythonhosted.org/packages/3c/2e/8d0c2ab90a8c1d9a24f0399058ab8519a3279d1bd4289511d74e909f060e/markupsafe-3.0.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl \

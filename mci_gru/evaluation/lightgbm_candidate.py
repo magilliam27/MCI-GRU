@@ -39,9 +39,12 @@ import numpy as np
 import pandas as pd
 
 from mci_gru.data.preprocessing import label_session_axis, resolve_label_endpoints, resolve_labels
+from mci_gru.evaluation.candidates import CandidateResult
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from mci_gru.evaluation.candidates import CandidateContext
 
 #: Horizons of the two arms, in sessions.
 TARGET_HORIZONS = {"run_label": None, "forward_20d": 20}
@@ -404,3 +407,33 @@ def fit_lightgbm_candidate(
         "lightgbm_version": lgb.__version__,
     }
     return LightGBMFit(ensemble, controls)
+
+
+def _candidate(context: CandidateContext, target: str) -> CandidateResult:
+    data = context.data
+    fit = fit_lightgbm_candidate(
+        context.panel,
+        context.kdcodes,
+        train_dates=context.train_dates,
+        train_labels=data["train_labels"],
+        train_mask=data.get("train_loss_mask"),
+        val_dates=context.val_dates,
+        val_labels=data["val_labels"],
+        val_mask=data.get("val_tradable_mask"),
+        test_dates=context.test_dates,
+        test_mask=context.rankable_mask,
+        target=target,
+        seeds=DEFAULT_SEEDS,
+        param_grid=PARAM_GRID,
+    )
+    return CandidateResult(scores=fit.scores, controls=fit.controls)
+
+
+def lightgbm_5d(context: CandidateContext) -> CandidateResult:
+    """LightGBM fitted to the run's own 5-session training label."""
+    return _candidate(context, "run_label")
+
+
+def lightgbm_20d(context: CandidateContext) -> CandidateResult:
+    """LightGBM fitted to the 20-session forward return, scored on the run's 5-session label."""
+    return _candidate(context, "forward_20d")

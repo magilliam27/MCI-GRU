@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from mci_gru.evaluation.lightgbm_candidate import lightgbm_5d, lightgbm_20d
 from mci_gru.evaluation.residual_linear import residual_linear, residual_reversal_1w
 
 if TYPE_CHECKING:
@@ -17,6 +18,8 @@ if TYPE_CHECKING:
 CANDIDATES: dict[str, Candidate] = {
     "residual_linear": residual_linear,
     "residual_reversal_1w": residual_reversal_1w,
+    "lightgbm_5d": lightgbm_5d,
+    "lightgbm_20d": lightgbm_20d,
 }
 
 
