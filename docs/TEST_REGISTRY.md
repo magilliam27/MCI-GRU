@@ -345,6 +345,9 @@ Contract tests for docs/DEFAULT_EXPERIMENT_RECIPE.md.
 | `test_the_recipe_trains_on_four_years` | Issue 367: train 2020 to 2023, validate 2024, test 2025, the last window before 2026. |  |
 | `test_without_its_window_line_the_recipe_would_train_on_eight_years` | Control: the four-year window comes from the recipe's line, not from the data config. |  |
 | `test_recipe_records_the_training_window_change` | The 8-year first run and the 4-year runs must not be read as one recipe. |  |
+| `test_the_recipe_graph_keeps_pairs_above_half_and_rebuilds_every_quarter` | Issue 377: the owner adopted the quarterly 0.5 graph on 2026-11-07. |  |
+| `test_without_its_graph_lines_the_recipe_would_build_one_graph_at_0p8` | Control: the quarterly 0.5 graph comes from the recipe's lines, not the base default. |  |
+| `test_recipe_records_the_graph_change` | Built-once and quarterly-graph evidence must not be read as one recipe. |  |
 | `test_without_its_data_line_the_recipe_would_read_the_lseg_panel` | Control: the test above must come from the recipe's selector, not the base default. |  |
 | `test_recipe_records_the_price_panel_change` | The 2026-10-08 EODHD switch is dated, so LSEG- and EODHD-panel evidence stay apart. |  |
 
@@ -1472,6 +1475,28 @@ Twin-exclusion hygiene rule (issue 164 protocol; harness ticket 166).
 | `test_pipeline_honours_exclusion_on_sector_branch_with_zero_edges` |  |  |
 | `test_precomputed_snapshots_honour_exclusion` |  |  |
 
+## `tests/test_graph_link_scores.py`
+
+Company-link scores as the neighbour ranking for the correlation graph (#377).
+
+**Exercises:** `mci_gru.config`, `mci_gru.graph.builder`, `mci_gru.graph.link_scores`, `mci_gru.pipeline`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_a_valid_file_loads_with_float_scores` |  |  |
+| `test_a_malformed_file_is_refused` |  | parametrize |
+| `test_the_matrix_is_symmetric_scaled_and_leaves_unscored_pairs_empty` |  |  |
+| `test_a_yearly_file_loads_one_row_per_pair_per_year` |  |  |
+| `test_a_filing_on_or_after_the_valid_from_date_is_never_used` |  | parametrize |
+| `test_the_scale_and_the_edges_come_from_pairs_on_the_axis_only` | An off-axis score must not shrink the on-axis edges; a zero score links nothing. |  |
+| `test_a_snapshot_with_no_score_filed_before_it_is_refused` |  |  |
+| `test_a_filing_the_day_before_valid_from_is_accepted` |  |  |
+| `test_each_snapshot_takes_the_newest_scores_filed_before_it` | 2020's 10-Ks reach the graph only once both are public; until then 2019's stand. |  |
+| `test_link_scores_not_correlation_choose_the_neighbours` |  |  |
+| `test_link_scores_need_top_k_and_may_update_on_a_schedule` |  |  |
+| `test_the_pipeline_builds_the_static_graph_from_the_configured_scores` |  |  |
+| `test_a_yearly_schedule_rebuilds_from_each_years_filings` |  |  |
+
 ## `tests/test_graph_paired_reanalysis_notebook.py`
 
 Contract test for the paired re-analysis notebook (ticket 179).
@@ -1560,7 +1585,7 @@ Graph-zeroed control arm (issue 165, semantics fixed by the issue-164 protocol).
 |---|---|---|
 | `test_zero_edges_defaults_false` |  |  |
 | `test_zero_edges_accepts_true` |  |  |
-| `test_zero_edges_rejects_dynamic_schedule` |  |  |
+| `test_zero_edges_accepts_a_dynamic_schedule_and_builds_no_snapshots` | The recipe's graph updates quarterly (#377); its zeroed control must still compose. |  |
 | `test_zeroed_build_is_empty_with_multi_feature_width` |  |  |
 | `test_zeroed_build_scalar_and_lead_lag_widths` |  |  |
 | `test_zeroed_build_still_builds_sector_branch` |  |  |

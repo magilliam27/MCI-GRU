@@ -40,6 +40,8 @@ FIRST_RUN_SLUG = (
 FIX_SLUG_PARTS = ("gat-residual", "inputs-relative", "eval-fp32")
 #: The slug part for the four-year training window (#367).
 WINDOW_SLUG_PART = "train-4y"
+#: The slug part for the correlation graph at 0.5 rebuilt every quarter (#377).
+GRAPH_SLUG_PART = "graph-quarterly-0p5"
 
 
 def _pinned_data_group(text: str) -> str | None:
@@ -210,7 +212,7 @@ def test_the_slug_names_each_fix_the_recipe_adopts():
     """PRD 319 D6: the fixed model gets its own id, so its results never mix with the first run's."""
     slug = _recipe_slug()
     fixed = FIRST_RUN_SLUG + "".join(f"__{part}" for part in FIX_SLUG_PARTS)
-    assert slug == f"{fixed}__{WINDOW_SLUG_PART}"
+    assert slug == f"{fixed}__{WINDOW_SLUG_PART}__{GRAPH_SLUG_PART}"
     assert slug != FIRST_RUN_SLUG
 
 
@@ -295,6 +297,30 @@ def test_recipe_records_the_training_window_change():
     assert "The training window changed on 2026-10-27" in text
     match = re.search(r"^Last updated:\s*(\d{4}-\d{2}-\d{2})$", text, re.M)
     assert match and match.group(1) >= "2026-10-27"
+
+
+def test_the_recipe_graph_keeps_pairs_above_half_and_rebuilds_every_quarter():
+    """Issue 377: the owner adopted the quarterly 0.5 graph on 2026-11-07."""
+    graph = _compose(_recipe_overrides()).graph
+    assert (graph.judge_value, graph.update_frequency_months, graph.top_k) == (0.5, 3, 0)
+    assert graph.zero_edges is False
+
+
+def test_without_its_graph_lines_the_recipe_would_build_one_graph_at_0p8():
+    """Control: the quarterly 0.5 graph comes from the recipe's lines, not the base default."""
+    keys = ("graph.judge_value=", "graph.update_frequency_months=")
+    without = [line for line in _recipe_overrides() if not line.startswith(keys)]
+    assert len(without) == len(_recipe_overrides()) - 2
+    graph = _compose(without).graph
+    assert (graph.judge_value, graph.update_frequency_months) == (0.8, 0)
+
+
+def test_recipe_records_the_graph_change():
+    """Built-once and quarterly-graph evidence must not be read as one recipe."""
+    text = RECIPE.read_text(encoding="utf-8")
+    assert "The graph changed on 2026-11-07" in text
+    match = re.search(r"^Last updated:\s*(\d{4}-\d{2}-\d{2})$", text, re.M)
+    assert match and match.group(1) >= "2026-11-07"
 
 
 def test_without_its_data_line_the_recipe_would_read_the_lseg_panel():
