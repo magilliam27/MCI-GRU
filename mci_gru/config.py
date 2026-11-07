@@ -1112,7 +1112,8 @@ class ProtocolConfig:
     Attributes:
         experiment_id: Id of ``docs/research/experiments/<id>.yaml``.
         arm: The declared arm this run is.
-        window: The declared window this run is, ``W1`` to ``W5``.
+        window: The window this run is, ``W1`` to ``W5``: the declared one, or for an
+            exploratory run the one its dates must be (#371).
         exploratory: True for a run with no pre-registration; it never gets a verdict.
         holdout_promotion: Id of the committed promotion record that may unlock the
             locked 2026 holdout for one run. The promotion path is #374; until it
@@ -1140,8 +1141,12 @@ class ProtocolConfig:
                 "protocol.exploratory=true and protocol.experiment_id name two standings; "
                 "a pre-registered run is not exploratory"
             )
-        if self.experiment_id is None and (self.arm is not None or self.window is not None):
-            raise ValueError("protocol.arm and protocol.window need a protocol.experiment_id")
+        if self.experiment_id is None and self.arm is not None:
+            raise ValueError("protocol.arm needs a protocol.experiment_id")
+        if self.experiment_id is None and self.window is not None and not self.exploratory:
+            raise ValueError(
+                "protocol.window needs a protocol.experiment_id or protocol.exploratory=true"
+            )
         if self.experiment_id is not None and (self.arm is None or self.window is None):
             raise ValueError(
                 f"protocol.experiment_id={self.experiment_id} needs protocol.arm and "
