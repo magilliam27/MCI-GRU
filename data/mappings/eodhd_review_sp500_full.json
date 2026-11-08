@@ -1,0 +1,205 @@
+{
+  "schema": 1,
+  "description": "Decisions on the flags scripts/data/build_sp500_full_universe.py check raises for the full S&P 500 EODHD panel (#386). Each says why the flag is not a price error.",
+  "entries": {
+    "AA.N": {
+      "identity": "EODHD lists AA.US as 'Alcoa Corp', the company LSEG names 'Alcoa Corp'. Its rows start 2016-11-01, with when-issued trading before its first member day 2016-11-01, so they hold no parent-company history."
+    },
+    "AAL.OQ": {
+      "extreme_moves": {
+        "2020-06-04": "American Airlines rose 41% on 2020-06-04 in the June 2020 airline rally; the month's share step is its June 2020 share offering, so market cap does not corroborate the day."
+      }
+    },
+    "ABMD.OQ^L22": {
+      "extreme_moves": {
+        "2022-11-01": "Abiomed rose 50% on the 2022-11-01 announcement that Johnson & Johnson would acquire it."
+      }
+    },
+    "ADNT.N": {
+      "identity": "EODHD lists ADNT.US as 'Adient PLC', the company LSEG names 'Adient'. Its rows start 2016-10-17, with when-issued trading before its first member day 2016-10-31, so they hold no parent-company history."
+    },
+    "ADT.N^E16": {
+      "extreme_moves": {
+        "2016-02-16": "ADT rose 48% on 2016-02-16 after the Apollo buyout was announced."
+      }
+    },
+    "AMTM.N": {
+      "identity": "EODHD lists AMTM.US as 'Amentum Holdings Inc.', the company LSEG names 'Amentum Hldgs'. Its rows start 2024-09-24, with when-issued trading before its first member day 2024-09-30, so they hold no parent-company history. LSEG's market cap agrees over the 2 month pair(s) it covers."
+    },
+    "ASIX.N": {
+      "identity": "EODHD lists ASIX.US as 'AdvanSix Inc', the company LSEG names 'AdvanSix'. Its rows start 2016-09-15, with when-issued trading before its first member day 2016-10-03, so they hold no parent-company history."
+    },
+    "BBBY.OQ^E23": {
+      "delisting_month": "BBBY_old continues on the OTC market after the May 2023 Nasdaq delisting, to 2023-09-29. Membership ended on 2017-07-25, and LSEG's market cap agrees over 18 month pairs."
+    },
+    "CARS.N": {
+      "identity": "EODHD lists CARS.US as 'Cars.com Inc', the company LSEG names 'Cars.com'. Its rows start 2017-05-18, with when-issued trading before its first member day 2017-06-01, so they hold no parent-company history."
+    },
+    "CCL.N": {
+      "price_steps": {
+        "2020-11-30": "Carnival rose with the November 2020 vaccine rally while issuing shares; LSEG's market cap rose more than the close (+0.62 against +0.38), a share issue, not a price error."
+      }
+    },
+    "CNDT.OQ": {
+      "identity": "EODHD lists CNDT.US as 'Conduent Inc', the company LSEG names 'Conduent'. Its rows start 2016-12-13, with when-issued trading before its first member day 2017-01-03, so they hold no parent-company history."
+    },
+    "CNX.N": {
+      "identity": "EODHD lists CNX.US as 'CNX Resources Corp', the company LSEG names 'CNX Resources'. It is a member under its current ticker, and its rows run from 2015-01-02. LSEG's market cap agrees over the 2 month pair(s) it covers."
+    },
+    "COP.N": {
+      "price_steps": {
+        "2021-02-26": "ConocoPhillips closed its all-stock purchase of Concho Resources on 2021-01-15; the share step is that issue, and the close rose with oil prices."
+      }
+    },
+    "DTM.N": {
+      "identity": "EODHD lists DTM.US as 'DT Midstream Inc', the company LSEG names 'DT Midstream'. Its rows start 2021-06-18, with when-issued trading before its first member day 2021-07-01, so they hold no parent-company history."
+    },
+    "DVN.N": {
+      "price_steps": {
+        "2016-02-29": "Devon sold new shares in February 2016 while oil fell; the share step is that offering and the close fell with the sector."
+      }
+    },
+    "EBAY.OQ": {
+      "price_steps": {
+        "2020-04-30": "eBay's share count fell with buybacks as the close recovered in April 2020; market cap rose less than the close, the reverse of a missed split."
+      }
+    },
+    "EG.N": {
+      "price_steps": {
+        "2020-03-31": "Everest fell in the March 2020 crash; LSEG's market cap fell less than the close because its share count updated. The daily rows show no split-sized step."
+      }
+    },
+    "EMBC.OQ": {
+      "identity": "EODHD lists EMBC.US as 'Embecta Corp', the company LSEG names 'Embecta'. Its rows start 2022-03-21, with when-issued trading before its first member day 2022-04-01, so they hold no parent-company history."
+    },
+    "ENDP.OQ^H22": {
+      "delisting_month": "ENDP continues on the OTC market after the August 2022 Nasdaq delisting, to 2022-10-27. Membership ended on 2017-03-01, and LSEG's market cap agrees over 14 month pairs."
+    },
+    "FDXF.N": {
+      "identity": "EODHD lists FDXF.US as 'FedEx Freight Holding Company, Inc.', the company LSEG names 'FedEx Frght Hldg'. Its rows start 2026-05-26, with when-issued trading before its first member day 2026-06-01, so they hold no parent-company history. LSEG's market cap agrees over the 1 month pair(s) it covers."
+    },
+    "FLEX.OQ": {
+      "identity": "EODHD lists FLEX.US as 'Flex Ltd', the company LSEG names 'Flex Ltd'. It is a member under its current ticker, and its rows run from 2015-01-02. LSEG's market cap agrees over the 1 month pair(s) it covers."
+    },
+    "FOSL.OQ": {
+      "identity": "EODHD lists FOSL.US as 'Fossil Group Inc', the company LSEG names 'Fossil Group'. It is a member under its current ticker, and its rows run from 2015-01-02."
+    },
+    "FTRE.OQ": {
+      "identity": "EODHD lists FTRE.US as 'Fortrea Holdings Inc.', the company LSEG names 'Fortrea Holdings'. Its rows start 2023-06-16, with when-issued trading before its first member day 2023-07-03, so they hold no parent-company history."
+    },
+    "HONA.OQ": {
+      "identity": "EODHD lists HONA.US as 'Honeywell Aerospace Inc', the company LSEG names 'Honeywell Arspce'. Its rows start 2026-06-15, with when-issued trading before its first member day 2026-06-29, so they hold no parent-company history. LSEG's market cap agrees over the 1 month pair(s) it covers."
+    },
+    "HWM.N": {
+      "missing_sessions": "Howmet (Arconic Inc. until 2020, Alcoa Inc. until 2016-11-01). EODHD's HWM.US starts at the 2016-11-01 Alcoa separation; the earlier Alcoa Inc. closes sit under AA.US before the spin-off, on a basis that would need a declared spin-off factor. The name is left unpriced from 2016-01-04 to 2016-10-31 (210 sessions) rather than spliced."
+    },
+    "IR.N": {
+      "price_steps": {
+        "2020-03-31": "Gardner Denver merged with Ingersoll Rand's industrial business on 2020-02-29 and took its name, issuing shares; the close fell in the March 2020 crash."
+      }
+    },
+    "JBGS.N": {
+      "identity": "EODHD lists JBGS.US as 'JBG SMITH Properties', the company LSEG names 'JBG Smith'. Its rows start 2017-07-06, with when-issued trading before its first member day 2017-07-18, so they hold no parent-company history."
+    },
+    "KD.N": {
+      "identity": "EODHD lists KD.US as 'Kyndryl Holdings Inc', the company LSEG names 'Kyndryl Holdings'. Its rows start 2021-10-22, with when-issued trading before its first member day 2021-11-04, so they hold no parent-company history."
+    },
+    "KTB.N": {
+      "identity": "EODHD lists KTB.US as 'Kontoor Brands Inc', the company LSEG names 'Kontoor Brands'. Its rows start 2019-05-09, with when-issued trading before its first member day 2019-05-23, so they hold no parent-company history."
+    },
+    "LUMN.N": {
+      "price_steps": {
+        "2017-11-30": "CenturyLink closed its stock purchase of Level 3 on 2017-11-01; the share step is that issue and the close fell that month."
+      }
+    },
+    "MBC.N": {
+      "identity": "EODHD lists MBC.US as 'MasterBrand Inc.', the company LSEG names 'MasterBrand'. Its rows start 2022-12-09, with when-issued trading before its first member day 2022-12-15, so they hold no parent-company history."
+    },
+    "MBGL.N": {
+      "identity": "EODHD lists MBGL.US as 'Mobility Global Inc.', the company LSEG names 'Mobility Glo'. Its rows start 2026-06-26, with when-issued trading before its first member day 2026-07-01, so they hold no parent-company history."
+    },
+    "MNK.N^J20": {
+      "identity": "Mallinckrodt plc: EODHD files the pre-bankruptcy NYSE series as MNKKQ ('Mallinckrodt plc'); it runs from 2015 to the 2022 emergence, and LSEG has no market cap for this RIC. Its MNK.US holds only the 2022-2023 relisting.",
+      "delisting_month": "MNKKQ continues on the OTC market after the NYSE delisting in October 2020, to 2022-06-16. Membership ended on 2017-07-25, so none of those rows are used."
+    },
+    "MRP.N": {
+      "identity": "EODHD lists MRP.US as 'Millrose Properties, Inc.', the company LSEG names 'Millrose Propts'. Its rows start 2025-02-05, with when-issued trading before its first member day 2025-01-21, so they hold no parent-company history.",
+      "missing_sessions": "Millrose Properties was added on 2025-01-21 ahead of its spin-off from Lennar; EODHD's rows start with regular trading on 2025-02-05, so the first 11 member sessions are unpriced."
+    },
+    "MRVL.OQ": {
+      "identity": "EODHD lists MRVL.US as 'Marvell Technology Group Ltd', the company LSEG names 'Marvell Tech'. It is a member under its current ticker, and its rows run from 2015-01-02. LSEG's market cap agrees over the 1 month pair(s) it covers."
+    },
+    "NCLH.N": {
+      "price_steps": {
+        "2020-11-30": "Norwegian Cruise Line sold shares in November 2020 as the vaccine rally lifted the close; market cap rose more than the close.",
+        "2021-11-30": "Norwegian Cruise Line sold shares in November 2021 as the close fell on the Omicron variant."
+      }
+    },
+    "NGVT.N": {
+      "identity": "EODHD lists NGVT.US as 'Ingevity Corp', the company LSEG names 'Ingevity'. Its rows start 2016-05-02, with when-issued trading before its first member day 2016-05-16, so they hold no parent-company history."
+    },
+    "NVT.N": {
+      "identity": "EODHD lists NVT.US as 'nVent Electric PLC', the company LSEG names 'nVent Electric'. Its rows start 2018-04-17, with when-issued trading before its first member day 2018-05-01, so they hold no parent-company history."
+    },
+    "ONL.N": {
+      "identity": "EODHD lists ONL.US as 'Orion Office Reit Inc', the company LSEG names 'Orion Propts MD'. Its rows start 2021-11-01, with when-issued trading before its first member day 2021-11-15, so they hold no parent-company history."
+    },
+    "PCG.N": {
+      "extreme_moves": {
+        "2019-01-14": "PG&E fell 52% on 2019-01-14 when it announced it would file for bankruptcy over wildfire liabilities."
+      }
+    },
+    "PHIN.N": {
+      "identity": "EODHD lists PHIN.US as 'PHINIA Inc.', the company LSEG names 'Phinia'. Its rows start 2023-06-28, with when-issued trading before its first member day 2023-07-05, so they hold no parent-company history."
+    },
+    "RAL.N": {
+      "identity": "EODHD lists RAL.US as 'Ralliant Corporation Common Stock', the company LSEG names 'Ralliant'. Its rows start 2025-06-25, with when-issued trading before its first member day 2025-06-30, so they hold no parent-company history."
+    },
+    "REZI.N": {
+      "identity": "EODHD lists REZI.US as 'Resideo Technologies Inc', the company LSEG names 'Resideo Tech'. Its rows start 2018-10-15, with when-issued trading before its first member day 2018-10-29, so they hold no parent-company history."
+    },
+    "RHT.N^G19": {
+      "extreme_moves": {
+        "2018-10-29": "Red Hat rose 45% on 2018-10-29 after IBM agreed to acquire it."
+      }
+    },
+    "SIVB.OQ^C23": {
+      "extreme_moves": {
+        "2023-03-09": "SVB Financial fell 60% on 2023-03-09, the day before regulators closed Silicon Valley Bank."
+      }
+    },
+    "SLVM.N": {
+      "identity": "EODHD lists SLVM.US as 'Sylvamo Corp', the company LSEG names 'Sylvamo'. Its rows start 2021-09-23, with when-issued trading before its first member day 2021-10-01, so they hold no parent-company history."
+    },
+    "SOLS.OQ": {
+      "identity": "EODHD lists SOLS.US as 'Solstice Advanced Materials, Inc', the company LSEG names 'Solstice Advance'. Its rows start 2025-10-20, with when-issued trading before its first member day 2025-10-30, so they hold no parent-company history. LSEG's market cap agrees over the 1 month pair(s) it covers."
+    },
+    "VAL.N^H20": {
+      "identity": "Ensco plc: EODHD's ESV ('Valaris plc', the name it took in 2019) runs from 2015 to the rename on 2019-07-30. LSEG's market cap agrees over the 2 month pairs it covers.",
+      "delisting_month": "The ESV series stops at the 2019-07-30 rename to Valaris (VAL), 13 months before the August 2020 delisting the code names. Membership ended on 2016-03-29, years before either."
+    },
+    "VEEV.N": {
+      "identity": "EODHD lists VEEV.US as 'Veeva Systems Inc Class A', the company LSEG names 'Veeva Systems'. It is a member under its current ticker, and its rows run from 2015-01-02. LSEG's market cap agrees over the 2 month pair(s) it covers."
+    },
+    "VGNT.N": {
+      "identity": "EODHD lists VGNT.US as 'Versigent PLC', the company LSEG names 'Versigent'. Its rows start 2026-03-27, with when-issued trading before its first member day 2026-04-01, so they hold no parent-company history."
+    },
+    "VREX.OQ": {
+      "identity": "EODHD lists VREX.US as 'Varex Imaging Corp', the company LSEG names 'Varex Imaging'. Its rows start 2017-01-20, with when-issued trading before its first member day 2017-01-30, so they hold no parent-company history."
+    },
+    "VSNT.OQ": {
+      "identity": "EODHD lists VSNT.US as 'Versant Media Group, Inc.', the company LSEG names 'Versant Media'. Its rows start 2025-12-15, with when-issued trading before its first member day 2026-01-05, so they hold no parent-company history."
+    },
+    "VSXY.N": {
+      "identity": "EODHD lists VSCO.US, VSXY.US as 'Victoria's Secret & Co', the company LSEG names 'Victoria's Secre'. Its rows start 2021-07-21, with when-issued trading before its first member day 2021-08-03, so they hold no parent-company history."
+    },
+    "WBD.OQ": {
+      "price_steps": {
+        "2022-04-29": "Discovery merged with WarnerMedia on 2022-04-08 and became Warner Bros. Discovery, issuing shares to AT&T holders; the close fell that month."
+      }
+    },
+    "YUMC.N": {
+      "identity": "EODHD lists YUMC.US as 'Yum China Holdings Inc', the company LSEG names 'Yum China Hldg'. Its rows start 2016-10-17, with when-issued trading before its first member day 2016-11-01, so they hold no parent-company history."
+    }
+  }
+}

@@ -2948,6 +2948,32 @@ Side-module statistics are overlap-correct (#342).
 | `test_selection_audit_deflates_the_daily_book_sharpe` | r5: the overlapping label series gave about twice the Sharpe and z-stat. |  |
 | `test_deflated_sharpe_has_nominal_size_on_the_daily_book` | r5: p <= 0.05 in 21% of no-skill samples on the overlapping label series. |  |
 
+## `tests/test_sp500_full_universe.py`
+
+The full point-in-time S&P 500 universe (#386): membership file and checks on the EODHD panel.
+
+**Exercises:** `mci_gru.data.eodhd_prices`, `mci_gru.data.input_manifest`, `mci_gru.data.pit`, `scripts.data.build_sp500_full_universe`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_membership_keeps_every_interval_under_the_kdcode_header` |  |  |
+| `test_membership_refuses_intervals_that_differ_from_the_manifest` |  |  |
+| `test_membership_agreement_counts_member_days_by_ticker` |  |  |
+| `test_a_missed_split_is_a_price_step_and_a_merger_is_not` |  |  |
+| `test_mcap_pairs_skip_month_ends_outside_membership_and_across_a_gap` |  |  |
+| `test_mcap_pairs_do_not_match_a_close_too_long_before_the_month_end` |  |  |
+| `test_extreme_moves_count_only_inside_membership` |  |  |
+| `test_an_extreme_move_is_corroborated_only_by_a_month_whose_market_cap_followed` |  |  |
+| `test_delisting_month_gap_reads_the_code` |  |  |
+| `test_missing_sessions_are_calendar_days_inside_membership_without_a_row` |  |  |
+| `test_sessions_after_a_delisted_names_last_trade_are_not_flagged` |  |  |
+| `test_review_entries_need_a_reason` |  |  |
+| `test_check_exits_1_until_every_flag_is_reviewed` |  |  |
+| `test_the_config_binds_its_files_to_the_committed_package` |  |  |
+| `test_the_symbol_map_keeps_every_110_name_decision` | The 110-name map was proven against the LSEG panel; the full map keeps it except where noted. |  |
+| `test_the_review_file_is_accepted_by_the_checker` |  |  |
+| `test_the_config_keeps_the_recipe_window` | Only the universe changes: train 2020-2023, validate 2024, test 2025. |  |
+
 ## `tests/test_sp500_gics_top10_mcap_export.py`
 
 **Exercises:** `scripts.data.export_sp500_gics_top10_mcap`

@@ -1,0 +1,46 @@
+# The full point-in-time S&P 500 (501 to 508 priced members a day), priced from EODHD (#386).
+#
+# Membership is the preserved LSEG S&P 500 membership (the r1 package's
+# ..._sp500_membership_intervals.csv, from which the 110-name universe was cut),
+# rewritten under the kdcode header by scripts/data/build_sp500_full_universe.py
+# with every row unchanged: 760 intervals, 753 RICs (129 delisted, with their ^
+# codes), 503 to 509 members on any weekday from 2016-01-04 to 2026-07-31. Mac
+# chose it over EODHD's own constituents list (2026-11-07), which agrees on 99.0%
+# of member-days but files past members under today's tickers.
+#
+# Prices are EODHD's, pulled by scripts/data/export_eodhd_pit_prices.py with the
+# map in data/mappings/eodhd_symbols_sp500_full.json: the 110-name map unchanged,
+# plus the old symbols of companies whose ticker EODHD has since given to another
+# company. They are split-adjusted from EODHD's split records, with volume as the
+# vendor delivers it less later splits (#347); regular dividends are not applied,
+# as in r3. The 206 names the LSEG price panel covers were proven against it; the
+# rest were checked against LSEG's monthly market caps, and every flag is decided
+# in data/mappings/eodhd_review_sp500_full.json. See
+# docs/research/current/sp500_full_eodhd.md.
+#
+# The dates are the recipe's: train 2020 to 2023, validate 2024, test 2025.
+# Protocol windows (protocol.window=W1..W5) replace them.
+universe: sp500
+source: csv
+filename: data/raw/market/sp500_pit_full_20160104_20260731_eodhd_20150101_20260731.csv
+
+use_pit_universe: true
+pit_universe_csv: data/raw/constituents/sp500_pit_full_20160104_20260731_pit_universe.csv
+pit_universe_mode: masked_panel
+pit_export_cutoff: "2026-07-31"
+# Must match the names in the manifest's provenance.unknowns (a test pins this).
+pit_absent_kdcodes: ["DD.N^I17", "IILGV.OQ^E16", "JCI.N^I16"]
+input_package_manifest: data/manifests/sp500_pit_full_20160104_20260731_eodhd.r1.json
+# Quoted so YAML can never read a digest as a number.
+input_package_manifest_sha256: "8a3f8e4e2f6e22c57bbb8272d6822cf40f9528731da3d6f9f654c183480a609a"
+input_package_root: data/raw
+
+pit_min_scoreable_stocks: 450
+pit_breadth_policy: error
+
+train_start: "2020-01-02"
+train_end: "2023-12-31"
+val_start: "2024-01-22"
+val_end: "2024-12-31"
+test_start: "2025-01-22"
+test_end: "2025-12-31"
