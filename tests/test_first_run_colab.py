@@ -11,6 +11,7 @@ import hashlib
 import importlib.util
 import json
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -22,7 +23,14 @@ from omegaconf import OmegaConf
 
 from mci_gru.config import create_config_from_dict
 from mci_gru.data.input_manifest import InputFileSpec, write_input_manifest
-from mci_gru.preregistration import resolve_run_standing
+from mci_gru.preregistration import (
+    LoadedPreregistration,
+    Preregistration,
+    PreregistrationError,
+    check_declared_run,
+    protocol_stamp,
+    resolve_run_standing,
+)
 from scripts import first_run_colab as frc
 from scripts import nb_lib
 
@@ -1718,3 +1726,436 @@ def test_the_seed_arm_shares_no_member_seed_with_the_recipe():
     recipe_seeds = set(range(int(frc.override_value(recipe, "seed")), 1729 + members))
     other_seeds = set(range(2729, 2729 + members))
     assert recipe_seeds and not recipe_seeds & other_seeds
+
+
+# ---------------------------------------------------------------------------
+# Declared experiments: the launch, the trial ledger and the verdict (#373)
+# ---------------------------------------------------------------------------
+
+_EXPERIMENT = "graph-seed-test"
+_DECLARED_ARMS = {
+    "recipe": [],
+    "graph_zeroed": ["+experiment=graph_zeroed"],
+    "other_seeds": ["seed=2729"],
+}
+
+
+def _declaration(arms=None, recipe_slug=None, experiment=_EXPERIMENT):
+    return {
+        "id": experiment,
+        "family": "graph",
+        "hypothesis": "The graph adds IC.",
+        "recipe": recipe_slug or frc.recipe_slug(RECIPE.read_text(encoding="utf-8")),
+        "control": "recipe",
+        "arms": dict(_DECLARED_ARMS if arms is None else arms),
+        "seed_base": 1729,
+        "windows": list(frc.RUN_WINDOWS),
+        "primary_metric": "ic",
+        "alpha": 0.05,
+        "decision_rule": {"adjustment": "holm", "seed_floor_multiple": 1.0},
+    }
+
+
+def _experiment_repo(tmp_path, monkeypatch, *, others=(), **declaration):
+    """A checkout holding the recipe and committed pre-registrations, as REPO_DIR.
+
+    Returns the loaded declaration built from *declaration*; *others* are further
+    declarations (mappings) committed beside it.
+    """
+    root = tmp_path / "repo"
+    (root / "docs" / "research" / "experiments").mkdir(parents=True)
+    (root / frc.RECIPE_PATH).write_text(RECIPE.read_text(encoding="utf-8"), encoding="utf-8")
+    data = _declaration(**declaration)
+    for item in (data, *others):
+        (root / "docs" / "research" / "experiments" / f"{item['id']}.yaml").write_text(
+            yaml.safe_dump(item, sort_keys=False), encoding="utf-8"
+        )
+    _git(root, "init", "-q")
+    _git(root, "config", "user.email", "t@example.com")
+    _git(root, "config", "user.name", "t")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "register")
+    monkeypatch.setattr(frc, "REPO_DIR", root)
+    commit = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    return frc.preregistration_at_commit(data["id"], root, commit)
+
+
+def _declared_run(
+    runs,
+    name,
+    arm,
+    window,
+    ic,
+    loaded,
+    *,
+    returncode=0,
+    scored=True,
+    stamp="declared",
+    record=None,
+):
+    """A launched run folder of a declared experiment, as `run --experiment` leaves it.
+
+    ``returncode=None`` is an aborted launch (no exit code recorded). ``stamp`` is the
+    runner's protocol stamp: "declared", "exploratory", None (the runner never got that
+    far) or a dict of changes to the declared stamp. ``record`` changes the launcher's
+    record.
+    """
+    import numpy as np
+    import pandas as pd
+
+    run_dir = runs / name
+    outputs = run_dir / "outputs"
+    outputs.mkdir(parents=True)
+    (run_dir / "config.yaml").write_text(
+        yaml.safe_dump(
+            {"data": {k.removeprefix("data."): v for k, v in frc.WINDOWS[window].spans().items()}}
+        ),
+        encoding="utf-8",
+    )
+    ic = np.asarray(ic, dtype=float)
+    if scored:
+        pd.DataFrame({"dt": _dates(window), "ic": ic, "rank_ic": ic / 2}).to_csv(
+            outputs / "daily_ic.csv", index=False, float_format="%.17g"
+        )
+        summary = {
+            "label_t": 5,
+            "metrics": {"avg_ic": float(ic.mean()), "avg_rank_ic": float((ic / 2).mean())},
+        }
+        (outputs / "evaluation_summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    if stamp is not None:
+        if stamp == "exploratory":
+            written = protocol_stamp(None, arm=None, window=window)
+        else:
+            written = protocol_stamp(loaded, arm=arm, window=window)
+            if isinstance(stamp, dict):
+                written.update(stamp)
+        (outputs / "run_metadata.json").write_text(
+            json.dumps({"protocol": written}), encoding="utf-8"
+        )
+    payload = {
+        "run_tag": name,
+        "mode": "full",
+        "arm": arm,
+        "window": window,
+        "experiment_id": loaded.preregistration.id,
+        "preregistration_sha256": loaded.sha256,
+        "commit": loaded.commit,
+        "staging": {"package": _fake_package()},
+        "overrides": [],
+        "started_at_utc": "2026-11-07T00:00:00+00:00",
+        **({} if returncode is None else {"returncode": returncode}),
+        **(record or {}),
+    }
+    frc.write_json(run_dir / "colab_run_record.json", payload)
+    return run_dir
+
+
+def _arm_ic(deltas, window, seed=0):
+    """Each declared arm's daily IC on *window*: the control's noise plus the arm's delta."""
+    import numpy as np
+
+    rng = np.random.default_rng(seed + frc.RUN_WINDOWS.index(window))
+    control = rng.normal(0.0, 0.05, 20)
+    return {
+        arm: control if arm == "recipe" else control + delta + rng.normal(0.0, 0.004, 20)
+        for arm, delta in deltas.items()
+    }
+
+
+def _experiment_runs(runs, loaded, deltas=None, skip=()):
+    deltas = deltas or {"recipe": 0.0, "graph_zeroed": 0.03, "other_seeds": 0.0}
+    for window in frc.RUN_WINDOWS:
+        for arm, ic in _arm_ic(deltas, window).items():
+            if (arm, window) not in skip:
+                _declared_run(runs, f"{arm}-{window}", arm, window, ic, loaded)
+
+
+def _verdict_cli(tmp_path, runs, *extra, out="out", experiment=_EXPERIMENT):
+    return frc.main(
+        ["compare", "--experiment", experiment, "--runs-root", str(runs),
+         "--out-dir", str(tmp_path / out), *extra]
+    )  # fmt: skip
+
+
+def test_a_complete_ledger_gets_a_verdict_with_every_number_that_decided_it(
+    tmp_path, monkeypatch, capsys
+):
+    loaded = _experiment_repo(tmp_path, monkeypatch)
+    runs = tmp_path / "runs"
+    _experiment_runs(runs, loaded)
+    # An exploratory run in the same folder names no experiment, so it is not a trial.
+    _fake_arm_run(runs, "recipe", [0.1] * 20)
+    assert _verdict_cli(tmp_path, runs) == 0, capsys.readouterr().out
+    verdict = json.loads((tmp_path / "out" / "verdict.json").read_text(encoding="utf-8"))
+    assert verdict["ledger_complete"] is True
+    assert verdict["preregistration"]["sha256"] == loaded.sha256
+    assert verdict["attempts"] == {"total": 15, "complete": 15, "failed": 0, "aborted": 0}
+    assert verdict["rule"]["family_size"] == 1
+    assert verdict["seed_floor"]["source"] == "seed_arm"
+    assert verdict["seed_floor"]["arm"] == "other_seeds"
+    assert verdict["seed_floor"]["value"] == pytest.approx(
+        abs(verdict["seed_floor_test"]["mean_delta"])
+    )
+    (arm,) = verdict["arms"]
+    assert arm["arm"] == "graph_zeroed"
+    assert arm["verdict"] == "adopt"
+    assert arm["mean_delta"] == pytest.approx(0.03, abs=0.002)
+    assert arm["pooled_ic_test"]["n_days"] == 100
+    assert arm["pooled_ic_test"]["hac_lags"] == 3
+    windows = {row["window"] for row in arm["reported_not_decisive"]["per_window"]}
+    assert windows == set(frc.RUN_WINDOWS)
+    ledger = (tmp_path / "out" / "trial_ledger.csv").read_text(encoding="utf-8")
+    assert len(ledger.strip().splitlines()) == 16
+
+
+def test_a_negative_difference_is_rejected_and_noise_is_inconclusive(tmp_path, monkeypatch):
+    loaded = _experiment_repo(tmp_path, monkeypatch)
+    for name, delta, want in (("down", -0.03, "reject"), ("noise", 0.0, "inconclusive")):
+        runs = tmp_path / name
+        _experiment_runs(runs, loaded, {"recipe": 0.0, "graph_zeroed": delta, "other_seeds": 0.0})
+        assert _verdict_cli(tmp_path, runs, out=f"out-{name}") == 0
+        verdict = json.loads((tmp_path / f"out-{name}" / "verdict.json").read_text())
+        assert verdict["arms"][0]["verdict"] == want
+
+
+def test_a_missing_run_refuses_the_verdict_but_still_writes_the_ledger(
+    tmp_path, monkeypatch, capsys
+):
+    loaded = _experiment_repo(tmp_path, monkeypatch)
+    runs = tmp_path / "runs"
+    _experiment_runs(runs, loaded, skip={("graph_zeroed", "W3")})
+    assert _verdict_cli(tmp_path, runs) == 1
+    out = capsys.readouterr().out
+    assert "No verdict" in out and "missing=['graph_zeroed@W3']" in out
+    assert (tmp_path / "out" / "trial_ledger.csv").exists()
+    assert not (tmp_path / "out" / "verdict.json").exists()
+
+
+def test_a_launch_that_failed_before_scoring_stays_in_the_ledger_and_may_be_rerun(
+    tmp_path, monkeypatch, capsys
+):
+    loaded = _experiment_repo(tmp_path, monkeypatch)
+    runs = tmp_path / "runs"
+    _experiment_runs(runs, loaded)
+    _declared_run(runs, "crashed", "graph_zeroed", "W2", [0.0] * 20, loaded,
+                  returncode=1, scored=False)  # fmt: skip
+    _declared_run(runs, "preempted", "recipe", "W4", [0.0] * 20, loaded,
+                  returncode=None, scored=False, stamp=None)  # fmt: skip
+    assert _verdict_cli(tmp_path, runs) == 0, capsys.readouterr().out
+    verdict = json.loads((tmp_path / "out" / "verdict.json").read_text())
+    assert verdict["attempts"] == {"total": 17, "complete": 15, "failed": 1, "aborted": 1}
+    rows = [json.loads(line) for line in (tmp_path / "out" / "trial_ledger.jsonl").open()]
+    assert {row["run_tag"]: row["status"] for row in rows}["crashed"] == "FAILED"
+    assert {row["run_tag"]: row["status"] for row in rows}["preempted"] == "ABORTED"
+
+
+@pytest.mark.parametrize(
+    ("case", "message"),
+    [
+        ("scored twice", "duplicates=['graph_zeroed@W2']"),
+        ("scored then failed", "scored the test set but is FAILED"),
+        ("exploratory stamp", "stamped it exploratory"),
+        ("stamp disagrees", "stamped 'W3'"),
+        ("undeclared arm", "undeclared arms or windows: ['levels_inputs@W2']"),
+        ("no launcher record", "no launcher record"),
+        ("other declaration", "preregistration_sha256"),
+        ("killed after members predicted", "scored the test set but is ABORTED"),
+        ("unreadable record", "cannot be read"),
+        ("two runs in one folder", "2 run_metadata.json files"),
+    ],
+)
+def test_a_ledger_that_is_not_the_declared_runs_gets_no_verdict(
+    tmp_path, monkeypatch, capsys, case, message
+):
+    loaded = _experiment_repo(tmp_path, monkeypatch)
+    runs = tmp_path / "runs"
+    _experiment_runs(runs, loaded)
+    ic = _arm_ic({"recipe": 0.0, "graph_zeroed": 0.05}, "W2", seed=9)["graph_zeroed"]
+    if case == "scored twice":
+        _declared_run(runs, "again", "graph_zeroed", "W2", ic, loaded)
+    elif case == "scored then failed":
+        _declared_run(runs, "again", "graph_zeroed", "W2", ic, loaded, returncode=1)
+    elif case == "exploratory stamp":
+        _declared_run(runs, "again", "graph_zeroed", "W2", ic, loaded, returncode=1,
+                      scored=False, stamp="exploratory")  # fmt: skip
+    elif case == "stamp disagrees":
+        _declared_run(runs, "again", "graph_zeroed", "W2", ic, loaded, returncode=1,
+                      scored=False, stamp={"window": "W3"})  # fmt: skip
+    elif case == "undeclared arm":
+        _declared_run(runs, "again", "levels_inputs", "W2", ic, loaded, returncode=1,
+                      scored=False, stamp=None)  # fmt: skip
+    elif case == "no launcher record":
+        (runs / "graph_zeroed-W2" / "colab_run_record.json").unlink()
+    elif case == "killed after members predicted":
+        killed = _declared_run(runs, "again", "graph_zeroed", "W2", ic, loaded,
+                               returncode=None, scored=False)  # fmt: skip
+        (killed / "outputs" / "predictions_model_0").mkdir()
+    elif case == "unreadable record":
+        cut = _declared_run(runs, "again", "graph_zeroed", "W2", ic, loaded, returncode=1,
+                            scored=False)  # fmt: skip
+        record = cut / "colab_run_record.json"
+        record.write_text(record.read_text(encoding="utf-8")[:40], encoding="utf-8")
+    elif case == "two runs in one folder":
+        nest = runs / "nested"
+        for window in ("W1", "W2"):
+            _declared_run(nest, window, "graph_zeroed", window, ic, loaded, returncode=1,
+                          scored=False)  # fmt: skip
+    elif case == "other declaration":
+        (runs / "graph_zeroed-W2").rename(runs / "moved")
+        _declared_run(runs, "graph_zeroed-W2", "graph_zeroed", "W2", ic, loaded,
+                      stamp={"preregistration_sha256": "f" * 64})  # fmt: skip
+        shutil.rmtree(runs / "moved")
+    assert _verdict_cli(tmp_path, runs) == 1
+    out = capsys.readouterr().out
+    assert "No verdict" in out and message in out, out
+    assert not (tmp_path / "out" / "verdict.json").exists()
+
+
+_FLOOR_EXPERIMENT = "seed-floor-test"
+
+
+def test_an_experiment_without_a_seed_arm_takes_its_floor_from_another_experiments_runs(
+    tmp_path, monkeypatch, capsys
+):
+    arms = {"recipe": [], "graph_zeroed": ["+experiment=graph_zeroed"]}
+    floor_arms = {"recipe": [], "other_seeds": ["seed=2729"]}
+    floor_declaration = _declaration(arms=floor_arms, experiment=_FLOOR_EXPERIMENT)
+    loaded = _experiment_repo(tmp_path, monkeypatch, arms=arms, others=[floor_declaration])
+    floor_loaded = frc.preregistration_at_commit(_FLOOR_EXPERIMENT, frc.REPO_DIR, loaded.commit)
+    runs = tmp_path / "runs"
+    _experiment_runs(runs, loaded, {"recipe": 0.0, "graph_zeroed": 0.03})
+    assert _verdict_cli(tmp_path, runs) == 1
+    assert "without the seed floor is refused" in capsys.readouterr().out
+
+    # A floor experiment whose reseed moved IC by 0.05: the 0.03 difference sits inside it.
+    floor_runs = tmp_path / "floor-runs"
+    _experiment_runs(floor_runs, floor_loaded, {"recipe": 0.0, "other_seeds": 0.05})
+    named = f"{_FLOOR_EXPERIMENT}={floor_runs}"
+    assert _verdict_cli(tmp_path, runs, "--seed-floor", named, out="out2") == 0
+    verdict = json.loads((tmp_path / "out2" / "verdict.json").read_text())
+    assert verdict["seed_floor"]["source"] == "another_experiment"
+    assert verdict["seed_floor"]["experiment_id"] == _FLOOR_EXPERIMENT
+    assert verdict["seed_floor"]["value"] == pytest.approx(0.05, abs=0.003)
+    assert verdict["seed_floor"]["attempts"]["complete"] == 10
+    assert verdict["arms"][0]["verdict"] == "inconclusive"
+    assert verdict["arms"][0]["significant"] is True
+
+    # The floor is measured from runs, never read from a file someone wrote.
+    floor_file = tmp_path / "floor.json"
+    floor_file.write_text(json.dumps({"ledger_complete": True}), encoding="utf-8")
+    assert _verdict_cli(tmp_path, runs, "--seed-floor", str(floor_file), out="out3") == 1
+    assert "takes ID=RUNS_ROOT" in capsys.readouterr().out
+    # And a floor experiment whose own ledger is incomplete gives no floor.
+    shutil.rmtree(floor_runs / "other_seeds-W4")
+    assert _verdict_cli(tmp_path, runs, "--seed-floor", named, out="out4") == 1
+    assert "seed floor's experiment 'seed-floor-test' gives none" in capsys.readouterr().out
+
+
+def test_a_seed_arm_that_shares_member_seeds_with_the_control_gives_no_verdict(
+    tmp_path, monkeypatch, capsys
+):
+    arms = {"recipe": [], "graph_zeroed": ["+experiment=graph_zeroed"], "near": ["seed=1730"]}
+    loaded = _experiment_repo(tmp_path, monkeypatch, arms=arms)
+    runs = tmp_path / "runs"
+    _experiment_runs(runs, loaded, {"recipe": 0.0, "graph_zeroed": 0.03, "near": 0.0})
+    assert _verdict_cli(tmp_path, runs) == 1
+    assert "shares member seeds with the seed base 1729" in capsys.readouterr().out
+
+
+def test_exploratory_runs_never_get_a_verdict(tmp_path, monkeypatch, capsys):
+    """Window runs launched without --experiment are exploratory: no ledger names them."""
+    _experiment_repo(tmp_path, monkeypatch)
+    runs = tmp_path / "runs"
+    for window in frc.RUN_WINDOWS:
+        _fake_arm_run(runs, "recipe", [0.01] * 20, window=window)
+    assert _verdict_cli(tmp_path, runs) == 1
+    assert "No run folder" in capsys.readouterr().out
+    # And the exploratory comparison takes no verdict options.
+    assert frc.main(["compare", "--run", f"recipe={runs / 'recipe'}", "--runs-root", str(runs),
+                     "--out-dir", str(tmp_path / "x")]) == 1  # fmt: skip
+    assert "never a verdict" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("window", ["W1", "W5"])
+def test_a_declared_launch_composes_to_exactly_the_declared_run(tmp_path, window):
+    """The launcher's overrides pass the runner's own declared-run check."""
+    recipe_text = RECIPE.read_text(encoding="utf-8")
+    data = _declaration()
+    loaded = LoadedPreregistration(
+        preregistration=Preregistration.from_mapping(data, expected_id=data["id"]),
+        path="p", sha256="s" * 64, commit="c" * 40, recipe_text=recipe_text,
+    )  # fmt: skip
+    run_dir = tmp_path / "run"
+    with initialize_config_dir(config_dir=str(REPO_ROOT / "configs"), version_base=None):
+
+        def composed(overrides):
+            kept = [o for o in overrides if not o.startswith("hydra.")]
+            return OmegaConf.to_container(
+                compose(config_name="config", overrides=kept), resolve=True
+            )
+
+        for arm in ("recipe", "graph_zeroed"):
+            overrides = frc.build_declared_run_overrides(
+                loaded, arm=arm, window=window, run_dir=run_dir
+            )
+            assert f"protocol.experiment_id={_EXPERIMENT}" in overrides
+            assert "protocol.exploratory=true" not in overrides
+            assert f"hydra.run.dir={run_dir}" in overrides
+            check_declared_run(
+                loaded.preregistration, composed(overrides), arm=arm, window=window,
+                recipe_text=recipe_text, compose=composed,
+            )  # fmt: skip
+        # Control: the graph arm's overrides are not the recipe arm's run.
+        wrong = frc.build_declared_run_overrides(
+            loaded, arm="graph_zeroed", window=window, run_dir=run_dir
+        )
+        with pytest.raises(PreregistrationError, match="not arm 'recipe'"):
+            check_declared_run(
+                loaded.preregistration, composed(wrong), arm="recipe", window=window,
+                recipe_text=recipe_text, compose=composed,
+            )  # fmt: skip
+    with pytest.raises(ValueError, match="declares no arm"):
+        frc.build_declared_run_overrides(
+            loaded, arm="levels_inputs", window=window, run_dir=run_dir
+        )
+
+
+def test_a_declared_launch_records_its_experiment_and_refuses_smoke_or_an_undeclared_arm(
+    tmp_path, run_repo, capsys
+):
+    declaration = _declaration(recipe_slug="slug")
+    declaration["arms"]["near"] = ["seed=1739"]
+    del declaration["arms"]["other_seeds"]
+    path = run_repo / "docs" / "research" / "experiments" / f"{_EXPERIMENT}.yaml"
+    path.parent.mkdir(parents=True)
+    path.write_text(yaml.safe_dump(declaration, sort_keys=False), encoding="utf-8")
+    _git(run_repo, "add", "-A")
+    _git(run_repo, "commit", "-qm", "register")
+
+    def launch(mode, arm):
+        return frc.main(
+            ["run", "--mode", mode, "--experiment", _EXPERIMENT, "--arm", arm,
+             "--window", "W2", "--local-root", str(tmp_path / "local"),
+             "--drive-root", str(tmp_path / "drive"), "--tag-file", str(tmp_path / "tag.txt")]
+        )  # fmt: skip
+
+    assert launch("smoke", "graph_zeroed") == 1
+    assert "smoke mode" in capsys.readouterr().out
+    assert launch("full", "levels_inputs") == 1
+    assert "declares no arm 'levels_inputs'" in capsys.readouterr().out
+    assert launch("full", "near") == 1
+    assert "shares member seeds" in capsys.readouterr().out
+    assert not (tmp_path / "local").exists()
+    returncode = launch("full", "graph_zeroed")
+    tag = (tmp_path / "tag.txt").read_text().strip()
+    assert re.fullmatch(rf"\d{{8}}T\d{{6}}Z-full-{_EXPERIMENT}-graph_zeroed-W2-[0-9a-f]{{8}}", tag)
+    record = json.loads((tmp_path / "drive" / tag / "colab_run_record.json").read_text())
+    assert record["returncode"] == returncode
+    assert record["experiment_id"] == _EXPERIMENT
+    assert record["preregistration_sha256"] == _sha(path.read_bytes())
+    assert "declared run" in record["evidence"]
+    assert "protocol.arm=graph_zeroed" in record["overrides"]
+    assert "protocol.exploratory=true" not in record["overrides"]
+    assert "seed=1729" in record["overrides"]

@@ -286,10 +286,11 @@ def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
         ) from error
 
 
-def _committed_bytes(repo_root: Path, relative: str) -> bytes:
-    shown = _git(repo_root, "show", f"HEAD:{relative}")
+def _committed_bytes(repo_root: Path, relative: str, rev: str = "HEAD") -> bytes:
+    shown = _git(repo_root, "show", f"{rev}:{relative}")
     if shown.returncode != 0:
-        raise PreregistrationError(f"{relative} is not in the commit at {repo_root}")
+        where = f"the commit at {repo_root}" if rev == "HEAD" else f"commit {rev}"
+        raise PreregistrationError(f"{relative} is not in {where}")
     return shown.stdout
 
 
@@ -342,7 +343,12 @@ def load_preregistration(experiment_id: str, repo_root: str | Path) -> LoadedPre
             f"tracked files differ from the commit, e.g. {first}; a declared run is the "
             "commit it records, so commit or set aside the change first"
         )
-    raw = _committed_bytes(repo_root, relative)
+    return _load_committed(experiment_id, repo_root, head.stdout.decode("ascii").strip())
+
+
+def _load_committed(experiment_id: str, repo_root: Path, commit: str) -> LoadedPreregistration:
+    relative = (EXPERIMENTS_DIR / f"{experiment_id}.yaml").as_posix()
+    raw = _committed_bytes(repo_root, relative, commit)
     try:
         data = yaml.safe_load(raw.decode("utf-8"))
     except yaml.YAMLError as error:
@@ -351,9 +357,29 @@ def load_preregistration(experiment_id: str, repo_root: str | Path) -> LoadedPre
         preregistration=Preregistration.from_mapping(data, expected_id=experiment_id),
         path=relative,
         sha256=hashlib.sha256(raw).hexdigest(),
-        commit=head.stdout.decode("ascii").strip(),
-        recipe_text=_committed_bytes(repo_root, RECIPE_PATH.as_posix()).decode("utf-8"),
+        commit=commit,
+        recipe_text=_committed_bytes(repo_root, RECIPE_PATH.as_posix(), commit).decode("utf-8"),
     )
+
+
+def preregistration_at_commit(
+    experiment_id: str, repo_root: str | Path, commit: str
+) -> LoadedPreregistration:
+    """``<id>.yaml`` and the recipe as recorded in ``commit``, whatever the checkout holds.
+
+    The verdict reads the declaration its runs ran under (#373); the working tree may have
+    moved on since, so nothing about it is checked here.
+    """
+    if not isinstance(experiment_id, str) or not _ID.match(experiment_id):
+        raise PreregistrationError(f"experiment id {experiment_id!r} is not an id")
+    if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise PreregistrationError(f"{commit!r} is not a full commit id")
+    return _load_committed(experiment_id, Path(repo_root), commit)
+
+
+def recipe_overrides_sha256(recipe_text: str) -> str:
+    """The digest a declared run stamps for the recipe's override lines."""
+    return hashlib.sha256("\n".join(recipe_overrides(recipe_text)).encode("utf-8")).hexdigest()
 
 
 def foreign_config_sources(
@@ -514,9 +540,7 @@ def protocol_stamp(
         "preregistration_sha256": loaded.sha256,
         "preregistration_commit": loaded.commit,
         "recipe_slug": recipe_slug(loaded.recipe_text),
-        "recipe_overrides_sha256": hashlib.sha256(
-            "\n".join(recipe_overrides(loaded.recipe_text)).encode("utf-8")
-        ).hexdigest(),
+        "recipe_overrides_sha256": recipe_overrides_sha256(loaded.recipe_text),
     }
 
 

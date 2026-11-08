@@ -94,6 +94,76 @@ Every launched run of an experiment gets a ledger row, including failed and
 aborted runs. `compare` gives no verdict unless the ledger holds exactly the
 declared runs (#373).
 
+The ledger is read from a folder of runs, not from a list of runs, so leaving one
+out means moving its folder away. A run belongs to the experiment when its
+launcher record (`colab_run_record.json`) or its runner stamp names the
+experiment. Each row gets one of these statuses:
+
+- `COMPLETE`: a clean exit, with a protocol stamp and test scores.
+- `FAILED`: a non-zero exit, or a clean exit without scores.
+- `ABORTED`: no exit code recorded, because the launcher never finished.
+- `INVALID`: the folder cannot be trusted. That covers no launcher record, a
+  record and stamp that disagree, a stamp that says exploratory, more than one
+  run in one folder, or a record that cannot be read.
+
+A run counts as **scored** once anything computed on the test set is in its
+folder. That includes one member's test predictions (`predictions_model_*`),
+which are written long before the summary.
+
+The verdict is refused when any of these hold:
+
+- a row is `INVALID`;
+- a row is an undeclared arm or window;
+- a run that scored the test set did not complete;
+- the complete runs do not hold each declared arm and window exactly once
+  (`validate_trial_family`).
+
+A launch that failed or was aborted before scoring stays in the ledger, and its
+arm and window may be launched again. A second scored run of the same pair is a
+second look and refuses the verdict.
+
+## Verdict
+
+`scripts/first_run_colab.py compare --experiment <id> --runs-root <folder>`
+writes `trial_ledger.csv` and `trial_ledger.jsonl` first, so the ledger exists
+even when the verdict is refused, then `verdict.json` if the ledger allows one.
+It reads the pre-registration at the commit the complete runs ran (they must
+share one). Every run's stamp must carry that file's SHA-256, the recipe slug
+and the SHA-256 of the recipe's override lines. All runs must use mode `full`,
+one staged package and one label horizon.
+
+The verdict is computed in these steps:
+
+- **Each arm's paired difference.** For every arm except the control, the
+  arm's daily IC is joined with the control's over all five windows. The paired
+  difference is tested with the HAC t on `label_t - 2` lags.
+- **The seed floor.** It is the absolute pooled difference of the seed arm (the
+  one arm whose change is `seed=...`). Member i trains on `seed + i`, so the
+  seed arm's base must be at least `training.num_models` away from `seed_base`;
+  otherwise the arm shares member seeds with the control, and both the launch
+  and the verdict are refused. An experiment without a seed arm names another
+  declared experiment and its runs with `--seed-floor <id>=<runs folder>`. That
+  experiment's verdict is computed from its own complete ledger, never read from
+  a file. It must have measured the floor with its own seed arm, on the same
+  recipe slug, override lines, label horizon and windows. A verdict with
+  neither is refused.
+- **The adjustment.** The treatment arms (every arm but the control and the seed
+  arm) are adjusted together, with Holm or with the declared Bonferroni.
+- **The decision.** Each treatment arm is adopted, rejected or inconclusive by
+  the rule above (`mci_gru/evaluation/verdict.py`).
+
+`verdict.json` records these numbers:
+
+- the attempts by status;
+- each run's IC, and whether its captured FRED inputs match the control run's on
+  that window;
+- the rule as declared;
+- the seed floor and the test that measured it;
+- for each treatment arm: its difference, t, raw and adjusted p, whether it
+  cleared alpha and the floor, and its verdict.
+
+Rank IC and the per-window differences sit under `reported_not_decisive`.
+
 ## Pre-registration
 
 Commit `docs/research/experiments/<id>.yaml` before the experiment's first run.
@@ -147,10 +217,14 @@ python run_experiment.py <the recipe's overrides> +experiment=graph_zeroed \
     protocol.experiment_id=graph-zeroed-control protocol.arm=graph_zeroed protocol.window=W3
 ```
 
-`scripts/first_run_colab.py run --window W3` builds the window's dates on top of
-the recipe (#371); its runs are exploratory until the launcher can name an
-experiment (#373). `tests/test_preregistration.py` checks that this template loads
-and that a run built this way is accepted.
+The same run through the launcher is
+`scripts/first_run_colab.py run --mode full --experiment graph-zeroed-control
+--arm graph_zeroed --window W3` (#373). It composes exactly these parts, adds
+only where the run writes and the `protocol.*` stamp, and records the experiment
+id and the file's SHA-256 so the ledger counts the launch. Without
+`--experiment`, `run --window` builds an exploratory run (#371).
+`tests/test_preregistration.py` checks that this template loads and that a run
+built this way is accepted.
 
 ## Pooled comparison
 
@@ -158,5 +232,6 @@ and that a run built this way is accepted.
 arm it joins the windows' dated IC into one series, so the paired difference is
 pooled over every window's test dates, and it reports each window's difference
 beside it. It refuses arms with different window sets, a window given twice, and a
-run that scored dates outside its window's test span (#371). The verdict and the
-ledger it needs are #373.
+run that scored dates outside its window's test span (#371). That comparison is
+exploratory and gives no verdict. A declared experiment's verdict comes from
+`compare --experiment` (above).

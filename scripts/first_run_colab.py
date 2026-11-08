@@ -46,6 +46,23 @@ from mci_gru.data.input_manifest import (
     read_input_manifest,
     validate_input_package,
 )
+from mci_gru.evaluation.trial_ledger import validate_trial_family, write_trial_ledger
+from mci_gru.evaluation.verdict import (
+    VerdictError,
+    decide,
+    seed_arm_problem,
+    seed_floor_arm,
+    seed_floor_from_verdict,
+    treatment_arms,
+)
+from mci_gru.preregistration import (
+    LoadedPreregistration,
+    PreregistrationError,
+    declared_overrides,
+    load_preregistration,
+    preregistration_at_commit,
+    recipe_overrides_sha256,
+)
 from mci_gru.protocol import WINDOWS
 
 if TYPE_CHECKING:
@@ -407,24 +424,68 @@ def build_run_overrides(
     if smoke:
         for key, value in SMOKE_BUDGET.items():
             overrides = replace_override(overrides, key, value)
-    if override_value(overrides, "data.auxiliary_snapshot_mode") is None:
-        overrides += [
-            "data.auxiliary_snapshot_mode=capture",
-            f"data.auxiliary_snapshot_directory={Path(run_dir) / 'input_snapshots'}",
-        ]
-    if override_value(overrides, "tracking.enabled") is None:
-        overrides.append("tracking.enabled=false")
-    else:
-        overrides = replace_override(overrides, "tracking.enabled", "false")
+    overrides = _launcher_overrides(overrides, run_dir)
     overrides += [
         f"hydra.run.dir={run_dir}",
         f"experiment_name={experiment_name}",
-        # No arm here is pre-registered: #326 runs W5 only, which the protocol counts
-        # as exploratory (PRD #369, decision 7). The runner refuses an unstamped run.
+        # None of these arms is pre-registered, so the run is exploratory (PRD #369,
+        # decision 6); a declared run goes through build_declared_run_overrides.
         "protocol.exploratory=true",
         f"protocol.window={window}",
     ]
     return overrides
+
+
+def _launcher_overrides(overrides: Sequence[str], run_dir: Path) -> list[str]:
+    """Snapshot capture into the run folder, and MLflow off: see build_run_overrides."""
+    result = list(overrides)
+    if override_value(result, "data.auxiliary_snapshot_mode") is None:
+        result += [
+            "data.auxiliary_snapshot_mode=capture",
+            f"data.auxiliary_snapshot_directory={Path(run_dir) / 'input_snapshots'}",
+        ]
+    if override_value(result, "tracking.enabled") is None:
+        result.append("tracking.enabled=false")
+    else:
+        result = replace_override(result, "tracking.enabled", "false")
+    return result
+
+
+def declared_experiment_name(loaded: LoadedPreregistration, arm: str) -> str:
+    """The run's name: the recipe slug, the experiment and the arm."""
+    return f"{loaded.preregistration.recipe}__{loaded.preregistration.id}__{arm}"
+
+
+def build_declared_run_overrides(
+    loaded: LoadedPreregistration, *, arm: str, window: str, run_dir: Path
+) -> list[str]:
+    """A pre-registered run of *arm* on *window* (#373), composed as the runner checks it.
+
+    The overrides are :func:`~mci_gru.preregistration.declared_overrides` (the recipe at
+    the run's commit, the seed base, the arm's one change, the window's dates), plus only
+    the operational keys the runner lets a declared run set: where it writes, snapshot
+    capture, tracking off, and the ``protocol.*`` stamp. No smoke budget: a declared run
+    is the full recipe or nothing.
+    """
+    preregistration = loaded.preregistration
+    if arm not in preregistration.arms:
+        raise ValueError(
+            f"{preregistration.id} declares no arm {arm!r}; its arms are "
+            f"{sorted(preregistration.arms)}"
+        )
+    if window not in preregistration.windows:
+        raise ValueError(f"{preregistration.id} declares no window {window!r}")
+    overrides = declared_overrides(
+        preregistration, recipe_overrides(loaded.recipe_text), arm=arm, window=window
+    )
+    return [
+        *_launcher_overrides(overrides, run_dir),
+        f"hydra.run.dir={run_dir}",
+        f"experiment_name={declared_experiment_name(loaded, arm)}",
+        f"protocol.experiment_id={preregistration.id}",
+        f"protocol.arm={arm}",
+        f"protocol.window={window}",
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -954,15 +1015,48 @@ def _command_run(args: Any) -> int:
     if full and source_changes:
         print("Refusing a full run: the checkout's source has changes:\n" + source_changes)
         return 1
-    recipe_text = (REPO_DIR / RECIPE_PATH).read_text(encoding="utf-8")
+    loaded = None
+    if args.experiment:
+        if not full:
+            print("Refusing a declared run in smoke mode: a declared run is the full recipe.")
+            return 1
+        try:
+            loaded = load_preregistration(args.experiment, REPO_DIR)
+        except PreregistrationError as error:
+            print(f"Refusing to run experiment {args.experiment!r}: {error}")
+            return 1
+        if args.arm not in loaded.preregistration.arms:
+            print(
+                f"Refusing to run: {args.experiment} declares no arm {args.arm!r}; its arms "
+                f"are {sorted(loaded.preregistration.arms)}"
+            )
+            return 1
+        if args.window not in loaded.preregistration.windows:
+            print(f"Refusing to run: {args.experiment} declares no window {args.window!r}")
+            return 1
+        reseed = seed_arm_problem(loaded.preregistration, recipe_overrides(loaded.recipe_text))
+        if reseed and args.arm == seed_floor_arm(loaded.preregistration):
+            print(f"Refusing to run: {reseed}")
+            return 1
+        recipe_text = loaded.recipe_text
+    else:
+        if args.arm not in RUN_ARMS:
+            print(
+                f"Refusing to run arm {args.arm!r}: an exploratory arm is one of {list(RUN_ARMS)}"
+            )
+            return 1
+        recipe_text = (REPO_DIR / RECIPE_PATH).read_text(encoding="utf-8")
+        try:
+            apply_arm(recipe_overrides(recipe_text), args.arm)
+        except (KeyError, ValueError) as error:
+            print(f"Refusing to run arm {args.arm!r}: {error.args[0]}")
+            return 1
     slug = recipe_slug(recipe_text)
-    try:
-        apply_arm(recipe_overrides(recipe_text), args.arm)
-    except (KeyError, ValueError) as error:
-        print(f"Refusing to run arm {args.arm!r}: {error.args[0]}")
-        return 1
     commit = _git("rev-parse", "HEAD")
-    arm_part = f"-{RUN_ARMS[args.arm].slug_suffix}" if args.arm != "recipe" else ""
+    if loaded is not None:
+        arm_part = f"-{loaded.preregistration.id}-{args.arm}"
+    else:
+        arm_part = f"-{RUN_ARMS[args.arm].slug_suffix}" if args.arm != "recipe" else ""
     run_tag = args.run_tag or (
         f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{args.mode}{arm_part}"
         f"-{args.window}-{commit[:8]}"
@@ -975,21 +1069,34 @@ def _command_run(args: Any) -> int:
     # Staged again here, so a run never starts on inputs that were not verified.
     # Both steps reuse files already in place after re-hashing them.
     staging = _stage_inputs(args.package_drive_dir, args.eodhd_drive_path)
-    overrides = build_run_overrides(
-        recipe_overrides(recipe_text),
-        run_dir=local_dir,
-        experiment_name=arm_experiment_name(slug, args.arm),
-        smoke=not full,
-        arm=args.arm,
-        window=args.window,
-        data_config=recipe_data_config(REPO_DIR),
-    )
+    if loaded is not None:
+        overrides = build_declared_run_overrides(
+            loaded, arm=args.arm, window=args.window, run_dir=local_dir
+        )
+        evidence = (
+            f"declared run: arm {args.arm!r} on {args.window} of experiment "
+            f"{loaded.preregistration.id!r} (#373)"
+        )
+    else:
+        overrides = build_run_overrides(
+            recipe_overrides(recipe_text),
+            run_dir=local_dir,
+            experiment_name=arm_experiment_name(slug, args.arm),
+            smoke=not full,
+            arm=args.arm,
+            window=args.window,
+            data_config=recipe_data_config(REPO_DIR),
+        )
+        evidence = evidence_label(args.mode, args.arm)
     record = {
         "run_tag": run_tag,
         "mode": args.mode,
         "arm": args.arm,
         "window": args.window,
-        "evidence": evidence_label(args.mode, args.arm),
+        # The ledger counts every launch whose record names its experiment (#373).
+        "experiment_id": None if loaded is None else loaded.preregistration.id,
+        "preregistration_sha256": None if loaded is None else loaded.sha256,
+        "evidence": evidence,
         "recipe_slug": slug,
         "commit": commit,
         "source_changes": source_changes,
@@ -1009,6 +1116,12 @@ def _command_run(args: Any) -> int:
     (local_dir / "pip_freeze.txt").write_text(installed_distributions(), encoding="utf-8")
     if args.tag_file:
         Path(args.tag_file).write_text(run_tag + "\n", encoding="utf-8")
+    # On Drive at once, so a launch that dies before the first timed copy is still
+    # there for the trial ledger to count (#373).
+    try:
+        sync_to_drive(local_dir, drive_dir)
+    except OSError as error:
+        print(f"The first copy to Drive failed ({error}); it is retried while the run goes.")
     print(f"Run {run_tag}: {record['evidence']}")
     print(f"Local folder: {local_dir}\nDrive copy:   {drive_dir}")
     returncode = run_with_drive_sync(
@@ -1449,9 +1562,456 @@ def compare_arms(
     }
 
 
+# ---------------------------------------------------------------------------
+# Declared experiments: the trial ledger and the verdict (#373)
+# ---------------------------------------------------------------------------
+
+#: Ledger statuses. Only COMPLETE counts as a trial; validate_trial_family reads it.
+COMPLETE, FAILED, ABORTED, INVALID = "COMPLETE", "FAILED", "ABORTED", "INVALID"
+VERDICT_SCHEMA = "mci_gru.verdict.v1"
+
+
+def trial_id(arm: str, window: str) -> str:
+    """One declared arm on one declared window: the unit the ledger counts."""
+    return f"{arm}@{window}"
+
+
+def _read_json_file(path: Path) -> dict[str, Any] | None:
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+
+
+#: Outputs that mean the run has seen the test set: per-member test predictions are
+#: written as each member finishes, long before the summary (``train_multiple_models``).
+SCORED_OUTPUTS = (
+    "daily_ic.csv",
+    "evaluation_summary.json",
+    "averaged_predictions",
+    "predictions_model_*",
+)
+
+
+def _unreadable_row(run_dir: Path, experiment_id: str, error: Exception) -> dict[str, Any]:
+    return {
+        "trial_id": "unreadable",
+        "family_id": experiment_id,
+        "status": INVALID,
+        "scored": False,
+        "problems": f"its launcher record or run metadata cannot be read: {error}",
+        "arm": None,
+        "window": None,
+        "run_tag": run_dir.name,
+        "run_dir": str(run_dir),
+        "commit": None,
+        "mode": None,
+        "returncode": None,
+        "started_at_utc": None,
+        "finished_at_utc": None,
+        "preregistration_sha256": None,
+    }
+
+
+def ledger_row(run_dir: Path, experiment_id: str) -> dict[str, Any] | None:
+    """The ledger row of one launched run of *experiment_id*, or None if it is another's.
+
+    A run belongs to the experiment when its launcher record or its runner stamp names
+    it. Status: ABORTED when the record has no exit code (the launcher never finished),
+    FAILED on a non-zero exit or a clean exit without scores, COMPLETE on a clean exit
+    with a stamp and scores, and INVALID when the folder cannot be trusted: no launcher
+    record, a record and a stamp that disagree, a stamp that says exploratory, more than
+    one run in the folder, or files that cannot be read. ``scored`` says whether the
+    folder holds anything computed on the test set (:data:`SCORED_OUTPUTS`), whatever
+    its status.
+    """
+    run_dir = Path(run_dir)
+    metadata = sorted(run_dir.rglob("run_metadata.json"))
+    try:
+        record = _read_json_file(run_dir / "colab_run_record.json")
+        stamps = [(_read_json_file(path) or {}).get("protocol") for path in metadata]
+    except (OSError, ValueError) as error:
+        # A truncated copy may be a launch of this experiment; it cannot be ruled out.
+        return _unreadable_row(run_dir, experiment_id, error)
+    stamp = stamps[0] if len(stamps) == 1 else None
+    named = (record or {}).get("experiment_id") == experiment_id or any(
+        isinstance(s, dict) and s.get("experiment_id") == experiment_id for s in stamps
+    )
+    if not named:
+        return None
+    source = record if record is not None else (stamp or {})
+    arm, window = source.get("arm"), source.get("window")
+    scored = any(any(run_dir.rglob(pattern)) for pattern in SCORED_OUTPUTS)
+    problems = []
+    if record is None:
+        problems.append(
+            "no launcher record: it was launched outside `run --experiment`, so whether it "
+            "finished cannot be read"
+        )
+    if len(metadata) > 1:
+        problems.append(f"{len(metadata)} run_metadata.json files; a declared run writes one")
+    if isinstance(stamp, dict):
+        if stamp.get("exploratory"):
+            problems.append(
+                "the runner stamped it exploratory, and exploratory runs get no verdict"
+            )
+        if record is not None:
+            for key in ("experiment_id", "arm", "window"):
+                if record.get(key) != stamp.get(key):
+                    problems.append(
+                        f"the launcher recorded {key} {record.get(key)!r} but the runner "
+                        f"stamped {stamp.get(key)!r}"
+                    )
+    returncode = (record or {}).get("returncode")
+    if problems:
+        status = INVALID
+    elif "returncode" not in (record or {}):
+        status = ABORTED
+    elif returncode != 0:
+        status = FAILED
+    elif not scored or not isinstance(stamp, dict):
+        status = FAILED
+        problems.append("exited cleanly without a protocol stamp and scores")
+    else:
+        status = COMPLETE
+    return {
+        "trial_id": trial_id(str(arm), str(window)),
+        "family_id": experiment_id,
+        "status": status,
+        "scored": scored,
+        "problems": "; ".join(problems),
+        "arm": arm,
+        "window": window,
+        "run_tag": (record or {}).get("run_tag"),
+        "run_dir": str(run_dir),
+        "commit": (record or {}).get("commit"),
+        "mode": (record or {}).get("mode"),
+        "returncode": returncode,
+        "started_at_utc": (record or {}).get("started_at_utc"),
+        "finished_at_utc": (record or {}).get("finished_at_utc"),
+        "preregistration_sha256": (stamp or {}).get("preregistration_sha256")
+        if isinstance(stamp, dict)
+        else (record or {}).get("preregistration_sha256"),
+    }
+
+
+def experiment_ledger(experiment_id: str, runs_root: Path) -> list[dict[str, Any]]:
+    """A row for every run folder directly under *runs_root* that names the experiment.
+
+    The verdict reads a folder of runs, never a list someone chose, so a launched run
+    cannot be left out by not naming it: it would have to be moved out of the folder.
+    """
+    runs_root = Path(runs_root)
+    if not runs_root.is_dir():
+        raise ValueError(f"{runs_root} is not a folder of runs")
+    rows = [
+        ledger_row(child, experiment_id) for child in sorted(runs_root.iterdir()) if child.is_dir()
+    ]
+    return [row for row in rows if row is not None]
+
+
+def ledger_problems(rows: Sequence[dict[str, Any]], expected: Sequence[str]) -> list[str]:
+    """Why these rows cannot give a verdict, or nothing.
+
+    Every row must be a declared arm on a declared window and none may be INVALID. A
+    launch that failed or was aborted before it scored stays in the ledger and does not
+    block a rerun of its pair; one that scored must have completed. Then, counting only
+    complete runs, the ledger must hold each declared pair exactly once
+    (``validate_trial_family``): a pair run to scores twice is a second look.
+    """
+    import pandas as pd
+
+    problems = [f"{row['run_dir']}: {row['problems']}" for row in rows if row["status"] == INVALID]
+    undeclared = sorted({row["trial_id"] for row in rows} - set(expected))
+    if undeclared:
+        problems.append(f"runs of undeclared arms or windows: {undeclared}")
+    for row in rows:
+        if row["scored"] and row["status"] not in (COMPLETE, INVALID):
+            problems.append(
+                f"{row['run_dir']} scored the test set but is {row['status']}; a scored "
+                "run counts as a look whether or not it finished"
+            )
+    complete = pd.DataFrame(
+        [row for row in rows if row["status"] == COMPLETE],
+        columns=["trial_id", "family_id", "status"],
+    )
+    family = rows[0]["family_id"] if rows else ""
+    try:
+        validate_trial_family(complete, family_id=family, expected_trial_ids=expected)
+    except ValueError as error:
+        problems.append(str(error))
+    return problems
+
+
+def _stamp_of(run_dir: Path) -> dict[str, Any]:
+    (path,) = sorted(Path(run_dir).rglob("run_metadata.json"))
+    return json.loads(path.read_text(encoding="utf-8"))["protocol"]
+
+
+def experiment_verdict(
+    rows: Sequence[dict[str, Any]],
+    *,
+    repo_dir: Path,
+    seed_floor_verdict: dict[str, Any] | None = None,
+    ci_level: float = 0.95,
+) -> dict[str, Any]:
+    """The experiment's ``verdict.json`` from its complete ledger, or a refusal.
+
+    The declaration is read at the runs' commit, so the rule applied is the one the runs
+    were stamped with. Each treatment arm's IC minus the control's is pooled over every
+    window's test dates and tested with the HAC t on ``label_t - 2`` lags; the p-values
+    are adjusted across the treatment arms and the rule in
+    :mod:`mci_gru.evaluation.verdict` decides. Rank IC and the per-window differences
+    are reported beside it and decide nothing.
+    """
+    from dataclasses import asdict
+
+    from mci_gru.evaluation.paired_inference import align_daily_series, paired_mean_inference
+
+    if not rows:
+        raise VerdictError("the ledger is empty: no run in the folder names the experiment")
+    experiment_id = rows[0]["family_id"]
+    commits = sorted({str(row["commit"]) for row in rows if row["status"] == COMPLETE})
+    if len(commits) != 1:
+        raise VerdictError(
+            f"the complete runs come from {len(commits)} commits {commits}; a verdict needs one"
+        )
+    commit = commits[0]
+    loaded = preregistration_at_commit(experiment_id, repo_dir, commit)
+    preregistration = loaded.preregistration
+    expected = [trial_id(a, w) for a in preregistration.arms for w in preregistration.windows]
+    problems = ledger_problems(rows, expected)
+    reseed = seed_arm_problem(preregistration, recipe_overrides(loaded.recipe_text))
+    if reseed:
+        problems.append(reseed)
+    if problems:
+        raise VerdictError("the ledger is not the declared runs, complete: " + " | ".join(problems))
+
+    overrides_sha = recipe_overrides_sha256(loaded.recipe_text)
+    results = {}
+    for row in rows:
+        if row["status"] != COMPLETE:
+            continue
+        result = read_arm_result(row["arm"], Path(row["run_dir"]))
+        if result.window != row["window"]:
+            raise VerdictError(
+                f"{row['run_dir']} is recorded as {row['window']} but ran {result.window}'s dates"
+            )
+        stamp = _stamp_of(result.run_dir)
+        for key, want in (
+            ("preregistration_sha256", loaded.sha256),
+            ("preregistration_commit", commit),
+            ("recipe_slug", preregistration.recipe),
+            ("recipe_overrides_sha256", overrides_sha),
+        ):
+            if stamp.get(key) != want:
+                raise VerdictError(
+                    f"{row['run_dir']} was stamped {key} {stamp.get(key)!r}, but the declaration "
+                    f"at {commit[:8]} gives {want!r}"
+                )
+        if result.record.get("mode") != "full":
+            raise VerdictError(
+                f"{row['run_dir']} ran mode {result.record.get('mode')!r}; a verdict reads full runs"
+            )
+        results[(row["arm"], row["window"])] = result
+    first = next(iter(results.values()))
+    for result in results.values():
+        if _package_identity(result.record) != _package_identity(first.record):
+            raise VerdictError(f"{result.run_dir} staged another input package")
+    label_ts = {int(result.summary["label_t"]) for result in results.values()}
+    if len(label_ts) != 1:
+        raise VerdictError(f"the runs score different label horizons: {sorted(label_ts)}")
+    label_t = label_ts.pop()
+
+    control = preregistration.control
+    windows = list(preregistration.windows)
+    pooled = {
+        arm: pooled_daily([results[(arm, window)] for window in windows])
+        for arm in preregistration.arms
+    }
+
+    def paired(arm: str, column: str, scope: str) -> dict[str, Any]:
+        def series(name: str) -> Any:
+            source = pooled[name] if scope == "pooled" else results[(name, scope)].daily
+            return source[column]
+
+        frame = align_daily_series({arm: series(arm), control: series(control)})
+        inference = paired_mean_inference(
+            frame[arm] - frame[control],
+            arm=arm,
+            control=control,
+            label_horizon=label_t,
+            ci_level=ci_level,
+        )
+        return {"window": scope, "metric": column, **asdict(inference)}
+
+    tests = {arm: paired(arm, "ic", "pooled") for arm in preregistration.arms if arm != control}
+    seed_arm = seed_floor_arm(preregistration)
+    if seed_arm is not None and seed_floor_verdict is not None:
+        raise VerdictError(
+            f"{experiment_id} measures its own seed floor (arm {seed_arm!r}); do not also "
+            "name another verdict's"
+        )
+    if seed_arm is not None:
+        seed_floor = {
+            "source": "seed_arm",
+            "experiment_id": experiment_id,
+            "arm": seed_arm,
+            "mean_delta": tests[seed_arm]["mean_delta"],
+            "value": abs(tests[seed_arm]["mean_delta"]),
+            "recipe_slug": preregistration.recipe,
+            "recipe_overrides_sha256": overrides_sha,
+            "commit": commit,
+        }
+    elif seed_floor_verdict is not None:
+        measured = seed_floor_from_verdict(
+            seed_floor_verdict,
+            recipe_slug=preregistration.recipe,
+            recipe_overrides_sha256=overrides_sha,
+            label_t=label_t,
+            windows=windows,
+        )
+        seed_floor = {**measured, "source": "another_experiment"}
+    else:
+        raise VerdictError(
+            f"{experiment_id} declares no seed arm and no other experiment's seed floor was "
+            "named (--seed-floor ID=RUNS_ROOT); a verdict without the seed floor is refused"
+        )
+    treatments = treatment_arms(preregistration)
+    rule = preregistration.decision_rule
+    decisions = (
+        decide(
+            {arm: tests[arm] for arm in treatments},
+            alpha=preregistration.alpha,
+            adjustment=rule.adjustment,
+            seed_floor=seed_floor["value"],
+            seed_floor_multiple=rule.seed_floor_multiple,
+        )
+        if treatments
+        else []
+    )
+    arms = []
+    for decision in decisions:
+        arm = decision.arm
+        arms.append(
+            {
+                **asdict(decision),
+                "pooled_ic_test": tests[arm],
+                "reported_not_decisive": {
+                    "pooled_rank_ic": paired(arm, "rank_ic", "pooled"),
+                    "per_window": [
+                        paired(arm, column, window)
+                        for window in windows
+                        for column in ("ic", "rank_ic")
+                    ],
+                },
+            }
+        )
+    statuses = [row["status"] for row in rows]
+    runs = []
+    for (_arm, window), result in sorted(
+        results.items(), key=lambda item: (item[0][0], RUN_WINDOWS.index(item[0][1]))
+    ):
+        control_aux = auxiliary_observation_digests(results[(control, window)].run_dir)
+        entry = _run_entry(result, control_aux)
+        entry["auxiliary_inputs_match_control"] = entry.pop("auxiliary_inputs_match_reference")
+        runs.append(entry)
+    return {
+        "schema_version": VERDICT_SCHEMA,
+        "experiment_id": experiment_id,
+        "family": preregistration.family,
+        "hypothesis": preregistration.hypothesis,
+        "preregistration": {"path": loaded.path, "sha256": loaded.sha256, "commit": commit},
+        "recipe_slug": preregistration.recipe,
+        "recipe_overrides_sha256": overrides_sha,
+        "commit": commit,
+        "control": control,
+        "windows": windows,
+        "label_t": label_t,
+        "ledger_complete": True,
+        "attempts": {
+            "total": len(rows),
+            **{status.lower(): statuses.count(status) for status in (COMPLETE, FAILED, ABORTED)},
+        },
+        "rule": {
+            "primary_metric": preregistration.primary_metric,
+            "alpha": preregistration.alpha,
+            "adjustment": rule.adjustment,
+            "seed_floor_multiple": rule.seed_floor_multiple,
+            "family_size": len(treatments),
+            "test": "pooled paired mean IC(arm) - IC(control), HAC t on label_t - 2 lags",
+            "ci_level": ci_level,
+        },
+        "seed_floor": seed_floor,
+        "seed_floor_test": tests[seed_arm] if seed_arm is not None else None,
+        "arms": arms,
+        "runs": runs,
+        "note": "Adopt: adjusted p < alpha, a positive difference, and |difference| above "
+        "seed_floor.value x seed_floor_multiple. Reject: the same with a negative "
+        "difference. Otherwise inconclusive, and the default stays (PRD #369, decision 4). "
+        "Everything under reported_not_decisive decided nothing. Each run fetched its FRED "
+        "inputs itself; auxiliary_inputs_match_control says whether its captured bytes were "
+        "the control run's on that window.",
+    }
+
+
+def _command_compare_experiment(args: Any) -> int:
+    out_dir = Path(args.out_dir)
+    if out_dir.exists():
+        print(f"Refusing to write over {out_dir}: it already exists.")
+        return 1
+    try:
+        rows = experiment_ledger(args.experiment, Path(args.runs_root))
+    except ValueError as error:
+        print(f"Cannot build the ledger: {error}")
+        return 1
+    if not rows:
+        print(f"No run folder under {args.runs_root} names experiment {args.experiment!r}.")
+        return 1
+    out_dir.mkdir(parents=True)
+    paths = write_trial_ledger(rows, out_dir)
+    print(f"Trial ledger ({len(rows)} launched runs) written to {paths['csv']}")
+    refusals = (VerdictError, PreregistrationError, ValueError, KeyError, TypeError, OSError)
+    seed_floor_verdict = None
+    if args.seed_floor:
+        floor_id, _, floor_root = args.seed_floor.partition("=")
+        if not floor_id or not floor_root:
+            print(f"--seed-floor takes ID=RUNS_ROOT; got {args.seed_floor!r}")
+            return 1
+        try:
+            seed_floor_verdict = experiment_verdict(
+                experiment_ledger(floor_id, Path(floor_root)), repo_dir=REPO_DIR
+            )
+        except refusals as error:
+            print(f"No verdict: the seed floor's experiment {floor_id!r} gives none: {error}")
+            return 1
+    try:
+        verdict = experiment_verdict(rows, repo_dir=REPO_DIR, seed_floor_verdict=seed_floor_verdict)
+    except refusals as error:
+        print(f"No verdict: {error}")
+        return 1
+    if seed_floor_verdict is not None:
+        verdict["seed_floor"]["runs_root"] = floor_root
+        verdict["seed_floor"]["attempts"] = seed_floor_verdict["attempts"]
+    verdict = _finite_or_none(verdict)
+    write_json(out_dir / "verdict.json", verdict)
+    for arm in verdict["arms"]:
+        print(
+            f"{arm['arm']}: {arm['verdict']} (IC difference {arm['mean_delta']:+.4f}, "
+            f"adjusted p {arm['adjusted_p_value']:.3g}, seed floor {verdict['seed_floor']['value']:.4f})"
+        )
+    print(f"Verdict written to {out_dir / 'verdict.json'}")
+    return 0
+
+
 def _command_compare(args: Any) -> int:
     import pandas as pd
 
+    if args.experiment:
+        if args.run or not args.runs_root:
+            print("--experiment reads every run under --runs-root; it takes no --run")
+            return 1
+        return _command_compare_experiment(args)
+    if args.runs_root or args.seed_floor or not args.run:
+        print("an exploratory comparison takes --run ARM=RUN_FOLDER, and never a verdict")
+        return 1
     out_dir = Path(args.out_dir)
     if out_dir.exists():
         print(f"Refusing to write over {out_dir}: it already exists.")
@@ -1509,7 +2069,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     run.add_argument("--package-drive-dir", default="")
     run.add_argument("--eodhd-drive-path", default=EODHD_MARKET_DRIVE_PATH)
     run.add_argument("--tag-file", default="")
-    run.add_argument("--arm", choices=list(RUN_ARMS), default="recipe")
+    run.add_argument(
+        "--arm", default="recipe",
+        help=f"exploratory: one of {list(RUN_ARMS)}; with --experiment, a declared arm",
+    )  # fmt: skip
+    run.add_argument(
+        "--experiment", default="",
+        help="a pre-registered experiment id (docs/research/experiments/<id>.yaml, #373)",
+    )  # fmt: skip
     run.add_argument(
         "--window", choices=list(RUN_WINDOWS), default=RECIPE_WINDOW,
         help="the protocol window to run (PRD #369); W5 is the recipe's own dates",
@@ -1520,8 +2087,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     gpu_check.add_argument("--out-dir", required=True)
     compare = commands.add_parser("compare")
     compare.add_argument(
-        "--run", action="append", required=True, metavar="ARM=RUN_FOLDER",
-        help="one run folder of an arm, once per window; the first given is the reference",
+        "--run", action="append", default=[], metavar="ARM=RUN_FOLDER",
+        help="exploratory: one run folder of an arm, once per window; the first given is "
+        "the reference. Gives no verdict",
+    )  # fmt: skip
+    compare.add_argument(
+        "--experiment", default="",
+        help="a pre-registered experiment: build its trial ledger and verdict (#373)",
+    )  # fmt: skip
+    compare.add_argument(
+        "--runs-root", default="",
+        help="with --experiment: the folder holding every launched run of the experiment",
+    )  # fmt: skip
+    compare.add_argument(
+        "--seed-floor", default="", metavar="ID=RUNS_ROOT",
+        help="with --experiment: the declared experiment, and its runs, whose seed arm "
+        "measures the floor on the same recipe, when this one declares no seed arm",
     )  # fmt: skip
     compare.add_argument("--out-dir", required=True)
     compare.add_argument("--resamples", type=int, default=2000)
