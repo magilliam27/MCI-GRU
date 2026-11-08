@@ -133,6 +133,35 @@ the Drive folder before training starts, so a launch that dies in its first
 minutes is still counted. A run that scores and dies between two timed copies
 can look unscored on Drive; check the local folder before relaunching it.
 
+## Holdout promotion (#374)
+
+A promotion scores an adopted arm against its experiment's control, once, on the
+locked 2026 holdout. The rules and the record format are in
+`docs/research/EXPERIMENT_PROTOCOL.md`, **Promoting a candidate**. Run it from a
+branch whose only change since the verdict's commit is the committed record
+under `docs/research/holdout/`.
+
+`run --mode full --promotion <id> --arm <arm> --verdict-runs-root <folder>`
+launches one arm, the candidate or the incumbent; launch both, into one folder.
+`<folder>` holds the experiment's own runs: the launcher recomputes their verdict
+and refuses unless it ran at the record's commit and adopted the candidate. Add
+`--seed-floor <id>=<runs folder>` when the experiment has no seed arm. The branch
+must also carry main's `docs/research/holdout/ledger.yaml`. The overrides are the
+experiment's recipe at the verdict's commit, its seed base, the arm's change and
+the holdout window's dates, plus where the run writes and
+`protocol.holdout_promotion`. The tag reads
+`<time>-full-holdout-<id>-<arm>-holdout-<commit>`, and the record carries
+`holdout_promotion`. The launcher refuses an id already in the committed
+ledger, and a fourth look.
+
+`compare --promotion <id> --runs-root <folder> --out-dir <new folder>` writes
+`promotion_receipt.json` and `ledger_entry.yaml`, and prints the entry. Commit
+the receipt as `docs/research/holdout/<id>.receipt.json` together with the entry
+under `looks:` in `docs/research/holdout/ledger.yaml`, and get it merged to main
+straight away. A `VOID`
+receipt is a spent look that failed: commit it the same way. `No receipt: ...
+has not looked` means nothing scored, so the pair may be launched again.
+
 ## When something stops
 
 | Message | Meaning | What to do |

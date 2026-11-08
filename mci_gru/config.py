@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from mci_gru.protocol import HoldoutError, require_outside_holdout
+from mci_gru.protocol import require_holdout_window, require_outside_holdout
 
 
 @dataclass
@@ -1120,9 +1120,12 @@ class ProtocolConfig:
         window: The window this run is, ``W1`` to ``W5``: the declared one, or for an
             exploratory run the one its dates must be (#371).
         exploratory: True for a run with no pre-registration; it never gets a verdict.
-        holdout_promotion: Id of the committed promotion record that may unlock the
-            locked 2026 holdout for one run. The promotion path is #374; until it
-            lands no record exists, so every value is refused.
+        holdout_promotion: Id of the committed promotion record,
+            ``docs/research/holdout/<id>.yaml``, that unlocks the locked 2026 holdout
+            for its two runs, one per ``arm`` (#374). It names no experiment, window or
+            exploratory standing of its own: the record says which experiment, and the
+            window is the holdout's. The runner's gate is
+            :func:`mci_gru.promotion.resolve_promotion_standing`.
     """
 
     experiment_id: str | None = None
@@ -1132,15 +1135,31 @@ class ProtocolConfig:
     holdout_promotion: str | None = None
 
     def __post_init__(self) -> None:
-        if self.holdout_promotion is not None:
-            raise HoldoutError(
-                f"protocol.holdout_promotion={self.holdout_promotion!r}: no promotion "
-                "record can unlock the holdout yet; the promotion path is #374"
-            )
         if not isinstance(self.exploratory, bool):
             raise ValueError(
                 f"protocol.exploratory must be true or false, got {self.exploratory!r}"
             )
+        if self.holdout_promotion is not None:
+            others = [
+                name
+                for name, value in (
+                    ("protocol.experiment_id", self.experiment_id),
+                    ("protocol.window", self.window),
+                )
+                if value is not None
+            ] + (["protocol.exploratory=true"] if self.exploratory else [])
+            if others:
+                raise ValueError(
+                    f"protocol.holdout_promotion={self.holdout_promotion} takes only "
+                    f"protocol.arm; drop {others}: the record names the experiment and the "
+                    "window is the holdout's"
+                )
+            if self.arm is None:
+                raise ValueError(
+                    f"protocol.holdout_promotion={self.holdout_promotion} needs protocol.arm: "
+                    "a promotion runs the candidate and the incumbent, one run each"
+                )
+            return
         if self.exploratory and self.experiment_id is not None:
             raise ValueError(
                 "protocol.exploratory=true and protocol.experiment_id name two standings; "
@@ -1201,7 +1220,11 @@ class ExperimentConfig:
         self._validate_evaluation_tranches()
 
     def _validate_holdout(self) -> None:
-        """Refuse a run whose spans or labels reach the locked 2026 holdout (#370)."""
+        """Refuse a run whose spans or labels reach the locked 2026 holdout (#370).
+
+        A holdout promotion (#374) is the exception, and it must run on exactly the
+        holdout window's dates; whether its record allows it is the runner's gate.
+        """
         spans = {
             f"data.{key}": getattr(self.data, key)
             for key in (
@@ -1213,6 +1236,9 @@ class ExperimentConfig:
                 "test_end",
             )
         }
+        if self.protocol.holdout_promotion is not None:
+            require_holdout_window(spans, label_t=self.model.label_t, what="This run")
+            return
         require_outside_holdout(spans, label_t=self.model.label_t, what="This run")
 
     def _validate_evaluation_tranches(self) -> None:

@@ -2159,3 +2159,343 @@ def test_a_declared_launch_records_its_experiment_and_refuses_smoke_or_an_undecl
     assert "protocol.arm=graph_zeroed" in record["overrides"]
     assert "protocol.exploratory=true" not in record["overrides"]
     assert "seed=1729" in record["overrides"]
+
+
+# ---------------------------------------------------------------------------
+# Holdout promotion: both arms on the holdout window, and the receipt (#374)
+# ---------------------------------------------------------------------------
+
+_PROMOTION = "graph-zeroed-2026"
+_HOLDOUT_DATES = [f"2026-02-{day:02d}" for day in range(2, 22)]
+
+
+def _promotion_record(verdict_commit, **changes):
+    return {
+        "id": _PROMOTION,
+        "experiment_id": _EXPERIMENT,
+        "candidate": "graph_zeroed",
+        "incumbent": "recipe",
+        "commit": verdict_commit,
+        "pass_rule": frc.PASS_RULE,
+        **changes,
+    }
+
+
+def _commit_promotion(root, verdict_commit, looks=()):
+    """Commit the record and the holdout ledger on top of the verdict's commit."""
+    holdout = root / "docs" / "research" / "holdout"
+    holdout.mkdir(parents=True, exist_ok=True)
+    (holdout / "ledger.yaml").write_text(
+        yaml.safe_dump({"looks": list(looks)}, sort_keys=False), encoding="utf-8"
+    )
+    (holdout / f"{_PROMOTION}.yaml").write_text(
+        yaml.safe_dump(_promotion_record(verdict_commit), sort_keys=False), encoding="utf-8"
+    )
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "promotion record")
+    _git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+
+
+def _promotion_repo(tmp_path, monkeypatch, looks=()):
+    loaded = _experiment_repo(tmp_path, monkeypatch)
+    _commit_promotion(frc.REPO_DIR, loaded.commit, looks)
+    return frc.load_promotion(_PROMOTION, frc.REPO_DIR)
+
+
+def _promotion_run(runs, name, arm, ic, promotion, *, returncode=0, scored=True, stamp=None):
+    """A launched run folder of a promotion, as `run --promotion` leaves it."""
+    import numpy as np
+    import pandas as pd
+
+    from mci_gru.promotion import promotion_stamp
+
+    run_dir = runs / name
+    outputs = run_dir / "outputs"
+    outputs.mkdir(parents=True)
+    spans = frc.HOLDOUT_WINDOW.spans()
+    (run_dir / "config.yaml").write_text(
+        yaml.safe_dump({"data": {k.removeprefix("data."): v for k, v in spans.items()}}),
+        encoding="utf-8",
+    )
+    ic = np.asarray(ic, dtype=float)
+    if scored:
+        pd.DataFrame({"dt": _HOLDOUT_DATES, "ic": ic, "rank_ic": ic / 2}).to_csv(
+            outputs / "daily_ic.csv", index=False, float_format="%.17g"
+        )
+        summary = {
+            "label_t": 5,
+            "metrics": {"avg_ic": float(ic.mean()), "avg_rank_ic": float((ic / 2).mean())},
+        }
+        (outputs / "evaluation_summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    written = {**promotion_stamp(promotion, arm=arm), **(stamp or {})}
+    (outputs / "run_metadata.json").write_text(json.dumps({"protocol": written}), encoding="utf-8")
+    frc.write_json(
+        run_dir / "colab_run_record.json",
+        {
+            "run_tag": name,
+            "mode": "full",
+            "arm": arm,
+            "window": "holdout",
+            "experiment_id": None,
+            "holdout_promotion": promotion.record.id,
+            "commit": promotion.commit,
+            "staging": {"package": _fake_package()},
+            "overrides": [],
+            **({} if returncode is None else {"returncode": returncode}),
+        },
+    )
+    return run_dir
+
+
+def _promotion_pair(runs, promotion, delta):
+    import numpy as np
+
+    incumbent = np.random.default_rng(3).normal(0.0, 0.05, 20)
+    candidate = incumbent + delta + np.random.default_rng(4).normal(0.0, 0.004, 20)
+    _promotion_run(runs, "candidate", "graph_zeroed", candidate, promotion)
+    _promotion_run(runs, "incumbent", "recipe", incumbent, promotion)
+
+
+def _receipt_cli(tmp_path, runs, out="out"):
+    return frc.main(
+        ["compare", "--promotion", _PROMOTION, "--runs-root", str(runs),
+         "--out-dir", str(tmp_path / out)]
+    )  # fmt: skip
+
+
+def test_a_complete_promotion_writes_a_receipt_and_its_ledger_entry(tmp_path, monkeypatch, capsys):
+    promotion = _promotion_repo(tmp_path, monkeypatch)
+    runs = tmp_path / "runs"
+    _promotion_pair(runs, promotion, 0.02)
+    # A declared experiment's run in the same folder names no promotion: not counted.
+    _declared_run(runs, "declared", "recipe", "W1", [0.0] * 20, promotion.preregistration)
+    assert _receipt_cli(tmp_path, runs) == 0, capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "PASSED" in out and "ledger.yaml" in out
+    path = tmp_path / "out" / "promotion_receipt.json"
+    receipt = json.loads(path.read_text(encoding="utf-8"))
+    assert receipt["outcome"] == "scored"
+    assert receipt["passed"] is True
+    assert receipt["test"]["mean_delta"] == pytest.approx(0.02, abs=0.003)
+    assert receipt["test"]["n_days"] == 20
+    assert receipt["test"]["ci_lower"] < receipt["test"]["mean_delta"] < receipt["test"]["ci_upper"]
+    assert receipt["record"]["sha256"] == promotion.sha256
+    assert receipt["verdict_commit"] == promotion.record.commit
+    assert receipt["commit"] == promotion.commit
+    assert receipt["attempts"]["total"] == 2
+    (entry,) = yaml.safe_load((tmp_path / "out" / "ledger_entry.yaml").read_text())
+    assert entry == {
+        "id": _PROMOTION,
+        "experiment_id": _EXPERIMENT,
+        "candidate": "graph_zeroed",
+        "commit": promotion.commit,
+        "record_sha256": promotion.sha256,
+        "receipt_sha256": _sha(path.read_bytes()),
+        "passed": True,
+    }
+    # The entry is a valid look for the ledger.
+    assert frc.parse_ledger(yaml.safe_dump({"looks": [entry]}).encode()) == [entry]
+
+
+def test_a_negative_holdout_difference_fails_the_promotion(tmp_path, monkeypatch):
+    promotion = _promotion_repo(tmp_path, monkeypatch)
+    runs = tmp_path / "runs"
+    _promotion_pair(runs, promotion, -0.02)
+    assert _receipt_cli(tmp_path, runs) == 0
+    receipt = json.loads((tmp_path / "out" / "promotion_receipt.json").read_text())
+    assert receipt["passed"] is False and receipt["outcome"] == "scored"
+
+
+def test_a_promotion_that_has_not_scored_gets_no_receipt_and_may_run_again(
+    tmp_path, monkeypatch, capsys
+):
+    promotion = _promotion_repo(tmp_path, monkeypatch)
+    runs = tmp_path / "runs"
+    _promotion_run(runs, "crashed", "graph_zeroed", [0.0] * 20, promotion,
+                   returncode=1, scored=False)  # fmt: skip
+    assert _receipt_cli(tmp_path, runs) == 1
+    assert "has not looked" in capsys.readouterr().out
+    assert not (tmp_path / "out").exists()
+    # The crash stays in the folder; the rerun pair then gives a receipt.
+    _promotion_pair(runs, promotion, 0.02)
+    assert _receipt_cli(tmp_path, runs) == 0
+    receipt = json.loads((tmp_path / "out" / "promotion_receipt.json").read_text())
+    assert receipt["outcome"] == "scored"
+    assert receipt["attempts"]["failed"] == 1
+
+
+@pytest.mark.parametrize(
+    "spoil",
+    ["scored_crash", "scored_twice", "wrong_record", "wrong_verdict", "dates_outside"],
+)
+def test_a_look_that_scored_but_gives_no_result_is_void_and_fails(tmp_path, monkeypatch, spoil):
+    """A scored run is a look whether or not it finished: the receipt records it as spent."""
+    promotion = _promotion_repo(tmp_path, monkeypatch)
+    runs = tmp_path / "runs"
+    _promotion_pair(runs, promotion, 0.05)
+    if spoil == "scored_crash":
+        _promotion_run(runs, "crash", "graph_zeroed", [0.1] * 20, promotion, returncode=1)
+    elif spoil == "scored_twice":
+        _promotion_run(runs, "again", "graph_zeroed", [0.1] * 20, promotion)
+    elif spoil == "wrong_record":
+        shutil.rmtree(runs / "candidate")
+        _promotion_run(runs, "candidate", "graph_zeroed", [0.1] * 20, promotion,
+                       stamp={"promotion_record_sha256": "0" * 64})  # fmt: skip
+    elif spoil == "wrong_verdict":
+        shutil.rmtree(runs / "candidate")
+        _promotion_run(runs, "candidate", "graph_zeroed", [0.1] * 20, promotion,
+                       stamp={"verdict_commit": "0" * 40})  # fmt: skip
+    else:
+        daily = runs / "candidate" / "outputs" / "daily_ic.csv"
+        daily.write_text(daily.read_text().replace("2026-02-", "2025-02-"), encoding="utf-8")
+    assert _receipt_cli(tmp_path, runs) == 0
+    receipt = json.loads((tmp_path / "out" / "promotion_receipt.json").read_text())
+    assert receipt["outcome"] == "void"
+    assert receipt["passed"] is False
+    assert receipt["problems"]
+    (entry,) = yaml.safe_load((tmp_path / "out" / "ledger_entry.yaml").read_text())
+    assert entry["passed"] is False
+
+
+def test_a_promotion_already_in_the_ledger_gets_no_second_receipt(tmp_path, monkeypatch, capsys):
+    promotion = _promotion_repo(tmp_path, monkeypatch)
+    runs = tmp_path / "runs"
+    _promotion_pair(runs, promotion, 0.02)
+    look = {
+        "id": _PROMOTION,
+        "experiment_id": _EXPERIMENT,
+        "candidate": "graph_zeroed",
+        "commit": promotion.commit,
+        "record_sha256": promotion.sha256,
+        "receipt_sha256": "c" * 64,
+        "passed": True,
+    }
+    ledger = frc.REPO_DIR / frc.LEDGER_PATH
+    ledger.write_text(yaml.safe_dump({"looks": [look]}), encoding="utf-8")
+    _git(frc.REPO_DIR, "commit", "-qam", "record the look")
+    assert _receipt_cli(tmp_path, runs) == 1
+    assert "already in the committed" in capsys.readouterr().out
+
+
+def test_promotion_comparison_takes_only_the_runs_root(tmp_path, capsys):
+    for extra in (["--experiment", "x"], ["--run", "recipe=/r"], ["--seed-floor", "a=b"], []):
+        args = ["compare", "--promotion", _PROMOTION, "--out-dir", str(tmp_path / "o"), *extra]
+        if extra:
+            args += ["--runs-root", str(tmp_path)]
+        assert frc.main(args) == 1
+        assert "takes nothing else" in capsys.readouterr().out
+
+
+def test_a_promotion_launch_composes_to_exactly_the_promotion_run(tmp_path, monkeypatch):
+    """The launcher's overrides pass the runner's own promotion check, arm for arm."""
+    from mci_gru.promotion import check_promotion_run
+
+    promotion = _promotion_repo(tmp_path, monkeypatch)
+    run_dir = tmp_path / "run"
+    with initialize_config_dir(config_dir=str(REPO_ROOT / "configs"), version_base=None):
+
+        def composed(overrides):
+            kept = [o for o in overrides if not o.startswith("hydra.")]
+            return OmegaConf.to_container(
+                compose(config_name="config", overrides=kept), resolve=True
+            )
+
+        for arm in ("graph_zeroed", "recipe"):
+            overrides = frc.build_promotion_run_overrides(promotion, arm=arm, run_dir=run_dir)
+            assert f"protocol.holdout_promotion={_PROMOTION}" in overrides
+            assert not any(o.startswith("protocol.window") for o in overrides)
+            assert "seed=1729" in overrides
+            assert f"data.test_end={frc.HOLDOUT_WINDOW.test_end}" in overrides
+            check_promotion_run(promotion, composed(overrides), arm=arm, compose=composed)
+            # And the saved config builds: the holdout window with a promotion is allowed.
+            create_config_from_dict(composed(overrides))
+        wrong = frc.build_promotion_run_overrides(promotion, arm="graph_zeroed", run_dir=run_dir)
+        with pytest.raises(PreregistrationError, match="not arm 'recipe'"):
+            check_promotion_run(promotion, composed(wrong), arm="recipe", compose=composed)
+
+
+def test_a_promotion_launch_records_its_promotion_and_refuses_smoke_or_another_arm(
+    tmp_path, run_repo, capsys, monkeypatch
+):
+    declaration = _declaration(recipe_slug="slug")
+    path = run_repo / "docs" / "research" / "experiments" / f"{_EXPERIMENT}.yaml"
+    path.parent.mkdir(parents=True)
+    path.write_text(yaml.safe_dump(declaration, sort_keys=False), encoding="utf-8")
+    _git(run_repo, "add", "-A")
+    _git(run_repo, "commit", "-qm", "register")
+    verdict = _git(run_repo, "rev-parse", "HEAD").strip()
+    _commit_promotion(run_repo, verdict)
+    record_path = run_repo / "docs" / "research" / "holdout" / f"{_PROMOTION}.yaml"
+
+    adoption = {"commit": verdict, "candidate_verdict": "adopt"}
+    monkeypatch.setattr(frc, "adopted_by_verdict", lambda *_args: adoption)
+
+    def launch(mode, arm, *extra, verdict_runs=str(tmp_path / "experiment-runs")):
+        return frc.main(
+            ["run", "--mode", mode, "--promotion", _PROMOTION, "--arm", arm, *extra,
+             *(["--verdict-runs-root", verdict_runs] if verdict_runs else []),
+             "--local-root", str(tmp_path / "local"),
+             "--drive-root", str(tmp_path / "drive"), "--tag-file", str(tmp_path / "tag.txt")]
+        )  # fmt: skip
+
+    assert launch("smoke", "graph_zeroed") == 1
+    assert "smoke mode" in capsys.readouterr().out
+    assert launch("full", "graph_zeroed", "--experiment", _EXPERIMENT) == 1
+    assert "with --experiment" in capsys.readouterr().out
+    assert launch("full", "other_seeds") == 1
+    assert "runs only the arms" in capsys.readouterr().out
+    assert launch("full", "graph_zeroed", verdict_runs="") == 1
+    assert "--verdict-runs-root" in capsys.readouterr().out
+    assert not (tmp_path / "local").exists()
+    returncode = launch("full", "graph_zeroed")
+    tag = (tmp_path / "tag.txt").read_text().strip()
+    assert re.fullmatch(
+        rf"\d{{8}}T\d{{6}}Z-full-holdout-{_PROMOTION}-graph_zeroed-holdout-[0-9a-f]{{8}}", tag
+    )
+    record = json.loads((tmp_path / "drive" / tag / "colab_run_record.json").read_text())
+    assert record["returncode"] == returncode
+    assert record["holdout_promotion"] == _PROMOTION
+    assert record["adopted_by_verdict"] == adoption
+    assert record["experiment_id"] is None
+    assert record["window"] == "holdout"
+    assert record["preregistration_sha256"] == _sha(path.read_bytes())
+    assert "holdout promotion" in record["evidence"]
+    assert f"protocol.holdout_promotion={_PROMOTION}" in record["overrides"]
+    assert "seed=1729" in record["overrides"]
+    assert record_path.exists()
+
+    # Once the ledger records the look, the launcher refuses the id.
+    ledger = run_repo / "docs" / "research" / "holdout" / "ledger.yaml"
+    look = {
+        "id": _PROMOTION,
+        "experiment_id": _EXPERIMENT,
+        "candidate": "graph_zeroed",
+        "commit": "a" * 40,
+        "record_sha256": "b" * 64,
+        "receipt_sha256": "c" * 64,
+        "passed": False,
+    }
+    ledger.write_text(yaml.safe_dump({"looks": [look]}), encoding="utf-8")
+    _git(run_repo, "commit", "-qam", "record the look")
+    assert launch("full", "recipe") == 1
+    assert "already looked" in capsys.readouterr().out
+
+
+def test_a_promotion_is_launched_only_for_an_arm_its_verdict_adopted(tmp_path, monkeypatch):
+    """The record's commit must be the verdict's, and the verdict must adopt the candidate."""
+    loaded = _experiment_repo(tmp_path, monkeypatch)
+    _commit_promotion(frc.REPO_DIR, loaded.commit)
+    promotion = frc.load_promotion(_PROMOTION, frc.REPO_DIR)
+    adopted = tmp_path / "adopted"
+    _experiment_runs(adopted, loaded)
+    found = frc.adopted_by_verdict(promotion, adopted)
+    assert found["commit"] == loaded.commit
+    assert found["candidate_verdict"] == "adopt"
+    assert found["mean_delta"] == pytest.approx(0.03, abs=0.002)
+    noise = tmp_path / "noise"
+    _experiment_runs(noise, loaded, {"recipe": 0.0, "graph_zeroed": 0.0, "other_seeds": 0.0})
+    with pytest.raises(frc.VerdictError, match="did not adopt 'graph_zeroed'"):
+        frc.adopted_by_verdict(promotion, noise)
+    (tmp_path / "empty").mkdir()
+    with pytest.raises(frc.VerdictError, match="the ledger is empty"):
+        frc.adopted_by_verdict(promotion, tmp_path / "empty")

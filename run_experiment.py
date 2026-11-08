@@ -75,6 +75,7 @@ from mci_gru.graph.utils import edge_feature_dim
 from mci_gru.models import create_model
 from mci_gru.pipeline import prepare_data, prepare_data_index_level
 from mci_gru.preregistration import resolve_run_standing
+from mci_gru.promotion import resolve_promotion_standing
 from mci_gru.tracking import MLflowTrackingManager
 from mci_gru.training import train_multiple_models
 from mci_gru.training.summary import build_training_summary
@@ -135,7 +136,13 @@ def main(cfg: DictConfig):
     resolved_cfg = OmegaConf.to_container(cfg, resolve=True)
     config = create_config_from_dict(resolved_cfg)
     # Before any run file: a protocol run must be declared, or say it is not (#372).
-    protocol_standing = resolve_run_standing(
+    # A holdout promotion has its own gate: a committed record and the ledger (#374).
+    gate = (
+        resolve_promotion_standing
+        if config.protocol.holdout_promotion is not None
+        else resolve_run_standing
+    )
+    protocol_standing = gate(
         config.protocol,
         resolved_cfg,
         repo_root=REPO_ROOT,

@@ -6,7 +6,8 @@ with only these dates changed. W5 is the recipe as written (#367).
 
 The 2026 signal dates from ``HOLDOUT_START`` to ``HOLDOUT_END`` are the holdout. No
 run may train on, validate on or score them, and no label may reach into them,
-except the one promotion run per candidate that #374 will unlock. Nothing after
+except the one promotion run per candidate that a committed promotion record unlocks
+(#374, :func:`require_holdout_window`). Nothing after
 ``HOLDOUT_START`` is open either: the data after 2026-07-31 is the next holdout
 (decision 3).
 
@@ -27,6 +28,8 @@ if TYPE_CHECKING:
 
 HOLDOUT_START = "2026-01-22"
 HOLDOUT_END = "2026-07-24"
+#: The last day a promotion run's labels may read: what follows is the next holdout.
+HOLDOUT_LABELS_CLOSE_BY = "2026-07-31"
 
 #: The guard runs before any panel is loaded, so it counts weekdays, and each exchange
 #: closure pushes a label's real exit one weekday later. It allows three closures plus
@@ -150,6 +153,38 @@ def require_outside_holdout(spans: Mapping[str, object], *, label_t: int, what: 
             f"{what}: the {label_t}-session label of {last_name}={last} may exit as late as "
             f"{bound}, inside the locked holdout ({HOLDOUT_START} onward, PRD #369). End the "
             f"span earlier, so that its labels close before {HOLDOUT_START}."
+        )
+
+
+def require_holdout_window(spans: Mapping[str, object], *, label_t: int, what: str) -> None:
+    """Refuse a promotion run unless its six dates are the holdout window's (#374).
+
+    A promotion is the one run that may read the holdout, and only on
+    :data:`HOLDOUT_WINDOW`'s dates. Its labels must also close by
+    :data:`HOLDOUT_LABELS_CLOSE_BY`, because the data after that is the next holdout.
+    No NYSE closure falls between ``HOLDOUT_END`` and Labor Day 2026, so weekdays are
+    sessions there and the count is exact.
+    """
+    dates = {name: _iso_date(name, value) for name, value in spans.items()}
+    want = HOLDOUT_WINDOW.spans()
+    if dates != want:
+        differ = ", ".join(
+            f"{key}={dates.get(key, '<unset>')} (holdout {value})"
+            for key, value in want.items()
+            if dates.get(key) != value
+        )
+        raise HoldoutError(
+            f"{what} is a holdout promotion, which runs on the holdout window's dates only: "
+            f"{differ or sorted(set(dates) - set(want))}"
+        )
+    if label_t < 1:
+        raise ValueError(f"label_t must be at least 1, got {label_t}")
+    exit_day = str(np.busday_offset(np.datetime64(HOLDOUT_END, "D"), label_t, roll="forward"))
+    if exit_day > HOLDOUT_LABELS_CLOSE_BY:
+        raise HoldoutError(
+            f"{what}: the {label_t}-session label of the last holdout date {HOLDOUT_END} exits "
+            f"on {exit_day}, after {HOLDOUT_LABELS_CLOSE_BY}; the data after that is the next "
+            "holdout (PRD #369, decision 3)"
         )
 
 
