@@ -1,8 +1,9 @@
 """The locked 2026 holdout and the window schedule (#370, PRD #369).
 
 The holdout is the 2026 signal dates from 2026-01-22 to 2026-07-24. No run may train
-on, validate on or score them, and no label may reach into them, until the promotion
-path lands (#374). These tests pin:
+on, validate on or score them, and no label may reach into them, except a promotion
+run on exactly the holdout window (#374, whose record gate is tested in
+``tests/test_promotion.py``). These tests pin:
 
 * the holdout dates and the five window runs, W5 being the recipe as written (#367);
 * the guard: a span inside the holdout is refused, and so is a span whose last label
@@ -42,12 +43,14 @@ from mci_gru.evaluation.replay_inputs import resolve_replay_inputs
 from mci_gru.evaluation.selection_audit import SelectionResearchProtocol, build_selection_audit
 from mci_gru.protocol import (
     HOLDOUT_END,
+    HOLDOUT_LABELS_CLOSE_BY,
     HOLDOUT_START,
     HOLDOUT_WINDOW,
     WINDOWS,
     HoldoutError,
     Window,
     latest_label_end_bound,
+    require_holdout_window,
     require_outside_holdout,
     require_predictions_outside_holdout,
 )
@@ -362,27 +365,71 @@ def test_saved_predictions_reaching_the_holdout_are_refused():
         require_predictions_outside_holdout(["2026-01-15"], label_t=5, what="probe")
 
 
-# -- Promotion stays closed until #374 ------------------------------------------------
+# -- A promotion opens the holdout window and nothing else (#374) ---------------------
 
 
 def test_the_base_config_names_no_promotion():
     assert _compose([]).protocol == ProtocolConfig(holdout_promotion=None)
 
 
-def test_any_promotion_is_refused_until_the_promotion_path_lands():
-    with pytest.raises(HoldoutError, match="#374"):
+def test_a_promotion_takes_an_arm_and_no_other_standing():
+    assert ProtocolConfig(holdout_promotion="candidate-a", arm="graph_zeroed").arm == (
+        "graph_zeroed"
+    )
+    with pytest.raises(ValueError, match="needs protocol.arm"):
         ProtocolConfig(holdout_promotion="candidate-a")
-    with pytest.raises(HoldoutError, match="#374"):
-        _compose(["protocol.holdout_promotion=candidate-a"])
+    for other in (
+        {"experiment_id": "exp", "window": "W5"},
+        {"window": "W5"},
+        {"exploratory": True},
+    ):
+        with pytest.raises(ValueError, match="takes only protocol.arm"):
+            ProtocolConfig(holdout_promotion="candidate-a", arm="recipe", **other)
 
 
-def test_a_promotion_does_not_open_the_holdout_either():
-    """Not even a promotion key alongside a holdout window composes today."""
+def _promotion_config(window: Window, *, label_t: int = 5) -> ExperimentConfig:
+    return ExperimentConfig(
+        data=DataConfig(**{key: getattr(window, key) for key in DATA_KEYS}),
+        model=ModelConfig(label_t=label_t),
+        protocol=ProtocolConfig(holdout_promotion="candidate-a", arm="recipe"),
+    )
+
+
+def test_a_promotion_runs_on_the_holdout_window():
+    config = _promotion_config(HOLDOUT_WINDOW)
+    assert config.data.test_end == HOLDOUT_END
+    overrides = [f"{key}={value}" for key, value in HOLDOUT_WINDOW.spans().items()]
+    composed = _compose(
+        [*overrides, "protocol.holdout_promotion=candidate-a", "protocol.arm=recipe"]
+    )
+    assert composed.data.test_start == HOLDOUT_START
+
+
+def test_without_a_promotion_the_holdout_window_is_still_refused():
     overrides = [f"{key}={value}" for key, value in HOLDOUT_WINDOW.spans().items()]
     with pytest.raises(HoldoutError):
         _compose(overrides)
-    with pytest.raises(HoldoutError):
-        _compose([*overrides, "protocol.holdout_promotion=candidate-a"])
+
+
+@pytest.mark.parametrize("key", DATA_KEYS)
+def test_a_promotion_on_any_other_date_is_refused(key):
+    """A promotion is the holdout window exactly: W5, or one date moved, is refused."""
+    with pytest.raises(HoldoutError, match="holdout window's dates only"):
+        _promotion_config(WINDOWS["W5"])
+    moved = {k: getattr(HOLDOUT_WINDOW, k) for k in DATA_KEYS}
+    moved[key] = str(pd.Timestamp(moved[key]) - pd.Timedelta(days=1))[:10]
+    with pytest.raises(HoldoutError, match=f"data.{key}="):
+        _promotion_config(Window(name="moved", **moved))
+
+
+def test_a_promotion_label_may_not_reach_the_next_holdout():
+    """The data after 2026-07-31 is the next holdout: a 5-session label closes on it."""
+    assert HOLDOUT_LABELS_CLOSE_BY == "2026-07-31"
+    _promotion_config(HOLDOUT_WINDOW, label_t=5)
+    with pytest.raises(HoldoutError, match="next holdout"):
+        _promotion_config(HOLDOUT_WINDOW, label_t=6)
+    with pytest.raises(HoldoutError, match="next holdout"):
+        require_holdout_window(HOLDOUT_WINDOW.spans(), label_t=10, what="probe")
 
 
 def test_a_hydra_override_into_the_holdout_is_refused():

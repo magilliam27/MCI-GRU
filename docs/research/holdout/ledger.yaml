@@ -1,0 +1,4 @@
+# The holdout's looks (PRD #369, decision 3; #374). Three in all, one per candidate.
+# Add an entry only from the receipt `first_run_colab.py compare --promotion` writes,
+# in a commit of its own. Never remove or edit one: a look cannot be taken back.
+looks: []

@@ -1278,7 +1278,7 @@ The first run declares no cessation file; this pins why that is safe, and when n
 
 Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 
-**Exercises:** `mci_gru.config`, `mci_gru.data.input_manifest`, `mci_gru.preregistration`, `scripts`
+**Exercises:** `mci_gru.config`, `mci_gru.data.input_manifest`, `mci_gru.preregistration`, `mci_gru.promotion`, `scripts`
 
 | Test | Description | Markers |
 |---|---|---|
@@ -1388,6 +1388,15 @@ Tests for the first admitted run's Colab helpers and notebook (#187, #278).
 | `test_exploratory_runs_never_get_a_verdict` | Window runs launched without --experiment are exploratory: no ledger names them. |  |
 | `test_a_declared_launch_composes_to_exactly_the_declared_run` | The launcher's overrides pass the runner's own declared-run check. | parametrize |
 | `test_a_declared_launch_records_its_experiment_and_refuses_smoke_or_an_undeclared_arm` |  |  |
+| `test_a_complete_promotion_writes_a_receipt_and_its_ledger_entry` |  |  |
+| `test_a_negative_holdout_difference_fails_the_promotion` |  |  |
+| `test_a_promotion_that_has_not_scored_gets_no_receipt_and_may_run_again` |  |  |
+| `test_a_look_that_scored_but_gives_no_result_is_void_and_fails` | A scored run is a look whether or not it finished: the receipt records it as spent. | parametrize |
+| `test_a_promotion_already_in_the_ledger_gets_no_second_receipt` |  |  |
+| `test_promotion_comparison_takes_only_the_runs_root` |  |  |
+| `test_a_promotion_launch_composes_to_exactly_the_promotion_run` | The launcher's overrides pass the runner's own promotion check, arm for arm. |  |
+| `test_a_promotion_launch_records_its_promotion_and_refuses_smoke_or_another_arm` |  |  |
+| `test_a_promotion_is_launched_only_for_an_arm_its_verdict_adopted` | The record's commit must be the verdict's, and the verdict must adopt the candidate. |  |
 
 ## `tests/test_gat_own_signal.py`
 
@@ -2441,6 +2450,39 @@ Contract tests for the repository's own skills under .claude/skills/.
 | `test_the_retired_one_ticket_per_session_cap_is_stated_nowhere` | The flat cap was the most-violated rule here; it must not return beside its replacement. | parametrize |
 | `test_the_prose_normaliser_ignores_wrapping_and_emphasis_but_not_words` | Control for `_normalised`: without it, both guards above could pass on a normaliser that erases text. |  |
 
+## `tests/test_promotion.py`
+
+The one way into the locked 2026 holdout: a committed promotion record (#374).
+
+**Exercises:** `mci_gru.config`, `mci_gru.preregistration`, `mci_gru.promotion`, `mci_gru.protocol`, `run_experiment`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_a_committed_record_loads_against_the_verdict_and_the_ledger` |  |  |
+| `test_a_malformed_record_is_refused` |  | parametrize |
+| `test_the_unlock_without_a_record_is_refused` | Mutation case: the unlock without a record. |  |
+| `test_a_record_not_committed_is_refused` | Mutation case: a record not committed. |  |
+| `test_a_record_edited_after_its_commit_is_refused` |  |  |
+| `test_the_same_id_scored_twice_is_refused` | Mutation case: an id already in the committed ledger has had its look. |  |
+| `test_a_fourth_look_is_refused` | Mutation case: three looks retire the holdout, whoever took them. |  |
+| `test_the_ledger_must_be_committed_and_well_formed` |  |  |
+| `test_a_branch_ledger_that_forgets_a_look_on_main_is_refused` | A promotion branch starts at an old verdict commit; main's looks still count. |  |
+| `test_a_checkout_without_the_canonical_ledger_is_refused` |  |  |
+| `test_the_same_candidate_under_another_id_is_refused` |  |  |
+| `test_a_second_unrecorded_record_in_the_checkout_is_refused` | Two records committed together could both run before either look is recorded. |  |
+| `test_a_malformed_look_is_refused` |  |  |
+| `test_code_that_differs_from_the_verdicts_commit_is_refused` |  |  |
+| `test_a_file_moved_into_the_holdout_folder_still_counts_as_a_code_change` |  |  |
+| `test_changes_under_the_holdout_folder_are_allowed` |  |  |
+| `test_a_verdict_commit_outside_the_history_is_refused` |  |  |
+| `test_the_arms_must_be_the_experiments_control_and_a_treatment` |  | parametrize |
+| `test_a_promotion_arm_composes_on_the_holdout_window_and_the_seed_base` |  |  |
+| `test_a_run_that_is_not_the_named_arm_on_the_holdout_window_is_refused` |  |  |
+| `test_the_gate_stamps_the_run_with_its_record_and_the_verdict` |  |  |
+| `test_the_runner_sends_a_promotion_through_its_gate_before_writing_anything` |  |  |
+| `test_the_committed_ledger_starts_empty_and_parses` |  |  |
+| `test_the_template_record_in_the_protocol_doc_is_a_valid_record` |  |  |
+
 ## `tests/test_protocol_holdout.py`
 
 The locked 2026 holdout and the window schedule (#370, PRD #369).
@@ -2471,8 +2513,11 @@ The locked 2026 holdout and the window schedule (#370, PRD #369).
 | `test_a_value_that_is_not_a_date_is_rejected` |  |  |
 | `test_saved_predictions_reaching_the_holdout_are_refused` |  |  |
 | `test_the_base_config_names_no_promotion` |  |  |
-| `test_any_promotion_is_refused_until_the_promotion_path_lands` |  |  |
-| `test_a_promotion_does_not_open_the_holdout_either` | Not even a promotion key alongside a holdout window composes today. |  |
+| `test_a_promotion_takes_an_arm_and_no_other_standing` |  |  |
+| `test_a_promotion_runs_on_the_holdout_window` |  |  |
+| `test_without_a_promotion_the_holdout_window_is_still_refused` |  |  |
+| `test_a_promotion_on_any_other_date_is_refused` | A promotion is the holdout window exactly: W5, or one date moved, is refused. | parametrize |
+| `test_a_promotion_label_may_not_reach_the_next_holdout` | The data after 2026-07-31 is the next holdout: a 5-session label closes on it. |  |
 | `test_a_hydra_override_into_the_holdout_is_refused` | The runner composes this way; a data.test_end override must not get through. |  |
 | `test_the_replay_refuses_a_run_that_scored_the_holdout` |  |  |
 | `test_the_replay_refuses_a_window_whose_last_label_reaches_the_holdout` |  |  |

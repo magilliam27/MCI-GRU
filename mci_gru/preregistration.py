@@ -294,6 +294,11 @@ def _committed_bytes(repo_root: Path, relative: str, rev: str = "HEAD") -> bytes
     return shown.stdout
 
 
+def read_committed(repo_root: str | Path, relative: str, rev: str = "HEAD") -> bytes:
+    """``relative``'s bytes as recorded in ``rev``, whatever the working tree holds."""
+    return _committed_bytes(Path(repo_root), relative, rev)
+
+
 def _hidden_paths(repo_root: Path) -> list[str]:
     """Tracked paths git is told not to compare: assume-unchanged or skip-worktree."""
     listing = _git(repo_root, "ls-files", "-v").stdout.decode("utf-8", "replace")
@@ -318,6 +323,19 @@ def load_preregistration(experiment_id: str, repo_root: str | Path) -> LoadedPre
             f"protocol.experiment_id={experiment_id}: {relative} does not exist. Commit the "
             "pre-registration before the first run, or run with protocol.exploratory=true."
         )
+    return _load_committed(
+        experiment_id, repo_root, require_committed_checkout(repo_root, relative)
+    )
+
+
+def require_committed_checkout(repo_root: str | Path, relative: str) -> str:
+    """HEAD's commit id, once ``relative`` and every tracked file match it; else refuse.
+
+    ``relative`` must be tracked and identical to HEAD, and so must every other tracked
+    file, with none hidden from git's comparison (assume-unchanged or skip-worktree).
+    Untracked files, such as data pulls, are allowed.
+    """
+    repo_root = Path(repo_root)
     head = _git(repo_root, "rev-parse", "--verify", "HEAD")
     if head.returncode != 0:
         raise PreregistrationError(
@@ -343,7 +361,7 @@ def load_preregistration(experiment_id: str, repo_root: str | Path) -> LoadedPre
             f"tracked files differ from the commit, e.g. {first}; a declared run is the "
             "commit it records, so commit or set aside the change first"
         )
-    return _load_committed(experiment_id, repo_root, head.stdout.decode("ascii").strip())
+    return head.stdout.decode("ascii").strip()
 
 
 def _load_committed(experiment_id: str, repo_root: Path, commit: str) -> LoadedPreregistration:
@@ -435,12 +453,36 @@ def declared_overrides(
     preregistration: Preregistration, recipe: Sequence[str], *, arm: str, window: str
 ) -> list[str]:
     """The overrides the declared run composes: the recipe, the seed base, the arm, the window."""
+    return arm_overrides(preregistration, recipe, arm=arm, spans=WINDOWS[window].spans())
+
+
+def arm_overrides(
+    preregistration: Preregistration,
+    recipe: Sequence[str],
+    *,
+    arm: str,
+    spans: Mapping[str, str],
+) -> list[str]:
+    """The recipe, the seed base and *arm*'s change, on the six ``data.*`` dates *spans*."""
     overrides = _set_override(list(recipe), f"seed={preregistration.seed_base}")
     for change in preregistration.arms[arm]:
         overrides = _set_override(overrides, change)
-    for key, value in WINDOWS[window].spans().items():
+    for key, value in spans.items():
         overrides = _set_override(overrides, f"{key}={value}")
     return overrides
+
+
+def config_differences(got: Mapping[str, Any], want: Mapping[str, Any]) -> list[str]:
+    """The non-operational keys where two resolved configs differ, each with both values.
+
+    Operational keys (:data:`OPERATIONAL_KEYS`) say where a run writes and how it is
+    recorded, never what it trains, so they never count.
+    """
+    flat_got, flat_want = _flatten(dict(got)), _flatten(dict(want))
+    return [
+        f"{key}={flat_got.get(key, '<unset>')!r} (declared {flat_want.get(key, '<unset>')!r})"
+        for key in _differing_keys(flat_got, flat_want)
+    ]
 
 
 def _flatten(value: Any, prefix: str = "") -> dict[str, Any]:

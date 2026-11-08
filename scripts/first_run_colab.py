@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -48,6 +49,7 @@ from mci_gru.data.input_manifest import (
 )
 from mci_gru.evaluation.trial_ledger import validate_trial_family, write_trial_ledger
 from mci_gru.evaluation.verdict import (
+    ADOPT,
     VerdictError,
     decide,
     seed_arm_problem,
@@ -63,10 +65,20 @@ from mci_gru.preregistration import (
     preregistration_at_commit,
     recipe_overrides_sha256,
 )
-from mci_gru.protocol import WINDOWS
+from mci_gru.promotion import (
+    HOLDOUT_WINDOW_NAME,
+    LEDGER_PATH,
+    PASS_RULE,
+    LoadedPromotion,
+    load_promotion,
+    parse_ledger,
+    promotion_at_commit,
+    promotion_overrides,
+)
+from mci_gru.protocol import HOLDOUT_WINDOW, WINDOWS, Window
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
 RECIPE_PATH = "docs/DEFAULT_EXPERIMENT_RECIPE.md"
 
@@ -454,6 +466,27 @@ def _launcher_overrides(overrides: Sequence[str], run_dir: Path) -> list[str]:
 def declared_experiment_name(loaded: LoadedPreregistration, arm: str) -> str:
     """The run's name: the recipe slug, the experiment and the arm."""
     return f"{loaded.preregistration.recipe}__{loaded.preregistration.id}__{arm}"
+
+
+def promotion_experiment_name(loaded: LoadedPromotion, arm: str) -> str:
+    """A promotion run's name: the recipe slug, the promotion and the arm."""
+    return f"{loaded.preregistration.preregistration.recipe}__holdout-{loaded.record.id}__{arm}"
+
+
+def build_promotion_run_overrides(loaded: LoadedPromotion, *, arm: str, run_dir: Path) -> list[str]:
+    """One arm of a holdout promotion (#374), composed as the runner's gate checks it.
+
+    :func:`~mci_gru.promotion.promotion_overrides` (the experiment's recipe at the
+    verdict's commit, its seed base, the arm's change, the holdout window's dates), plus
+    the same operational keys a declared run sets, and ``protocol.holdout_promotion``.
+    """
+    return [
+        *_launcher_overrides(promotion_overrides(loaded, arm), run_dir),
+        f"hydra.run.dir={run_dir}",
+        f"experiment_name={promotion_experiment_name(loaded, arm)}",
+        f"protocol.holdout_promotion={loaded.record.id}",
+        f"protocol.arm={arm}",
+    ]
 
 
 def build_declared_run_overrides(
@@ -1016,7 +1049,37 @@ def _command_run(args: Any) -> int:
         print("Refusing a full run: the checkout's source has changes:\n" + source_changes)
         return 1
     loaded = None
-    if args.experiment:
+    promotion = None
+    adoption = None
+    if args.promotion:
+        if not full or args.experiment:
+            print(
+                "Refusing a holdout promotion in smoke mode or with --experiment: a promotion "
+                "is the full recipe, and its record names the experiment."
+            )
+            return 1
+        try:
+            promotion = load_promotion(args.promotion, REPO_DIR)
+        except PreregistrationError as error:
+            print(f"Refusing holdout promotion {args.promotion!r}: {error}")
+            return 1
+        arms = (promotion.record.candidate, promotion.record.incumbent)
+        if args.arm not in arms:
+            print(f"Refusing to run: {args.promotion} runs only the arms {list(arms)}")
+            return 1
+        if not args.verdict_runs_root:
+            print(
+                "Refusing holdout promotion: --verdict-runs-root names the experiment's runs, "
+                "so the verdict that adopted the candidate can be checked first"
+            )
+            return 1
+        try:
+            adoption = adopted_by_verdict(promotion, Path(args.verdict_runs_root), args.seed_floor)
+        except VERDICT_REFUSALS as error:
+            print(f"Refusing holdout promotion {args.promotion!r}: {error}")
+            return 1
+        recipe_text = promotion.preregistration.recipe_text
+    elif args.experiment:
         if not full:
             print("Refusing a declared run in smoke mode: a declared run is the full recipe.")
             return 1
@@ -1053,13 +1116,15 @@ def _command_run(args: Any) -> int:
             return 1
     slug = recipe_slug(recipe_text)
     commit = _git("rev-parse", "HEAD")
-    if loaded is not None:
+    window = HOLDOUT_WINDOW_NAME if promotion is not None else args.window
+    if promotion is not None:
+        arm_part = f"-holdout-{promotion.record.id}-{args.arm}"
+    elif loaded is not None:
         arm_part = f"-{loaded.preregistration.id}-{args.arm}"
     else:
         arm_part = f"-{RUN_ARMS[args.arm].slug_suffix}" if args.arm != "recipe" else ""
     run_tag = args.run_tag or (
-        f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{args.mode}{arm_part}"
-        f"-{args.window}-{commit[:8]}"
+        f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{args.mode}{arm_part}-{window}-{commit[:8]}"
     )
     local_dir = Path(args.local_root) / run_tag
     drive_dir = Path(args.drive_root) / run_tag
@@ -1069,7 +1134,13 @@ def _command_run(args: Any) -> int:
     # Staged again here, so a run never starts on inputs that were not verified.
     # Both steps reuse files already in place after re-hashing them.
     staging = _stage_inputs(args.package_drive_dir, args.eodhd_drive_path)
-    if loaded is not None:
+    if promotion is not None:
+        overrides = build_promotion_run_overrides(promotion, arm=args.arm, run_dir=local_dir)
+        evidence = (
+            f"holdout promotion {promotion.record.id!r}: arm {args.arm!r} of experiment "
+            f"{promotion.record.experiment_id!r} on the holdout window (#374)"
+        )
+    elif loaded is not None:
         overrides = build_declared_run_overrides(
             loaded, arm=args.arm, window=args.window, run_dir=local_dir
         )
@@ -1092,10 +1163,19 @@ def _command_run(args: Any) -> int:
         "run_tag": run_tag,
         "mode": args.mode,
         "arm": args.arm,
-        "window": args.window,
-        # The ledger counts every launch whose record names its experiment (#373).
+        "window": window,
+        # The ledger counts every launch whose record names its experiment (#373), and
+        # the promotion receipt every launch that names its promotion (#374).
         "experiment_id": None if loaded is None else loaded.preregistration.id,
-        "preregistration_sha256": None if loaded is None else loaded.sha256,
+        "holdout_promotion": None if promotion is None else promotion.record.id,
+        "adopted_by_verdict": adoption,
+        "preregistration_sha256": (
+            loaded.sha256
+            if loaded is not None
+            else promotion.preregistration.sha256
+            if promotion is not None
+            else None
+        ),
         "evidence": evidence,
         "recipe_slug": slug,
         "commit": commit,
@@ -1234,29 +1314,34 @@ class ArmResult:
 RECONCILE_TOLERANCE = 1e-9
 
 
-def run_window(run_dir: Path) -> str:
+def run_window(run_dir: Path, windows: Mapping[str, Window] | None = None) -> str:
     """The protocol window whose six dates the run's saved ``config.yaml`` holds.
 
     The dates, not a label, decide: a run from before #371 records no window, and one
-    that does must agree with its dates.
+    that does must agree with its dates. ``windows`` is the schedule to match, the five
+    protocol windows unless a promotion receipt passes the holdout's (#374).
     """
+    windows = WINDOWS if windows is None else windows
     path = Path(run_dir) / "config.yaml"
     if not path.exists():
         raise ValueError(f"{run_dir} has no config.yaml, so its dates cannot be read")
     data = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("data") or {}
     dates = {key: str(data.get(key.removeprefix("data."))) for key in WINDOW_DATE_KEYS}
-    for name, window in WINDOWS.items():
+    for name, window in windows.items():
         if dates == window.spans():
             return name
     raise ValueError(f"{run_dir} ran on dates that are no protocol window's: {dates}")
 
 
-def read_arm_result(arm: str, run_dir: Path) -> ArmResult:
+def read_arm_result(
+    arm: str, run_dir: Path, windows: Mapping[str, Window] | None = None
+) -> ArmResult:
     """Read one arm's record, summary and dated IC, and check that they agree.
 
-    The run's window comes from its saved dates (:func:`run_window`), and every scored
-    date must lie in that window's test span.
+    The run's window comes from its saved dates (:func:`run_window`, matched against
+    ``windows``), and every scored date must lie in that window's test span.
     """
+    windows = WINDOWS if windows is None else windows
     import pandas as pd
 
     run_dir = Path(run_dir)
@@ -1286,10 +1371,10 @@ def read_arm_result(arm: str, run_dir: Path) -> ArmResult:
                 f"{daily_path}: mean {column} {recomputed!r} differs from the summary's "
                 f"{key} {stored!r}"
             )
-    window = run_window(run_dir)
+    window = run_window(run_dir, windows)
     if record.get("window", window) != window:
         raise ValueError(f"{run_dir} is recorded as {record['window']} but ran {window}'s dates")
-    spans = WINDOWS[window]
+    spans = windows[window]
     outside = [d for d in daily.index if not spans.test_start <= d <= spans.test_end]
     if outside:
         raise ValueError(
@@ -1610,11 +1695,14 @@ def _unreadable_row(run_dir: Path, experiment_id: str, error: Exception) -> dict
     }
 
 
-def ledger_row(run_dir: Path, experiment_id: str) -> dict[str, Any] | None:
+def ledger_row(
+    run_dir: Path, experiment_id: str, *, key: str = "experiment_id"
+) -> dict[str, Any] | None:
     """The ledger row of one launched run of *experiment_id*, or None if it is another's.
 
     A run belongs to the experiment when its launcher record or its runner stamp names
-    it. Status: ABORTED when the record has no exit code (the launcher never finished),
+    it under *key*: ``experiment_id``, or ``holdout_promotion`` for the runs of one
+    holdout promotion (#374), whose id is then *experiment_id*. Status: ABORTED when the record has no exit code (the launcher never finished),
     FAILED on a non-zero exit or a clean exit without scores, COMPLETE on a clean exit
     with a stamp and scores, and INVALID when the folder cannot be trusted: no launcher
     record, a record and a stamp that disagree, a stamp that says exploratory, more than
@@ -1631,8 +1719,8 @@ def ledger_row(run_dir: Path, experiment_id: str) -> dict[str, Any] | None:
         # A truncated copy may be a launch of this experiment; it cannot be ruled out.
         return _unreadable_row(run_dir, experiment_id, error)
     stamp = stamps[0] if len(stamps) == 1 else None
-    named = (record or {}).get("experiment_id") == experiment_id or any(
-        isinstance(s, dict) and s.get("experiment_id") == experiment_id for s in stamps
+    named = (record or {}).get(key) == experiment_id or any(
+        isinstance(s, dict) and s.get(key) == experiment_id for s in stamps
     )
     if not named:
         return None
@@ -1642,8 +1730,8 @@ def ledger_row(run_dir: Path, experiment_id: str) -> dict[str, Any] | None:
     problems = []
     if record is None:
         problems.append(
-            "no launcher record: it was launched outside `run --experiment`, so whether it "
-            "finished cannot be read"
+            "no launcher record: it was launched outside the launcher's `run`, so whether "
+            "it finished cannot be read"
         )
     if len(metadata) > 1:
         problems.append(f"{len(metadata)} run_metadata.json files; a declared run writes one")
@@ -1653,11 +1741,11 @@ def ledger_row(run_dir: Path, experiment_id: str) -> dict[str, Any] | None:
                 "the runner stamped it exploratory, and exploratory runs get no verdict"
             )
         if record is not None:
-            for key in ("experiment_id", "arm", "window"):
-                if record.get(key) != stamp.get(key):
+            for field in (key, "arm", "window"):
+                if record.get(field) != stamp.get(field):
                     problems.append(
-                        f"the launcher recorded {key} {record.get(key)!r} but the runner "
-                        f"stamped {stamp.get(key)!r}"
+                        f"the launcher recorded {field} {record.get(field)!r} but the runner "
+                        f"stamped {stamp.get(field)!r}"
                     )
     returncode = (record or {}).get("returncode")
     if problems:
@@ -1692,17 +1780,22 @@ def ledger_row(run_dir: Path, experiment_id: str) -> dict[str, Any] | None:
     }
 
 
-def experiment_ledger(experiment_id: str, runs_root: Path) -> list[dict[str, Any]]:
+def experiment_ledger(
+    experiment_id: str, runs_root: Path, *, key: str = "experiment_id"
+) -> list[dict[str, Any]]:
     """A row for every run folder directly under *runs_root* that names the experiment.
 
     The verdict reads a folder of runs, never a list someone chose, so a launched run
     cannot be left out by not naming it: it would have to be moved out of the folder.
+    ``key`` is as in :func:`ledger_row`.
     """
     runs_root = Path(runs_root)
     if not runs_root.is_dir():
         raise ValueError(f"{runs_root} is not a folder of runs")
     rows = [
-        ledger_row(child, experiment_id) for child in sorted(runs_root.iterdir()) if child.is_dir()
+        ledger_row(child, experiment_id, key=key)
+        for child in sorted(runs_root.iterdir())
+        if child.is_dir()
     ]
     return [row for row in rows if row is not None]
 
@@ -1952,6 +2045,61 @@ def experiment_verdict(
     }
 
 
+VERDICT_REFUSALS = (VerdictError, PreregistrationError, ValueError, KeyError, TypeError, OSError)
+
+
+def seed_floor_verdict_from_arg(value: str) -> dict[str, Any] | None:
+    """The verdict of the experiment ``--seed-floor ID=RUNS_ROOT`` names, or None."""
+    if not value:
+        return None
+    floor_id, _, floor_root = value.partition("=")
+    if not floor_id or not floor_root:
+        raise VerdictError(f"--seed-floor takes ID=RUNS_ROOT; got {value!r}")
+    try:
+        return experiment_verdict(experiment_ledger(floor_id, Path(floor_root)), repo_dir=REPO_DIR)
+    except VERDICT_REFUSALS as error:
+        raise VerdictError(
+            f"the seed floor's experiment {floor_id!r} gives none: {error}"
+        ) from error
+
+
+def adopted_by_verdict(
+    promotion: LoadedPromotion, runs_root: Path, seed_floor: str = ""
+) -> dict[str, Any]:
+    """The verdict that adopted the promotion's candidate, recomputed from its runs.
+
+    The record names a commit; this shows it is the commit the experiment's verdict ran
+    at, and that the verdict adopted the candidate, before a look is spent (#374).
+    Refused otherwise.
+    """
+    record = promotion.record
+    verdict = experiment_verdict(
+        experiment_ledger(record.experiment_id, Path(runs_root)),
+        repo_dir=REPO_DIR,
+        seed_floor_verdict=seed_floor_verdict_from_arg(seed_floor),
+    )
+    if verdict["commit"] != record.commit:
+        raise VerdictError(
+            f"{record.experiment_id}'s verdict ran at {verdict['commit'][:8]}, but the record "
+            f"names {record.commit[:8]}"
+        )
+    decision = next((arm for arm in verdict["arms"] if arm["arm"] == record.candidate), None)
+    if decision is None or decision["verdict"] != ADOPT:
+        found = None if decision is None else decision["verdict"]
+        raise VerdictError(
+            f"{record.experiment_id}'s verdict did not adopt {record.candidate!r} ({found}); "
+            "only an adopted arm is promoted"
+        )
+    return {
+        "runs_root": str(runs_root),
+        "commit": verdict["commit"],
+        "candidate_verdict": decision["verdict"],
+        "mean_delta": decision["mean_delta"],
+        "adjusted_p_value": decision["adjusted_p_value"],
+        "seed_floor": verdict["seed_floor"]["value"],
+    }
+
+
 def _command_compare_experiment(args: Any) -> int:
     out_dir = Path(args.out_dir)
     if out_dir.exists():
@@ -1968,20 +2116,13 @@ def _command_compare_experiment(args: Any) -> int:
     out_dir.mkdir(parents=True)
     paths = write_trial_ledger(rows, out_dir)
     print(f"Trial ledger ({len(rows)} launched runs) written to {paths['csv']}")
-    refusals = (VerdictError, PreregistrationError, ValueError, KeyError, TypeError, OSError)
-    seed_floor_verdict = None
-    if args.seed_floor:
-        floor_id, _, floor_root = args.seed_floor.partition("=")
-        if not floor_id or not floor_root:
-            print(f"--seed-floor takes ID=RUNS_ROOT; got {args.seed_floor!r}")
-            return 1
-        try:
-            seed_floor_verdict = experiment_verdict(
-                experiment_ledger(floor_id, Path(floor_root)), repo_dir=REPO_DIR
-            )
-        except refusals as error:
-            print(f"No verdict: the seed floor's experiment {floor_id!r} gives none: {error}")
-            return 1
+    refusals = VERDICT_REFUSALS
+    try:
+        seed_floor_verdict = seed_floor_verdict_from_arg(args.seed_floor)
+    except refusals as error:
+        print(f"No verdict: {error}")
+        return 1
+    floor_root = args.seed_floor.partition("=")[2]
     try:
         verdict = experiment_verdict(rows, repo_dir=REPO_DIR, seed_floor_verdict=seed_floor_verdict)
     except refusals as error:
@@ -2001,9 +2142,241 @@ def _command_compare_experiment(args: Any) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# Holdout promotion: the receipt a look leaves for the holdout ledger (#374)
+# ---------------------------------------------------------------------------
+
+PROMOTION_RECEIPT_SCHEMA = "mci_gru.promotion_receipt.v1"
+#: The only window a promotion run may match: the holdout's.
+PROMOTION_WINDOWS = {HOLDOUT_WINDOW_NAME: HOLDOUT_WINDOW}
+SCORED, VOID = "scored", "void"
+
+
+def _committed_looks(repo_dir: Path) -> list[dict[str, Any]]:
+    shown = subprocess.run(
+        ["git", "-C", str(repo_dir), "show", f"HEAD:{LEDGER_PATH.as_posix()}"],
+        capture_output=True,
+        check=False,
+    )
+    if shown.returncode != 0:
+        raise VerdictError(f"{LEDGER_PATH.as_posix()} is not committed in {repo_dir}")
+    return parse_ledger(shown.stdout)
+
+
+def promotion_receipt(
+    promotion_id: str,
+    rows: Sequence[dict[str, Any]],
+    *,
+    repo_dir: Path,
+    ci_level: float = 0.95,
+) -> dict[str, Any]:
+    """The receipt of one holdout promotion's look, from every run that names it.
+
+    *rows* are :func:`experiment_ledger` rows keyed on ``holdout_promotion``. The pass
+    rule is fixed (#374): IC(candidate) minus IC(incumbent), paired by holdout date,
+    above zero, reported with its HAC interval on ``label_t - 2`` lags.
+
+    A look is spent once any run has scored the holdout. So when the runs cannot give a
+    scored result (a scored run that crashed, a pair scored twice, a stamp that does not
+    match) but one of them scored, the receipt is ``void`` and ``passed`` is false: the
+    look still goes in the ledger. When nothing has scored, nothing has looked, and the
+    receipt is refused so that the pair can be run again.
+    """
+    from dataclasses import asdict
+
+    from mci_gru.evaluation.paired_inference import align_daily_series, paired_mean_inference
+
+    if not rows:
+        raise VerdictError(f"no run in the folder names holdout promotion {promotion_id!r}")
+    if promotion_id in {look["id"] for look in _committed_looks(repo_dir)}:
+        raise VerdictError(
+            f"{promotion_id} is already in the committed {LEDGER_PATH.as_posix()}; its look "
+            "is recorded"
+        )
+    if not any(row["scored"] for row in rows):
+        raise VerdictError(
+            f"no run of {promotion_id} has scored the holdout, so it has not looked; run "
+            "the pair again"
+        )
+    scored_commits = sorted({row["commit"] for row in rows if row["scored"] and row["commit"]})
+    complete_commits = sorted({row["commit"] for row in rows if row["status"] == COMPLETE})
+    if not scored_commits:
+        raise VerdictError(
+            f"a run of {promotion_id} scored the holdout, but no launcher record says at "
+            "which commit; the look is spent, so record it in the ledger by hand"
+        )
+    commit = (complete_commits or scored_commits)[0]
+    record, record_sha, loaded = promotion_at_commit(promotion_id, repo_dir, commit)
+    preregistration = loaded.preregistration
+    candidate, incumbent = record.candidate, record.incumbent
+    expected = [trial_id(candidate, HOLDOUT_WINDOW_NAME), trial_id(incumbent, HOLDOUT_WINDOW_NAME)]
+    problems = ledger_problems(rows, expected)
+    if len(complete_commits) > 1 or len(scored_commits) > 1:
+        problems.append(f"the runs come from more than one commit: {scored_commits}")
+    statuses = [row["status"] for row in rows]
+    base = {
+        "schema_version": PROMOTION_RECEIPT_SCHEMA,
+        "id": promotion_id,
+        "experiment_id": record.experiment_id,
+        "candidate": candidate,
+        "incumbent": incumbent,
+        "record": {"path": f"docs/research/holdout/{promotion_id}.yaml", "sha256": record_sha},
+        "verdict_commit": record.commit,
+        "commit": commit,
+        "pass_rule": PASS_RULE,
+        "window": {"name": HOLDOUT_WINDOW_NAME, **HOLDOUT_WINDOW.spans()},
+        "attempts": {
+            "total": len(rows),
+            "scored": sum(1 for row in rows if row["scored"]),
+            **{status.lower(): statuses.count(status) for status in (COMPLETE, FAILED, ABORTED)},
+        },
+        "runs": [
+            {key: row[key] for key in ("run_tag", "arm", "status", "scored", "problems")}
+            for row in rows
+        ],
+    }
+    if not problems:
+        results = {}
+        for row in rows:
+            if row["status"] != COMPLETE:
+                continue
+            try:
+                result = read_arm_result(row["arm"], Path(row["run_dir"]), PROMOTION_WINDOWS)
+                stamp = _stamp_of(result.run_dir)
+            except (OSError, ValueError, KeyError) as error:
+                problems.append(f"{row['run_dir']} cannot be read as a scored run: {error}")
+                continue
+            for key, want in (
+                ("holdout_promotion", promotion_id),
+                ("promotion_record_sha256", record_sha),
+                ("promotion_commit", commit),
+                ("verdict_commit", record.commit),
+                ("preregistration_sha256", loaded.sha256),
+                ("recipe_slug", preregistration.recipe),
+                ("recipe_overrides_sha256", recipe_overrides_sha256(loaded.recipe_text)),
+            ):
+                if stamp.get(key) != want:
+                    problems.append(
+                        f"{row['run_dir']} was stamped {key} {stamp.get(key)!r}, not {want!r}"
+                    )
+            if result.record.get("mode") != "full":
+                problems.append(f"{row['run_dir']} ran mode {result.record.get('mode')!r}")
+            results[row["arm"]] = (result, stamp)
+        if not problems:
+            (cand, cand_stamp), (inc, inc_stamp) = results[candidate], results[incumbent]
+            if _package_identity(cand.record) != _package_identity(inc.record):
+                problems.append("the two arms staged different input packages")
+            if cand_stamp.get("looks_before") != inc_stamp.get("looks_before"):
+                problems.append("the two arms saw different holdout ledgers")
+            label_ts = {int(cand.summary["label_t"]), int(inc.summary["label_t"])}
+            if len(label_ts) != 1:
+                problems.append(f"the arms score different label horizons {sorted(label_ts)}")
+    if problems:
+        return {
+            **base,
+            "outcome": VOID,
+            "passed": False,
+            "problems": problems,
+            "note": "A run scored the holdout but the runs give no scored result, so the "
+            "look is spent and fails (#374). Record it in the ledger like any other.",
+        }
+
+    label_t = label_ts.pop()
+
+    def paired(column: str) -> dict[str, Any]:
+        frame = align_daily_series({candidate: cand.daily[column], incumbent: inc.daily[column]})
+        inference = paired_mean_inference(
+            frame[candidate] - frame[incumbent],
+            arm=candidate,
+            control=incumbent,
+            label_horizon=label_t,
+            ci_level=ci_level,
+        )
+        return {"metric": column, **asdict(inference)}
+
+    test = paired("ic")
+    delta = test["mean_delta"]
+    return {
+        **base,
+        "outcome": SCORED,
+        "label_t": label_t,
+        "looks_before": cand_stamp.get("looks_before"),
+        "test": {
+            **test,
+            "rule": "paired mean IC(candidate) - IC(incumbent) over the holdout dates, "
+            "HAC t and interval on label_t - 2 lags",
+            "ci_level": ci_level,
+        },
+        "passed": bool(isinstance(delta, (int, float)) and math.isfinite(delta) and delta > 0),
+        "reported_not_decisive": {"rank_ic": paired("rank_ic")},
+        "arm_runs": [_run_entry(cand, auxiliary_observation_digests(inc.run_dir)),
+                     _run_entry(inc, auxiliary_observation_digests(inc.run_dir))],
+        "note": "Passed means the paired IC difference is above zero; the interval is "
+        "reported beside it and decides nothing (#374).",
+    }  # fmt: skip
+
+
+def ledger_entry(receipt: dict[str, Any], receipt_sha256: str) -> dict[str, Any]:
+    """The look to add to ``docs/research/holdout/ledger.yaml``, from a written receipt."""
+    return {
+        "id": receipt["id"],
+        "experiment_id": receipt["experiment_id"],
+        "candidate": receipt["candidate"],
+        "commit": receipt["commit"],
+        "record_sha256": receipt["record"]["sha256"],
+        "receipt_sha256": receipt_sha256,
+        "passed": bool(receipt["passed"]),
+    }
+
+
+def _command_compare_promotion(args: Any) -> int:
+    out_dir = Path(args.out_dir)
+    if out_dir.exists():
+        print(f"Refusing to write over {out_dir}: it already exists.")
+        return 1
+    try:
+        rows = experiment_ledger(args.promotion, Path(args.runs_root), key="holdout_promotion")
+        receipt = promotion_receipt(args.promotion, rows, repo_dir=REPO_DIR)
+    except (VerdictError, PreregistrationError, ValueError, KeyError, TypeError, OSError) as error:
+        print(f"No receipt: {error}")
+        return 1
+    receipt = _finite_or_none(receipt)
+    out_dir.mkdir(parents=True)
+    write_trial_ledger(rows, out_dir)
+    path = out_dir / "promotion_receipt.json"
+    write_json(path, receipt)
+    entry = ledger_entry(receipt, hashlib.sha256(path.read_bytes()).hexdigest())
+    snippet = yaml.safe_dump([entry], sort_keys=False)
+    (out_dir / "ledger_entry.yaml").write_text(snippet, encoding="utf-8")
+    if receipt["outcome"] == VOID:
+        print(f"{args.promotion}: VOID, the look is spent and fails: {receipt['problems']}")
+    else:
+        test = receipt["test"]
+
+        def shown(value: Any) -> str:
+            return "n/a" if value is None else f"{value:+.4f}"
+
+        print(
+            f"{args.promotion}: {'PASSED' if receipt['passed'] else 'FAILED'} (holdout IC "
+            f"difference {shown(test['mean_delta'])}, {test['ci_level']:.0%} interval "
+            f"{shown(test['ci_lower'])} to {shown(test['ci_upper'])})"
+        )
+    print(
+        f"Receipt written to {path}. Commit it as docs/research/holdout/{args.promotion}"
+        f".receipt.json and add this look under `looks:` in {LEDGER_PATH.as_posix()}, in one "
+        f"commit:\n{snippet}"
+    )
+    return 0
+
+
 def _command_compare(args: Any) -> int:
     import pandas as pd
 
+    if args.promotion:
+        if args.run or args.experiment or args.seed_floor or not args.runs_root:
+            print("--promotion reads every run under --runs-root; it takes nothing else")
+            return 1
+        return _command_compare_promotion(args)
     if args.experiment:
         if args.run or not args.runs_root:
             print("--experiment reads every run under --runs-root; it takes no --run")
@@ -2078,6 +2451,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="a pre-registered experiment id (docs/research/experiments/<id>.yaml, #373)",
     )  # fmt: skip
     run.add_argument(
+        "--promotion", default="",
+        help="a committed holdout promotion (docs/research/holdout/<id>.yaml, #374); "
+        "--arm is its candidate or its incumbent",
+    )  # fmt: skip
+    run.add_argument(
+        "--verdict-runs-root", default="",
+        help="with --promotion: the folder of the experiment's runs, whose verdict must "
+        "adopt the candidate at the record's commit",
+    )  # fmt: skip
+    run.add_argument(
+        "--seed-floor", default="", metavar="ID=RUNS_ROOT",
+        help="with --promotion: as for compare --experiment, when the experiment has no "
+        "seed arm",
+    )  # fmt: skip
+    run.add_argument(
         "--window", choices=list(RUN_WINDOWS), default=RECIPE_WINDOW,
         help="the protocol window to run (PRD #369); W5 is the recipe's own dates",
     )  # fmt: skip
@@ -2096,8 +2484,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="a pre-registered experiment: build its trial ledger and verdict (#373)",
     )  # fmt: skip
     compare.add_argument(
+        "--promotion", default="",
+        help="a holdout promotion: write the receipt of its look for the holdout ledger (#374)",
+    )  # fmt: skip
+    compare.add_argument(
         "--runs-root", default="",
-        help="with --experiment: the folder holding every launched run of the experiment",
+        help="with --experiment or --promotion: the folder holding every run it launched",
     )  # fmt: skip
     compare.add_argument(
         "--seed-floor", default="", metavar="ID=RUNS_ROOT",

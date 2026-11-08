@@ -27,7 +27,8 @@ and #369 win.
   also name `protocol.window=<W1..W5>`, and is then refused unless its six dates
   are that window's; the stamp records the window (#371).
 
-The gate is `mci_gru/preregistration.py` (`resolve_run_standing`, #372).
+The gate is `mci_gru/preregistration.py` (`resolve_run_standing`, #372). The
+one run that is neither is a holdout promotion, below, which has its own gate.
 
 ## Windows
 
@@ -52,9 +53,92 @@ all five.
 The 2026 signal dates from 2026-01-22 to 2026-07-24 are locked. No run, rescore,
 backtest or saved-prediction score may read them or let a label reach into them.
 Everything after them is the next holdout (#370; `require_outside_holdout` in
-`mci_gru/protocol.py`). The only way in will be a committed promotion record,
-one look per candidate and three looks in total (decision 3, #374). Until #374
-lands, nothing unlocks it.
+`mci_gru/protocol.py`). The only way in is a committed promotion record: one look
+per candidate, three looks in total, and then the holdout retires and the next one
+is the data after 2026-07-31 (decision 3, #374).
+
+### Promoting a candidate
+
+A promotion scores an arm that a declared experiment adopted against that
+experiment's control, on the holdout window: train 2021 to 2024, validate 2025,
+test 2026-01-22 to 2026-07-24 (`HOLDOUT_WINDOW`). Both arms run on the
+experiment's seed base, from the code the verdict ran.
+
+1. **Write the record.** `docs/research/holdout/<id>.yaml`, committed before
+   either run, on a branch whose only change since the verdict's commit is under
+   `docs/research/holdout/`:
+
+   Promotion record:
+
+   ```yaml
+   id: graph-zeroed-2026
+   experiment_id: graph-zeroed-control
+   candidate: graph_zeroed
+   incumbent: recipe
+   commit: 0123456789abcdef0123456789abcdef01234567
+   pass_rule: holdout_paired_ic_difference_positive
+   ```
+
+   `commit` is the full id of the commit the experiment's verdict ran at.
+   `incumbent` must be the experiment's control and `candidate` one of its
+   treatment arms (not the seed-floor arm). The pass rule is fixed: the
+   candidate's holdout IC minus the incumbent's, paired by date, above zero. It
+   is reported with its HAC interval, which decides nothing.
+2. **Run both arms.** `first_run_colab.py run --mode full --promotion <id> --arm
+   <candidate> --verdict-runs-root <experiment runs>`, then the same with `--arm
+   <incumbent>`. The launcher first recomputes the experiment's verdict from its
+   runs and refuses unless it ran at the record's commit and adopted the
+   candidate (`--seed-floor` as for the verdict). The runner takes
+   `protocol.holdout_promotion=<id> protocol.arm=<arm>` and nothing else of
+   `protocol.*`. Its gate (`resolve_promotion_standing` in
+   `mci_gru/promotion.py`) refuses unless:
+   - the record exists and, like every tracked file, matches the checkout's
+     commit;
+   - the committed `docs/research/holdout/ledger.yaml` extends the ledger on
+     `origin/main` (so copy main's ledger onto the promotion branch), holds
+     neither the id nor the same candidate of the same experiment, and holds
+     fewer than three looks;
+   - the checkout carries no other record the ledger has not recorded: one
+     look at a time;
+   - the verdict's commit is an ancestor of the checkout, and the two differ only
+     under `docs/research/holdout/` (a file moved in from elsewhere counts at its
+     old path);
+   - the run is exactly the named arm, at the seed base, on the holdout window's
+     six dates (and with any other dates the config itself refuses it);
+   - its labels close by 2026-07-31.
+
+   `run_metadata.json` records the promotion id, the record's SHA-256, the
+   commit, the verdict's commit and how many looks the ledger held.
+3. **Write the receipt.** `first_run_colab.py compare --promotion <id>
+   --runs-root <folder> --out-dir <dir>` reads every run in the folder that names
+   the promotion, as the verdict does. It writes `promotion_receipt.json` and
+   `ledger_entry.yaml`. When the pair is complete, the receipt holds the paired
+   test and `passed`. When a run scored the holdout but the runs give no scored
+   result (a scored run that crashed, a pair scored twice, a stamp that does not
+   match), the receipt is `void` and `passed` is false: the look is spent. When
+   nothing scored, nothing looked, and no receipt is written, so the pair may run
+   again.
+4. **Record the look.** In one commit, add the receipt as
+   `docs/research/holdout/<id>.receipt.json` and the entry (id, experiment,
+   candidate, commit, the record's and the receipt's SHA-256, passed) under
+   `looks:` in the ledger, and merge it to main. A look is never removed or
+   edited.
+
+The rescore, replay, backtest and saved-prediction paths keep refusing the
+holdout, a promotion run included: the receipt is the score.
+
+What the gate cannot see:
+
+- A look not yet merged to main. Two promotion branches run before either
+  ledger entry lands would each pass. The receipt refuses more than one scored
+  run of each arm, and the ledger merge is what closes the id, so merge it as
+  soon as the receipt is written.
+- Code other than `run_experiment.py`. `ExperimentConfig` accepts the holdout
+  window whenever `protocol.holdout_promotion` is set; the record, the ledger and
+  the verdict commit are checked by the runner's gate only. A script that builds
+  its own config with that key set reads the holdout unchecked.
+- The ledger's digests are checked for form only, not against the committed
+  record and receipt.
 
 ## Seeds
 
