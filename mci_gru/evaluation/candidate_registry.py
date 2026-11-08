@@ -24,6 +24,7 @@ from mci_gru.evaluation.baselines import (
 from mci_gru.evaluation.candidates import CandidateContext, CandidateResult
 from mci_gru.evaluation.lightgbm_candidate import lightgbm_5d, lightgbm_20d
 from mci_gru.evaluation.residual_linear import residual_linear, residual_reversal_1w
+from mci_gru.evaluation.return_history_net import return_net_cnn_lstm, return_net_fnn
 
 if TYPE_CHECKING:
     from mci_gru.evaluation.candidates import Candidate
@@ -53,6 +54,8 @@ CANDIDATES: dict[str, Candidate] = {
     "residual_reversal_1w": residual_reversal_1w,
     **{name: _reversal(lookback) for name, lookback in REVERSAL_LOOKBACKS.items()},
     "momentum_12_1": momentum_12_1,
+    "return_net_fnn": return_net_fnn,
+    "return_net_cnn_lstm": return_net_cnn_lstm,
     "lightgbm_5d": lightgbm_5d,
     "lightgbm_20d": lightgbm_20d,
 }
