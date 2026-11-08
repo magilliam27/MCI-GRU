@@ -503,9 +503,9 @@ The recipe consists of two files, installed in this order:
 | File | Role and package origins |
 | --- | --- |
 | `requirements-linux-cpu-bootstrap.lock` | Exact PyPI wheels for pip 25.0.1 and setuptools 80.9.0, with SHA-256 hashes |
-| `requirements-linux-cpu.lock` | Exact URLs and SHA-256 hashes for the 62 dev+fred dependency artifacts; PyPI distributions except the official PyTorch CPU wheel |
+| `requirements-linux-cpu.lock` | Exact URLs and SHA-256 hashes for the 63 dev+fred dependency artifacts; PyPI distributions except the official PyTorch CPU wheel |
 
-The Linux recipe keeps all 61 non-torch versions from `requirements.lock` and
+The Linux recipe keeps all 62 non-torch versions from `requirements.lock` and
 explicitly selects **torch 2.12.1+cpu** instead of PyPI torch 2.12.1. Its official
 CPU wheel declares `setuptools<82`, satisfied by the bootstrap pin, and does not
 require the Linux CUDA packages. `wheel==0.47.0` is retained in the dependency

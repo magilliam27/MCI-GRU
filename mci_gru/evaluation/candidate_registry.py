@@ -22,6 +22,7 @@ from mci_gru.evaluation.baselines import (
     reversal_scores,
 )
 from mci_gru.evaluation.candidates import CandidateContext, CandidateResult
+from mci_gru.evaluation.lightgbm_candidate import lightgbm_5d, lightgbm_20d
 from mci_gru.evaluation.residual_linear import residual_linear, residual_reversal_1w
 from mci_gru.evaluation.return_history_net import return_net_cnn_lstm, return_net_fnn
 
@@ -55,6 +56,8 @@ CANDIDATES: dict[str, Candidate] = {
     "momentum_12_1": momentum_12_1,
     "return_net_fnn": return_net_fnn,
     "return_net_cnn_lstm": return_net_cnn_lstm,
+    "lightgbm_5d": lightgbm_5d,
+    "lightgbm_20d": lightgbm_20d,
 }
 
 
