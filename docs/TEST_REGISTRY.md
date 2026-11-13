@@ -229,6 +229,40 @@ Pin the Claude Code harness so it cannot be severed silently.
 | `test_claude_settings_select_the_pocock_skill_set` |  |  |
 | `test_gitignore_covers_session_worktrees` | Session worktrees must not be able to dirty the protected checkout. |  |
 
+## `tests/test_company_candidates.py`
+
+Earnings candidates read only releases public by each close, and the control is what it says (#393).
+
+**Exercises:** `mci_gru.config`, `mci_gru.data.company_info`, `mci_gru.evaluation`, `mci_gru.evaluation.baselines`, `mci_gru.evaluation.candidates`, `mci_gru.evaluation.residual_linear`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_the_surprise_is_scaled_by_the_close_before_the_release_and_ages_out` |  |  |
+| `test_a_release_after_the_close_is_not_read_on_its_report_date` |  |  |
+| `test_the_announcement_return_is_net_of_every_names_mean_move` |  |  |
+| `test_a_later_release_never_moves_an_earlier_score` |  |  |
+| `test_no_score_moves_when_later_prices_are_scrambled` |  | parametrize |
+| `test_the_control_is_the_mean_centred_rank_of_reversal_and_momentum` |  |  |
+| `test_the_combined_arm_weights_its_three_parts_equally` |  |  |
+| `test_without_the_events_file_the_earnings_arms_refuse` |  |  |
+
+## `tests/test_company_info.py`
+
+Earnings releases are dated by when they became public, and owned by the right company (#393).
+
+**Exercises:** `mci_gru.data`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_a_release_before_the_open_is_known_that_day_and_after_the_close_the_next` |  |  |
+| `test_a_release_on_a_non_trading_day_is_known_at_the_next_close` |  |  |
+| `test_a_release_after_the_last_session_points_past_the_axis` |  |  |
+| `test_eodhd_timing_maps_unknown_values_to_unknown` |  |  |
+| `test_a_reused_ticker_lends_its_releases_only_inside_each_companys_segment` |  |  |
+| `test_releases_outside_the_pull_dates_are_left_out` |  |  |
+| `test_a_release_without_figures_keeps_its_date_with_nan_eps` |  |  |
+| `test_a_malformed_events_file_is_refused` |  |  |
+
 ## `tests/test_cross_section_block.py`
 
 Cross-stock block behaviour: cross-section survival, masking, and compatibility.
