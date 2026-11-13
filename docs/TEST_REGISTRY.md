@@ -245,6 +245,10 @@ Earnings candidates read only releases public by each close, and the control is 
 | `test_the_control_is_the_mean_centred_rank_of_reversal_and_momentum` |  |  |
 | `test_the_combined_arm_weights_its_three_parts_equally` |  |  |
 | `test_without_the_events_file_the_earnings_arms_refuse` |  |  |
+| `test_fundamental_signals_divide_by_the_close_of_the_signal_date` |  |  |
+| `test_a_filing_is_not_read_until_the_session_after_its_filing_date` |  |  |
+| `test_stale_fundamentals_score_in_the_middle` |  |  |
+| `test_fundamental_arms_never_move_with_later_prices` |  | parametrize |
 
 ## `tests/test_company_info.py`
 
@@ -262,6 +266,14 @@ Earnings releases are dated by when they became public, and owned by the right c
 | `test_releases_outside_the_pull_dates_are_left_out` |  |  |
 | `test_a_release_without_figures_keeps_its_date_with_nan_eps` |  |  |
 | `test_a_malformed_events_file_is_refused` |  |  |
+| `test_the_first_filed_value_wins_over_a_later_restatement` |  |  |
+| `test_within_a_period_the_better_concept_wins_and_the_next_fills_gaps` |  |  |
+| `test_values_from_registration_statements_are_left_out` |  |  |
+| `test_a_fourth_quarter_is_the_year_less_nine_months_known_when_both_were_filed` |  |  |
+| `test_share_counts_move_onto_the_panels_split_basis` |  |  |
+| `test_a_value_is_first_read_the_session_after_its_filing_date` |  |  |
+| `test_the_timeline_uses_only_values_filed_before_each_session` |  |  |
+| `test_four_quarters_with_a_gap_make_no_trailing_year` |  |  |
 
 ## `tests/test_cross_section_block.py`
 

@@ -24,8 +24,11 @@ from mci_gru.evaluation.baselines import (
 from mci_gru.evaluation.candidates import CandidateContext, CandidateResult
 from mci_gru.evaluation.company_candidates import (
     earnings_surprise,
+    fundamentals_composite,
     reversal_momentum,
     reversal_momentum_earnings,
+    reversal_momentum_fundamentals,
+    reversal_momentum_information,
 )
 from mci_gru.evaluation.lightgbm_candidate import lightgbm_5d, lightgbm_20d
 from mci_gru.evaluation.residual_linear import residual_linear, residual_reversal_1w
@@ -66,6 +69,9 @@ CANDIDATES: dict[str, Candidate] = {
     "reversal_momentum": reversal_momentum,
     "earnings_surprise": earnings_surprise,
     "reversal_momentum_earnings": reversal_momentum_earnings,
+    "fundamentals_composite": fundamentals_composite,
+    "reversal_momentum_fundamentals": reversal_momentum_fundamentals,
+    "reversal_momentum_information": reversal_momentum_information,
 }
 
 

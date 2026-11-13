@@ -19,7 +19,7 @@ import pandas as pd
 import pytest
 
 from mci_gru.config import ExperimentConfig
-from mci_gru.data.company_info import EARNINGS_COLUMNS
+from mci_gru.data.company_info import EARNINGS_COLUMNS, FUNDAMENTAL_ROW_COLUMNS
 from mci_gru.evaluation import company_candidates as cc
 from mci_gru.evaluation.baselines import momentum_scores, reversal_scores
 from mci_gru.evaluation.candidates import CandidateContext, check_no_lookahead
@@ -173,3 +173,71 @@ def test_without_the_events_file_the_earnings_arms_refuse(world, monkeypatch):
     monkeypatch.delenv(cc.EARNINGS_EVENTS_ENV)
     with pytest.raises(ValueError, match=cc.EARNINGS_EVENTS_ENV):
         cc.earnings_surprise(world[0])
+
+
+def _fundamentals(sessions: list[str]) -> pd.DataFrame:
+    """Five quarterly filings per stock, filed 5 sessions after each quarter's end."""
+    rows = []
+    for j, code in enumerate(STOCKS):
+        for q in range(5):
+            end_at = 200 + 63 * q - 63 * 3  # quarter ends at sessions 11, 74, 137, 200, 263
+            end, filed = sessions[end_at], sessions[end_at + 5 + j]
+            rows += [
+                [code, "1", "equity", end, 100.0 + 10 * j, filed],
+                [code, "1", "assets", end, 200.0 * (1 + 0.01 * j) ** q, filed],
+                [code, "1", "shares_adj", end, 10.0, filed],
+                [code, "1", "net_income_q", end, 1.0 + j, filed],
+                [code, "1", "gross_profit_q", end, 3.0 + j, filed],
+            ]
+    return pd.DataFrame(rows, columns=list(FUNDAMENTAL_ROW_COLUMNS))
+
+
+def test_fundamental_signals_divide_by_the_close_of_the_signal_date(world):
+    _, panel, sessions, close, _, _ = world
+    rows = _fundamentals(sessions)
+    date = sessions[310]
+    signals = cc.fundamentals_signals(panel, list(STOCKS), [date], rows)
+    j = 4
+    value = 10.0 * close[310, j]
+    assert signals["book_to_market"][0, j] == pytest.approx((100.0 + 10 * j) / value)
+    assert signals["earnings_yield"][0, j] == pytest.approx(4 * (1.0 + j) / value)
+    assets = 200.0 * 1.04**4
+    assert signals["gross_profitability"][0, j] == pytest.approx(4 * (3.0 + j) / assets)
+    # Newest balance sheet (q=4) against the one four quarters before (q=0).
+    assert signals["low_investment"][0, j] == pytest.approx(-(1.04**4 - 1.0))
+
+
+def test_a_filing_is_not_read_until_the_session_after_its_filing_date(world):
+    _, panel, sessions, _, _, _ = world
+    rows = _fundamentals(sessions)
+    j = 2
+    filed_at = 263 + 5 + j  # the fifth filing
+    before = cc.fundamentals_signals(panel, list(STOCKS), [sessions[filed_at]], rows)
+    after = cc.fundamentals_signals(panel, list(STOCKS), [sessions[filed_at + 1]], rows)
+    # Before the fifth filing there are four quarters but no balance sheet a year back.
+    assert np.isnan(before["low_investment"][0, j])
+    assert np.isfinite(after["low_investment"][0, j])
+
+
+def test_stale_fundamentals_score_in_the_middle(world, monkeypatch):
+    _, panel, sessions, _, _, _ = world
+    rows = _fundamentals(sessions)
+    monkeypatch.setattr(cc, "MAX_PERIOD_AGE_DAYS", 30)
+    signals = cc.fundamentals_signals(panel, list(STOCKS), [sessions[410]], rows)
+    assert all(np.isnan(v).all() for v in signals.values())
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        cc.fundamentals_composite,
+        cc.reversal_momentum_fundamentals,
+        cc.reversal_momentum_information,
+    ],
+)
+def test_fundamental_arms_never_move_with_later_prices(world, tmp_path, monkeypatch, candidate):
+    context, _, sessions, _, _, _ = world
+    path = tmp_path / "fundamentals.csv"
+    _fundamentals(sessions).to_csv(path, index=False)
+    monkeypatch.setenv(cc.FUNDAMENTALS_ENV, str(path))
+    check_no_lookahead(candidate, context, context.test_dates[40])

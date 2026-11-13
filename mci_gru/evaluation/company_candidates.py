@@ -35,18 +35,20 @@ from __future__ import annotations
 import hashlib
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import numpy as np
+import pandas as pd
 
-from mci_gru.data.company_info import known_session, load_earnings
+from mci_gru.data.company_info import (
+    fundamentals_timeline,
+    known_session,
+    load_earnings,
+    load_fundamentals,
+)
 from mci_gru.data.preprocessing import label_session_axis
 from mci_gru.evaluation.baselines import momentum_scores, reversal_scores
 from mci_gru.evaluation.candidates import CandidateContext, CandidateResult
 from mci_gru.evaluation.residual_linear import centred_ranks
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 EARNINGS_EVENTS_ENV = "MCI_GRU_EARNINGS_EVENTS"
 #: A release older than this many sessions (about a quarter) no longer scores.
@@ -218,5 +220,135 @@ def reversal_momentum_earnings(context: CandidateContext) -> CandidateResult:
         {
             "definition": "mean centred rank of reversal_1w, momentum_12_1, earnings_surprise",
             **controls,
+        },
+    )
+
+
+# --- Fundamentals ------------------------------------------------------------------
+
+FUNDAMENTALS_ENV = "MCI_GRU_FUNDAMENTALS"
+#: A company whose newest known period ended longer ago than this scores in the middle.
+MAX_PERIOD_AGE_DAYS = 450
+FUNDAMENTAL_SIGNALS = ("book_to_market", "earnings_yield", "gross_profitability", "low_investment")
+
+
+def fundamentals_signals(
+    panel: pd.DataFrame, kdcodes: list[str], dates: list[str], rows: pd.DataFrame
+) -> dict[str, np.ndarray]:
+    """The four fundamental signals on each date, for each stock (NaN where unknown).
+
+    * book_to_market: book equity over market value (split-adjusted shares times the
+      close of ``D``);
+    * earnings_yield: trailing four quarters' net income over market value;
+    * gross_profitability: trailing four quarters' gross profit over total assets;
+    * low_investment: minus total assets' growth over the year to the newest
+      balance sheet.
+    """
+    sessions, closes = _closes(panel, kdcodes)
+    position = {session: i for i, session in enumerate(sessions)}
+    at = np.asarray([position.get(str(d), -1) for d in dates], dtype=np.int64)
+    date_stamps = pd.to_datetime(pd.Series(dates))
+    shape = (len(dates), len(kdcodes))
+    out = {name: np.full(shape, np.nan) for name in FUNDAMENTAL_SIGNALS}
+    column = {code: j for j, code in enumerate(kdcodes)}
+    for kdcode, own in rows.groupby("kdcode", sort=False):
+        j = column.get(str(kdcode))
+        if j is None:
+            continue
+        timeline = fundamentals_timeline(own, sessions)
+        if timeline.empty:
+            continue
+        step = np.searchsorted(timeline["session"].to_numpy(), at, side="right") - 1
+        valid = (at >= 0) & (step >= 0)
+        if not valid.any():
+            continue
+        picked = timeline.iloc[np.where(valid, step, 0)].reset_index(drop=True)
+        newest = pd.to_datetime(picked["newest_end"].replace("", None))
+        fresh = valid & ((date_stamps - newest).dt.days <= MAX_PERIOD_AGE_DAYS).to_numpy()
+        close = np.where(at >= 0, closes[np.maximum(at, 0), j], np.nan)
+        market_value = picked["shares_adj"].to_numpy() * close
+        with np.errstate(divide="ignore", invalid="ignore"):
+            value_ok = market_value > 0
+            assets = picked["assets"].to_numpy()
+            signals = {
+                "book_to_market": np.where(value_ok, picked["equity"] / market_value, np.nan),
+                "earnings_yield": np.where(
+                    value_ok, picked["net_income_ttm"] / market_value, np.nan
+                ),
+                "gross_profitability": np.where(
+                    assets > 0, picked["gross_profit_ttm"] / assets, np.nan
+                ),
+                "low_investment": -picked["asset_growth"].to_numpy(),
+            }
+        for name, values in signals.items():
+            values = np.asarray(values, dtype=np.float64)
+            out[name][:, j] = np.where(fresh & np.isfinite(values), values, np.nan)
+    return out
+
+
+def _fundamentals_path() -> str:
+    path = os.environ.get(FUNDAMENTALS_ENV)
+    if not path:
+        raise ValueError(f"set {FUNDAMENTALS_ENV} to the preserved fundamentals CSV")
+    return path
+
+
+def _fundamentals_part(context: CandidateContext) -> tuple[np.ndarray, np.ndarray, dict]:
+    path = _fundamentals_path()
+    rows = load_fundamentals(path)
+    signals = fundamentals_signals(context.panel, context.kdcodes, context.test_dates, rows)
+    parts = [signals[name] for name in FUNDAMENTAL_SIGNALS]
+    scorable = _scorable(context, *parts)
+    score = _mean_rank(parts, scorable)
+    coverage = {
+        f"share_scorable_with_{name}": float(
+            (scorable & np.isfinite(signals[name])).sum() / max(scorable.sum(), 1)
+        )
+        for name in FUNDAMENTAL_SIGNALS
+    }
+    controls = {
+        "fundamentals_csv": os.path.basename(path),
+        "fundamentals_sha256": _sha256(path),
+        "max_period_age_days": MAX_PERIOD_AGE_DAYS,
+        "signals": list(FUNDAMENTAL_SIGNALS),
+        **coverage,
+    }
+    return score, scorable, controls
+
+
+def fundamentals_composite(context: CandidateContext) -> CandidateResult:
+    """Mean centred rank of the four first-filed fundamental signals."""
+    score, scorable, controls = _fundamentals_part(context)
+    return CandidateResult(
+        np.where(scorable, score, np.nan),
+        {"definition": "mean centred rank of " + ", ".join(FUNDAMENTAL_SIGNALS), **controls},
+    )
+
+
+def reversal_momentum_fundamentals(context: CandidateContext) -> CandidateResult:
+    """Mean centred rank of reversal, momentum and ``fundamentals_composite``."""
+    fundamentals, scorable, controls = _fundamentals_part(context)
+    parts = [*_control_parts(context), fundamentals]
+    return CandidateResult(
+        _mean_rank(parts, scorable),
+        {
+            "definition": "mean centred rank of reversal_1w, momentum_12_1, fundamentals_composite",
+            **controls,
+        },
+    )
+
+
+def reversal_momentum_information(context: CandidateContext) -> CandidateResult:
+    """Mean centred rank of reversal, momentum, ``earnings_surprise`` and fundamentals."""
+    earnings, scorable, earnings_controls = _earnings_part(context)
+    fundamentals, _, fundamentals_controls = _fundamentals_part(context)
+    parts = [*_control_parts(context), earnings, fundamentals]
+    return CandidateResult(
+        _mean_rank(parts, scorable),
+        {
+            "definition": "mean centred rank of reversal_1w, momentum_12_1, "
+            "earnings_surprise, fundamentals_composite",
+            **earnings_controls,
+            **fundamentals_controls,
         },
     )
