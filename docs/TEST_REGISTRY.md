@@ -1257,6 +1257,31 @@ The filings pull and the pair scoring, end to end with canned EDGAR and Jev (#28
 | `test_risk_verdicts_name_jevs_best_match_and_flag_a_new_risk` |  |  |
 | `test_a_limited_run_marks_risks_it_did_not_finish` |  |  |
 
+## `tests/test_filings_sector_tone.py`
+
+Sector tone from rated 8-Ks and the sector ETF rotation test (E20, #394).
+
+**Exercises:** `mci_gru.filings.sector_tone`
+
+| Test | Description | Markers |
+|---|---|---|
+| `test_sic_to_sector_exceptions_take_precedence` |  | parametrize |
+| `test_sic_to_sector_unmapped_is_none` |  | parametrize |
+| `test_every_sector_has_an_etf` |  |  |
+| `test_sic_to_industry` |  | parametrize |
+| `test_parse_header_sic_reads_the_requested_filer_block` |  |  |
+| `test_weekly_entry_days_take_first_session_of_each_week` |  |  |
+| `test_entry_instants_are_0930_eastern_across_dst` |  |  |
+| `test_assign_windows_is_half_open_at_the_entry_instant` |  |  |
+| `test_window_tone_means_and_rolling_lookback` |  |  |
+| `test_abnormal_tone_history_stops_at_window_start` |  |  |
+| `test_abnormal_tone_history_is_a_trailing_52_week_mean` |  |  |
+| `test_abnormal_tone_needs_26_weeks_of_history` |  |  |
+| `test_cross_sectional_ic_and_min_assets` |  |  |
+| `test_top_minus_bottom` |  |  |
+| `test_rank_regression_separates_signals` |  |  |
+| `test_block_bootstrap_interval_is_deterministic_and_brackets_mean` |  |  |
+
 ## `tests/test_first_run_cessation.py`
 
 The first run declares no cessation file; this pins why that is safe, and when not.
